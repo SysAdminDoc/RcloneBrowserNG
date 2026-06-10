@@ -53,8 +53,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
 
   QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
+    QStringList quotedArgs;
+    for (const auto &arg : mArgs) {
+      if (arg.contains(' ') || arg.contains('"')) {
+        quotedArgs << '"' + QString(arg).replace('"', "\\\"") + '"';
+      } else {
+        quotedArgs << arg;
+      }
+    }
     QClipboard *clipboard = QGuiApplication::clipboard();
-    clipboard->setText(mArgs.join(" "));
+    clipboard->setText(quotedArgs.join(" "));
   });
 
   QObject::connect(mProcess, &QProcess::readyRead, this, [=]() {
@@ -283,8 +291,11 @@ void JobWidget::cancel() {
     return;
   }
 
-  mProcess->kill();
-  mProcess->waitForFinished();
+  mProcess->terminate();
+  if (!mProcess->waitForFinished(5000)) {
+    mProcess->kill();
+    mProcess->waitForFinished();
+  }
 
   emit closed();
 }

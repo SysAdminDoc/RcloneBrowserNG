@@ -71,6 +71,9 @@ void StreamWidget::cancel() {
   }
 
   mPlayer->terminate();
-  mRclone->kill();
-  mRclone->waitForFinished();
+  mRclone->terminate();
+  if (!mRclone->waitForFinished(5000)) {
+    mRclone->kill();
+    mRclone->waitForFinished();
+  }
 }
