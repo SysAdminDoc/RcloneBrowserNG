@@ -128,8 +128,11 @@ QStringList JobOptions::getOptions() const {
   }
 
   if (!excluded.isEmpty()) {
-    for (auto line : excluded.split('\n')) {
-      list << "--exclude" << line;
+    for (const auto &line : excluded.split('\n')) {
+      QString trimmed = line.trimmed();
+      if (!trimmed.isEmpty()) {
+        list << "--exclude" << trimmed;
+      }
     }
   }
 

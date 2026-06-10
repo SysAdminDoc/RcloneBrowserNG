@@ -197,8 +197,10 @@ int main(int argc, char *argv[]) {
 
   // qDebug() << QString("main.cpp tmpDir:  " + tmpDir);
 
-  // not most elegant as fixed name but in reality not big deal
-  QLockFile lockFile(tmpDir + "/.RcloneBrowser_4q6RgLs2RpbJA.lock");
+  QString lockUser = qEnvironmentVariable("USER");
+  if (lockUser.isEmpty()) lockUser = qEnvironmentVariable("USERNAME");
+  if (lockUser.isEmpty()) lockUser = QString::number(qHash(QDir::homePath()));
+  QLockFile lockFile(tmpDir + "/.RcloneBrowser_" + lockUser + ".lock");
 
   if (!lockFile.tryLock(100)) {
     // if already running display warning and quit
