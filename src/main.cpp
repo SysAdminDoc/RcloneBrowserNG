@@ -102,18 +102,18 @@ int main(int argc, char *argv[]) {
     // ./rclone-browser.app/Contents/MasOS/
     // to get actual bundle folder we have
     // to traverse three levels up
-    applicationPath = qApp->applicationFilePath();
+    applicationPath = QFileInfo(qApp->applicationFilePath());
     tmpDir = applicationPath.absolutePath() + "/../../..";
 
     // get bundle name
-    QFileInfo MacOSPath = applicationPath.dir().path();
-    QFileInfo ContentsPath = MacOSPath.dir().path();
-    appBundlePath = ContentsPath.dir().path();
+    QFileInfo MacOSPath(applicationPath.dir().path());
+    QFileInfo ContentsPath(MacOSPath.dir().path());
+    appBundlePath = QFileInfo(ContentsPath.dir().path());
 
 #else
     // not macOS
 #ifdef Q_OS_WIN
-    applicationPath = qApp->applicationFilePath();
+    applicationPath = QFileInfo(qApp->applicationFilePath());
     tmpDir = applicationPath.absolutePath();
 #else
     QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
