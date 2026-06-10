@@ -301,17 +301,21 @@ QString root = isLocal ? "/" : QString();
     QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
 #if defined(Q_OS_WIN32)
+    QString lastMount = settings->value("Settings/lastMountPoint", "Z:").toString();
     QString folder =
         QInputDialog::getText(this, "Mount",
                               QString("(Make sure you have WinFsp-FUSE "
                                       "installed)\n\nDrive to mount %1 to")
                                   .arg(remote),
-                              QLineEdit::Normal, "Z:");
+                              QLineEdit::Normal, lastMount);
 #else
-        QString folder = QFileDialog::getExistingDirectory(this, QString("Mount %1").arg(remote));
+    QString lastMount = settings->value("Settings/lastMountPoint").toString();
+    QString folder = QFileDialog::getExistingDirectory(
+        this, QString("Mount %1").arg(remote), lastMount);
 #endif
 
     if (!folder.isEmpty()) {
+      settings->setValue("Settings/lastMountPoint", folder);
       emit addMount(remote + ":" + path, folder);
     }
   });
