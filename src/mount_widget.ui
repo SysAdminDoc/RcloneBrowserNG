@@ -49,6 +49,16 @@
        <widget class="QLabel" name="info"/>
       </item>
       <item>
+       <widget class="QToolButton" name="copy">
+        <property name="toolTip">
+         <string>Copy mount command to clipboard</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QToolButton { border: 0 }</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QToolButton" name="cancel">
         <property name="toolTip">
          <string>Unmount</string>
