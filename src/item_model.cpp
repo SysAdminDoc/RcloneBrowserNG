@@ -349,11 +349,13 @@ bool ItemModel::canDropMimeData(const QMimeData *data, Qt::DropAction action,
   }
 
   auto urls = data->urls();
-  if (urls.count() == 1) {
-    return urls.front().isLocalFile();
+  if (urls.isEmpty())
+    return false;
+  for (const auto &url : urls) {
+    if (!url.isLocalFile())
+      return false;
   }
-
-  return false;
+  return true;
 }
 
 bool ItemModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
@@ -362,10 +364,11 @@ bool ItemModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
     return false;
   }
 
-  QDir path = QDir(data->urls().front().toLocalFile());
   Item *item = get(parent);
-
-  emit drop(path, item->isFolder ? parent : parent.parent());
+  QModelIndex dropTarget = item->isFolder ? parent : parent.parent();
+  for (const auto &url : data->urls()) {
+    emit drop(QDir(url.toLocalFile()), dropTarget);
+  }
 
   return false;
 }
