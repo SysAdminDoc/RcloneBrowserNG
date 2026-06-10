@@ -276,7 +276,20 @@ QString GetRclone() {
   return rclone;
 }
 
-void SetRclone(const QString &rclone) { gRclone = rclone.trimmed(); }
+void SetRclone(const QString &rclone) {
+  QString path = rclone.trimmed();
+#if defined(Q_OS_WIN32)
+  // BatBadBut (CVE-2024-24576): a .bat/.cmd rclone path would route
+  // through cmd.exe, defeating QProcess argument escaping
+  if (path.endsWith(".bat", Qt::CaseInsensitive) ||
+      path.endsWith(".cmd", Qt::CaseInsensitive)) {
+    qWarning("Refusing rclone path ending in .bat/.cmd: %s",
+             qPrintable(path));
+    return;
+  }
+#endif
+  gRclone = path;
+}
 
 void UseRclonePassword(QProcess *process) {
   if (!gRclonePassword.isEmpty()) {

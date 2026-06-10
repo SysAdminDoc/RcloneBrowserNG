@@ -1204,6 +1204,26 @@ void MainWindow::checkBrowserUpdate() {
 }
 
 void MainWindow::addMount(const QString &remote, const QString &folder) {
+#if defined(Q_OS_WIN32)
+  QDir winfspDir(
+      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
+  bool hasWinFsp =
+      QFileInfo::exists("C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll") ||
+      QFileInfo::exists("C:/Program Files/WinFsp/bin/winfsp-x64.dll");
+  if (!hasWinFsp) {
+    QMessageBox box(QMessageBox::Warning, "WinFsp required",
+                    "Mounting requires WinFsp, which is not installed.\n\n"
+                    "Install it with:\n  winget install WinFsp.WinFsp\n\n"
+                    "Or download from https://winfsp.dev",
+                    QMessageBox::Ok | QMessageBox::Cancel, this);
+    box.setDefaultButton(QMessageBox::Ok);
+    if (box.exec() == QMessageBox::Ok) {
+      QDesktopServices::openUrl(QUrl("https://winfsp.dev/rel/"));
+    }
+    return;
+  }
+#endif
+
   QProcess *mount = new QProcess(this);
   mount->setProcessChannelMode(QProcess::MergedChannels);
 

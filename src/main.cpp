@@ -3,6 +3,10 @@
 
 int main(int argc, char *argv[]) {
 
+#if defined(Q_OS_WIN32)
+  SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
+#endif
+
 #if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   static const char ENV_VAR_QT_DEVICE_PIXEL_RATIO[] = "QT_DEVICE_PIXEL_RATIO";
   if (!qEnvironmentVariableIsSet(ENV_VAR_QT_DEVICE_PIXEL_RATIO) &&
