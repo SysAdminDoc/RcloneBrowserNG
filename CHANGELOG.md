@@ -38,6 +38,7 @@
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)
 
 ### UX
+-   NEW: Right-click a saved task to export it as a standalone .sh, .bat, or .ps1 script for OS schedulers
 -   NEW: Confirmation dialog before deleting a saved task
 -   NEW: Failed jobs auto-expand their details and output so the cause is immediately visible
 -   NEW: Inverted (light) remote icons are picked from the effective palette, so OS-level dark themes (Windows 10/11, macOS Mojave+) get readable icons — not just the app's own dark mode

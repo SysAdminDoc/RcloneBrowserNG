@@ -300,6 +300,72 @@ MainWindow::MainWindow() {
     QGuiApplication::clipboard()->setText(quoted.join(" "));
   });
 
+  ui.tasksListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+  QObject::connect(
+      ui.tasksListWidget, &QWidget::customContextMenuRequested, this,
+      [=](const QPoint &pos) {
+        auto *item = static_cast<JobOptionsListWidgetItem *>(
+            ui.tasksListWidget->itemAt(pos));
+        if (!item)
+          return;
+        QMenu menu;
+        QAction *exportAction = menu.addAction("Export as script...");
+        if (menu.exec(ui.tasksListWidget->mapToGlobal(pos)) != exportAction)
+          return;
+
+        JobOptions *jo = item->GetData();
+        QStringList cmd;
+        cmd << QDir::toNativeSeparators(GetRclone());
+        cmd << GetRcloneConf();
+        cmd << jo->getOptions();
+
+#ifdef Q_OS_WIN
+        QString filter = "PowerShell (*.ps1);;Batch (*.bat);;All (*)";
+#else
+        QString filter = "Shell (*.sh);;All (*)";
+#endif
+        QString path = QFileDialog::getSaveFileName(
+            this, "Export Task Script", jo->description, filter);
+        if (path.isEmpty())
+          return;
+
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+          QMessageBox::warning(this, "Export", "Cannot write to " + path);
+          return;
+        }
+        QTextStream out(&f);
+#ifdef Q_OS_WIN
+        if (path.endsWith(".bat", Qt::CaseInsensitive)) {
+          out << "@echo off\r\n";
+          for (const auto &arg : cmd) {
+            if (arg.contains(' '))
+              out << '"' << arg << "\" ";
+            else
+              out << arg << ' ';
+          }
+          out << "\r\npause\r\n";
+        } else {
+          for (const auto &arg : cmd) {
+            if (arg.contains(' ') || arg.contains('\''))
+              out << '"' << QString(arg).replace('"', "`\"") << "\" ";
+            else
+              out << arg << ' ';
+          }
+          out << "\n";
+        }
+#else
+        out << "#!/bin/sh\n";
+        for (const auto &arg : cmd) {
+          if (arg.contains(' ') || arg.contains('\'') || arg.contains('"'))
+            out << '\'' << QString(arg).replace('\'', "'\\''") << "' ";
+          else
+            out << arg << ' ';
+        }
+        out << "\n";
+#endif
+      });
+
   QObject::connect(ui.buttonDeleteTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
