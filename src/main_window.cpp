@@ -926,6 +926,10 @@ void MainWindow::rcloneListRemotes() {
               darkModeIconScale = 2;
             }
 
+            // only the Windows and older-macOS size paths consume these
+            Q_UNUSED(darkModeIni);
+            Q_UNUSED(darkModeIconScale);
+
             // use the inverted (light) icon set whenever the effective UI
             // is dark - covers the app's own dark mode AND OS-level dark
             // themes (Windows 10/11, macOS Mojave+), which the old
