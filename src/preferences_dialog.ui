@@ -139,7 +139,7 @@
           <item row="4" column="1">
            <widget class="QLineEdit" name="rcloneConf">
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;rclone configuration file locaction. if empty default location defined by rclone is used&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;rclone configuration file location. If empty, the default location defined by rclone is used&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
            </widget>
           </item>
@@ -488,38 +488,26 @@
          </property>
          <layout class="QHBoxLayout" name="horizontalLayout">
           <item>
-           <widget class="QCheckBox" name="cb_small">
+           <widget class="QRadioButton" name="cb_small">
             <property name="text">
              <string>Small</string>
-            </property>
-            <property name="autoExclusive">
-             <bool>true</bool>
-            </property>
-            <property name="tristate">
-             <bool>false</bool>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QCheckBox" name="cb_medium">
+           <widget class="QRadioButton" name="cb_medium">
             <property name="text">
              <string>Medium</string>
             </property>
             <property name="checked">
              <bool>true</bool>
             </property>
-            <property name="autoExclusive">
-             <bool>true</bool>
-            </property>
            </widget>
           </item>
           <item>
-           <widget class="QCheckBox" name="cb_large">
+           <widget class="QRadioButton" name="cb_large">
             <property name="text">
              <string>Large</string>
-            </property>
-            <property name="autoExclusive">
-             <bool>true</bool>
             </property>
            </widget>
           </item>
@@ -566,20 +554,17 @@
          </property>
          <layout class="QGridLayout" name="gridLayout_2">
           <item row="2" column="0">
-           <widget class="QCheckBox" name="useProxy">
+           <widget class="QRadioButton" name="useProxy">
             <property name="toolTip">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;rclone will use proxy defined below to access Internet&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
              <string>Use manual proxy configuration</string>
             </property>
-            <property name="autoExclusive">
-             <bool>true</bool>
-            </property>
            </widget>
           </item>
           <item row="0" column="0" colspan="2">
-           <widget class="QCheckBox" name="useSystemSettings">
+           <widget class="QRadioButton" name="useSystemSettings">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
               <horstretch>0</horstretch>
@@ -593,9 +578,6 @@
              <string>Use system settings</string>
             </property>
             <property name="checked">
-             <bool>true</bool>
-            </property>
-            <property name="autoExclusive">
              <bool>true</bool>
             </property>
            </widget>

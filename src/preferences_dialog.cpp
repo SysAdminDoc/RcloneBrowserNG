@@ -118,11 +118,14 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       settings->value("Settings/showFolderIcons", true).toBool());
   ui.showFileIcons->setChecked(
       settings->value("Settings/showFileIcons", true).toBool());
+  // default must match RemoteWidget's read (false), or the checkbox shows
+  // a state the tree doesn't actually have
   ui.rowColors->setChecked(
-      settings->value("Settings/rowColors", true).toBool());
+      settings->value("Settings/rowColors", false).toBool());
   ui.showHidden->setChecked(
       settings->value("Settings/showHidden", true).toBool());
-  ui.darkMode->setChecked(settings->value("Settings/darkMode", true).toBool());
+  ui.darkMode->setChecked(
+      settings->value("Settings/darkMode", false).toBool());
 
 // dark mode option for all systems but latest macOS
 // on macOS Mojave or newer dark mode is managed by OS
