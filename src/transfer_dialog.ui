@@ -191,7 +191,10 @@
           <item>
            <widget class="QLabel" name="label_15">
             <property name="text">
-             <string>Task description</string>
+             <string>Task description:</string>
+            </property>
+            <property name="buddy">
+             <cstring>textDescription</cstring>
             </property>
            </widget>
           </item>
@@ -388,12 +391,12 @@
             </item>
             <item>
              <property name="text">
-              <string>Delete after transfering</string>
+              <string>Delete after transferring</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>Delete before transfering</string>
+              <string>Delete before transferring</string>
              </property>
             </item>
            </widget>
