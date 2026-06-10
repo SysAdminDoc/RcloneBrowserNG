@@ -7,7 +7,9 @@ struct Item {
 
   ~Item() {
     for (auto child : childs) {
-      if (child->isLoading() || state == LoadingIcon) {
+      if (child->isLoading() || child->state == LoadingIcon) {
+        // still referenced by a pending rclone process or the icon-cache
+        // worker; mark for deferred deletion to avoid use-after-free
         child->isDeleted = true;
       } else {
         delete child;
@@ -78,6 +80,7 @@ public:
 signals:
   void getIcon(Item *item, const QPersistentModelIndex &index);
   void drop(const QDir &path, const QModelIndex &parent);
+  void loadFailed(const QString &path, const QString &error);
 
 private:
   Item *mRoot;
@@ -95,8 +98,8 @@ private:
 
   QFont mFixedFont;
 
-  int mSortColumn;
-  Qt::SortOrder mSortOrder;
+  int mSortColumn = 0;
+  Qt::SortOrder mSortOrder = Qt::AscendingOrder;
 
   QRegularExpression mRegExpFolder;
   QRegularExpression mRegExpFile;
