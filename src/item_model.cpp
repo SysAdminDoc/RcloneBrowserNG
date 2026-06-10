@@ -529,13 +529,14 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   timer->start(100);
   UseRclonePassword(proc);
 
-  proc->start(GetRclone(),
-              QStringList() << "lsjson" << GetRcloneConf()
-                            << GetDriveSharedWithMe() << GetShowHidden()
-                            << "--no-mimetype" << "--max-depth" << "1"
-                            << GetDefaultRcloneOptionsList()
-                            << mRemote + ":" + parent->path.path(),
-              QIODevice::ReadOnly);
+  QStringList args;
+  args << "lsjson" << GetRcloneConf();
+  if (mDriveShared)
+    args << "--drive-shared-with-me";
+  args << GetShowHidden() << "--no-mimetype" << "--max-depth" << "1"
+       << GetDefaultRcloneOptionsList()
+       << mRemote + ":" + parent->path.path();
+  proc->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
 void ItemModel::sortRecursive(Item *item, const ItemSorter &sorter) {

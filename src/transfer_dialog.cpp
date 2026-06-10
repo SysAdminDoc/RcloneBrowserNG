@@ -430,13 +430,7 @@ JobOptions *TransferDialog::getJobOptions() {
   //   mJobOptions->DriveSharedWithMe = settings->value("Settings/driveShared",
   //   false).toBool();
 
-  if (mIsEditMode)
-    mJobOptions->DriveSharedWithMe = ui.checkisDriveSharedWithMe->isChecked();
-  else {
-    auto settings = GetSettings();
-    mJobOptions->DriveSharedWithMe =
-        settings->value("Settings/driveShared", false).toBool();
-  };
+  mJobOptions->DriveSharedWithMe = ui.checkisDriveSharedWithMe->isChecked();
 
   return mJobOptions;
 }
