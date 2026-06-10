@@ -146,11 +146,9 @@ QStringList JobOptions::getOptions() const {
     list << "--drive-shared-with-me";
   }
 
-  list << "--stats"
-       << "1s";
-
-  list << "--stats-file-name-length"
-       << "0";
+  list << "--use-json-log";
+  list << "--stats" << "1s";
+  list << "--stats-file-name-length" << "0";
 
   QStringList defaultRcloneOptionsList = GetDefaultRcloneOptionsList();
   if (!defaultRcloneOptionsList.isEmpty()) {
