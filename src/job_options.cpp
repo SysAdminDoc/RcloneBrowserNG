@@ -137,7 +137,7 @@ QStringList JobOptions::getOptions() const {
   }
 
   if (!extra.isEmpty()) {
-    for (auto arg : extra.split(' ')) {
+    for (const auto &arg : extra.split(' ', Qt::SkipEmptyParts)) {
       list << arg;
     }
   }

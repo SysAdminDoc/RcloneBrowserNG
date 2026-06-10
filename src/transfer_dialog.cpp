@@ -23,9 +23,14 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   if (!mIsEditMode) {
     QPushButton *dryRun =
         ui.buttonBox->addButton("&Dry run", QDialogButtonBox::AcceptRole);
-    ui.buttonBox->addButton("&Run", QDialogButtonBox::AcceptRole);
+    QPushButton *run =
+        ui.buttonBox->addButton("&Run", QDialogButtonBox::AcceptRole);
     QObject::connect(dryRun, &QPushButton::clicked, this,
                      [=]() { mDryRun = true; });
+    // reset the flag in case a prior "Dry run" click was rejected by
+    // validation and the user then clicks "Run"
+    QObject::connect(run, &QPushButton::clicked, this,
+                     [=]() { mDryRun = false; });
   }
 
   QPushButton *saveTask = ui.buttonBox->addButton(
@@ -39,7 +44,6 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
         ui.cbSyncDelete->setItemData(0, "--delete-during", Qt::ToolTipRole);
         ui.cbSyncDelete->setItemData(1, "--delete-after", Qt::ToolTipRole);
         ui.cbSyncDelete->setItemData(2, "--delete-before", Qt::ToolTipRole);
-        ui.checkSkipNewer->setChecked(false);
         ui.checkSkipNewer->setChecked(false);
         ui.checkSkipExisting->setChecked(false);
         ui.checkCompare->setChecked(true);
@@ -296,7 +300,14 @@ TransferDialog::~TransferDialog() {
     WriteSettings(settings.get(), this);
     settings->remove("textSource");
     settings->remove("textDest");
+    settings->remove("textDescription");
     settings->endGroup();
+  }
+  // a JobOptions created for a plain run is owned by nobody once the
+  // dialog closes; saved tasks live in (and are owned by) the task list
+  if (mJobOptions != nullptr && !mIsEditMode &&
+      !ListOfJobOptions::getInstance()->getTasks().contains(mJobOptions)) {
+    delete mJobOptions;
   }
 }
 
@@ -347,7 +358,6 @@ JobOptions *TransferDialog::getJobOptions() {
   }
 
   mJobOptions->dryRun = mDryRun;
-  ;
 
   if (ui.rbSync->isChecked()) {
     mJobOptions->sync = true;

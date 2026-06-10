@@ -78,14 +78,17 @@ QStringList ExportDialog::getOptions() const {
 
   QString excluded = ui.textExclude->toPlainText().trimmed();
   if (!excluded.isEmpty()) {
-    for (auto line : excluded.split('\n')) {
-      list << "--exclude" << line;
+    for (const auto &line : excluded.split('\n')) {
+      QString trimmed = line.trimmed();
+      if (!trimmed.isEmpty()) {
+        list << "--exclude" << trimmed;
+      }
     }
   }
 
   QString extra = ui.textExtra->text().trimmed();
   if (!extra.isEmpty()) {
-    for (auto arg : extra.split(' ')) {
+    for (const auto &arg : extra.split(' ', Qt::SkipEmptyParts)) {
       list << arg;
     }
   }

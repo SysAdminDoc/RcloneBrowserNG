@@ -51,7 +51,7 @@ bool ListOfJobOptions::Forget(JobOptions *jo) {
   return isKnown;
 }
 
-QFile *ListOfJobOptions::GetPersistenceFile(QIODevice::OpenModeFlag mode) {
+QString ListOfJobOptions::GetPersistenceFilePath() {
 
   QDir outputDir;
 
@@ -77,68 +77,54 @@ QFile *ListOfJobOptions::GetPersistenceFile(QIODevice::OpenModeFlag mode) {
   } else {
 
     // get data location folder from Qt  - OS dependend
-    outputDir =
-        QDir(QStandardPaths::writableLocation(QStandardPaths::DataLocation));
+    outputDir = QDir(QStandardPaths::writableLocation(
+        QStandardPaths::AppLocalDataLocation));
   }
 
   if (!outputDir.exists()) {
     outputDir.mkpath(".");
   }
-  QString filePath = outputDir.absoluteFilePath(persistenceFileName);
-  QFile *file = new QFile(filePath);
-
-  if (!file->open(mode)) {
-    //    qDebug() << QString("Could not open ") << file->fileName();
-    delete file;
-    file = nullptr;
-  }
-  return file;
+  return outputDir.absoluteFilePath(persistenceFileName);
 }
 
 bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
-  QFile *file = GetPersistenceFile(QIODevice::ReadOnly);
-  if (file == nullptr)
+  QFile file(GetPersistenceFilePath());
+  if (!file.open(QIODevice::ReadOnly))
     return false;
-  QDataStream instream(file);
+  QDataStream instream(&file);
   instream.setVersion(QDataStream::Qt_5_2);
 
   while (!instream.atEnd()) {
+    JobOptions *jo = new JobOptions();
     try {
-      JobOptions *jo = new JobOptions();
       instream >> *jo;
-      dataIn.tasks.append(jo);
-    } catch (SerializationException &ex) {
-      //      qDebug() << QString("failed to restore tasks: ") << ex.Message;
-      file->close();
-      delete file;
+    } catch (SerializationException &) {
+      delete jo;
       return false;
     }
+    dataIn.tasks.append(jo);
   }
-
-  file->close();
-  delete file;
 
   return true;
 }
 
 bool ListOfJobOptions::PersistToUserData() {
-  QFile *file = GetPersistenceFile(
-      QIODevice::WriteOnly); // note this mode implies Truncate also
-  if (file == nullptr)
+  // QSaveFile writes to a temporary file and renames atomically on commit,
+  // so a crash mid-write can no longer wipe every saved task
+  QSaveFile file(GetPersistenceFilePath());
+  if (!file.open(QIODevice::WriteOnly))
     return false;
-  QDataStream outstream(file);
+  QDataStream outstream(&file);
   outstream.setVersion(QDataStream::Qt_5_2);
 
   for (JobOptions *it : tasks) {
     outstream << *it;
   }
 
-  file->flush();
-  file->close();
+  if (!file.commit())
+    return false;
 
   emit tasksListUpdated();
-
-  delete file;
 
   return true;
 }
