@@ -10,5 +10,9 @@
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>rclone-browser</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.sysadmindoc.rclonebrowserng</string>
+    <key>UIDesignRequiresCompatibility</key>
+    <true/>
 </dict>
 </plist>
