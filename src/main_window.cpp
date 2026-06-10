@@ -259,6 +259,7 @@ MainWindow::MainWindow() {
                      ui.buttonEditTask->setEnabled(current != nullptr);
                      ui.buttonRunTask->setEnabled(current != nullptr);
                      ui.buttonDryrunTask->setEnabled(current != nullptr);
+                     ui.buttonCopyTaskCmd->setEnabled(current != nullptr);
                    });
 
   QObject::connect(ui.buttonRunTask, &QPushButton::clicked, this, [=]() {
@@ -281,6 +282,26 @@ MainWindow::MainWindow() {
   QObject::connect(ui.buttonEditTask, &QPushButton::clicked, this,
                    [=]() { editSelectedTask(); });
 
+  QObject::connect(ui.buttonCopyTaskCmd, &QPushButton::clicked, this, [=]() {
+    JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
+        ui.tasksListWidget->currentItem());
+    if (!item) return;
+    JobOptions *jo = item->GetData();
+    QStringList cmd;
+    cmd << QDir::toNativeSeparators(GetRclone());
+    cmd << GetRcloneConf();
+    cmd << jo->getOptions();
+    QStringList quoted;
+    for (const auto &arg : cmd) {
+      if (arg.contains(' ') || arg.contains('"')) {
+        quoted << '"' + QString(arg).replace('"', "\\\"") + '"';
+      } else {
+        quoted << arg;
+      }
+    }
+    QGuiApplication::clipboard()->setText(quoted.join(" "));
+  });
+
   QObject::connect(ui.buttonDeleteTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
@@ -296,6 +317,7 @@ MainWindow::MainWindow() {
   ui.buttonDeleteTask->setIcon(style->standardIcon(QStyle::SP_TrashIcon));
   ui.buttonEditTask->setIcon(style->standardIcon(QStyle::SP_FileIcon));
   ui.buttonRunTask->setIcon(style->standardIcon(QStyle::SP_CommandLink));
+  ui.buttonCopyTaskCmd->setIcon(style->standardIcon(QStyle::SP_FileLinkIcon));
   mUploadIcon = style->standardIcon(QStyle::SP_ArrowUp);
   mDownloadIcon = style->standardIcon(QStyle::SP_ArrowDown);
 
