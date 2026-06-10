@@ -1054,6 +1054,18 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
   if (item == nullptr)
     return;
   JobOptions *jo = item->GetData();
+
+  if (jo->sync && !dryrun) {
+    int button = QMessageBox::question(
+        this, "Run Task",
+        QString("This Sync task may delete files at the destination.\n"
+                "Are you sure you want to run \"%1\"?")
+            .arg(jo->description),
+        QMessageBox::Yes | QMessageBox::No);
+    if (button != QMessageBox::Yes)
+      return;
+  }
+
   jo->dryRun = dryrun;
   QStringList args = jo->getOptions();
   addTransfer(QString("%1 %2").arg(jo->operation).arg(jo->source), jo->source,
