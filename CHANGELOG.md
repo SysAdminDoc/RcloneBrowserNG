@@ -3,6 +3,7 @@
 ### Reliability & Data Safety
 -   CHANGED: Transfer progress now uses `--use-json-log` instead of regex-parsing `--stats` text output — eliminates the recurring "new rclone broke progress display" failure mode; per-file progress bars work reliably across all rclone versions
 -   CHANGED: File listing now uses `rclone lsjson` instead of regex-parsing `lsd`/`lsl` text output — filenames with special characters (`[](){}`, colons, slashes, trailing spaces, Unicode) no longer silently disappear from the browser; one process per listing instead of two
+-   FIXED: Drag and drop of multiple files now works — previously only single-file drops were accepted; all URLs are validated as local files
 -   FIXED: Corrupt or incompatible `tasks.bin` no longer silently discards every saved task — the bad file is renamed aside (`tasks.bin.corrupt`) and a warning dialog explains what happened
 -   FIXED: Streaming player and rclone cat processes are now parented to the main window — no orphaned processes on app close; player error path also cleans up the rclone pipe; stream cancel kills a hung player after 2 s
 -   FIXED: Icon caches are bounded (defensive 1024-extension cap) to prevent unbounded memory growth in edge-case sessions
