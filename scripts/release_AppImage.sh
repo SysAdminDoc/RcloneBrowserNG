@@ -118,9 +118,7 @@ make install DESTDIR="$TEMP_BASE"/"$TARGET"/AppDir
 # prepare AppImage
 cd "$TEMP_BASE/$TARGET"
 
-# metainfo file
-#mkdir $TEMP_BASE/$TARGET/AppDir/usr/share/metainfo
-#cp $ROOT/assets/rclone-browser.appdata.xml $TEMP_BASE/$TARGET/AppDir/usr/share/metainfo/
+# metainfo file (installed by `make install` via the CMake rule now)
 
 # copy info files to AppImage
 cp "$ROOT"/README.md "$TEMP_BASE"/"$TARGET"/AppDir/Readme.md

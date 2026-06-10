@@ -14,6 +14,7 @@ public:
   bool Persist(JobOptions *jo);
   bool Forget(JobOptions *jo);
   QList<JobOptions *> &getTasks() { return tasks; }
+  QString lastLoadError() const { return mLastLoadError; }
 
 signals:
   void tasksListUpdated();
@@ -25,5 +26,6 @@ private:
   static QString GetPersistenceFilePath();
 
   QList<JobOptions *> tasks;
+  QString mLastLoadError;
   bool PersistToUserData();
 };

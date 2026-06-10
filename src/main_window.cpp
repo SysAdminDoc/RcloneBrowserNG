@@ -317,8 +317,12 @@ MainWindow::MainWindow() {
     }
   });
 
-  QObject::connect(ListOfJobOptions::getInstance(),
-                   &ListOfJobOptions::tasksListUpdated, this,
+  auto *taskStore = ListOfJobOptions::getInstance();
+  if (!taskStore->lastLoadError().isEmpty()) {
+    QMessageBox::warning(this, "Saved Tasks",
+                         taskStore->lastLoadError());
+  }
+  QObject::connect(taskStore, &ListOfJobOptions::tasksListUpdated, this,
                    &MainWindow::listTasks);
 
   QStyle *style = QApplication::style();
@@ -1328,8 +1332,8 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 }
 
 void MainWindow::addStream(const QString &remote, const QString &stream) {
-  auto player = new QProcess();
-  auto rclone = new QProcess();
+  auto player = new QProcess(this);
+  auto rclone = new QProcess(this);
   rclone->setStandardOutputProcess(player);
 
   QObject::connect(
@@ -1344,6 +1348,7 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
       player, &QProcess::errorOccurred, this, [=](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart) {
           rclone->kill();
+          rclone->deleteLater();
           player->deleteLater();
           QMessageBox::critical(
               this, "Error",

@@ -54,6 +54,8 @@ void IconCache::getIcon(Item *item, const QPersistentModelIndex &parent) {
     if (icon.isNull()) {
       icon = mFileIcon;
     }
+    if (mIcons.size() >= 1024)
+      mIcons.clear();
     mIcons.insert(ext, icon);
   } else {
     icon = it.value();

@@ -88,7 +88,8 @@ QString ListOfJobOptions::GetPersistenceFilePath() {
 }
 
 bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
-  QFile file(GetPersistenceFilePath());
+  QString filePath = GetPersistenceFilePath();
+  QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly))
     return false;
   QDataStream instream(&file);
@@ -98,8 +99,25 @@ bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
     JobOptions *jo = new JobOptions();
     try {
       instream >> *jo;
-    } catch (SerializationException &) {
+    } catch (SerializationException &e) {
       delete jo;
+      file.close();
+
+      // rename the bad file aside so the user doesn't lose it entirely
+      QString corruptPath = filePath + ".corrupt";
+      int n = 1;
+      while (QFile::exists(corruptPath +
+                           (n > 1 ? QString::number(n) : QString()))) {
+        ++n;
+      }
+      corruptPath += (n > 1 ? QString::number(n) : QString());
+      QFile::rename(filePath, corruptPath);
+
+      dataIn.mLastLoadError =
+          QString("Saved tasks file could not be loaded (%1).\n\n"
+                  "The file has been renamed to:\n%2\n\n"
+                  "Your saved tasks will need to be recreated.")
+              .arg(e.Message, corruptPath);
       return false;
     }
     dataIn.tasks.append(jo);

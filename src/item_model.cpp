@@ -107,6 +107,8 @@ ItemModel::ItemModel(IconCache *icons, const QString &remote, QObject *parent)
         item->state = Item::Ready;
         QString ext = QFileInfo(item->name).suffix();
         if (!mLoadedIcons.contains(ext)) {
+          if (mLoadedIcons.size() >= 1024)
+            mLoadedIcons.clear();
           mLoadedIcons.insert(ext, icon);
         }
 
