@@ -22,12 +22,15 @@
 -   FIXED: Transfer dialog leaked a JobOptions object on every plain (non-saved) run
 
 ### Security
+-   SECURITY: `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` called early in main on Windows to prevent DLL planting from the application directory
+-   SECURITY: rclone executable paths ending in `.bat` or `.cmd` are now rejected (BatBadBut, CVE-2024-24576)
 -   SECURITY: Windows mounts now authenticate the rclone remote-control endpoint with a random per-mount credential — prevents CVE-2026-41176 (CVSS 9.2) and CVE-2026-49980 (CVSS 9.8) exploitation via unauthenticated loopback rc
 -   SECURITY: Startup warns (once per version) when the detected rclone is older than 1.74.3, with a link to the affected advisories
 -   SECURITY: macOS `rclone config` no longer writes a world-readable script with a fixed predictable name in shared `/tmp` (symlink/pre-creation hazard) — it now uses a unique, user-only file in the per-user temp dir
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
+-   NEW: WinFsp detection — mounting on Windows now checks for WinFsp and offers a download link if missing, instead of failing with a cryptic rclone error
 -   FIXED: AppStream metainfo rewritten for NG identity (`io.github.sysadmindoc.rclonebrowserng`), installed to `share/metainfo/`, and embedded in AppImage — unblocks Flathub and distro packaging
 -   FIXED: Qt 6 Windows/macOS builds did not compile — QtWinExtras `QtWin::fromHICON` replaced with `QImage::fromHICON`, missing Windows shell/COM headers included, `QFileInfo` explicit-constructor errors fixed, COM initialized on the icon worker thread
 -   FIXED: Robust rclone version parsing — beta/suffixed versions (e.g. `1.67.0-beta…`) can no longer throw
