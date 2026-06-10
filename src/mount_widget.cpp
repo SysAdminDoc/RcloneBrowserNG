@@ -27,6 +27,22 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
         ui.showOutput->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
       });
 
+  ui.copy->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
+
+  QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
+    QStringList args;
+    args << QDir::toNativeSeparators(mProcess->program());
+    for (const auto &arg : mProcess->arguments()) {
+      if (arg.contains(' ') || arg.contains('"')) {
+        args << '"' + QString(arg).replace('"', "\\\"") + '"';
+      } else {
+        args << arg;
+      }
+    }
+    QGuiApplication::clipboard()->setText(args.join(" "));
+  });
+
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
 
