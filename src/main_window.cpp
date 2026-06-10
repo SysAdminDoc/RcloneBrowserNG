@@ -523,6 +523,32 @@ void MainWindow::rcloneGetVersion() {
 #endif
 #endif
 
+          // warn (non-blocking) when the detected rclone is old enough to be
+          // affected by the unauthenticated remote-control advisories
+          // (CVE-2026-41176 fixed in 1.73.5, CVE-2026-49980 in 1.74.3) that
+          // Rclone Browser's Windows mount feature relies on
+          if (!rclone_version_no.isEmpty() &&
+              compareVersion(rclone_version_no.toStdString(), "1.74.3") == 2) {
+            mStatusMessage->setText(mStatusMessage->text() +
+                                    "  -  WARNING: rclone " + rclone_version_no +
+                                    " has security fixes available (update to "
+                                    "1.74.3+)");
+            if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
+                rclone_version_no) {
+              settings->setValue("Settings/rcloneCveWarnedVersion",
+                                 rclone_version_no);
+              QMessageBox::warning(
+                  this, "rclone update recommended",
+                  QString(
+                      "You are running rclone %1.\n\nVersions before 1.74.3 "
+                      "are affected by security advisories in rclone's "
+                      "remote-control interface (CVE-2026-41176, "
+                      "CVE-2026-49980), which Rclone Browser uses for Windows "
+                      "mounts.\n\nPlease update rclone to 1.74.3 or newer.")
+                      .arg(rclone_version_no));
+            }
+          }
+
           rcloneListRemotes();
         } else {
           QString error =
@@ -1219,7 +1245,20 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
   QProcess *mount = new QProcess(this);
   mount->setProcessChannelMode(QProcess::MergedChannels);
 
-  auto widget = new MountWidget(mount, remote, folder);
+  // Windows unmounts via the rclone remote-control endpoint. Authenticate it
+  // with a random per-mount credential so the (otherwise unauthenticated)
+  // loopback rc can't be driven by another local process or a browser page
+  // (CVE-2026-41176 / CVE-2026-49980). The same credential is handed to the
+  // MountWidget so it can issue the authenticated core/quit on unmount.
+  QString rcAddr, rcUser, rcPass;
+#if defined(Q_OS_WIN32)
+  rcAddr = "localhost:" + QString::number(GetRcMountPort(folder));
+  rcUser = "rclonebrowser";
+  rcPass = MakeRcPassword();
+#endif
+
+  auto widget =
+      new MountWidget(mount, remote, folder, rcAddr, rcUser, rcPass);
 
   auto line = new QFrame();
   line->setFrameShape(QFrame::HLine);
@@ -1260,10 +1299,9 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 
 #if defined(Q_OS_WIN32)
   args << "--rc";
-  args << "--rc-addr";
-
-  unsigned short int rclone_rc_port = 19000 + (qHash(folder) % 10000);
-  args << "localhost:" + QString::number(rclone_rc_port);
+  args << "--rc-addr" << rcAddr;
+  args << "--rc-user" << rcUser;
+  args << "--rc-pass" << rcPass;
 #endif
 
   // for google drive "shared with me" without --read-only writes go created in

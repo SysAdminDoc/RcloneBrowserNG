@@ -23,3 +23,9 @@ QStringList GetDefaultRcloneOptionsList();
 QStringList GetShowHidden();
 
 unsigned int compareVersion(std::string, std::string);
+
+// Windows mount remote-control endpoint. The port is derived from the mount
+// folder so the same mount can be located again at unmount time; a random
+// per-mount credential authenticates the endpoint (see RcMountCredential).
+quint16 GetRcMountPort(const QString &folder);
+QString MakeRcPassword();
