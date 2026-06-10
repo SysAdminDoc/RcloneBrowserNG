@@ -1,4 +1,30 @@
 # Change Log
+## [2.0.0] - 2026-06-10
+### Critical Fixes
+-   FIXED: rclone v1.56+ output parsing — Size, Bandwidth, ETA, and transfer progress fields work again with modern rclone (broken since 2021)
+-   FIXED: Qt 6 port — builds with both Qt 5.15+ and Qt 6, required for Wayland and modern Linux distros
+-   FIXED: Qt 5.15 deprecated API compile errors (QProcess::start, QString::split, QRegExp removal)
+
+### Bug Fixes
+-   FIXED: Config button broken on modern Linux — added support for gnome-terminal 3.38+ (-- flag), kitty, alacritty, wezterm, foot, tilix, and other modern terminals
+-   FIXED: DELETE command blocks entire GUI — now runs as async background job in the Jobs tab
+-   FIXED: rclone keeps running after job cancellation — graceful SIGTERM with 5s timeout before SIGKILL
+-   FIXED: Clipboard "copy command" broken with spaces in path — arguments now properly quoted
+-   FIXED: Global lockfile blocks multi-user environments — per-user lock file names
+-   FIXED: Mount multiple remotes fails — RC port derived from full path hash instead of first character
+-   FIXED: UI freezes on failed fusermount unmount — 10s timeout with forced termination fallback
+-   FIXED: Crash after closing stream then stream job — prevented double-close segfault
+-   FIXED: Exclude filter empty lines passed as blank --exclude arguments
+-   FIXED: Export output UTF-8 encoding on non-English Windows (Qt 6 default)
+-   FIXED: Notification title shows proper "Rclone Browser" instead of "rclone-browser"
+
+### Build System
+-   CMake modernized: AUTOMOC/AUTOUIC/AUTORCC, dual Qt5/Qt6 discovery
+-   C++17 standard on non-MSVC platforms
+-   macOS deployment target raised to 11.0 (Apple Silicon / Qt 6 requirement)
+-   Replaced QRegExp with QRegularExpression throughout
+-   macOS: modernized dock icon API, replaced QtMac::fromCGImageRef
+
 ## [1.8.0][1.8.0] - 2020-02-17
 -   NEW: http(s) proxy configuration for rclone
 -   NEW: remotes icons size option selector
