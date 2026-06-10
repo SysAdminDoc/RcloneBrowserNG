@@ -43,6 +43,7 @@
 -   NEW: Failed jobs auto-expand their details and output so the cause is immediately visible
 -   NEW: Inverted (light) remote icons are picked from the effective palette, so OS-level dark themes (Windows 10/11, macOS Mojave+) get readable icons — not just the app's own dark mode
 -   CHANGED: File-browser action buttons wrap to two rows — the window now fits laptop screens and tiling WMs (was forced to ~1230px minimum width)
+-   CHANGED: Dark mode now follows the OS dark theme on Windows/Linux (Qt 6.5+) without needing the manual checkbox; the checkbox still works as an override
 -   CHANGED: Dark mode covers disabled controls, placeholder text and tooltips; "Finished" status no longer renders black-on-dark; status colors are theme-safe in both modes
 -   CHANGED: Rebranded About box, update check, and release links to RcloneBrowserNG
 -   CHANGED: Clearer empty-jobs message; preferences icon-size and proxy options are proper radio groups; file sizes show one decimal (e.g. "1.5 G")

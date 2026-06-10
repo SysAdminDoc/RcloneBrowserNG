@@ -64,26 +64,25 @@ MainWindow::MainWindow() {
   QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
 #endif
 
-#if !defined(Q_OS_MACOS)
-  // enable dark mode for Windows and Linux
   {
     auto settings = GetSettings();
-    if (settings->value("Settings/darkMode").toBool()) {
-      applyDarkTheme();
-    }
-  }
-#else
-  // enable dark mode for older macOS (Mojave and newer manage it natively)
-  QString sysInfo = QSysInfo::productVersion();
-
-  if (sysInfo == "10.9" || sysInfo == "10.10" || sysInfo == "10.11" ||
-      sysInfo == "10.12" || sysInfo == "10.13") {
-    auto settings = GetSettings();
-    if (settings->value("Settings/darkMode").toBool()) {
-      applyDarkTheme();
-    }
-  }
+    bool explicitDark = settings->value("Settings/darkMode").toBool();
+    bool systemDark = false;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    systemDark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 #endif
+#if defined(Q_OS_MACOS)
+    QString sysInfo = QSysInfo::productVersion();
+    bool oldMac = (sysInfo == "10.9" || sysInfo == "10.10" ||
+                   sysInfo == "10.11" || sysInfo == "10.12" ||
+                   sysInfo == "10.13");
+    if (explicitDark && oldMac)
+      applyDarkTheme();
+#else
+    if (explicitDark || systemDark)
+      applyDarkTheme();
+#endif
+  }
 
   mSystemTray.setIcon(qApp->windowIcon());
   {
