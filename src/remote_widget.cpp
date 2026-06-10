@@ -269,24 +269,23 @@ QString root = isLocal ? "/" : QString();
         QString("Are you sure you want to delete %1 ?").arg(pathMsg),
         QMessageBox::Yes | QMessageBox::No);
     if (button == QMessageBox::Yes) {
-      QProcess process;
-      UseRclonePassword(&process);
-      process.setProgram(GetRclone());
-      process.setArguments(QStringList()
-                           << (model->isFolder(index) ? "purge" : "delete")
-                           << GetRcloneConf() << GetDriveSharedWithMe()
-                           << GetDefaultRcloneOptionsList()
-                           << remote + ":" + path);
-      process.setProcessChannelMode(QProcess::MergedChannels);
+      QStringList args;
+      args << (model->isFolder(index) ? "purge" : "delete");
+      args << GetDriveSharedWithMe();
+      args << GetDefaultRcloneOptionsList();
+      args << "--verbose";
+      args << "--stats" << "1s";
+      args << remote + ":" + path;
 
-      ProgressDialog progress("Delete", "Deleting...", pathMsg, &process, this);
-      if (progress.exec() == QDialog::Accepted) {
-        QModelIndex parent = index.parent();
-        QModelIndex next = parent.model()->index(index.row() + 1, 0);
-        ui.tree->selectionModel()->select(next.isValid() ? next : parent,
-                                          QItemSelectionModel::SelectCurrent);
-        model->removeRow(index.row(), parent);
-      }
+      QModelIndex parent = index.parent();
+      QModelIndex next = parent.model()->index(index.row() + 1, 0);
+      ui.tree->selectionModel()->select(next.isValid() ? next : parent,
+                                        QItemSelectionModel::SelectCurrent);
+      model->removeRow(index.row(), parent);
+
+      emit addTransfer(
+          QString("Delete %1").arg(pathMsg),
+          remote + ":" + path, QString(), args);
     }
   });
 
