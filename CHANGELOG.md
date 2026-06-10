@@ -2,77 +2,48 @@
 ## [Unreleased]
 ### Reliability & Data Safety
 -   FIXED: Saved tasks could be lost — task file is now written atomically (QSaveFile), so a crash mid-write no longer wipes every saved task
--   FIXED: Transfer dialog leaked a JobOptions object on every plain (non-saved) run
--   FIXED: rclone listing failures now surface a warning instead of showing a silently empty folder
+-   FIXED: App silently closed at startup when `rclone version` failed for any reason other than a missing password (Win10/11 "auto-close on startup") — it now reports the actual rclone error and opens Preferences; cancelling the encrypted-config password prompt also keeps the app open
+-   FIXED: Use-after-free crash when deleting a folder while file icons were still loading (Item destructor checked the parent's state instead of the child's)
+-   FIXED: First directory listing sorted with uninitialized sort state (undefined behavior on first load)
+-   FIXED: Crash when an action (refresh/rename/move/delete/mount/etc.) fired with nothing selected in the file tree or remotes list
+-   FIXED: rclone listing failures now surface a warning with rclone's stderr instead of showing a silently empty folder
+-   FIXED: Closing the app with multiple running jobs could skip cancelling some of them (layout mutated during iteration)
+-   FIXED: "Dry run" followed by a validation error then "Run" silently ran the job as a dry run (sticky flag)
+-   FIXED: A player command that fails to start now stops the rclone stream and reports it (previously undetectable — rclone kept piping into a dead process)
+-   FIXED: Stray empty arguments passed to rclone when extra options contained multiple spaces; blank `--exclude` patterns from empty lines in the Export dialog
+-   FIXED: Transfer mode (Copy/Move/Sync) was never remembered between transfers (radio buttons missing from the settings writer)
+-   FIXED: Clearing a multi-line option (e.g. exclude list) did not remove the previously saved value
 -   FIXED: Long-running transfers, streams and mounts no longer grow the in-memory log unbounded (capped at 10k lines, old lines scroll away instead of the whole log being wiped)
--   FIXED: Crash when an action (refresh/rename/move/delete/mount/etc.) fired with nothing selected in the file tree
--   FIXED: Closing the app with multiple running jobs could skip cancelling some of them
--   FIXED: Cancelling the encrypted-config password prompt now keeps the app open (fix in preferences) instead of silently exiting
+-   FIXED: Transfer dialog leaked a JobOptions object on every plain (non-saved) run
+
+### Security
+-   SECURITY: macOS `rclone config` no longer writes a world-readable script with a fixed predictable name in shared `/tmp` (symlink/pre-creation hazard) — it now uses a unique, user-only file in the per-user temp dir
+-   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
--   FIXED: Qt 6 Windows build — file-type icons (HICON→QImage), COM init on the icon worker thread, explicit shell/COM headers
+-   FIXED: Qt 6 Windows/macOS builds did not compile — QtWinExtras `QtWin::fromHICON` replaced with `QImage::fromHICON`, missing Windows shell/COM headers included, `QFileInfo` explicit-constructor errors fixed, COM initialized on the icon worker thread
+-   FIXED: Robust rclone version parsing — beta/suffixed versions (e.g. `1.67.0-beta…`) can no longer throw
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)
--   FIXED: Robust rclone version parsing — odd version strings can no longer throw
 
 ### UX
 -   NEW: Confirmation dialog before deleting a saved task
--   CHANGED: File-browser action buttons wrap to two rows so the window can be resized narrower
+-   NEW: Failed jobs auto-expand their details and output so the cause is immediately visible
+-   NEW: Inverted (light) remote icons are picked from the effective palette, so OS-level dark themes (Windows 10/11, macOS Mojave+) get readable icons — not just the app's own dark mode
+-   CHANGED: File-browser action buttons wrap to two rows — the window now fits laptop screens and tiling WMs (was forced to ~1230px minimum width)
+-   CHANGED: Dark mode covers disabled controls, placeholder text and tooltips; "Finished" status no longer renders black-on-dark; status colors are theme-safe in both modes
 -   CHANGED: Rebranded About box, update check, and release links to RcloneBrowserNG
--   CHANGED: Job/stream/mount status labels are palette-aware (readable in light and dark mode); errors auto-expand their output
--   CHANGED: Clearer empty-jobs message; preferences icon-size and proxy options are proper radio groups
--   FIXED: macOS rclone-config launch uses a unique per-user temp file instead of a predictable world-readable /tmp path
+-   CHANGED: Clearer empty-jobs message; preferences icon-size and proxy options are proper radio groups; file sizes show one decimal (e.g. "1.5 G")
 -   FIXED: GitHub update check can no longer hang the UI — bounded with a 10s timeout
--   FIXED: Assorted label typos ("transfering", "locaction") and stream "Player command" label
+-   FIXED: Preferences showed "alternating row colours" and "dark mode" defaults that didn't match actual behavior
+-   FIXED: Stream job mislabeled the player command as "Folder:"; assorted label typos ("transfering", "locaction")
 
 ## [2.0.0] - 2026-06-10
 ### Critical Fixes
 -   FIXED: rclone v1.56+ output parsing — Size, Bandwidth, ETA, and transfer progress fields work again with modern rclone (broken since 2021)
 -   FIXED: Qt 6 port — builds with both Qt 5.15+ and Qt 6, required for Wayland and modern Linux distros
--   FIXED: Qt 6 Windows/macOS builds — QtWinExtras `QtWin::fromHICON` replaced with `QImage::fromHICON`, missing Windows headers included, and `QFileInfo` explicit-constructor errors fixed (Windows and macOS Qt 6 builds did not compile)
 -   FIXED: Qt 5.15 deprecated API compile errors (QProcess::start, QString::split, QRegExp removal)
--   FIXED: app silently closed at startup when `rclone version` failed for any reason other than a missing password (Win10/11 "auto-close on startup") — it now reports the actual rclone error and opens Preferences
--   FIXED: use-after-free crash when deleting a folder while file icons were still loading (Item destructor checked the parent's state instead of the child's)
--   FIXED: first directory listing sorted with uninitialized sort state (undefined behavior on first load)
--   FIXED: saved tasks could all be lost if the app crashed mid-save — tasks.bin is now written atomically (QSaveFile)
 
-### Reliability
--   FIXED: update checks could hang the UI indefinitely on a slow connection — now bounded by a 10-second timeout
--   FIXED: rclone listing failures showed a silently empty folder (reads as "no files here") — errors are now surfaced with rclone's stderr
--   FIXED: quitting with multiple running jobs only cancelled some of them (layout mutated during iteration)
--   FIXED: "Dry run" followed by a validation error then "Run" silently ran the job as a dry run (sticky flag)
--   FIXED: a player command that fails to start now stops the rclone stream and reports it (previously undetectable, rclone kept piping into a dead process)
--   FIXED: stray empty arguments passed to rclone when extra options contained multiple spaces (split now skips empty parts everywhere)
--   FIXED: blank `--exclude` patterns sent from the Export dialog for empty lines
--   FIXED: crash-prone unguarded selection access in all remote-browser actions and remotes list
--   FIXED: version comparison crashed on rclone beta/suffixed versions (e.g. `1.67.0-beta…`) — numeric prefixes are now parsed safely
--   FIXED: transfer mode (Copy/Move/Sync) was never remembered between transfers (radio buttons missing from settings writer)
--   FIXED: clearing a multi-line option (e.g. exclude list) did not remove the previously saved value
--   FIXED: COM was initialized on the wrong thread for the Windows icon loader
--   FIXED: memory growth — job/mount/stream output logs are now bounded (10,000 lines), JobOptions from plain transfers no longer leak
-
-### Security
--   SECURITY: macOS `rclone config` no longer writes a world-readable script with a fixed predictable name in shared `/tmp` (symlink/pre-creation hazard) — it now uses a unique, user-only file in the per-user temp dir
--   SECURITY: deleting a saved task now asks for confirmation
-
-### UI / UX
--   NEW: the remote toolbar wraps to two rows — the window now fits laptop screens and tiling WMs (was forced to ~1230px minimum width)
--   NEW: failed jobs auto-expand their details and output so the cause is immediately visible
--   NEW: dark mode covers disabled controls, placeholder text and tooltips (previously unreadable); "Finished" status no longer renders black-on-dark
--   NEW: status colors are theme-safe in both light and dark mode
--   FIXED: Preferences showed "alternating row colours" and "dark mode" as enabled when they actually weren't (default mismatch)
--   FIXED: icon size and proxy choices are real radio buttons (were checkboxes pretending to be exclusive)
--   FIXED: stream job mislabeled the player command as "Folder:"
--   Friendlier empty state on the Jobs tab, clearer error messages, fixed typos ("transferring", "location"), update check and About dialog now point at RcloneBrowserNG
-
-### Build System
--   CMake modernized: AUTOMOC/AUTOUIC/AUTORCC, dual Qt5/Qt6 discovery
--   C++17 standard on non-MSVC platforms
--   macOS deployment target raised to 11.0 (Apple Silicon / Qt 6 requirement)
--   Replaced QRegExp with QRegularExpression throughout
--   macOS: modernized dock icon API, replaced QtMac::fromCGImageRef
--   VERSION file whitespace is stripped before embedding
-
-### Earlier 2.0.0 Bug Fixes
+### Bug Fixes
 -   FIXED: Config button broken on modern Linux — added support for gnome-terminal 3.38+ (-- flag), kitty, alacritty, wezterm, foot, tilix, and other modern terminals
 -   FIXED: DELETE command blocks entire GUI — now runs as async background job in the Jobs tab
 -   FIXED: rclone keeps running after job cancellation — graceful SIGTERM with 5s timeout before SIGKILL
