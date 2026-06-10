@@ -101,9 +101,6 @@ private:
   int mSortColumn = 0;
   Qt::SortOrder mSortOrder = Qt::AscendingOrder;
 
-  QRegularExpression mRegExpFolder;
-  QRegularExpression mRegExpFile;
-
   Item *get(const QModelIndex &index) const;
   void load(const QPersistentModelIndex &parentIndex, Item *parent);
 
