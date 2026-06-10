@@ -58,24 +58,27 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   });
 
   QObject::connect(mProcess, &QProcess::readyRead, this, [=]() {
+    // Pre-1.42: "Transferred:    100 Bytes (50 Bytes/sec)"
     QRegExp rxSize(
-        R"(^Transferred:\s+(\S+ \S+) \(([^)]+)\)$)"); // Until rclone 1.42
+        R"(^Transferred:\s+(\S+ \S+) \(([^)]+)\)$)");
+    // 1.43+: "Transferred:   1.234G / 5.678 GBytes, 22%, 1.234 MBytes/s, ETA 1h2m3s"
+    // 1.56+: "Transferred:   1.234 GiB / 5.678 GiB, 22%, 1.234 MiB/s, ETA 1h2m3s"
     QRegExp rxSize2(
-        R"(^Transferred:\s+([0-9.]+)(\S)? \/ (\S+) (\S+), ([0-9%-]+), (\S+ \S+), (\S+) (\S+)$)"); // Starting with rclone 1.43
-    QRegExp rxErrors(R"(^Errors:\s+(\S+)$)");
-    QRegExp rxChecks(R"(^Checks:\s+(\S+)$)"); // Until rclone 1.42
+        R"(^Transferred:\s+([\d.]+\s*\S*)\s+\/\s+([\d.]+\s*\S+),\s+(\S+),\s+([\d.]+\s*\S+),\s+ETA\s+(\S+)$)");
+    QRegExp rxErrors(R"(^Errors:\s+(\d+))");
+    QRegExp rxChecks(R"(^Checks:\s+(\S+)$)");
     QRegExp rxChecks2(
-        R"(^Checks:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");   // Starting with
-                                                        // rclone 1.43
-    QRegExp rxTransferred(R"(^Transferred:\s+(\S+)$)"); // Until rclone 1.42
+        R"(^Checks:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
+    QRegExp rxTransferred(R"(^Transferred:\s+(\S+)$)");
     QRegExp rxTransferred2(
-        R"(^Transferred:\s+(\S+) \/ (\S+), ([0-9%-]+)$)"); // Starting with
-                                                           // rclone 1.43
+        R"(^Transferred:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
     QRegExp rxTime(R"(^Elapsed time:\s+(\S+)$)");
+    // Pre-1.38: "*filename:   50% done.(ETA: 1h2m3s)"
     QRegExp rxProgress(
-        R"(^\*([^:]+):\s*([^%]+)% done.+(ETA: [^)]+)$)"); // Until rclone 1.38
+        R"(^\*([^:]+):\s*([^%]+)% done.+(ETA: [^)]+)$)");
+    // 1.39+: "* filename:  50% /1.234GiB, 1.234MiB/s, 1h2m3s"
     QRegExp rxProgress2(
-        R"(\*([^:]+):\s*([^%]+)% \/[a-zA-z0-9.]+, [a-zA-z0-9.]+\/s, (\w+)$)"); // Starting with rclone 1.39
+        R"(\*([^:]+):\s*([^%]+)% \/[\S]+, [\S]+\/s, (\S+)$)");
 
     while (mProcess->canReadLine()) {
       QString line = mProcess->readLine().trimmed();
@@ -107,12 +110,11 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         ui.size->setText(rxSize.cap(1));
         ui.bandwidth->setText(rxSize.cap(2));
       } else if (rxSize2.exactMatch(line)) {
-        ui.size->setText(rxSize2.cap(1) + " " + rxSize2.cap(2) + "B" + ", " +
-                         rxSize2.cap(5));
-        ui.bandwidth->setText(rxSize2.cap(6));
-        ui.eta->setText(rxSize2.cap(8));
-        ui.totalsize->setText(rxSize2.cap(3) + " " + rxSize2.cap(4));
-      } else if (rxErrors.exactMatch(line)) {
+        ui.size->setText(rxSize2.cap(1) + ", " + rxSize2.cap(3));
+        ui.bandwidth->setText(rxSize2.cap(4));
+        ui.eta->setText(rxSize2.cap(5));
+        ui.totalsize->setText(rxSize2.cap(2));
+      } else if (rxErrors.indexIn(line) != -1) {
         ui.errors->setText(rxErrors.cap(1));
       } else if (rxChecks.exactMatch(line)) {
         ui.checks->setText(rxChecks.cap(1));
