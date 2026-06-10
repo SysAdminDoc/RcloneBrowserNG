@@ -1123,6 +1123,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
       widget, &JobWidget::finished, this, [=](const QString &info) {
         if (mNotifyFinishedTransfers) {
           qApp->alert(this);
+          QApplication::beep();
           mLastFinished = widget;
           mSystemTray.showMessage("Transfer finished", info);
         }
