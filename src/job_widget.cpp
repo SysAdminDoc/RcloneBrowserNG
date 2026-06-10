@@ -19,6 +19,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
   ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
   ui.output->setVisible(false);
+  // bound memory growth on long transfers; old lines scroll away instead
+  // of the whole log being wiped at once
+  ui.output->setMaximumBlockCount(10000);
 
   QObject::connect(
       ui.showDetails, &QToolButton::toggled, this, [=](bool checked) {
@@ -90,10 +93,6 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
     while (mProcess->canReadLine()) {
       QString line = mProcess->readLine().trimmed();
-      if (++mLines == 10000) {
-        ui.output->clear();
-        mLines = 1;
-      }
       ui.output->appendPlainText(line);
 
       if (line.isEmpty()) {
@@ -264,13 +263,18 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
                      mRunning = false;
                      if (status == 0) {
+                       // no explicit colour - inherit the palette so the
+                       // label stays readable in light and dark mode
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: black; }");
+                           "QToolButton { border: 0; }");
                        ui.showDetails->setText("Finished");
                      } else {
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: red; }");
+                           "QToolButton { border: 0; color: #e53935; }");
                        ui.showDetails->setText("Error");
+                       // surface the rclone output so the user can see why
+                       ui.showDetails->setChecked(true);
+                       ui.showOutput->setChecked(true);
                      }
 
                      ui.cancel->setToolTip("Close");
@@ -278,7 +282,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      emit finished(ui.info->text());
                    });
 
-  ui.showDetails->setStyleSheet("QToolButton { border: 0; color: green; }");
+  ui.showDetails->setStyleSheet(
+      "QToolButton { border: 0; color: #43a047; }");
   ui.showDetails->setText("Running");
 }
 
