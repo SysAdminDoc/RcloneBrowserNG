@@ -1156,12 +1156,8 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
   args << "--rc";
   args << "--rc-addr";
 
-  // calculate remote control interface port based on mount drive letter
-  // this way every mount will have unique port assigned
-  int port_offset = folder[0].toLatin1();
-  unsigned short int rclone_rc_port_base = 19000;
-  unsigned short int rclone_rc_port = rclone_rc_port_base + port_offset;
-  args << "localhost:" + QVariant(rclone_rc_port).toString();
+  unsigned short int rclone_rc_port = 19000 + (qHash(folder) % 10000);
+  args << "localhost:" + QString::number(rclone_rc_port);
 #endif
 
   // for google drive "shared with me" without --read-only writes go created in

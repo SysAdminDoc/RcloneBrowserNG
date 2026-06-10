@@ -93,10 +93,8 @@ void MountWidget::cancel() {
   args << "core/quit";
   args << "--rc-addr";
   QString folder = ui.folder->text();
-  int port_offset = folder[0].toLatin1();
-  unsigned short int rclone_rc_port_base = 19000;
-  unsigned short int rclone_rc_port = rclone_rc_port_base + port_offset;
-  args << "localhost:" + QVariant(rclone_rc_port).toString();
+  unsigned short int rclone_rc_port = 19000 + (qHash(folder) % 10000);
+  args << "localhost:" + QString::number(rclone_rc_port);
   UseRclonePassword(p);
   p->start(GetRclone(), args, QIODevice::ReadOnly);
 #else
