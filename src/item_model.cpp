@@ -83,10 +83,7 @@ private:
 
 ItemModel::ItemModel(IconCache *icons, const QString &remote, QObject *parent)
     : QAbstractItemModel(parent), mRemote(remote),
-      mFixedFont(QFontDatabase::systemFont(QFontDatabase::FixedFont)),
-      mRegExpFolder(
-          R"(^[\d-]+ (\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d) \s*[\d-]+ (.+)$)"),
-      mRegExpFile(R"(^(\d+) (\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ (.+)$)") {
+      mFixedFont(QFontDatabase::systemFont(QFontDatabase::FixedFont)) {
   QStyle *style = qApp->style();
   mDriveIcon = style->standardIcon(QStyle::SP_DriveNetIcon);
   mFolderIcon = style->standardIcon(QStyle::SP_DirIcon);
@@ -378,11 +375,8 @@ Item *ItemModel::get(const QModelIndex &index) const {
 }
 
 void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
-  auto lsd = new QProcess(this);
-  auto lsl = new QProcess(this);
-
-  auto cache = new QVector<Item *>();
-  auto loadErrors = new QStringList();
+  auto proc = new QProcess(this);
+  auto buffer = new QByteArray();
 
   Item *loading = new Item();
   loading->state = Item::Special;
@@ -397,147 +391,134 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
     emit dataChanged(loadingIndex, loadingIndex, QVector<int>{Qt::DisplayRole});
   });
 
-  auto rcloneFinished = [=](int code) {
-    auto process = qobject_cast<QProcess *>(sender());
-    if (process) {
-      if (code != 0) {
-        QString error =
-            QString::fromUtf8(process->readAllStandardError()).trimmed();
-        if (!error.isEmpty()) {
-          loadErrors->append(error);
-        } else {
-          loadErrors->append(
-              QString("rclone exited with status %1").arg(code));
+  QObject::connect(proc, &QProcess::readyReadStandardOutput, this, [=]() {
+    buffer->append(proc->readAllStandardOutput());
+  });
+
+  QObject::connect(
+      proc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [=](int code, QProcess::ExitStatus) {
+        proc->deleteLater();
+
+        QStringList loadErrors;
+        if (code != 0) {
+          QString error =
+              QString::fromUtf8(proc->readAllStandardError()).trimmed();
+          loadErrors.append(error.isEmpty()
+                                ? QString("rclone exited with status %1").arg(code)
+                                : error);
         }
-      }
-      process->deleteLater();
-    }
 
-    parent->state =
-        parent->state == Item::Loading1 ? Item::Loading2 : Item::Ready;
-    if (parent->state != Item::Ready) {
-      return;
-    }
+        QVector<Item *> cache;
+        QJsonParseError parseError;
+        bool hadData = !buffer->isEmpty();
+        QJsonDocument doc = QJsonDocument::fromJson(*buffer, &parseError);
+        delete buffer;
 
-    timer->stop();
-    timer->deleteLater();
+        if (doc.isArray()) {
+          for (const QJsonValue &val : doc.array()) {
+            QJsonObject obj = val.toObject();
+            Item *child = new Item();
+            child->parent = parent;
+            child->isFolder = obj.value("IsDir").toBool();
+            child->name = obj.value("Name").toString();
+            if (!child->isFolder)
+              child->size = static_cast<quint64>(obj.value("Size").toDouble());
 
-    if (!loadErrors->isEmpty()) {
-      emit loadFailed(parent->path.path(), loadErrors->join('\n'));
-    }
-    delete loadErrors;
+            QString modTime = obj.value("ModTime").toString();
+            QDateTime dt = QDateTime::fromString(modTime, Qt::ISODateWithMs);
+            if (dt.isValid())
+              child->modified = dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
+            else if (modTime.length() >= 19)
+              child->modified = modTime.left(19).replace('T', ' ');
 
-    if (parent->isDeleted) {
-      qDeleteAll(*cache);
-      delete cache;
-      delete parent;
-      return;
-    }
+            cache.append(child);
+          }
+        } else if (code == 0 && hadData) {
+          loadErrors.append("Failed to parse listing: " +
+                            parseError.errorString());
+        }
 
-    QHash<QString, int> existing;
-    for (int i = 0; i < parent->childs.count(); i++) {
-      if (parent->childs[i] != loading) {
-        existing.insert(parent->childs[i]->name, i);
-      }
-    }
+        parent->state = Item::Ready;
 
-    QVector<Item *> todo;
+        timer->stop();
+        timer->deleteLater();
 
-    bool modified = false;
-    for (auto &item : *cache) {
-      auto it = existing.find(item->name);
-      if (it == existing.end()) {
-        item->path.setPath(parent->path.filePath(item->name));
-        if (!item->isFolder && mFileIcons) {
-          QString ext = QFileInfo(item->name).suffix();
-          if (!mLoadedIcons.contains(ext)) {
-            item->state = Item::LoadingIcon;
-            emit getIcon(item, parentIndex);
+        if (!loadErrors.isEmpty()) {
+          emit loadFailed(parent->path.path(), loadErrors.join('\n'));
+        }
+
+        if (parent->isDeleted) {
+          qDeleteAll(cache);
+          delete parent;
+          return;
+        }
+
+        QHash<QString, int> existing;
+        for (int i = 0; i < parent->childs.count(); i++) {
+          if (parent->childs[i] != loading) {
+            existing.insert(parent->childs[i]->name, i);
           }
         }
-        todo.append(item);
-        item = nullptr;
-      } else {
-        Item *old = parent->childs[it.value()];
-        if (old->isFolder != item->isFolder ||
-            old->modified != item->modified || old->size != item->size) {
-          old->state = Item::Unknown;
-          old->isFolder = item->isFolder;
-          old->modified = item->modified;
-          old->size = item->size;
-          modified = true;
-          emit dataChanged(createIndex(it.value(), 0, parent),
-                           createIndex(it.value(), 2, parent),
-                           QVector<int>{Qt::DisplayRole});
+
+        QVector<Item *> todo;
+        bool modified = false;
+        for (auto &item : cache) {
+          auto it = existing.find(item->name);
+          if (it == existing.end()) {
+            item->path.setPath(parent->path.filePath(item->name));
+            if (!item->isFolder && mFileIcons) {
+              QString ext = QFileInfo(item->name).suffix();
+              if (!mLoadedIcons.contains(ext)) {
+                item->state = Item::LoadingIcon;
+                emit getIcon(item, parentIndex);
+              }
+            }
+            todo.append(item);
+            item = nullptr;
+          } else {
+            Item *old = parent->childs[it.value()];
+            if (old->isFolder != item->isFolder ||
+                old->modified != item->modified || old->size != item->size) {
+              old->state = Item::Unknown;
+              old->isFolder = item->isFolder;
+              old->modified = item->modified;
+              old->size = item->size;
+              modified = true;
+              emit dataChanged(createIndex(it.value(), 0, parent),
+                               createIndex(it.value(), 2, parent),
+                               QVector<int>{Qt::DisplayRole});
+            }
+            existing.erase(it);
+          }
         }
-        existing.erase(it);
-      }
-    }
 
-    qDeleteAll(*cache);
-    delete cache;
+        qDeleteAll(cache);
 
-    for (int i = 0; i < parent->childs.count(); i++) {
-      if (parent->childs[i] == loading ||
-          existing.contains(parent->childs[i]->name)) {
-        emit beginRemoveRows(parentIndex, i, i);
-        delete parent->childs.takeAt(i);
-        emit endRemoveRows();
-        i--;
-      }
-    }
+        for (int i = 0; i < parent->childs.count(); i++) {
+          if (parent->childs[i] == loading ||
+              existing.contains(parent->childs[i]->name)) {
+            emit beginRemoveRows(parentIndex, i, i);
+            delete parent->childs.takeAt(i);
+            emit endRemoveRows();
+            i--;
+          }
+        }
 
-    if (!todo.isEmpty()) {
-      modified = true;
-      emit beginInsertRows(parentIndex, parent->childs.count(),
-                           parent->childs.count() + todo.count() - 1);
-      parent->childs += todo;
-      emit endInsertRows();
-    }
+        if (!todo.isEmpty()) {
+          modified = true;
+          emit beginInsertRows(parentIndex, parent->childs.count(),
+                               parent->childs.count() + todo.count() - 1);
+          parent->childs += todo;
+          emit endInsertRows();
+        }
 
-    if (modified) {
-      sort(parentIndex, parent);
-    }
-  };
-
-  QObject::connect(lsd,
-                   static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-                       &QProcess::finished),
-                   this, rcloneFinished);
-  QObject::connect(lsl,
-                   static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-                       &QProcess::finished),
-                   this, rcloneFinished);
-
-  QObject::connect(lsd, &QProcess::readyRead, this, [=]() {
-    while (lsd->canReadLine()) {
-      QRegularExpressionMatch m = mRegExpFolder.match(lsd->readLine().trimmed());
-      if (m.hasMatch()) {
-        Item *child = new Item();
-        child->isFolder = true;
-        child->parent = parent;
-        child->name = m.captured(2);
-        child->modified = m.captured(1);
-
-        cache->append(child);
-      }
-    }
-  });
-
-  QObject::connect(lsl, &QProcess::readyRead, this, [=]() {
-    while (lsl->canReadLine()) {
-      QRegularExpressionMatch m = mRegExpFile.match(lsl->readLine().trimmed());
-      if (m.hasMatch()) {
-        Item *child = new Item();
-        child->parent = parent;
-        child->name = m.captured(3);
-        child->modified = m.captured(2);
-        child->size = m.captured(1).toULongLong();
-
-        cache->append(child);
-      }
-    }
-  });
+        if (modified) {
+          sort(parentIndex, parent);
+        }
+      });
 
   parent->state = Item::Loading1;
 
@@ -546,20 +527,15 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   emit endInsertRows();
 
   timer->start(100);
-  UseRclonePassword(lsd);
-  UseRclonePassword(lsl);
+  UseRclonePassword(proc);
 
-  lsd->start(GetRclone(),
-             QStringList() << "lsd" << GetRcloneConf() << GetDriveSharedWithMe()
-                           << GetShowHidden() << GetDefaultRcloneOptionsList()
-                           << mRemote + ":" + parent->path.path(),
-             QIODevice::ReadOnly);
-  lsl->start(GetRclone(),
-             QStringList() << "lsl" << GetRcloneConf() << GetDriveSharedWithMe()
-                           << GetShowHidden() << "--max-depth"
-                           << "1" << GetDefaultRcloneOptionsList()
-                           << mRemote + ":" + parent->path.path(),
-             QIODevice::ReadOnly);
+  proc->start(GetRclone(),
+              QStringList() << "lsjson" << GetRcloneConf()
+                            << GetDriveSharedWithMe() << GetShowHidden()
+                            << "--no-mimetype" << "--max-depth" << "1"
+                            << GetDefaultRcloneOptionsList()
+                            << mRemote + ":" + parent->path.path(),
+              QIODevice::ReadOnly);
 }
 
 void ItemModel::sortRecursive(Item *item, const ItemSorter &sorter) {
