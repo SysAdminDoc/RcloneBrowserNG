@@ -98,8 +98,8 @@ private:
   int mSortColumn;
   Qt::SortOrder mSortOrder;
 
-  QRegExp mRegExpFolder;
-  QRegExp mRegExpFile;
+  QRegularExpression mRegExpFolder;
+  QRegularExpression mRegExpFile;
 
   Item *get(const QModelIndex &index) const;
   void load(const QPersistentModelIndex &parentIndex, Item *parent);

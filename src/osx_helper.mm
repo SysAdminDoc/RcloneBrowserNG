@@ -12,7 +12,17 @@ QIcon osxGetIcon(const QString& extension)
         CGImageRef imageRef = [image CGImageForProposedRect:&rect context:NULL hints:nil];
         if (imageRef)
         {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithCGImage:imageRef];
+            NSData *data = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+            QPixmap pixmap;
+            pixmap.loadFromData(QByteArray::fromRawData(
+                static_cast<const char *>(data.bytes),
+                static_cast<qsizetype>(data.length)), "PNG");
+            icon = QIcon(pixmap);
+#else
             icon = QtMac::fromCGImageRef(imageRef);
+#endif
         }
     }
     return icon;
@@ -20,12 +30,10 @@ QIcon osxGetIcon(const QString& extension)
 
 void osxShowDockIcon()
 {
-    ProcessSerialNumber psn = { 0, kCurrentProcess };
-    TransformProcessType(&psn, kProcessTransformToForegroundApplication);
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 }
 
 void osxHideDockIcon()
 {
-    ProcessSerialNumber psn = { 0, kCurrentProcess };
-    TransformProcessType(&psn, kProcessTransformToUIElementApplication);
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 }

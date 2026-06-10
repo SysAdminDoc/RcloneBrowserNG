@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.16)
 
 if (NOT ${CMAKE_VERSION} VERSION_LESS "3.0.0")
 	cmake_policy(SET CMP0028 NEW)
@@ -8,28 +8,32 @@ if (NOT ${CMAKE_VERSION} VERSION_LESS "2.8.11")
 endif()
 
 if(WIN32)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX /wd4100 /wd4189")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX /wd4100 /wd4189 /wd4996")
 else()
-  add_definitions("-pedantic -Wall -Wextra -Werror -std=c++11")
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  add_definitions("-pedantic -Wall -Wextra -Werror -Wno-deprecated-declarations")
 endif()
 
 if (APPLE)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
 endif()
 
 project(rclone-browser)
-FIND_PACKAGE(Qt5Core REQUIRED)
-FIND_PACKAGE(Qt5Gui REQUIRED)
-FIND_PACKAGE(Qt5Widgets REQUIRED)
-FIND_PACKAGE(Qt5Network REQUIRED)
 
-if (WIN32)
-FIND_PACKAGE(Qt5WinExtras REQUIRED)
-elseif(APPLE)
-FIND_PACKAGE(Qt5MacExtras REQUIRED)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets Network)
+
+if (WIN32 AND QT_VERSION_MAJOR EQUAL 5)
+  find_package(Qt5WinExtras REQUIRED)
+elseif(APPLE AND QT_VERSION_MAJOR EQUAL 5)
+  find_package(Qt5MacExtras REQUIRED)
 endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
 
 set(UI
   main_window.ui
@@ -41,27 +45,6 @@ set(UI
   mount_widget.ui
   stream_widget.ui
   preferences_dialog.ui
-)
-
-set(MOC
-  main_window.h
-  remote_widget.h
-  transfer_dialog.h
-  export_dialog.h
-  progress_dialog.h
-  job_widget.h
-  mount_widget.h
-  stream_widget.h
-  preferences_dialog.h
-  icon_cache.h
-  list_of_job_options.h
-  item_model.h
-)
-
-set(OTHER
-  pch.h
-  utils.h
-  job_options.h
 )
 
 set(SOURCE
@@ -83,6 +66,24 @@ set(SOURCE
   list_of_job_options.cpp
 )
 
+set(OTHER
+  pch.h
+  utils.h
+  job_options.h
+  main_window.h
+  remote_widget.h
+  transfer_dialog.h
+  export_dialog.h
+  progress_dialog.h
+  job_widget.h
+  mount_widget.h
+  stream_widget.h
+  preferences_dialog.h
+  icon_cache.h
+  list_of_job_options.h
+  item_model.h
+)
+
 if(WIN32)
   set(OTHER ${OTHER} resources.rc)
 elseif(APPLE)
@@ -94,45 +95,24 @@ set(QRC resources.qrc)
 
 add_definitions(-DRCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
 
-qt5_wrap_ui(UI_OUT ${UI})
-qt5_wrap_cpp(MOC_OUT ${MOC})
-qt5_add_resources(QRC_OUT ${QRC} OPTIONS "-no-compress")
-
-source_group("" FILES ${SOURCE} ${MOC} ${UI} ${QRC} ${OTHER})
-source_group("Generated" FILES ${MOC_OUT} ${UI_OUT} ${MOC_OUT} ${QRC_OUT})
-
-MACRO(ADD_MSVC_PRECOMPILED_HEADER PrecompiledHeader PrecompiledSource SourcesVar)
-  IF(MSVC)
-    GET_FILENAME_COMPONENT(PrecompiledBasename ${PrecompiledHeader} NAME_WE)
-    SET(PrecompiledBinary "${CMAKE_CURRENT_BINARY_DIR}/${PrecompiledBasename}.pch")
-    SET(Sources ${${SourcesVar}})
-
-    SET_SOURCE_FILES_PROPERTIES(${PrecompiledSource}
-                                PROPERTIES COMPILE_FLAGS "/Yc\"${PrecompiledHeader}\" /Fp\"${PrecompiledBinary}\""
-                                           OBJECT_OUTPUTS "${PrecompiledBinary}")
-    SET_SOURCE_FILES_PROPERTIES(${Sources}
-                                PROPERTIES COMPILE_FLAGS "/Yu\"${PrecompiledHeader}\" /FI\"${PrecompiledHeader}\" /Fp\"${PrecompiledBinary}\""
-                                           OBJECT_DEPENDS "${PrecompiledBinary}")
-    # Add precompiled header to SourcesVar
-    LIST(APPEND ${SourcesVar} ${PrecompiledSource})
-  ENDIF(MSVC)
-ENDMACRO(ADD_MSVC_PRECOMPILED_HEADER)
-
-ADD_MSVC_PRECOMPILED_HEADER(pch.h pch.cpp SOURCE)
-ADD_MSVC_PRECOMPILED_HEADER(pch.h pch.cpp MOC_OUT)
-
 if(WIN32)
-  add_executable(RcloneBrowser WIN32 ${SOURCE} ${BACKEND} ${OTHER} ${MOC} ${MOC_OUT} ${UI_OUT} ${MOC_OUT} ${QRC_OUT})
-  target_link_libraries(RcloneBrowser Qt5::Widgets Qt5::Network Qt5::WinExtras)
+  add_executable(RcloneBrowser WIN32 ${SOURCE} ${OTHER} ${UI} ${QRC})
+  target_link_libraries(RcloneBrowser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(QT_VERSION_MAJOR EQUAL 5)
+    target_link_libraries(RcloneBrowser Qt5::WinExtras)
+  endif()
 elseif(APPLE)
+  find_library(COCOA_LIB Cocoa REQUIRED)
   set_source_files_properties(icon.icns PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
-  add_executable(rclone-browser MACOSX_BUNDLE ${SOURCE} ${BACKEND} ${OTHER} ${MOC} ${MOC_OUT} ${UI_OUT} ${MOC_OUT} ${QRC_OUT} icon.icns)
-  target_link_libraries(rclone-browser Qt5::Widgets Qt5::Network Qt5::MacExtras ${COCOA_LIB})
+  add_executable(rclone-browser MACOSX_BUNDLE ${SOURCE} ${OTHER} ${UI} ${QRC} icon.icns)
+  target_link_libraries(rclone-browser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network ${COCOA_LIB})
+  if(QT_VERSION_MAJOR EQUAL 5)
+    target_link_libraries(rclone-browser Qt5::MacExtras)
+  endif()
   set_target_properties(rclone-browser PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist")
-
 else()
-  add_executable(rclone-browser ${SOURCE} ${BACKEND} ${OTHER} ${MOC} ${MOC_OUT} ${UI_OUT} ${MOC_OUT} ${QRC_OUT})
-  target_link_libraries(rclone-browser Qt5::Widgets Qt5::Network)
+  add_executable(rclone-browser ${SOURCE} ${OTHER} ${UI} ${QRC})
+  target_link_libraries(rclone-browser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
 
   install(TARGETS rclone-browser RUNTIME DESTINATION bin)
   install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/rclone-browser.svg" DESTINATION "share/icons/hicolor/scalable/apps" RENAME "rclone-browser.svg")

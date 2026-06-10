@@ -193,21 +193,29 @@ QDataStream &operator>>(QDataStream &stream, JobOptions &jo) {
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::Operation &e) {
-  in >> (quint32 &)e;
+  quint32 v;
+  in >> v;
+  e = static_cast<JobOptions::Operation>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::SyncTiming &e) {
-  in >> (quint32 &)e;
+  quint32 v;
+  in >> v;
+  e = static_cast<JobOptions::SyncTiming>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::CompareOption &e) {
-  in >> (quint32 &)e;
+  quint32 v;
+  in >> v;
+  e = static_cast<JobOptions::CompareOption>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::JobType &e) {
-  in >> (quint32 &)e;
+  quint32 v;
+  in >> v;
+  e = static_cast<JobOptions::JobType>(v);
   return in;
 }
