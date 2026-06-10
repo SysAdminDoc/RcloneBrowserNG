@@ -12,5 +12,8 @@ debian/rclone-browser*
 /bs0.cmd
 /src/*.autosave
 CLAUDE.md
+AGENTS.md
 CODEX_CHANGELOG.md
+ROADMAP.md
+RESEARCH.md
 .claude/
