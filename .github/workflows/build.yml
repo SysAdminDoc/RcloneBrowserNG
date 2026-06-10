@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  linux-qt6:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ qt6-base-dev libgl1-mesa-dev
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake ..
+          cmake --build . --parallel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-qt6
+          path: build/build/rclone-browser
+
+  linux-qt5:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ qtbase5-dev qtdeclarative5-dev
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake ..
+          cmake --build . --parallel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-qt5
+          path: build/build/rclone-browser
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install qt@6
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6)
+          cmake --build . --parallel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: build/build/rclone-browser.app
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          arch: win64_msvc2022_64
+      - name: Build
+        shell: cmd
+        run: |
+          mkdir build
+          cd build
+          cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="%Qt6_DIR%" ..
+          cmake --build . --config Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: build/build/Release/RcloneBrowser.exe
