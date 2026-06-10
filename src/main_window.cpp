@@ -21,8 +21,7 @@ MainWindow::MainWindow() {
     this->setWindowTitle("Rclone Browser");
   }
 
-#if defined(Q_OS_WIN)
-  // disable "?" WindowContextHelpButton
+#if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
 #endif
 
@@ -432,7 +431,11 @@ void MainWindow::rcloneGetVersion() {
           };
 #endif
 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+          QStringList lines = version.split("\n", Qt::SkipEmptyParts);
+#else
           QStringList lines = version.split("\n", QString::SkipEmptyParts);
+#endif
           QString rclone_info2;
           QString rclone_info3;
 
@@ -1214,7 +1217,12 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
   ui.jobs->insertWidget(1, line);
   ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+  auto streamParts = QProcess::splitCommand(stream);
+  player->start(streamParts.first(), streamParts.mid(1), QProcess::ReadOnly);
+#else
   player->start(stream, QProcess::ReadOnly);
+#endif
   UseRclonePassword(rclone);
   rclone->start(GetRclone(),
                 QStringList() << "cat" << GetRcloneConf() << remote,

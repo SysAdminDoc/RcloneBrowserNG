@@ -59,26 +59,26 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
   QObject::connect(mProcess, &QProcess::readyRead, this, [=]() {
     // Pre-1.42: "Transferred:    100 Bytes (50 Bytes/sec)"
-    QRegExp rxSize(
+    static const QRegularExpression rxSize(
         R"(^Transferred:\s+(\S+ \S+) \(([^)]+)\)$)");
     // 1.43+: "Transferred:   1.234G / 5.678 GBytes, 22%, 1.234 MBytes/s, ETA 1h2m3s"
     // 1.56+: "Transferred:   1.234 GiB / 5.678 GiB, 22%, 1.234 MiB/s, ETA 1h2m3s"
-    QRegExp rxSize2(
+    static const QRegularExpression rxSize2(
         R"(^Transferred:\s+([\d.]+\s*\S*)\s+\/\s+([\d.]+\s*\S+),\s+(\S+),\s+([\d.]+\s*\S+),\s+ETA\s+(\S+)$)");
-    QRegExp rxErrors(R"(^Errors:\s+(\d+))");
-    QRegExp rxChecks(R"(^Checks:\s+(\S+)$)");
-    QRegExp rxChecks2(
+    static const QRegularExpression rxErrors(R"(^Errors:\s+(\d+))");
+    static const QRegularExpression rxChecks(R"(^Checks:\s+(\S+)$)");
+    static const QRegularExpression rxChecks2(
         R"(^Checks:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
-    QRegExp rxTransferred(R"(^Transferred:\s+(\S+)$)");
-    QRegExp rxTransferred2(
+    static const QRegularExpression rxTransferred(R"(^Transferred:\s+(\S+)$)");
+    static const QRegularExpression rxTransferred2(
         R"(^Transferred:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
-    QRegExp rxTime(R"(^Elapsed time:\s+(\S+)$)");
+    static const QRegularExpression rxTime(R"(^Elapsed time:\s+(\S+)$)");
     // Pre-1.38: "*filename:   50% done.(ETA: 1h2m3s)"
-    QRegExp rxProgress(
+    static const QRegularExpression rxProgress(
         R"(^\*([^:]+):\s*([^%]+)% done.+(ETA: [^)]+)$)");
     // 1.39+: "* filename:  50% /1.234GiB, 1.234MiB/s, 1h2m3s"
-    QRegExp rxProgress2(
-        R"(\*([^:]+):\s*([^%]+)% \/[\S]+, [\S]+\/s, (\S+)$)");
+    static const QRegularExpression rxProgress2(
+        R"(\*([^:]+):\s*([^%]+)% \/\S+, \S+\/s, (\S+)$)");
 
     while (mProcess->canReadLine()) {
       QString line = mProcess->readLine().trimmed();
@@ -106,31 +106,66 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         continue;
       }
 
-      if (rxSize.exactMatch(line)) {
-        ui.size->setText(rxSize.cap(1));
-        ui.bandwidth->setText(rxSize.cap(2));
-      } else if (rxSize2.exactMatch(line)) {
-        ui.size->setText(rxSize2.cap(1) + ", " + rxSize2.cap(3));
-        ui.bandwidth->setText(rxSize2.cap(4));
-        ui.eta->setText(rxSize2.cap(5));
-        ui.totalsize->setText(rxSize2.cap(2));
-      } else if (rxErrors.indexIn(line) != -1) {
-        ui.errors->setText(rxErrors.cap(1));
-      } else if (rxChecks.exactMatch(line)) {
-        ui.checks->setText(rxChecks.cap(1));
-      } else if (rxChecks2.exactMatch(line)) {
-        ui.checks->setText(rxChecks2.cap(1) + " / " + rxChecks2.cap(2) + ", " +
-                           rxChecks2.cap(3));
-      } else if (rxTransferred.exactMatch(line)) {
-        ui.transferred->setText(rxTransferred.cap(1));
-      } else if (rxTransferred2.exactMatch(line)) {
-        ui.transferred->setText(rxTransferred2.cap(1) + " / " +
-                                rxTransferred2.cap(2) + ", " +
-                                rxTransferred2.cap(3));
-      } else if (rxTime.exactMatch(line)) {
-        ui.elapsed->setText(rxTime.cap(1));
-      } else if (rxProgress.exactMatch(line)) {
-        QString name = rxProgress.cap(1).trimmed();
+      QRegularExpressionMatch m;
+
+      m = rxSize.match(line);
+      if (m.hasMatch()) {
+        ui.size->setText(m.captured(1));
+        ui.bandwidth->setText(m.captured(2));
+        continue;
+      }
+
+      m = rxSize2.match(line);
+      if (m.hasMatch()) {
+        ui.size->setText(m.captured(1) + ", " + m.captured(3));
+        ui.bandwidth->setText(m.captured(4));
+        ui.eta->setText(m.captured(5));
+        ui.totalsize->setText(m.captured(2));
+        continue;
+      }
+
+      m = rxErrors.match(line);
+      if (m.hasMatch()) {
+        ui.errors->setText(m.captured(1));
+        continue;
+      }
+
+      m = rxChecks.match(line);
+      if (m.hasMatch()) {
+        ui.checks->setText(m.captured(1));
+        continue;
+      }
+
+      m = rxChecks2.match(line);
+      if (m.hasMatch()) {
+        ui.checks->setText(m.captured(1) + " / " + m.captured(2) + ", " +
+                           m.captured(3));
+        continue;
+      }
+
+      m = rxTransferred.match(line);
+      if (m.hasMatch()) {
+        ui.transferred->setText(m.captured(1));
+        continue;
+      }
+
+      m = rxTransferred2.match(line);
+      if (m.hasMatch()) {
+        ui.transferred->setText(m.captured(1) + " / " +
+                                m.captured(2) + ", " +
+                                m.captured(3));
+        continue;
+      }
+
+      m = rxTime.match(line);
+      if (m.hasMatch()) {
+        ui.elapsed->setText(m.captured(1));
+        continue;
+      }
+
+      m = rxProgress.match(line);
+      if (m.hasMatch()) {
+        QString name = m.captured(1).trimmed();
 
         auto it = mActive.find(name);
 
@@ -155,12 +190,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
           bar = static_cast<QProgressBar *>(label->buddy());
         }
 
-        bar->setValue(rxProgress.cap(2).toInt());
-        bar->setToolTip(rxProgress.cap(3));
+        bar->setValue(m.captured(2).toInt());
+        bar->setToolTip(m.captured(3));
 
         mUpdated.insert(label);
-      } else if (rxProgress2.exactMatch(line)) {
-        QString name = rxProgress2.cap(1).trimmed();
+        continue;
+      }
+
+      m = rxProgress2.match(line);
+      if (m.hasMatch()) {
+        QString name = m.captured(1).trimmed();
 
         auto it = mActive.find(name);
 
@@ -194,8 +233,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
           bar = static_cast<QProgressBar *>(label->buddy());
         }
 
-        bar->setValue(rxProgress2.cap(2).toInt());
-        bar->setToolTip("File name: " + name + "\nFile stats" + rxProgress2.cap(0).mid(rxProgress2.cap(0).indexOf(':')));
+        bar->setValue(m.captured(2).toInt());
+        QString fullMatch = m.captured(0);
+        bar->setToolTip("File name: " + name + "\nFile stats" + fullMatch.mid(fullMatch.indexOf(':')));
 
         mUpdated.insert(label);
       }

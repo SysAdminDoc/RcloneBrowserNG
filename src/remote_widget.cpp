@@ -507,7 +507,7 @@ QString root = isLocal ? "/" : QString();
         return;
       }
 
-      QRegExp re(R"(^(\d+) (\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ (.+)$)");
+      static const QRegularExpression re(R"(^(\d+) (\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ (.+)$)");
 
       QProcess process;
       UseRclonePassword(&process);
@@ -523,11 +523,14 @@ QString root = isLocal ? "/" : QString();
       QObject::connect(&progress, &ProgressDialog::outputAvailable, this,
                        [=](const QString &output) {
                          QTextStream out(file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
                          out.setCodec("UTF-8");
+#endif
 
                          for (const auto &line : output.split('\n')) {
-                           if (re.exactMatch(line.trimmed())) {
-                             QStringList cap = re.capturedTexts();
+                           QRegularExpressionMatch m = re.match(line.trimmed());
+                           if (m.hasMatch()) {
+                             QStringList cap = m.capturedTexts();
 
                              if (txt) {
                                out << cap[3] << '\n';
