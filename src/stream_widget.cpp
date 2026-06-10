@@ -52,11 +52,20 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
   QObject::connect(mRclone,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
-                   this, [=]() {
+                   this, [=](int status, QProcess::ExitStatus) {
                      mRclone->deleteLater();
                      mRunning = false;
+                     if (status == 0) {
+                       ui.showDetails->setStyleSheet(
+                           "QToolButton { border: 0; color: black; }");
+                       ui.showDetails->setText("Finished");
+                     } else {
+                       ui.showDetails->setStyleSheet(
+                           "QToolButton { border: 0; color: red; }");
+                       ui.showDetails->setText("Error");
+                     }
+                     ui.cancel->setToolTip("Close");
                      emit finished();
-                     emit closed();
                    });
 
   ui.showDetails->setStyleSheet("QToolButton { border: 0; color: green; }");
