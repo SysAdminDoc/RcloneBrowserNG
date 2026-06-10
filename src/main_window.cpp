@@ -327,6 +327,7 @@ MainWindow::MainWindow() {
   ui.tabs->tabBar()->setTabButton(1, QTabBar::LeftSide, nullptr);
   ui.tabs->tabBar()->setTabButton(2, QTabBar::RightSide, nullptr);
   ui.tabs->tabBar()->setTabButton(2, QTabBar::LeftSide, nullptr);
+  ui.tabs->tabBar()->installEventFilter(this);
   ui.tabs->setCurrentIndex(0);
 
   listTasks();
@@ -1015,6 +1016,21 @@ bool MainWindow::canClose() {
   }
 
   return false;
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+  if (obj == ui.tabs->tabBar() &&
+      event->type() == QEvent::MouseButtonRelease) {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (mouseEvent->button() == Qt::MiddleButton) {
+      int index = ui.tabs->tabBar()->tabAt(mouseEvent->pos());
+      if (index >= 3) {
+        ui.tabs->removeTab(index);
+        return true;
+      }
+    }
+  }
+  return QMainWindow::eventFilter(obj, event);
 }
 
 void MainWindow::closeEvent(QCloseEvent *ev) {
