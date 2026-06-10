@@ -14,6 +14,8 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
   ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
   ui.output->setVisible(false);
+  // long-lived mounts can log indefinitely - bound memory growth
+  ui.output->setMaximumBlockCount(10000);
 
   QObject::connect(
       ui.showDetails, &QToolButton::toggled, this, [=](bool checked) {
@@ -78,18 +80,21 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                      mRunning = false;
                      if (status == 0) {
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: black; }");
-                       ui.showDetails->setText("Finished");
+                           "QToolButton { border: 0; }");
+                       ui.showDetails->setText("Unmounted");
                      } else {
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: red; }");
+                           "QToolButton { border: 0; color: #e53935; }");
                        ui.showDetails->setText("Error");
+                       ui.showDetails->setChecked(true);
+                       ui.showOutput->setChecked(true);
                      }
                      ui.cancel->setToolTip("Close");
                      emit finished();
                    });
 
-  ui.showDetails->setStyleSheet("QToolButton { border: 0; color: green; }");
+  ui.showDetails->setStyleSheet(
+      "QToolButton { border: 0; color: #43a047; }");
   ui.showDetails->setText("Mounted");
 }
 

@@ -14,6 +14,8 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
 
   ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
   ui.output->setVisible(false);
+  // streams can run for hours - bound memory growth
+  ui.output->setMaximumBlockCount(10000);
 
   QObject::connect(
       ui.showDetails, &QToolButton::toggled, this, [=](bool checked) {
@@ -57,18 +59,21 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                      mRunning = false;
                      if (status == 0) {
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: black; }");
+                           "QToolButton { border: 0; }");
                        ui.showDetails->setText("Finished");
                      } else {
                        ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: red; }");
+                           "QToolButton { border: 0; color: #e53935; }");
                        ui.showDetails->setText("Error");
+                       ui.showDetails->setChecked(true);
+                       ui.showOutput->setChecked(true);
                      }
                      ui.cancel->setToolTip("Close");
                      emit finished();
                    });
 
-  ui.showDetails->setStyleSheet("QToolButton { border: 0; color: green; }");
+  ui.showDetails->setStyleSheet(
+      "QToolButton { border: 0; color: #43a047; }");
   ui.showDetails->setText("Streaming");
 }
 
