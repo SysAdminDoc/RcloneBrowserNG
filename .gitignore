@@ -10,3 +10,6 @@ debian/rclone-browser*
 /release
 /bs0.cmd
 /src/*.autosave
+CLAUDE.md
+CODEX_CHANGELOG.md
+.claude/
