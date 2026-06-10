@@ -1,6 +1,9 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   FIXED: Corrupt or incompatible `tasks.bin` no longer silently discards every saved task — the bad file is renamed aside (`tasks.bin.corrupt`) and a warning dialog explains what happened
+-   FIXED: Streaming player and rclone cat processes are now parented to the main window — no orphaned processes on app close; player error path also cleans up the rclone pipe; stream cancel kills a hung player after 2 s
+-   FIXED: Icon caches are bounded (defensive 1024-extension cap) to prevent unbounded memory growth in edge-case sessions
 -   FIXED: Saved tasks could be lost — task file is now written atomically (QSaveFile), so a crash mid-write no longer wipes every saved task
 -   FIXED: App silently closed at startup when `rclone version` failed for any reason other than a missing password (Win10/11 "auto-close on startup") — it now reports the actual rclone error and opens Preferences; cancelling the encrypted-config password prompt also keeps the app open
 -   FIXED: Use-after-free crash when deleting a folder while file icons were still loading (Item destructor checked the parent's state instead of the child's)
@@ -23,6 +26,7 @@
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
+-   FIXED: AppStream metainfo rewritten for NG identity (`io.github.sysadmindoc.rclonebrowserng`), installed to `share/metainfo/`, and embedded in AppImage — unblocks Flathub and distro packaging
 -   FIXED: Qt 6 Windows/macOS builds did not compile — QtWinExtras `QtWin::fromHICON` replaced with `QImage::fromHICON`, missing Windows shell/COM headers included, `QFileInfo` explicit-constructor errors fixed, COM initialized on the icon worker thread
 -   FIXED: Robust rclone version parsing — beta/suffixed versions (e.g. `1.67.0-beta…`) can no longer throw
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)

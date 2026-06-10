@@ -90,4 +90,8 @@ void StreamWidget::cancel() {
     mRclone->kill();
     mRclone->waitForFinished();
   }
+  if (mPlayer->state() != QProcess::NotRunning) {
+    mPlayer->kill();
+    mPlayer->waitForFinished(2000);
+  }
 }
