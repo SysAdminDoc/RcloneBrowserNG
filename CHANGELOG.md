@@ -41,7 +41,7 @@
 -   CHANGED: Dark mode covers disabled controls, placeholder text and tooltips; "Finished" status no longer renders black-on-dark; status colors are theme-safe in both modes
 -   CHANGED: Rebranded About box, update check, and release links to RcloneBrowserNG
 -   CHANGED: Clearer empty-jobs message; preferences icon-size and proxy options are proper radio groups; file sizes show one decimal (e.g. "1.5 G")
--   FIXED: GitHub update check can no longer hang the UI — bounded with a 10s timeout
+-   FIXED: GitHub update checks are now fully async — no GUI freeze at startup (was up to 20 s with two blocking QEventLoop calls); check-date is only recorded after a successful response so an offline launch retries next time
 -   FIXED: Preferences showed "alternating row colours" and "dark mode" defaults that didn't match actual behavior
 -   FIXED: Stream job mislabeled the player command as "Folder:"; assorted label typos ("transfering", "locaction")
 

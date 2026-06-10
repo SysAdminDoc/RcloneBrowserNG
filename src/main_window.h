@@ -48,6 +48,9 @@ private:
   bool getConfigPassword(QProcess *p);
 
   void addEmptyJobsMessage();
+  void checkRcloneUpdate(const QString &currentVersion);
+  void checkBrowserUpdate();
+  QNetworkAccessManager *mNetworkManager = nullptr;
 
   void runItem(JobOptionsListWidgetItem *item, bool dryrun = false);
   void editSelectedTask();
