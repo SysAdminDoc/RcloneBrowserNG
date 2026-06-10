@@ -145,7 +145,7 @@
               <item>
                <widget class="QLabel" name="noJobsAvailable">
                 <property name="text">
-                 <string>No jobs are available</string>
+                 <string>No jobs yet. Transfers, mounts and streams you start will appear here.</string>
                 </property>
                </widget>
               </item>

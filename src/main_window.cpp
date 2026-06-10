@@ -12,6 +12,45 @@
 #include "osx_helper.h"
 #endif
 
+// Fusion-based dark theme used on Windows, Linux and older macOS.
+// Includes Disabled and PlaceholderText roles so secondary states
+// stay readable in dark mode.
+static void applyDarkTheme() {
+  qApp->setStyle(QStyleFactory::create("Fusion"));
+
+  QPalette darkPalette;
+  darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
+  darkPalette.setColor(QPalette::WindowText, Qt::white);
+  darkPalette.setColor(QPalette::Base, QColor(25, 25, 25));
+  darkPalette.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
+  darkPalette.setColor(QPalette::ToolTipBase, QColor(42, 42, 42));
+  darkPalette.setColor(QPalette::ToolTipText, Qt::white);
+  darkPalette.setColor(QPalette::Text, Qt::white);
+  darkPalette.setColor(QPalette::Button, QColor(53, 53, 53));
+  darkPalette.setColor(QPalette::ButtonText, Qt::white);
+  darkPalette.setColor(QPalette::BrightText, Qt::red);
+  darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
+  darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
+  darkPalette.setColor(QPalette::HighlightedText, Qt::black);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
+  darkPalette.setColor(QPalette::PlaceholderText, QColor(160, 160, 160));
+#endif
+
+  const QColor disabledText(128, 128, 128);
+  darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+  darkPalette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+  darkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
+  darkPalette.setColor(QPalette::Disabled, QPalette::Highlight,
+                       QColor(80, 80, 80));
+  darkPalette.setColor(QPalette::Disabled, QPalette::HighlightedText,
+                       disabledText);
+
+  qApp->setPalette(darkPalette);
+
+  qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a2a2a; "
+                      "border: 1px solid #767676; }");
+}
+
 MainWindow::MainWindow() {
   ui.setupUi(this);
 
@@ -26,67 +65,22 @@ MainWindow::MainWindow() {
 #endif
 
 #if !defined(Q_OS_MACOS)
-  auto settings = GetSettings();
-  bool darkMode = settings->value("Settings/darkMode").toBool();
-
   // enable dark mode for Windows and Linux
-  if (darkMode) {
-    qApp->setStyle(QStyleFactory::create("Fusion"));
-
-    QPalette darkPalette;
-    darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
-    darkPalette.setColor(QPalette::WindowText, Qt::white);
-    darkPalette.setColor(QPalette::Base, QColor(25, 25, 25));
-    darkPalette.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
-    darkPalette.setColor(QPalette::ToolTipBase, Qt::white);
-    darkPalette.setColor(QPalette::ToolTipText, Qt::white);
-    darkPalette.setColor(QPalette::Text, Qt::white);
-    darkPalette.setColor(QPalette::Button, QColor(53, 53, 53));
-    darkPalette.setColor(QPalette::ButtonText, Qt::white);
-    darkPalette.setColor(QPalette::BrightText, Qt::red);
-    darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
-
-    darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-    darkPalette.setColor(QPalette::HighlightedText, Qt::black);
-
-    qApp->setPalette(darkPalette);
-
-    qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; "
-                        "border: 1px solid white; }");
+  {
+    auto settings = GetSettings();
+    if (settings->value("Settings/darkMode").toBool()) {
+      applyDarkTheme();
+    }
   }
-
 #else
-
-  // enable dark mode for older macOS
+  // enable dark mode for older macOS (Mojave and newer manage it natively)
   QString sysInfo = QSysInfo::productVersion();
 
   if (sysInfo == "10.9" || sysInfo == "10.10" || sysInfo == "10.11" ||
       sysInfo == "10.12" || sysInfo == "10.13") {
     auto settings = GetSettings();
-    bool darkMode = settings->value("Settings/darkMode").toBool();
-    if (darkMode) {
-      qApp->setStyle(QStyleFactory::create("Fusion"));
-
-      QPalette darkPalette;
-      darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
-      darkPalette.setColor(QPalette::WindowText, Qt::white);
-      darkPalette.setColor(QPalette::Base, QColor(25, 25, 25));
-      darkPalette.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
-      darkPalette.setColor(QPalette::ToolTipBase, Qt::white);
-      darkPalette.setColor(QPalette::ToolTipText, Qt::white);
-      darkPalette.setColor(QPalette::Text, Qt::white);
-      darkPalette.setColor(QPalette::Button, QColor(53, 53, 53));
-      darkPalette.setColor(QPalette::ButtonText, Qt::white);
-      darkPalette.setColor(QPalette::BrightText, Qt::red);
-      darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
-
-      darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-      darkPalette.setColor(QPalette::HighlightedText, Qt::black);
-
-      qApp->setPalette(darkPalette);
-
-      qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: "
-                          "#2a82da; border: 1px solid white; }");
+    if (settings->value("Settings/darkMode").toBool()) {
+      applyDarkTheme();
     }
   }
 #endif
@@ -208,12 +202,12 @@ MainWindow::MainWindow() {
     QMessageBox::about(
         this, "Rclone Browser",
         QString(
-            R"(<h3>GUI for rclone, v)" RCLONE_BROWSER_VERSION "</h3>"
-            R"(<p>Copyright &copy; 2019</p>)"
+            R"(<h3>Rclone Browser NG, v)" RCLONE_BROWSER_VERSION "</h3>"
+            R"(<p>GUI for <a href="https://rclone.org/">rclone</a></p>)"
 
-            R"(<p>Current development and maintenance<br /><a href="https://github.com/kapitainsky/RcloneBrowser">kapitainsky</a></p>)"
+            R"(<p>Community continuation<br /><a href="https://github.com/SysAdminDoc/RcloneBrowserNG">RcloneBrowserNG</a></p>)"
 
-            R"(<p>New features and fixes<br /><a href="https://github.com/kapitainsky/RcloneBrowser/graphs/contributors">contributors</a></p>)"
+            R"(<p>Previous maintenance and features<br /><a href="https://github.com/kapitainsky/RcloneBrowser">kapitainsky</a> and <a href="https://github.com/kapitainsky/RcloneBrowser/graphs/contributors">contributors</a></p>)"
 
             R"(<p>Original version<br /><a href="https://mmozeiko.github.io/RcloneBrowser">Martins Mozeiko</a></p>)"));
   });
@@ -232,7 +226,11 @@ MainWindow::MainWindow() {
                    &MainWindow::rcloneListRemotes);
 
   QObject::connect(ui.open, &QPushButton::clicked, this, [=]() {
-    auto item = ui.remotes->selectedItems().front();
+    auto selection = ui.remotes->selectedItems();
+    if (selection.isEmpty()) {
+      return;
+    }
+    auto item = selection.front();
     QString type = item->data(Qt::UserRole).toString();
     QString name = item->text();
     bool isLocal = type == "local";
@@ -305,8 +303,18 @@ MainWindow::MainWindow() {
   QObject::connect(ui.buttonDeleteTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
+    if (!item) {
+      return;
+    }
     JobOptions *jo = item->GetData();
-    ListOfJobOptions::getInstance()->Forget(jo);
+    int button = QMessageBox::question(
+        this, "Delete Task",
+        QString("Delete saved task \"%1\"?\n\nThis cannot be undone.")
+            .arg(jo->description),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (button == QMessageBox::Yes) {
+      ListOfJobOptions::getInstance()->Forget(jo);
+    }
   });
 
   QObject::connect(ListOfJobOptions::getInstance(),
@@ -476,10 +484,10 @@ void MainWindow::rcloneGetVersion() {
 #ifdef Q_OS_MACOS
           if (IsPortableMode()) {
 
-            QFileInfo applicationPath = qApp->applicationFilePath();
-            QFileInfo MacOSPath = applicationPath.dir().path();
-            QFileInfo ContentsPath = MacOSPath.dir().path();
-            appBundlePath = ContentsPath.dir().path();
+            QFileInfo applicationPath(qApp->applicationFilePath());
+            QFileInfo MacOSPath(applicationPath.dir().path());
+            QFileInfo ContentsPath(MacOSPath.dir().path());
+            appBundlePath = QFileInfo(ContentsPath.dir().path());
 
             mStatusMessage->setText(
                 rclone_info1 + " in " +
@@ -517,26 +525,41 @@ void MainWindow::rcloneGetVersion() {
 
           rcloneListRemotes();
         } else {
-          if (p->error() != QProcess::FailedToStart) {
-            if (getConfigPassword(p)) {
+          QString error =
+              QString::fromUtf8(p->readAllStandardError()).trimmed();
+
+          if (error.contains("RCLONE_CONFIG_PASS")) {
+            // encrypted rclone.conf - ask for the password and retry
+            bool ok;
+            QString password = QInputDialog::getText(
+                this, qApp->applicationDisplayName(),
+                "Enter password for your encrypted rclone "
+                "configuration file:",
+                QLineEdit::Password, QString(), &ok);
+            if (ok) {
+              SetRclonePassword(password);
               rcloneGetVersion();
-            } else {
-              close();
+              p->deleteLater();
+              return;
             }
-            p->deleteLater();
-            return;
+            // user cancelled - keep the app open so they can fix it
+            // in preferences instead of silently exiting
           }
 
           if (firstTime) {
             if (p->error() == QProcess::FailedToStart) {
-              QMessageBox::information(
+              QMessageBox::warning(
                   this, "Error",
-                  "Wrong rclone executable or rclone not found!\nPlease select "
-                  "its location in next dialog.");
+                  "Wrong rclone executable or rclone not found!\nPlease "
+                  "select its location in the next dialog.");
             } else {
-              QMessageBox::information(this, "Error",
-                                       "Cannot check rclone version!\nPlease "
-                                       "verify rclone location.");
+              QMessageBox::warning(
+                  this, "Error",
+                  "Cannot check rclone version!\nPlease verify your rclone "
+                  "location and configuration." +
+                      (error.isEmpty()
+                           ? QString()
+                           : "\n\nrclone reported:\n" + error.left(500)));
             }
             emit ui.preferences->trigger();
           }
@@ -582,8 +605,16 @@ void MainWindow::rcloneGetVersion() {
             QNetworkAccessManager manager;
             QNetworkReply *response = manager.get(QNetworkRequest(QUrl(url)));
             QEventLoop event;
-            connect(response, SIGNAL(finished()), &event, SLOT(quit()));
+            QTimer timeout;
+            timeout.setSingleShot(true);
+            connect(&timeout, &QTimer::timeout, &event, &QEventLoop::quit);
+            connect(response, &QNetworkReply::finished, &event,
+                    &QEventLoop::quit);
+            timeout.start(10000);
             event.exec();
+            if (!response->isFinished()) {
+              response->abort();
+            }
             QByteArray content = response->readAll();
             QJsonParseError jsonError;
 
@@ -659,13 +690,21 @@ void MainWindow::rcloneGetVersion() {
                                current_date);
 
             // get latest version available
-            QString url = "https://api.github.com/repos/kapitainsky/"
-                          "rclonebrowser/releases/latest";
+            QString url = "https://api.github.com/repos/SysAdminDoc/"
+                          "RcloneBrowserNG/releases/latest";
             QNetworkAccessManager manager;
             QNetworkReply *response = manager.get(QNetworkRequest(QUrl(url)));
             QEventLoop event;
-            connect(response, SIGNAL(finished()), &event, SLOT(quit()));
+            QTimer timeout;
+            timeout.setSingleShot(true);
+            connect(&timeout, &QTimer::timeout, &event, &QEventLoop::quit);
+            connect(response, &QNetworkReply::finished, &event,
+                    &QEventLoop::quit);
+            timeout.start(10000);
             event.exec();
+            if (!response->isFinished()) {
+              response->abort();
+            }
             QByteArray content = response->readAll();
 
             QJsonParseError jsonError;
@@ -694,7 +733,7 @@ void MainWindow::rcloneGetVersion() {
                           R"(New version: v)" +
                           rclone_browser_latest_version_no +
                           "</p>"
-                          R"(<p>Visit <a href="https://github.com/kapitainsky/RcloneBrowser/releases/latest">releases</a> page to download</p>)"));
+                          R"(<p>Visit <a href="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest">releases</a> page to download</p>)"));
                 };
               };
             };
@@ -754,14 +793,22 @@ void MainWindow::rcloneConfig() {
 #endif
 
 #elif defined(Q_OS_MACOS)
-  auto tmp = new QFile("/tmp/rclone_config.command");
-  tmp->open(QIODevice::WriteOnly);
+  // use a unique file in the per-user temp dir rather than a fixed
+  // world-writable /tmp path (predictable-name/symlink hazard)
+  auto tmp = new QTemporaryFile(
+      QDir::tempPath() + "/rclone_config_XXXXXX.command", p);
+  tmp->setAutoRemove(false); // Terminal reads it after we return
+  if (!tmp->open()) {
+    QMessageBox::critical(this, "Error",
+                          "Cannot create temporary file to launch rclone "
+                          "config.");
+    p->deleteLater();
+    return;
+  }
   QTextStream(tmp) << "#!/bin/sh\n" << terminalRcloneCmd << "\n";
   tmp->close();
   tmp->setPermissions(QFileDevice::ReadUser | QFileDevice::WriteUser |
-                      QFileDevice::ExeUser | QFileDevice::ReadGroup |
-                      QFileDevice::ExeGroup | QFileDevice::ReadOther |
-                      QFileDevice::ExeOther);
+                      QFileDevice::ExeUser);
   p->setProgram("open");
   p->setArguments(QStringList() << tmp->fileName());
 #else
@@ -857,15 +904,11 @@ void MainWindow::rcloneListRemotes() {
             QString type = parts[1].trimmed();
             QString tooltip = type;
 
-            QString img_add = "";
             int size;
 
             // medium scale by default
             double darkModeIconScale = 1.333;
             double lightModeiconScale = 2;
-            // to avoid "variable not used" compiler error
-            if (darkModeIconScale == lightModeiconScale) {
-            };
 
             // set icons scale based on iconSize value
             if (iconSize == "small") {
@@ -883,18 +926,18 @@ void MainWindow::rcloneListRemotes() {
               darkModeIconScale = 2;
             }
 
-#if !defined(Q_OS_MACOS)
-            // _inv only for dark mode
-            // we use darkModeIni to apply mode active at startup
-            if (darkModeIni) {
-              img_add = "_inv";
+            // use the inverted (light) icon set whenever the effective UI
+            // is dark - covers the app's own dark mode AND OS-level dark
+            // themes (Windows 10/11, macOS Mojave+), which the old
+            // setting-based check missed
+            bool darkUi =
+                qApp->palette().color(QPalette::Base).lightness() < 128;
+            QString img_add = darkUi ? "_inv" : "";
 
-            } else {
-              img_add = "";
-            }
+#if !defined(Q_OS_MACOS)
 #if defined(Q_OS_WIN)
-            // on Windows dark theme changes PM_ListViewIconSize size
-            // so we have to adjust
+            // the Fusion-based dark style changes PM_ListViewIconSize,
+            // so the scale has to follow the style actually in use
             if (darkModeIni) {
               size = darkModeIconScale *
                      style->pixelMetric(QStyle::PM_ListViewIconSize);
@@ -918,10 +961,8 @@ void MainWindow::rcloneListRemotes() {
                // on older macOS we also have to adjust icon size per mode
                if (darkModeIni) {
                  size = darkModeIconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
-                 img_add = "_inv";
                } else {
                  size = lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
-                 img_add = "";
                }
 
              } else {
@@ -961,20 +1002,20 @@ void MainWindow::rcloneListRemotes() {
 
 bool MainWindow::getConfigPassword(QProcess *p) {
   QString output = p->readAllStandardError().trimmed();
-  if (output.indexOf("RCLONE_CONFIG_PASS") > 0) {
+  if (output.contains("RCLONE_CONFIG_PASS")) {
     bool ok;
     QString password = QInputDialog::getText(
         this, qApp->applicationDisplayName(),
-        "Enter password for .rclone.conf configuration file:",
+        "Enter password for your encrypted rclone configuration file:",
         QLineEdit::Password, QString(), &ok);
     if (ok) {
       SetRclonePassword(password);
       return true;
     }
-  } else if (output.indexOf("unknown command \"listremotes\"") > 0) {
+  } else if (output.contains("unknown command \"listremotes\"")) {
     QMessageBox::critical(this, qApp->applicationDisplayName(),
-                          "It seems rclone version you are using is too "
-                          "old.\nPlease upgrade to the latest version");
+                          "The rclone version you are using is too old.\n"
+                          "Please upgrade to the latest version.");
     return false;
   }
   return false;
@@ -1002,8 +1043,15 @@ bool MainWindow::canClose() {
   }
 
   if (button == QMessageBox::Yes) {
+    // collect first - cancel() emits closed() which removes widgets from
+    // the layout and would shift indices mid-iteration, skipping jobs
+    QList<QWidget *> widgets;
     for (int i = 0; i < ui.jobs->count(); i++) {
-      QWidget *widget = ui.jobs->itemAt(i)->widget();
+      if (QWidget *widget = ui.jobs->itemAt(i)->widget()) {
+        widgets.append(widget);
+      }
+    }
+    for (QWidget *widget : widgets) {
       if (auto mount = qobject_cast<MountWidget *>(widget)) {
         mount->cancel();
       } else if (auto transfer = qobject_cast<JobWidget *>(widget)) {
@@ -1092,6 +1140,9 @@ void MainWindow::editSelectedTask() {
   auto selection = ui.tasksListWidget->selectionModel()->currentIndex();
   JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
       ui.tasksListWidget->currentItem());
+  if (!item) {
+    return;
+  }
   JobOptions *jo = item->GetData();
   bool isDownload = (jo->jobType == JobOptions::Download);
   QString remote = isDownload ? jo->source : jo->dest;
@@ -1226,7 +1277,7 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 
   args.append(GetRcloneConf());
   if (!opt.isEmpty()) {
-    args.append(opt.split(' '));
+    args.append(opt.split(' ', Qt::SkipEmptyParts));
   }
   args << remote << folder;
 
@@ -1243,12 +1294,20 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
       player,
       static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
           &QProcess::finished),
-      this, [=](int status, QProcess::ExitStatus) {
-        player->deleteLater();
-        if (status != 0 && player->error() == QProcess::FailedToStart) {
+      this, [=](int, QProcess::ExitStatus) { player->deleteLater(); });
+
+  // finished() is never emitted when the process fails to start, so a
+  // broken player command has to be caught here
+  QObject::connect(
+      player, &QProcess::errorOccurred, this, [=](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) {
+          rclone->kill();
+          player->deleteLater();
           QMessageBox::critical(
               this, "Error",
-              QString("Failed to start '%1' player process").arg(stream));
+              QString("Failed to start the player command:\n%1\n\nYou will "
+                      "be asked for a new command on the next stream.")
+                  .arg(stream));
           auto settings = GetSettings();
           settings->remove("Settings/streamConfirmed");
         }
@@ -1288,6 +1347,9 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
 
 #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
   auto streamParts = QProcess::splitCommand(stream);
+  if (streamParts.isEmpty()) {
+    streamParts << stream;
+  }
   player->start(streamParts.first(), streamParts.mid(1), QProcess::ReadOnly);
 #else
   player->start(stream, QProcess::ReadOnly);

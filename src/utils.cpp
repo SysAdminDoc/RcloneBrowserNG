@@ -19,6 +19,19 @@ std::vector<std::string> split(const std::string &s, char d) {
   return r;
 }
 
+// parse leading digits of a version segment; tolerates suffixes like
+// "0-beta" or empty segments so odd rclone version strings can't throw
+static unsigned int parseVersionSegment(const std::string &s) {
+  unsigned int value = 0;
+  for (char c : s) {
+    if (c < '0' || c > '9') {
+      break;
+    }
+    value = value * 10 + static_cast<unsigned int>(c - '0');
+  }
+  return value;
+}
+
 unsigned int compareVersion(std::string version1, std::string version2) {
   auto v1 = split(version1, '.');
   auto v2 = split(version2, '.');
@@ -34,8 +47,8 @@ unsigned int compareVersion(std::string version1, std::string version2) {
     }
   }
   for (unsigned int i = 0; i < max; i++) {
-    unsigned int n1 = stoi(v1[i]);
-    unsigned int n2 = stoi(v2[i]);
+    unsigned int n1 = parseVersionSegment(v1[i]);
+    unsigned int n2 = parseVersionSegment(v2[i]);
     if (n1 > n2) {
       // version1 is higher than version2
       return 1;
@@ -50,14 +63,14 @@ unsigned int compareVersion(std::string version1, std::string version2) {
 
 static QString GetIniFilename() {
 #ifdef Q_OS_MACOS
-  QFileInfo applicationPath = qApp->applicationFilePath();
+  QFileInfo applicationPath(qApp->applicationFilePath());
   //  qDebug() << QString(applicationPath.absolutePath());
   // on macOS excecutable file is located in
   // ./rclone-browser.app/Contents/MasOS/ to get actual bundle folder we have to
   // traverse three levels up
-  QFileInfo MacOSPath = applicationPath.dir().path();
-  QFileInfo ContentsPath = MacOSPath.dir().path();
-  QFileInfo appBundlePath = ContentsPath.dir().path();
+  QFileInfo MacOSPath(applicationPath.dir().path());
+  QFileInfo ContentsPath(MacOSPath.dir().path());
+  QFileInfo appBundlePath(ContentsPath.dir().path());
   //  qDebug() << QString("utils.cpp appBundle.absolutePath: " +
   //                      appBundlePath.absolutePath());
   //  qDebug() << QString(
@@ -66,7 +79,7 @@ static QString GetIniFilename() {
   return appBundlePath.dir().filePath(appBundlePath.baseName() + ".ini");
 #else
 #ifdef Q_OS_WIN
-  QFileInfo applicationPath = qApp->applicationFilePath();
+  QFileInfo applicationPath(qApp->applicationFilePath());
   return applicationPath.dir().filePath(applicationPath.baseName() + ".ini");
 #else
   QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
@@ -176,9 +189,15 @@ void WriteSettings(QSettings *settings, QObject *widget) {
     }
     return;
   }
+  if (QRadioButton *obj = qobject_cast<QRadioButton *>(widget)) {
+    settings->setValue(name, obj->isChecked());
+    return;
+  }
   if (QPlainTextEdit *obj = qobject_cast<QPlainTextEdit *>(widget)) {
     QString text = obj->toPlainText().trimmed();
-    if (!text.isEmpty()) {
+    if (text.isEmpty()) {
+      settings->remove(name);
+    } else {
       QStringList lines = text.split('\n');
       settings->beginWriteArray(name, lines.size());
       for (int i = 0; i < lines.count(); i++) {
@@ -274,7 +293,8 @@ QStringList GetDefaultRcloneOptionsList() {
       settings->value("Settings/defaultRcloneOptions").toString();
   QStringList defaultRcloneOptionsList;
   if (!defaultRcloneOptions.isEmpty()) {
-    for (auto arg : defaultRcloneOptions.split(' ')) {
+    for (const auto &arg :
+         defaultRcloneOptions.split(' ', Qt::SkipEmptyParts)) {
       defaultRcloneOptionsList << arg;
     }
   }
