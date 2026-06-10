@@ -17,6 +17,8 @@
 -   FIXED: Transfer dialog leaked a JobOptions object on every plain (non-saved) run
 
 ### Security
+-   SECURITY: Windows mounts now authenticate the rclone remote-control endpoint with a random per-mount credential — prevents CVE-2026-41176 (CVSS 9.2) and CVE-2026-49980 (CVSS 9.8) exploitation via unauthenticated loopback rc
+-   SECURITY: Startup warns (once per version) when the detected rclone is older than 1.74.3, with a link to the affected advisories
 -   SECURITY: macOS `rclone config` no longer writes a world-readable script with a fixed predictable name in shared `/tmp` (symlink/pre-creation hazard) — it now uses a unique, user-only file in the per-user temp dir
 -   SECURITY: Deleting a saved task now asks for confirmation
 

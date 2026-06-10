@@ -2,8 +2,11 @@
 #include "utils.h"
 
 MountWidget::MountWidget(QProcess *process, const QString &remote,
-                         const QString &folder, QWidget *parent)
-    : QWidget(parent), mProcess(process) {
+                         const QString &folder, const QString &rcAddr,
+                         const QString &rcUser, const QString &rcPass,
+                         QWidget *parent)
+    : QWidget(parent), mProcess(process), mRcAddr(rcAddr), mRcUser(rcUser),
+      mRcPass(rcPass) {
   ui.setupUi(this);
 
   ui.remote->setText(remote);
@@ -112,10 +115,22 @@ void MountWidget::cancel() {
   QStringList args;
   args << "rc";
   args << "core/quit";
-  args << "--rc-addr";
-  QString folder = ui.folder->text();
-  unsigned short int rclone_rc_port = 19000 + (qHash(folder) % 10000);
-  args << "localhost:" + QString::number(rclone_rc_port);
+  args << "--rc-addr"
+       << (mRcAddr.isEmpty()
+               ? "localhost:" + QString::number(GetRcMountPort(ui.folder->text()))
+               : mRcAddr);
+  // authenticate with the per-mount credential the endpoint was started with
+  if (!mRcUser.isEmpty()) {
+    args << "--rc-user" << mRcUser;
+  }
+  if (!mRcPass.isEmpty()) {
+    args << "--rc-pass" << mRcPass;
+  }
+  // clean the process up when it finishes instead of leaking it
+  QObject::connect(p,
+                   static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                       &QProcess::finished),
+                   p, &QObject::deleteLater);
   UseRclonePassword(p);
   p->start(GetRclone(), args, QIODevice::ReadOnly);
 #else

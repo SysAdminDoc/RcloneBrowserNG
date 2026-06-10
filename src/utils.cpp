@@ -61,6 +61,19 @@ unsigned int compareVersion(std::string version1, std::string version2) {
   return 0;
 }
 
+quint16 GetRcMountPort(const QString &folder) {
+  return static_cast<quint16>(19000 + (qHash(folder) % 10000));
+}
+
+QString MakeRcPassword() {
+  // 128 bits of randomness, hex-encoded; enough to make the loopback rc
+  // endpoint unguessable so the unauthenticated-rc CVEs can't be reached
+  quint64 a = QRandomGenerator::system()->generate64();
+  quint64 b = QRandomGenerator::system()->generate64();
+  return QString::number(a, 16).rightJustified(16, '0') +
+         QString::number(b, 16).rightJustified(16, '0');
+}
+
 static QString GetIniFilename() {
 #ifdef Q_OS_MACOS
   QFileInfo applicationPath(qApp->applicationFilePath());
