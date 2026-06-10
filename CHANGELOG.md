@@ -16,6 +16,7 @@
 -   FIXED: "Dry run" followed by a validation error then "Run" silently ran the job as a dry run (sticky flag)
 -   FIXED: A player command that fails to start now stops the rclone stream and reports it (previously undetectable — rclone kept piping into a dead process)
 -   FIXED: Stray empty arguments passed to rclone when extra options contained multiple spaces; blank `--exclude` patterns from empty lines in the Export dialog
+-   FIXED: "Drive shared with me" checkbox is now per-tab — two open Google Drive tabs with different Shared states no longer race each other through a global setting
 -   FIXED: Transfer mode (Copy/Move/Sync) was never remembered between transfers (radio buttons missing from the settings writer)
 -   FIXED: Clearing a multi-line option (e.g. exclude list) did not remove the previously saved value
 -   FIXED: Long-running transfers, streams and mounts no longer grow the in-memory log unbounded (capped at 10k lines, old lines scroll away instead of the whole log being wiped)

@@ -52,6 +52,7 @@ public:
   bool isLoading(const QModelIndex &index) const;
   void refresh(const QModelIndex &index);
   void rename(const QModelIndex &index, const QString &name);
+  void setDriveShared(bool shared) { mDriveShared = shared; }
   bool isTopLevel(const QModelIndex &index) const;
   bool isFolder(const QModelIndex &index) const;
 
@@ -100,6 +101,7 @@ private:
 
   int mSortColumn = 0;
   Qt::SortOrder mSortOrder = Qt::AscendingOrder;
+  bool mDriveShared = false;
 
   Item *get(const QModelIndex &index) const;
   void load(const QPersistentModelIndex &parentIndex, Item *parent);

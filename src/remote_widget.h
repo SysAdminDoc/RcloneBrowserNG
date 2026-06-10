@@ -19,6 +19,8 @@ signals:
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
 
+  QStringList getDriveSharedArgs() const;
+
 private:
   Ui::RemoteWidget ui;
 };
