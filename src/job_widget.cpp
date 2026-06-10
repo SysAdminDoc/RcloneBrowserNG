@@ -1,6 +1,22 @@
 #include "job_widget.h"
 #include "utils.h"
 
+namespace {
+QString getNiceSize(quint64 size) {
+  static const char prefix[] = "KMGTPE";
+  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
+    quint64 base = quint64(1) << ((i + 1) * 10);
+    if (size >= base) {
+      double value = double(size) / double(base);
+      return QString("%1 %2")
+          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
+          .arg(QChar(prefix[i]));
+    }
+  }
+  return QString("%1 B").arg(size);
+}
+} // namespace
+
 JobWidget::JobWidget(QProcess *process, const QString &info,
                      const QStringList &args, const QString &source,
                      const QString &dest, QWidget *parent)
@@ -69,182 +85,149 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   });
 
   QObject::connect(mProcess, &QProcess::readyRead, this, [=]() {
-    // Pre-1.42: "Transferred:    100 Bytes (50 Bytes/sec)"
-    static const QRegularExpression rxSize(
-        R"(^Transferred:\s+(\S+ \S+) \(([^)]+)\)$)");
-    // 1.43+: "Transferred:   1.234G / 5.678 GBytes, 22%, 1.234 MBytes/s, ETA 1h2m3s"
-    // 1.56+: "Transferred:   1.234 GiB / 5.678 GiB, 22%, 1.234 MiB/s, ETA 1h2m3s"
-    static const QRegularExpression rxSize2(
-        R"(^Transferred:\s+([\d.]+\s*\S*)\s+\/\s+([\d.]+\s*\S+),\s+(\S+),\s+([\d.]+\s*\S+),\s+ETA\s+(\S+)$)");
-    static const QRegularExpression rxErrors(R"(^Errors:\s+(\d+))");
-    static const QRegularExpression rxChecks(R"(^Checks:\s+(\S+)$)");
-    static const QRegularExpression rxChecks2(
-        R"(^Checks:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
-    static const QRegularExpression rxTransferred(R"(^Transferred:\s+(\S+)$)");
-    static const QRegularExpression rxTransferred2(
-        R"(^Transferred:\s+(\S+) \/ (\S+), ([0-9%-]+)$)");
-    static const QRegularExpression rxTime(R"(^Elapsed time:\s+(\S+)$)");
-    // Pre-1.38: "*filename:   50% done.(ETA: 1h2m3s)"
-    static const QRegularExpression rxProgress(
-        R"(^\*([^:]+):\s*([^%]+)% done.+(ETA: [^)]+)$)");
-    // 1.39+: "* filename:  50% /1.234GiB, 1.234MiB/s, 1h2m3s"
-    static const QRegularExpression rxProgress2(
-        R"(\*([^:]+):\s*([^%]+)% \/\S+, \S+\/s, (\S+)$)");
-
     while (mProcess->canReadLine()) {
-      QString line = mProcess->readLine().trimmed();
-      ui.output->appendPlainText(line);
+      QByteArray raw = mProcess->readLine().trimmed();
+      if (raw.isEmpty())
+        continue;
 
-      if (line.isEmpty()) {
-        for (auto it = mActive.begin(), eit = mActive.end(); it != eit;
-             /* empty */) {
-          auto label = it.value();
-          if (mUpdated.contains(label)) {
-            ++it;
-          } else {
-            it = mActive.erase(it);
-            ui.progress->removeWidget(label->buddy());
-            ui.progress->removeWidget(label);
-            delete label->buddy();
-            delete label;
-          }
-        }
-        mUpdated.clear();
+      QJsonDocument doc = QJsonDocument::fromJson(raw);
+      if (!doc.isObject()) {
+        ui.output->appendPlainText(QString::fromUtf8(raw));
         continue;
       }
 
-      QRegularExpressionMatch m;
+      QJsonObject obj = doc.object();
+      QString msg = obj.value("msg").toString();
+      QString level = obj.value("level").toString();
 
-      m = rxSize.match(line);
-      if (m.hasMatch()) {
-        ui.size->setText(m.captured(1));
-        ui.bandwidth->setText(m.captured(2));
+      if (!msg.isEmpty())
+        ui.output->appendPlainText(msg);
+
+      if (!obj.contains("stats"))
         continue;
+
+      QJsonObject stats = obj.value("stats").toObject();
+
+      // overall transfer progress
+      double bytes = stats.value("bytes").toDouble();
+      double totalBytes = stats.value("totalBytes").toDouble();
+      double speed = stats.value("speed").toDouble();
+      int pct = totalBytes > 0
+                    ? static_cast<int>(bytes / totalBytes * 100)
+                    : 0;
+      ui.size->setText(QString("%1, %2%")
+                           .arg(getNiceSize(static_cast<quint64>(bytes)))
+                           .arg(pct));
+      ui.totalsize->setText(
+          getNiceSize(static_cast<quint64>(totalBytes)));
+      ui.bandwidth->setText(
+          getNiceSize(static_cast<quint64>(speed)) + "/s");
+
+      double eta = stats.value("eta").toDouble();
+      if (eta > 0) {
+        int h = static_cast<int>(eta) / 3600;
+        int m = (static_cast<int>(eta) % 3600) / 60;
+        int s = static_cast<int>(eta) % 60;
+        if (h > 0)
+          ui.eta->setText(
+              QString("%1h%2m%3s").arg(h).arg(m).arg(s));
+        else if (m > 0)
+          ui.eta->setText(QString("%1m%2s").arg(m).arg(s));
+        else
+          ui.eta->setText(QString("%1s").arg(s));
+      } else {
+        ui.eta->setText("-");
       }
 
-      m = rxSize2.match(line);
-      if (m.hasMatch()) {
-        ui.size->setText(m.captured(1) + ", " + m.captured(3));
-        ui.bandwidth->setText(m.captured(4));
-        ui.eta->setText(m.captured(5));
-        ui.totalsize->setText(m.captured(2));
-        continue;
+      int errors = stats.value("errors").toInt();
+      ui.errors->setText(QString::number(errors));
+
+      int checks = stats.value("checks").toInt();
+      int totalChecks = stats.value("totalChecks").toInt();
+      if (totalChecks > 0)
+        ui.checks->setText(
+            QString("%1 / %2").arg(checks).arg(totalChecks));
+      else if (checks > 0)
+        ui.checks->setText(QString::number(checks));
+
+      int transfers = stats.value("transfers").toInt();
+      int totalTransfers = stats.value("totalTransfers").toInt();
+      if (totalTransfers > 0)
+        ui.transferred->setText(
+            QString("%1 / %2").arg(transfers).arg(totalTransfers));
+      else if (transfers > 0)
+        ui.transferred->setText(QString::number(transfers));
+
+      double elapsed = stats.value("elapsedTime").toDouble();
+      if (elapsed > 0) {
+        int eh = static_cast<int>(elapsed) / 3600;
+        int em = (static_cast<int>(elapsed) % 3600) / 60;
+        int es = static_cast<int>(elapsed) % 60;
+        if (eh > 0)
+          ui.elapsed->setText(
+              QString("%1h%2m%3s").arg(eh).arg(em).arg(es));
+        else if (em > 0)
+          ui.elapsed->setText(QString("%1m%2s").arg(em).arg(es));
+        else
+          ui.elapsed->setText(QString("%1s").arg(es));
       }
 
-      m = rxErrors.match(line);
-      if (m.hasMatch()) {
-        ui.errors->setText(m.captured(1));
-        continue;
-      }
-
-      m = rxChecks.match(line);
-      if (m.hasMatch()) {
-        ui.checks->setText(m.captured(1));
-        continue;
-      }
-
-      m = rxChecks2.match(line);
-      if (m.hasMatch()) {
-        ui.checks->setText(m.captured(1) + " / " + m.captured(2) + ", " +
-                           m.captured(3));
-        continue;
-      }
-
-      m = rxTransferred.match(line);
-      if (m.hasMatch()) {
-        ui.transferred->setText(m.captured(1));
-        continue;
-      }
-
-      m = rxTransferred2.match(line);
-      if (m.hasMatch()) {
-        ui.transferred->setText(m.captured(1) + " / " +
-                                m.captured(2) + ", " +
-                                m.captured(3));
-        continue;
-      }
-
-      m = rxTime.match(line);
-      if (m.hasMatch()) {
-        ui.elapsed->setText(m.captured(1));
-        continue;
-      }
-
-      m = rxProgress.match(line);
-      if (m.hasMatch()) {
-        QString name = m.captured(1).trimmed();
+      // per-file progress from the "transferring" array
+      QJsonArray xferring = stats.value("transferring").toArray();
+      QSet<QLabel *> updated;
+      for (const QJsonValue &val : xferring) {
+        QJsonObject f = val.toObject();
+        QString name = f.value("name").toString();
+        if (name.isEmpty())
+          continue;
 
         auto it = mActive.find(name);
-
         QLabel *label;
         QProgressBar *bar;
         if (it == mActive.end()) {
           label = new QLabel();
-          label->setText(name);
+          QString display = name.length() > 47
+                                ? name.left(25) + "..." + name.right(19)
+                                : name;
+          label->setText(display);
 
           bar = new QProgressBar();
           bar->setMinimum(0);
           bar->setMaximum(100);
           bar->setTextVisible(true);
-
           label->setBuddy(bar);
 
           ui.progress->addRow(label, bar);
-
           mActive.insert(name, label);
         } else {
           label = it.value();
           bar = static_cast<QProgressBar *>(label->buddy());
         }
 
-        bar->setValue(m.captured(2).toInt());
-        bar->setToolTip(m.captured(3));
+        bar->setValue(f.value("percentage").toInt());
+        double fSpeed = f.value("speed").toDouble();
+        double fEta = f.value("eta").toDouble();
+        bar->setToolTip(
+            QString("File: %1\nSpeed: %2/s  ETA: %3s")
+                .arg(name,
+                     getNiceSize(static_cast<quint64>(fSpeed)),
+                     QString::number(static_cast<int>(fEta))));
 
-        mUpdated.insert(label);
-        continue;
+        updated.insert(label);
       }
 
-      m = rxProgress2.match(line);
-      if (m.hasMatch()) {
-        QString name = m.captured(1).trimmed();
-
-        auto it = mActive.find(name);
-
-        QLabel *label;
-        QProgressBar *bar;
-        if (it == mActive.end()) {
-          label = new QLabel();
-
-          QString nameTrimmed;
-
-          if (name.length() > 47) {
-            nameTrimmed = name.left(25) + "..." + name.right(19);
-          } else {
-            nameTrimmed = name;
-          }
-
-          label->setText(nameTrimmed);
-
-          bar = new QProgressBar();
-          bar->setMinimum(0);
-          bar->setMaximum(100);
-          bar->setTextVisible(true);
-
-          label->setBuddy(bar);
-
-          ui.progress->addRow(label, bar);
-
-          mActive.insert(name, label);
+      // remove progress bars for files no longer in the transferring list
+      for (auto it = mActive.begin(); it != mActive.end(); /* empty */) {
+        auto label = it.value();
+        if (updated.contains(label)) {
+          ++it;
         } else {
-          label = it.value();
-          bar = static_cast<QProgressBar *>(label->buddy());
+          it = mActive.erase(it);
+          ui.progress->removeWidget(label->buddy());
+          ui.progress->removeWidget(label);
+          delete label->buddy();
+          delete label;
         }
-
-        bar->setValue(m.captured(2).toInt());
-        QString fullMatch = m.captured(0);
-        bar->setToolTip("File name: " + name + "\nFile stats" + fullMatch.mid(fullMatch.indexOf(':')));
-
-        mUpdated.insert(label);
       }
     }
   });

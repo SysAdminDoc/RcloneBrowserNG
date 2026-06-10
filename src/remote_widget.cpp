@@ -303,6 +303,7 @@ QString root = isLocal ? "/" : QString();
       args << GetDriveSharedWithMe();
       args << GetDefaultRcloneOptionsList();
       args << "--verbose";
+      args << "--use-json-log";
       args << "--stats" << "1s";
       args << remote + ":" + path;
 

@@ -29,5 +29,4 @@ private:
 
   QStringList mArgs;
   QHash<QString, QLabel *> mActive;
-  QSet<QLabel *> mUpdated;
 };
