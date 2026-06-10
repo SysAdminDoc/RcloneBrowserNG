@@ -744,31 +744,53 @@ void MainWindow::rcloneConfig() {
 #else
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   QString terminal = env.value("TERMINAL");
+  QString execFlag = "-e";
+
+  struct TerminalDef {
+    const char *name;
+    const char *flag;
+  };
+  static const TerminalDef terminals[] = {
+      {"gnome-terminal", "--"},
+      {"konsole", "-e"},
+      {"xfce4-terminal", "-e"},
+      {"mate-terminal", "-e"},
+      {"tilix", "-e"},
+      {"kitty", "--"},
+      {"alacritty", "-e"},
+      {"foot", "--"},
+      {"wezterm", "start"},
+      {"xterm", "-e"},
+      {"x-terminal-emulator", "-e"},
+      {"lxterminal", "-e"},
+  };
+
   if (terminal.isEmpty()) {
-    terminal = QStandardPaths::findExecutable("gnome-terminal");
-    if (terminal.isEmpty()) {
-      terminal = QStandardPaths::findExecutable("xfce4-terminal");
-      if (terminal.isEmpty()) {
-        terminal = QStandardPaths::findExecutable("xterm");
-        if (terminal.isEmpty()) {
-          terminal = QStandardPaths::findExecutable("x-terminal-emulator");
-          if (terminal.isEmpty()) {
-            terminal = QStandardPaths::findExecutable("konsole");
-            if (terminal.isEmpty()) {
-              QMessageBox::critical(this, "Error",
-                                    "Not sure how to launch terminal!\n"
-                                    "Please set path to terminal executable in "
-                                    "$TERMINAL environment variable.",
-                                    QMessageBox::Ok);
-              return;
-            }
-          }
-        }
+    for (const auto &t : terminals) {
+      terminal = QStandardPaths::findExecutable(t.name);
+      if (!terminal.isEmpty()) {
+        execFlag = t.flag;
+        break;
       }
+    }
+    if (terminal.isEmpty()) {
+      QMessageBox::critical(this, "Error",
+                            "Not sure how to launch terminal!\n"
+                            "Please set path to terminal executable in "
+                            "$TERMINAL environment variable.",
+                            QMessageBox::Ok);
+      return;
     }
   }
 
-  p->setArguments(QStringList() << "-e" << terminalRcloneCmd);
+  QStringList termArgs;
+  termArgs << execFlag;
+  if (!GetRcloneConf().isEmpty()) {
+    termArgs << GetRclone() << "config" << "--config" << GetRcloneConf().at(1);
+  } else {
+    termArgs << GetRclone() << "config";
+  }
+  p->setArguments(termArgs);
   p->setProgram(terminal);
 #endif
 
