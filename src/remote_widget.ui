@@ -38,7 +38,7 @@
        </property>
        <item>
         <widget class="QWidget" name="buttons" native="true">
-         <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <layout class="QGridLayout" name="buttonsGrid">
           <property name="leftMargin">
            <number>0</number>
           </property>
@@ -51,7 +51,10 @@
           <property name="bottomMargin">
            <number>0</number>
           </property>
-          <item>
+          <property name="verticalSpacing">
+           <number>2</number>
+          </property>
+          <item row="0" column="0">
            <widget class="QToolButton" name="buttonRefresh">
             <property name="text">
              <string>&amp;Refresh</string>
@@ -61,7 +64,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="1">
            <widget class="QToolButton" name="buttonMkdir">
             <property name="text">
              <string>&amp;New Folder</string>
@@ -71,7 +74,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="2">
            <widget class="QToolButton" name="buttonRename">
             <property name="text">
              <string>R&amp;ename</string>
@@ -81,7 +84,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="3">
            <widget class="QToolButton" name="buttonMove">
             <property name="text">
              <string>M&amp;ove</string>
@@ -91,7 +94,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="4">
            <widget class="QToolButton" name="buttonPurge">
             <property name="text">
              <string>De&amp;lete</string>
@@ -101,7 +104,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="5">
            <widget class="QToolButton" name="buttonMount">
             <property name="text">
              <string>&amp;Mount</string>
@@ -111,7 +114,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="6">
            <widget class="QToolButton" name="buttonStream">
             <property name="text">
              <string>&amp;Stream</string>
@@ -121,7 +124,20 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="7">
+           <spacer name="horizontalSpacerTop">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>10</width>
+              <height>10</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="0">
            <widget class="QToolButton" name="buttonUpload">
             <property name="text">
              <string>&amp;Upload...</string>
@@ -131,7 +147,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="1">
            <widget class="QToolButton" name="buttonDownload">
             <property name="text">
              <string>&amp;Download...</string>
@@ -141,7 +157,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="2">
            <widget class="QToolButton" name="buttonSize">
             <property name="text">
              <string>&amp;Get Size...</string>
@@ -151,7 +167,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="3">
            <widget class="QToolButton" name="buttonTree">
             <property name="text">
              <string>&amp;Tree</string>
@@ -161,7 +177,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="4">
            <widget class="QToolButton" name="buttonLink">
             <property name="text">
              <string>&amp;Link</string>
@@ -171,7 +187,7 @@
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="5">
            <widget class="QToolButton" name="buttonExport">
             <property name="text">
              <string>E&amp;xport...</string>
@@ -181,20 +197,7 @@
             </property>
            </widget>
           </item>
-          <item>
-           <spacer name="horizontalSpacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item>
+          <item row="1" column="7" alignment="Qt::AlignRight">
            <widget class="QCheckBox" name="checkBoxShared">
             <property name="toolTip">
              <string>Shared with Me (Google Drive)</string>
@@ -203,22 +206,6 @@
              <string>Shared</string>
             </property>
            </widget>
-          </item>
-          <item>
-           <spacer name="spacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Minimum</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>10</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
           </item>
          </layout>
         </widget>
@@ -383,6 +370,7 @@
   <tabstop>buttonRefresh</tabstop>
   <tabstop>buttonMkdir</tabstop>
   <tabstop>buttonRename</tabstop>
+  <tabstop>buttonMove</tabstop>
   <tabstop>buttonPurge</tabstop>
   <tabstop>buttonMount</tabstop>
   <tabstop>buttonStream</tabstop>
@@ -390,6 +378,9 @@
   <tabstop>buttonDownload</tabstop>
   <tabstop>buttonSize</tabstop>
   <tabstop>buttonTree</tabstop>
+  <tabstop>buttonLink</tabstop>
+  <tabstop>buttonExport</tabstop>
+  <tabstop>checkBoxShared</tabstop>
   <tabstop>path</tabstop>
   <tabstop>tree</tabstop>
  </tabstops>

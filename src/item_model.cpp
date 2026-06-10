@@ -16,14 +16,17 @@ static void advanceSpinner(QString &text) {
 }
 
 QString getNiceSize(quint64 size) {
-  static const char prefix[] = " KMGTPE";
+  static const char prefix[] = "KMGTPE";
   for (int i = sizeof(prefix) - 2; i >= 0; i--) {
-    quint64 base = quint64(1) << (i * 10);
-    if (size >= 10 * base) {
-      return QString("%1 %2").arg(size / base).arg(QChar(prefix[i])).trimmed();
+    quint64 base = quint64(1) << ((i + 1) * 10);
+    if (size >= base) {
+      double value = double(size) / double(base);
+      return QString("%1 %2")
+          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
+          .arg(QChar(prefix[i]));
     }
   }
-  return "0";
+  return QString("%1 B").arg(size);
 }
 } // namespace
 
@@ -255,7 +258,7 @@ QVariant ItemModel::data(const QModelIndex &index, int role) const {
 
   if (role == Qt::TextAlignmentRole) {
     if (index.column() == 1) {
-      return Qt::AlignRight + Qt::AlignVCenter;
+      return int(Qt::AlignRight | Qt::AlignVCenter);
     }
     return QVariant();
   }
@@ -377,6 +380,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   auto lsl = new QProcess(this);
 
   auto cache = new QVector<Item *>();
+  auto loadErrors = new QStringList();
 
   Item *loading = new Item();
   loading->state = Item::Special;
@@ -391,8 +395,21 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
     emit dataChanged(loadingIndex, loadingIndex, QVector<int>{Qt::DisplayRole});
   });
 
-  auto rcloneFinished = [=]() {
-    sender()->deleteLater();
+  auto rcloneFinished = [=](int code) {
+    auto process = qobject_cast<QProcess *>(sender());
+    if (process) {
+      if (code != 0) {
+        QString error =
+            QString::fromUtf8(process->readAllStandardError()).trimmed();
+        if (!error.isEmpty()) {
+          loadErrors->append(error);
+        } else {
+          loadErrors->append(
+              QString("rclone exited with status %1").arg(code));
+        }
+      }
+      process->deleteLater();
+    }
 
     parent->state =
         parent->state == Item::Loading1 ? Item::Loading2 : Item::Ready;
@@ -402,6 +419,11 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
 
     timer->stop();
     timer->deleteLater();
+
+    if (!loadErrors->isEmpty()) {
+      emit loadFailed(parent->path.path(), loadErrors->join('\n'));
+    }
+    delete loadErrors;
 
     if (parent->isDeleted) {
       qDeleteAll(*cache);
