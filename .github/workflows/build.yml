@@ -17,7 +17,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ qt6-base-dev libgl1-mesa-dev
+          sudo apt-get install -y appstream cmake desktop-file-utils g++ qt6-base-dev libgl1-mesa-dev
+      - name: Validate desktop metadata
+        run: |
+          desktop-file-validate assets/rclone-browser.desktop
+          appstreamcli validate --no-net assets/rclone-browser.appdata.xml
       - name: Build
         run: |
           mkdir build && cd build

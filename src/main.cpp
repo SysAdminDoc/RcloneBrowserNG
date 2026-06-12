@@ -19,9 +19,10 @@ int main(int argc, char *argv[]) {
 
   QApplication app(argc, argv);
 
-  app.setApplicationDisplayName("Rclone Browser");
+  app.setApplicationDisplayName("Rclone Browser NG");
   app.setApplicationName("rclone-browser");
   app.setOrganizationName("rclone-browser");
+  QGuiApplication::setDesktopFileName("rclone-browser");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
 
 // initialize SSL libraries
@@ -83,7 +84,7 @@ int main(int argc, char *argv[]) {
     settings->setValue("Settings/iconSize", "medium");
   };
 
-  // enforce one instance of Rclone Browser per user
+  // enforce one instance of Rclone Browser NG per user
   QString tmpDir;
   QString applicationNameBase;
   QFileInfo applicationPath;
@@ -210,7 +211,7 @@ int main(int argc, char *argv[]) {
     // if already running display warning and quit
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setText("Rclone Browser is already running."
+    msgBox.setText("Rclone Browser NG is already running."
                    "\r\n\nOnly one instance is allowed.");
     msgBox.exec();
     return static_cast<int>(

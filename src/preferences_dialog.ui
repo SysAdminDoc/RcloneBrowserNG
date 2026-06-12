@@ -300,10 +300,10 @@
           <item>
            <widget class="QCheckBox" name="checkRcloneBrowserUpdates">
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;check daily for Rclone Browser availability&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;check daily for Rclone Browser NG availability&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>Check for Rclone Browser updates</string>
+             <string>Check for Rclone Browser NG updates</string>
             </property>
            </widget>
           </item>
@@ -671,7 +671,7 @@
        <item>
         <widget class="QLabel" name="info_4">
          <property name="text">
-          <string>For proxy settings changes to take effect Rclone Browser has to be restarted.</string>
+          <string>For proxy settings changes to take effect Rclone Browser NG has to be restarted.</string>
          </property>
         </widget>
        </item>

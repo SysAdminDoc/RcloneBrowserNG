@@ -55,9 +55,9 @@ MainWindow::MainWindow() {
   ui.setupUi(this);
 
   if (IsPortableMode()) {
-    this->setWindowTitle("Rclone Browser - portable mode");
+    this->setWindowTitle("Rclone Browser NG - portable mode");
   } else {
-    this->setWindowTitle("Rclone Browser");
+    this->setWindowTitle("Rclone Browser NG");
   }
 
 #if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -199,7 +199,7 @@ MainWindow::MainWindow() {
 
   QObject::connect(ui.about, &QAction::triggered, this, [=]() {
     QMessageBox::about(
-        this, "Rclone Browser",
+        this, qApp->applicationDisplayName(),
         QString(
             R"(<h3>Rclone Browser NG, v)" RCLONE_BROWSER_VERSION "</h3>"
             R"(<p>GUI for <a href="https://rclone.org/">rclone</a></p>)"
@@ -595,7 +595,7 @@ void MainWindow::rcloneGetVersion() {
           // warn (non-blocking) when the detected rclone is old enough to be
           // affected by the unauthenticated remote-control advisories
           // (CVE-2026-41176 fixed in 1.73.5, CVE-2026-49980 in 1.74.3) that
-          // Rclone Browser's Windows mount feature relies on
+          // Rclone Browser NG's Windows mount feature relies on
           if (!rclone_version_no.isEmpty() &&
               compareVersion(rclone_version_no.toStdString(), "1.74.3") == 2) {
             mStatusMessage->setText(mStatusMessage->text() +
@@ -612,7 +612,7 @@ void MainWindow::rcloneGetVersion() {
                       "You are running rclone %1.\n\nVersions before 1.74.3 "
                       "are affected by security advisories in rclone's "
                       "remote-control interface (CVE-2026-41176, "
-                      "CVE-2026-49980), which Rclone Browser uses for Windows "
+                      "CVE-2026-49980), which Rclone Browser NG uses for Windows "
                       "mounts.\n\nPlease update rclone to 1.74.3 or newer.")
                       .arg(rclone_version_no));
             }
@@ -980,12 +980,12 @@ bool MainWindow::canClose() {
   ui.tabs->setCurrentIndex(1);
   showNormal();
 
-  int button =
-      QMessageBox::question(this, "Rclone Browser",
-                            QString("There are %1 job(s) running.\n"
-                                    "Do you want to stop them and quit?")
-                                .arg(mJobCount),
-                            QMessageBox::Yes | QMessageBox::No);
+  int button = QMessageBox::question(
+      this, qApp->applicationDisplayName(),
+      QString("There are %1 job(s) running.\n"
+              "Do you want to stop them and quit?")
+          .arg(mJobCount),
+      QMessageBox::Yes | QMessageBox::No);
 
   if (!wasVisible) {
     hide();
@@ -1259,7 +1259,7 @@ void MainWindow::checkBrowserUpdate() {
       QMessageBox::information(
           this, "",
           QString(
-              R"(<p>New Rclone Browser version is available</p>)"
+              R"(<p>New Rclone Browser NG version is available</p>)"
               R"(<p>You have: v)" RCLONE_BROWSER_VERSION
               R"(<br />New version: v%1</p>)"
               R"(<p>Visit <a href="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest">releases</a> page to download</p>)")
