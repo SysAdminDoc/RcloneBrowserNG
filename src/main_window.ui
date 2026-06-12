@@ -72,6 +72,22 @@
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="newRemote">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;create a new remote using the providers supported by this rclone&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
+            <property name="text">
+             <string>&amp;New Remote...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="refresh">
             <property name="text">
              <string>Refresh</string>
