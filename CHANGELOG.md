@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   FIXED: Remote browser path state now preserves `lsjson` paths and special punctuation/trailing spaces instead of rebuilding every child path with `QDir::filePath`
 -   FIXED: Mount widgets now keep mounts alive by default and automatically remount after unexpected rclone exits with capped backoff
 -   FIXED: Windows unmount now checks the mount's rc `vfs/queue`/`vfs/stats` state and warns before unmounting with pending VFS uploads
 -   FIXED: Move now uses `rclone moveto` with an explicit destination path so moving a folder preserves the folder wrapper instead of moving only its contents

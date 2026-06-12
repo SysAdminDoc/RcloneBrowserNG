@@ -53,4 +53,12 @@ if(BUILD_TESTING)
   target_include_directories(vfs_upload_state_test PRIVATE src)
   target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core)
   add_test(NAME vfs_upload_state_test COMMAND vfs_upload_state_test)
+
+  add_executable(remote_path_test
+    tests/remote_path_test.cpp
+    src/remote_path.cpp
+  )
+  target_include_directories(remote_path_test PRIVATE src)
+  target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core)
+  add_test(NAME remote_path_test COMMAND remote_path_test)
 endif()
