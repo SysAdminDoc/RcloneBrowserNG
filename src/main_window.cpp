@@ -12,6 +12,78 @@
 #include "osx_helper.h"
 #endif
 
+namespace {
+
+#if defined(Q_OS_WIN32)
+QStringList winFspDllCandidates() {
+  return QStringList()
+         << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
+         << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
+         << "C:/Windows/System32/winfsp-x64.dll";
+}
+
+QString findWinFspDll() {
+  for (const QString &path : winFspDllCandidates()) {
+    if (QFileInfo::exists(path)) {
+      return path;
+    }
+  }
+  return QString();
+}
+
+QString windowsFileVersion(const QString &path) {
+  const std::wstring nativePath = QDir::toNativeSeparators(path).toStdWString();
+  DWORD handle = 0;
+  const DWORD size = GetFileVersionInfoSizeW(nativePath.c_str(), &handle);
+  if (size == 0) {
+    return QString();
+  }
+
+  QByteArray data(static_cast<int>(size), Qt::Uninitialized);
+  if (!GetFileVersionInfoW(nativePath.c_str(), 0, size, data.data())) {
+    return QString();
+  }
+
+  VS_FIXEDFILEINFO *info = nullptr;
+  UINT infoSize = 0;
+  if (!VerQueryValueW(data.data(), L"\\", reinterpret_cast<LPVOID *>(&info),
+                      &infoSize) ||
+      !info || infoSize == 0 || info->dwSignature != 0xfeef04bd) {
+    return QString();
+  }
+
+  return QString("%1.%2.%3.%4")
+      .arg(HIWORD(info->dwFileVersionMS))
+      .arg(LOWORD(info->dwFileVersionMS))
+      .arg(HIWORD(info->dwFileVersionLS))
+      .arg(LOWORD(info->dwFileVersionLS));
+}
+#endif
+
+#if defined(Q_OS_MACOS)
+QString macFuseVersion() {
+  const QStringList plists = {
+      "/Library/Filesystems/macfuse.fs/Contents/Info.plist",
+      "/Library/Filesystems/osxfuse.fs/Contents/Info.plist",
+  };
+
+  for (const QString &path : plists) {
+    if (!QFileInfo::exists(path)) {
+      continue;
+    }
+    QSettings plist(path, QSettings::NativeFormat);
+    const QString version =
+        plist.value("CFBundleShortVersionString").toString().trimmed();
+    if (!version.isEmpty()) {
+      return version;
+    }
+  }
+  return QString();
+}
+#endif
+
+} // namespace
+
 // Fusion-based dark theme used on Windows, Linux and older macOS.
 // Includes Disabled and PlaceholderText roles so secondary states
 // stay readable in dark mode.
@@ -1356,12 +1428,8 @@ void MainWindow::checkBrowserUpdate() {
 
 void MainWindow::addMount(const QString &remote, const QString &folder) {
 #if defined(Q_OS_WIN32)
-  QDir winfspDir(
-      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
-  bool hasWinFsp =
-      QFileInfo::exists("C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll") ||
-      QFileInfo::exists("C:/Program Files/WinFsp/bin/winfsp-x64.dll");
-  if (!hasWinFsp) {
+  const QString winFspDll = findWinFspDll();
+  if (winFspDll.isEmpty()) {
     QMessageBox box(QMessageBox::Warning, "WinFsp required",
                     "Mounting requires WinFsp, which is not installed.\n\n"
                     "Install it with:\n  winget install WinFsp.WinFsp\n\n"
@@ -1372,6 +1440,39 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
       QDesktopServices::openUrl(QUrl("https://winfsp.dev/rel/"));
     }
     return;
+  }
+
+  const QString winFspVersion = windowsFileVersion(winFspDll);
+  if (!winFspVersion.isEmpty() &&
+      compareVersion(winFspVersion.toStdString(), "2.1.25156") != 1) {
+    auto settings = GetSettings();
+    if (settings->value("Settings/winFspWarnedVersion").toString() !=
+        winFspVersion) {
+      settings->setValue("Settings/winFspWarnedVersion", winFspVersion);
+      QMessageBox::warning(
+          this, "WinFsp update recommended",
+          QString("Detected WinFsp %1.\n\nWinFsp 2.1.25156 and older are "
+                  "affected by CVE-2026-3006, a local privilege escalation in "
+                  "the kernel driver.\n\nUpdate to WinFsp 2026 Beta1 or newer "
+                  "before using mounts on untrusted systems.")
+              .arg(winFspVersion));
+    }
+  }
+#elif defined(Q_OS_MACOS)
+  const QString fuseVersion = macFuseVersion();
+  if (!fuseVersion.isEmpty() &&
+      compareVersion(fuseVersion.toStdString(), "5.2") == 2) {
+    auto settings = GetSettings();
+    if (settings->value("Settings/macFuseWarnedVersion").toString() !=
+        fuseVersion) {
+      settings->setValue("Settings/macFuseWarnedVersion", fuseVersion);
+      QMessageBox::warning(
+          this, "macFUSE update recommended",
+          QString("Detected macFUSE %1.\n\nmacFUSE versions before 5.2 have "
+                  "known FSKit mount issues on current macOS releases. Update "
+                  "macFUSE before relying on long-running mounts.")
+              .arg(fuseVersion));
+    }
   }
 #endif
 
