@@ -46,6 +46,9 @@ private:
   void closeEvent(QCloseEvent *ev) override;
   bool eventFilter(QObject *obj, QEvent *event) override;
   bool getConfigPassword(QProcess *p);
+  bool confirmConfigMutation(const QString &action);
+  QDateTime rcloneConfigLastModified() const;
+  void noteConfigReloadIfChanged(const QDateTime &before);
 
   void addEmptyJobsMessage();
   void checkRcloneUpdate(const QString &currentVersion);
