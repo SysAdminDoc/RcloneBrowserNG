@@ -9,6 +9,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     layout()->setContentsMargins(12, 12, 12, 12);
   }
   UiPolish::SetWindowDefaults(this, QSize(760, 560));
+  ui.tabWidget->setDocumentMode(true);
   if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
     UiPolish::SetPrimaryButton(ok);
   }
@@ -23,6 +24,27 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   UiPolish::SetMuted(ui.info);
   UiPolish::SetMuted(ui.darkMode_info);
   UiPolish::SetMuted(ui.info_4);
+  UiPolish::SetPathField(ui.rclone, "rclone executable path");
+  UiPolish::SetPathField(ui.rcloneConf, "rclone configuration path");
+  UiPolish::SetPathField(ui.stream, "Stream player command");
+  UiPolish::SetPathField(ui.mount, "Mount options");
+  UiPolish::SetPathField(ui.defaultDownloadDir, "Default download folder");
+  UiPolish::SetPathField(ui.defaultUploadDir, "Default upload folder");
+  UiPolish::SetPathField(ui.defaultDownloadOptions,
+                         "Default download options");
+  UiPolish::SetPathField(ui.defaultUploadOptions, "Default upload options");
+  UiPolish::SetPathField(ui.defaultRcloneOptions, "Default rclone options");
+  UiPolish::SetPathField(ui.http_proxy, "HTTP proxy");
+  UiPolish::SetPathField(ui.https_proxy, "HTTPS proxy");
+  UiPolish::SetPathField(ui.no_proxy, "No proxy list");
+  const QList<QLineEdit *> editableFields = {
+      ui.rclone, ui.rcloneConf, ui.stream, ui.mount, ui.defaultDownloadDir,
+      ui.defaultUploadDir, ui.defaultDownloadOptions,
+      ui.defaultUploadOptions, ui.defaultRcloneOptions, ui.http_proxy,
+      ui.https_proxy, ui.no_proxy};
+  for (QLineEdit *field : editableFields) {
+    field->setClearButtonEnabled(true);
+  }
 
   ui.rclone->setPlaceholderText("Use PATH lookup when empty");
   ui.rcloneConf->setPlaceholderText("Use rclone's default config path");
@@ -199,6 +221,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.info_2->setTextFormat(Qt::RichText);
   ui.info_2->setTextInteractionFlags(Qt::TextBrowserInteraction);
   ui.info_2->setOpenExternalLinks(true);
+  UiPolish::SetMuted(ui.info_2);
 
   if (settings->value("Settings/useProxy").toBool()) {
     ui.useProxy->setChecked(true);
@@ -212,6 +235,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   auto updateProxyFields = [=]() {
     const bool manual = ui.useProxy->isChecked();
     ui.groupBox_8->setEnabled(manual);
+    ui.groupBox_8->setToolTip(
+        manual ? QString()
+               : "Select manual proxy configuration to edit these fields.");
   };
   QObject::connect(ui.useProxy, &QRadioButton::toggled, this,
                    [=](bool) { updateProxyFields(); });

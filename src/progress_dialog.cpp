@@ -6,6 +6,10 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
                                QWidget *parent, bool close, bool trim)
     : QDialog(parent) {
   ui.setupUi(this);
+  if (layout()) {
+    layout()->setContentsMargins(12, 12, 12, 12);
+    layout()->setSpacing(8);
+  }
   UiPolish::SetWindowDefaults(this, QSize(620, 180));
   resize(width(), 0);
 
@@ -15,11 +19,11 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
   ui.labelInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
   UiPolish::SetMuted(ui.labelOperation);
   ui.buttonShowOutput->setStyleSheet(QString());
+  UiPolish::SetDisclosureButton(ui.buttonShowOutput, "Show command output");
 
   UiPolish::SetOutputView(ui.output);
   ui.output->setReadOnly(true);
   ui.output->setVisible(false);
-  ui.buttonShowOutput->setAccessibleName("Show command output");
 
   QObject::connect(ui.buttonBox, &QDialogButtonBox::rejected, this,
                    &QDialog::reject);

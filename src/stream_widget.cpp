@@ -18,6 +18,10 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
   ui.cancel->setStyleSheet(QString());
   UiPolish::SetCard(this);
   UiPolish::SetToolbarSurface(ui.widget);
+  UiPolish::SetDisclosureButton(ui.showDetails, "Show stream details");
+  UiPolish::SetDisclosureButton(ui.showOutput, "Show stream output");
+  UiPolish::SetPathField(ui.remote, "Streaming remote file");
+  UiPolish::SetPathField(ui.stream, "Player command");
 
   ui.remote->setText(remote);
   ui.remote->setToolTip(remote);
@@ -91,7 +95,6 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                    });
 
   UiPolish::SetStatus(ui.showDetails, "running", "Streaming");
-  ui.showOutput->setAccessibleName("Show stream output");
 }
 
 StreamWidget::~StreamWidget() {}

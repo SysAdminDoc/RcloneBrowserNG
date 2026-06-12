@@ -23,6 +23,10 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
   ui.cancel->setStyleSheet(QString());
   UiPolish::SetCard(this);
   UiPolish::SetToolbarSurface(ui.widget);
+  UiPolish::SetDisclosureButton(ui.showDetails, "Show mount details");
+  UiPolish::SetDisclosureButton(ui.showOutput, "Show mount output");
+  UiPolish::SetPathField(ui.remote, "Mounted remote");
+  UiPolish::SetPathField(ui.folder, "Local mount point");
 
   ui.remote->setText(remote);
   ui.remote->setToolTip(remote);
@@ -124,7 +128,6 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                    });
 
   UiPolish::SetStatus(ui.showDetails, "success", "Mounted");
-  ui.showOutput->setAccessibleName("Show mount output");
 }
 
 MountWidget::~MountWidget() {}

@@ -45,7 +45,23 @@ QMainWindow, QDialog {
 QWidget {
   color: %7;
   selection-background-color: %9;
-  selection-color: %17;
+  selection-color: %18;
+}
+QMenuBar {
+  background: %1;
+  border-bottom: 1px solid %5;
+  padding: 2px 4px;
+}
+QMenuBar::item {
+  background: transparent;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+QMenuBar::item:selected {
+  background: %11;
+}
+QMenuBar::item:pressed {
+  background: %3;
 }
 QTabWidget::pane {
   border: 1px solid %5;
@@ -73,6 +89,17 @@ QTabBar::tab:!selected {
 QTabBar::tab:!selected:hover {
   background: %11;
   color: %7;
+}
+QTabBar::close-button {
+  border-radius: 4px;
+  margin: 2px;
+}
+QTabBar::close-button:hover {
+  background: %17;
+}
+QScrollArea {
+  border: 0;
+  background: transparent;
 }
 QGroupBox {
   border: 1px solid %5;
@@ -104,13 +131,34 @@ QLineEdit:read-only {
   background: %3;
   color: %8;
 }
+QLineEdit[metricValue="true"] {
+  color: %7;
+  font-weight: 600;
+}
+QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled,
+QComboBox:disabled, QSpinBox:disabled {
+  background: %3;
+  color: %8;
+  border-color: %5;
+}
+QComboBox::drop-down, QSpinBox::up-button, QSpinBox::down-button {
+  border: 0;
+  width: 24px;
+}
+QCheckBox, QRadioButton {
+  spacing: 8px;
+  min-height: 24px;
+}
 QPushButton, QToolButton {
   background: %3;
   border: 1px solid %5;
   border-radius: 6px;
-  padding: 5px 10px;
-  min-height: 24px;
+  padding: 6px 12px;
+  min-height: 26px;
   color: %7;
+}
+QPushButton:focus, QToolButton:focus {
+  border-color: %9;
 }
 QPushButton:hover, QToolButton:hover {
   background: %11;
@@ -118,7 +166,7 @@ QPushButton:hover, QToolButton:hover {
 }
 QPushButton:pressed, QToolButton:pressed {
   background: %9;
-  color: %17;
+  color: %18;
 }
 QPushButton:disabled, QToolButton:disabled {
   color: %8;
@@ -128,7 +176,7 @@ QPushButton:disabled, QToolButton:disabled {
 QPushButton[primary="true"], QToolButton[primary="true"] {
   background: %9;
   border-color: %9;
-  color: %17;
+  color: %18;
   font-weight: 600;
 }
 QPushButton[primary="true"]:hover, QToolButton[primary="true"]:hover {
@@ -136,37 +184,59 @@ QPushButton[primary="true"]:hover, QToolButton[primary="true"]:hover {
   border-color: %10;
 }
 QPushButton[destructive="true"], QToolButton[destructive="true"] {
-  color: %15;
-  border-color: %15;
+  color: %16;
+  border-color: %16;
+  background: %17;
+}
+QPushButton[destructive="true"]:hover, QToolButton[destructive="true"]:hover {
   background: %16;
+  border-color: %16;
+  color: %18;
 }
 QToolButton[compact="true"] {
   padding: 4px;
-  min-width: 28px;
+  min-width: 30px;
+  min-height: 30px;
+}
+QToolButton[disclosure="true"] {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  min-height: 24px;
+  font-weight: 600;
+}
+QToolButton[disclosure="true"]:hover {
+  background: %11;
+  border-color: %5;
 }
 QToolButton[status="running"] {
   color: %9;
-  border: 0;
+  background: %11;
+  border-color: %9;
   font-weight: 600;
 }
 QToolButton[status="success"] {
   color: %12;
-  border: 0;
+  background: %13;
+  border-color: %12;
   font-weight: 600;
 }
 QToolButton[status="warning"] {
   color: %14;
-  border: 0;
+  background: %15;
+  border-color: %14;
   font-weight: 600;
 }
 QToolButton[status="error"] {
-  color: %15;
-  border: 0;
+  color: %16;
+  background: %17;
+  border-color: %16;
   font-weight: 600;
 }
 QToolButton[status="idle"] {
   color: %8;
-  border: 0;
+  background: transparent;
+  border-color: %5;
   font-weight: 600;
 }
 QWidget[polishCard="true"] {
@@ -180,9 +250,14 @@ QWidget[toolbarSurface="true"] {
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
 }
+QWidget[actionBar="true"] {
+  background: %3;
+  border: 1px solid %5;
+  border-radius: 8px;
+}
 QLabel[emptyState="true"] {
   color: %8;
-  padding: 18px;
+  padding: 24px;
 }
 QLabel[muted="true"] {
   color: %8;
@@ -193,14 +268,19 @@ QListView, QTreeView {
   border: 1px solid %5;
   border-radius: 6px;
   show-decoration-selected: 1;
+  outline: 0;
 }
 QListView::item, QTreeView::item {
-  min-height: 26px;
-  padding: 3px 6px;
+  min-height: 28px;
+  padding: 4px 8px;
 }
 QListView::item:selected, QTreeView::item:selected {
   background: %11;
   color: %7;
+}
+QListView::item:selected:active, QTreeView::item:selected:active {
+  background: %9;
+  color: %18;
 }
 QListView::item:hover, QTreeView::item:hover {
   background: %3;
@@ -212,6 +292,12 @@ QHeaderView::section {
   border-bottom: 1px solid %5;
   padding: 6px 8px;
   font-weight: 600;
+}
+QSplitter::handle {
+  background: %1;
+}
+QSplitter::handle:hover {
+  background: %11;
 }
 QProgressBar {
   border: 1px solid %5;
@@ -229,6 +315,9 @@ QStatusBar {
   color: %8;
   border-top: 1px solid %5;
 }
+QStatusBar::item {
+  border: 0;
+}
 QMenu {
   background: %2;
   border: 1px solid %5;
@@ -239,6 +328,45 @@ QMenu::item {
 QMenu::item:selected {
   background: %11;
 }
+QDialogButtonBox QPushButton {
+  min-width: 86px;
+}
+QScrollBar:vertical {
+  background: %2;
+  border: 0;
+  width: 12px;
+  margin: 0;
+}
+QScrollBar::handle:vertical {
+  background: %5;
+  border-radius: 4px;
+  min-height: 28px;
+  margin: 2px;
+}
+QScrollBar::handle:vertical:hover {
+  background: %6;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  height: 0;
+}
+QScrollBar:horizontal {
+  background: %2;
+  border: 0;
+  height: 12px;
+  margin: 0;
+}
+QScrollBar::handle:horizontal {
+  background: %5;
+  border-radius: 4px;
+  min-width: 28px;
+  margin: 2px;
+}
+QScrollBar::handle:horizontal:hover {
+  background: %6;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+  width: 0;
+}
 QToolTip {
   color: %7;
   background-color: %2;
@@ -248,8 +376,8 @@ QToolTip {
 )")
       .arg(t.window, t.surface, t.surfaceRaised, t.field, t.border,
            t.borderStrong, t.text, t.muted, t.accent, t.accentHover,
-           t.accentSoft, t.success, t.successSoft, t.warning, t.danger,
-           t.dangerSoft, t.selectionText);
+           t.accentSoft, t.success, t.successSoft, t.warning, t.warningSoft,
+           t.danger, t.dangerSoft, t.selectionText);
 }
 
 void setBoolProperty(QWidget *widget, const char *name, bool value) {
@@ -275,10 +403,25 @@ void Repolish(QWidget *widget) {
   widget->update();
 }
 
-void SetCard(QWidget *widget) { setBoolProperty(widget, "polishCard", true); }
+void SetCard(QWidget *widget) {
+  if (widget) {
+    widget->setAttribute(Qt::WA_StyledBackground, true);
+  }
+  setBoolProperty(widget, "polishCard", true);
+}
 
 void SetToolbarSurface(QWidget *widget) {
+  if (widget) {
+    widget->setAttribute(Qt::WA_StyledBackground, true);
+  }
   setBoolProperty(widget, "toolbarSurface", true);
+}
+
+void SetActionBar(QWidget *widget) {
+  if (widget) {
+    widget->setAttribute(Qt::WA_StyledBackground, true);
+  }
+  setBoolProperty(widget, "actionBar", true);
 }
 
 void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
@@ -286,6 +429,7 @@ void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
     return;
   }
   label->setProperty("emptyState", true);
+  label->setAccessibleName(title);
   label->setAlignment(Qt::AlignCenter);
   label->setWordWrap(true);
   label->setTextFormat(Qt::RichText);
@@ -300,6 +444,19 @@ void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
 
 void SetMuted(QWidget *widget) { setBoolProperty(widget, "muted", true); }
 
+void SetNavigationView(QAbstractItemView *view, const QString &accessibleName) {
+  if (!view) {
+    return;
+  }
+  if (!accessibleName.isEmpty()) {
+    view->setAccessibleName(accessibleName);
+  }
+  view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  view->setProperty("navigationView", true);
+  Repolish(view);
+}
+
 void SetCompactToolButton(QAbstractButton *button,
                           const QString &accessibleName,
                           const QString &toolTip) {
@@ -308,6 +465,18 @@ void SetCompactToolButton(QAbstractButton *button,
   }
   button->setProperty("compact", true);
   button->setAccessibleName(accessibleName);
+  button->setToolTip(toolTip.isEmpty() ? accessibleName : toolTip);
+  Repolish(button);
+}
+
+void SetDisclosureButton(QToolButton *button, const QString &accessibleName,
+                         const QString &toolTip) {
+  if (!button) {
+    return;
+  }
+  button->setProperty("disclosure", true);
+  button->setAccessibleName(accessibleName);
+  button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
   button->setToolTip(toolTip.isEmpty() ? accessibleName : toolTip);
   Repolish(button);
 }
@@ -335,7 +504,8 @@ void SetStatus(QAbstractButton *button, const QString &status,
   }
   button->setProperty("status", status);
   button->setText(text);
-  button->setAccessibleName(text);
+  button->setAccessibleName(QString("Status: %1").arg(text));
+  button->setToolTip(QString("%1 - show details").arg(text));
   Repolish(button);
 }
 
@@ -348,12 +518,27 @@ void SetPathField(QLineEdit *lineEdit, const QString &accessibleName) {
   lineEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 
-void SetOutputView(QPlainTextEdit *output) {
+void SetReadOnlyValue(QLineEdit *lineEdit, const QString &accessibleName) {
+  if (!lineEdit) {
+    return;
+  }
+  lineEdit->setProperty("metricValue", true);
+  lineEdit->setReadOnly(true);
+  if (!accessibleName.isEmpty()) {
+    lineEdit->setAccessibleName(accessibleName);
+  }
+  lineEdit->setPlaceholderText("-");
+  lineEdit->setMinimumWidth(qMax(lineEdit->minimumWidth(), 110));
+  Repolish(lineEdit);
+}
+
+void SetOutputView(QPlainTextEdit *output, const QString &accessibleName) {
   if (!output) {
     return;
   }
   output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-  output->setAccessibleName("Command output");
+  output->setAccessibleName(accessibleName.isEmpty() ? "Command output"
+                                                     : accessibleName);
 }
 
 void SetWindowDefaults(QWidget *widget, QSize minimumSize) {

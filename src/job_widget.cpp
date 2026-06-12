@@ -38,6 +38,18 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   ui.cancel->setStyleSheet(QString());
   UiPolish::SetCard(this);
   UiPolish::SetToolbarSurface(ui.widget);
+  UiPolish::SetDisclosureButton(ui.showDetails, "Show transfer details");
+  UiPolish::SetDisclosureButton(ui.showOutput, "Show transfer output");
+  UiPolish::SetPathField(ui.source, "Transfer source");
+  UiPolish::SetPathField(ui.dest, "Transfer destination");
+  UiPolish::SetReadOnlyValue(ui.size, "Transferred size");
+  UiPolish::SetReadOnlyValue(ui.elapsed, "Elapsed time");
+  UiPolish::SetReadOnlyValue(ui.bandwidth, "Current bandwidth");
+  UiPolish::SetReadOnlyValue(ui.transferred, "Transferred files");
+  UiPolish::SetReadOnlyValue(ui.totalsize, "Total size");
+  UiPolish::SetReadOnlyValue(ui.eta, "Remaining time");
+  UiPolish::SetReadOnlyValue(ui.errors, "Transfer errors");
+  UiPolish::SetReadOnlyValue(ui.checks, "Completed checks");
 
   mArgs.append(QDir::toNativeSeparators(GetRclone()));
   mArgs.append(GetRcloneConf());
@@ -294,7 +306,6 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                    });
 
   UiPolish::SetStatus(ui.showDetails, "running", "Running");
-  ui.showOutput->setAccessibleName("Show transfer output");
 }
 
 JobWidget::~JobWidget() {}
@@ -313,6 +324,7 @@ void JobWidget::setProgressOverflow(int hiddenCount) {
 
   if (!mOverflowLabel) {
     mOverflowLabel = new QLabel();
+    UiPolish::SetMuted(mOverflowLabel);
     ui.progress->addRow(mOverflowLabel);
   }
   mOverflowLabel->setText(

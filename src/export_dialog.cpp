@@ -12,12 +12,17 @@ ExportDialog::ExportDialog(const QString &remote, const QDir &path,
     layout()->setContentsMargins(12, 12, 12, 12);
   }
   UiPolish::SetWindowDefaults(this, QSize(640, 390));
+  ui.tabWidget->setDocumentMode(true);
   UiPolish::SetToolbarSurface(ui.pathGroup);
   UiPolish::SetPathField(ui.textFile, "Export destination file");
+  UiPolish::SetOutputView(ui.textExclude, "Exclude patterns");
   UiPolish::SetCompactToolButton(ui.fileBrowse, "Choose export file",
                                  "Choose where to save the exported file list.");
   if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
     UiPolish::SetPrimaryButton(ok);
+  }
+  if (auto restore = ui.buttonBox->button(QDialogButtonBox::RestoreDefaults)) {
+    restore->setToolTip("Restore export filters to defaults.");
   }
 
   setWindowTitle("Export File List");

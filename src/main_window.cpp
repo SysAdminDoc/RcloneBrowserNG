@@ -190,6 +190,9 @@ MainWindow::MainWindow() {
   }
 
   UiPolish::SetWindowDefaults(this, QSize(720, 460));
+  ui.tabs->setDocumentMode(true);
+  ui.jobsArea->setFrameShape(QFrame::NoFrame);
+  ui.tasksArea->setFrameShape(QFrame::NoFrame);
   ui.verticalLayout->setContentsMargins(12, 12, 12, 12);
   ui.verticalLayout_2->setContentsMargins(12, 12, 12, 12);
   ui.verticalLayout_4->setContentsMargins(0, 0, 0, 0);
@@ -201,12 +204,12 @@ MainWindow::MainWindow() {
       ui.noJobsAvailable, "No active work",
       "Transfers, mounts and streams will appear here with live progress.");
   UiPolish::SetMuted(ui.statusBar);
-  UiPolish::SetToolbarSurface(ui.tasksActionBar);
-  ui.remotes->setAccessibleName("Configured rclone remotes");
+  UiPolish::SetActionBar(ui.tasksActionBar);
+  UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
   ui.remotes->setUniformItemSizes(true);
   ui.remotes->setTextElideMode(Qt::ElideMiddle);
-  ui.tasksListWidget->setAccessibleName("Saved tasks");
+  UiPolish::SetNavigationView(ui.tasksListWidget, "Saved tasks");
   ui.tasksListWidget->setSpacing(4);
   ui.tasksListWidget->setUniformItemSizes(true);
   ui.tasksListWidget->setTextElideMode(Qt::ElideRight);
@@ -578,6 +581,12 @@ MainWindow::MainWindow() {
   ui.buttonRunTask->setToolTip("Run the selected saved task.");
   ui.buttonEditTask->setToolTip("Edit task options.");
   ui.buttonDeleteTask->setToolTip("Delete the selected saved task.");
+  ui.buttonCopyTaskCmd->setToolTip("Copy the selected task's rclone command.");
+  ui.buttonDryrunTask->setAccessibleName("Dry run selected task");
+  ui.buttonRunTask->setAccessibleName("Run selected task");
+  ui.buttonEditTask->setAccessibleName("Edit selected task");
+  ui.buttonDeleteTask->setAccessibleName("Delete selected task");
+  ui.buttonCopyTaskCmd->setAccessibleName("Copy selected task command");
   UiPolish::SetPrimaryButton(ui.buttonRunTask);
   UiPolish::SetDestructiveButton(ui.buttonDeleteTask);
   mUploadIcon = style->standardIcon(QStyle::SP_ArrowUp);
@@ -642,7 +651,6 @@ MainWindow::MainWindow() {
   mStatusMessage->setMinimumWidth(0);
   mStatusMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   ui.statusBar->addWidget(mStatusMessage, 1);
-  ui.statusBar->setStyleSheet("QStatusBar::item { border: 0; }");
 
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
 
@@ -1313,6 +1321,7 @@ void MainWindow::rcloneListRemotes() {
             empty->setFlags(Qt::NoItemFlags);
             empty->setForeground(qApp->palette().color(QPalette::Disabled,
                                                        QPalette::Text));
+            empty->setSizeHint(QSize(0, 54));
             ui.remotes->addItem(empty);
           }
         } else {
@@ -1444,6 +1453,14 @@ void MainWindow::listTasks() {
         jo->jobType == JobOptions::JobType::Download ? mDownloadIcon
                                                      : mUploadIcon,
         jo->description);
+    const QString direction =
+        jo->jobType == JobOptions::JobType::Download ? "Download" : "Upload";
+    const QString operation = jo->sync ? "Sync"
+                              : jo->operation == JobOptions::Move ? "Move"
+                                                                  : "Copy";
+    item->setToolTip(QString("%1 %2\n%3 -> %4")
+                         .arg(direction, operation, jo->source, jo->dest));
+    item->setSizeHint(QSize(0, 44));
     ui.tasksListWidget->addItem(item);
   }
 
@@ -1454,6 +1471,7 @@ void MainWindow::listTasks() {
     empty->setFlags(Qt::NoItemFlags);
     empty->setForeground(qApp->palette().color(QPalette::Disabled,
                                                QPalette::Text));
+    empty->setSizeHint(QSize(0, 58));
     ui.tasksListWidget->addItem(empty);
   }
 
