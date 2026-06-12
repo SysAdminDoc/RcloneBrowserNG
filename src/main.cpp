@@ -1,6 +1,30 @@
 #include "main_window.h"
 #include "utils.h"
 
+namespace {
+bool writePasswordCommandOutput(const QString &password) {
+  const QByteArray output = password.toUtf8() + '\n';
+#if defined(Q_OS_WIN32)
+  HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+    AttachConsole(ATTACH_PARENT_PROCESS);
+    handle = GetStdHandle(STD_OUTPUT_HANDLE);
+  }
+  if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+
+  DWORD written = 0;
+  return WriteFile(handle, output.constData(),
+                   static_cast<DWORD>(output.size()), &written, nullptr) &&
+         written == static_cast<DWORD>(output.size());
+#else
+  QTextStream(stdout) << QString::fromUtf8(output);
+  return true;
+#endif
+}
+} // namespace
+
 int main(int argc, char *argv[]) {
 
 #if defined(Q_OS_WIN32)
@@ -24,6 +48,16 @@ int main(int argc, char *argv[]) {
   app.setOrganizationName("rclone-browser");
   QGuiApplication::setDesktopFileName("rclone-browser");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
+
+  if (IsRclonePasswordCommandRequest(app.arguments())) {
+    QString error;
+    const QString password = ReadRcloneConfigPassword(&error);
+    if (password.isEmpty()) {
+      qCritical().noquote() << error;
+      return 1;
+    }
+    return writePasswordCommandOutput(password) ? 0 : 1;
+  }
 
 // initialize SSL libraries
 // see: https://github.com/linuxdeploy/linuxdeploy-plugin-qt/issues/57

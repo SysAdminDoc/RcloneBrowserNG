@@ -1,8 +1,114 @@
 #include "utils.h"
 
+#if defined(Q_OS_WIN32)
+#include <wincred.h>
+#endif
+
 static QString gRclone;
 static QString gRcloneConf;
 static QString gRclonePassword;
+
+namespace {
+const char *kUsePasswordCommandKey = "Settings/usePasswordCommand";
+const char *kPasswordCommandArg = "--rclone-config-password-command";
+
+QString configuredRcloneConf() {
+  if (!gRcloneConf.isEmpty()) {
+    return gRcloneConf;
+  }
+  auto settings = GetSettings();
+  return settings->value("Settings/rcloneConf").toString();
+}
+
+QString resolveRcloneConfPath(QString conf) {
+  if (conf.isEmpty()) {
+    return conf;
+  }
+  if (IsPortableMode() && QFileInfo(conf).isRelative()) {
+#ifdef Q_OS_MACOS
+    // on macOS excecutable file is located in
+    // ./rclone-browser.app/Contents/MasOS/rclone-browser to get actual bundle
+    // folder we have to traverse three levels up
+    conf = QDir(qApp->applicationDirPath() + "/../../..").filePath(conf);
+#else
+#ifdef Q_OS_WIN
+    conf = QDir(qApp->applicationDirPath()).filePath(conf);
+#else
+    QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
+    if (xdg_config_home.isEmpty()) {
+      xdg_config_home =
+          QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    }
+    conf = QDir(xdg_config_home.isEmpty() ? qApp->applicationDirPath()
+                                          : xdg_config_home + "/..")
+               .filePath(conf);
+#endif
+#endif
+  }
+  return conf;
+}
+
+QString credentialTarget() {
+  QString source = configuredRcloneConf().trimmed();
+  if (source.isEmpty()) {
+    source = "default";
+  } else {
+    source = resolveRcloneConfPath(source);
+  }
+  if (QFileInfo(source).isRelative()) {
+    source = QFileInfo(source).absoluteFilePath();
+  }
+  const QByteArray digest =
+      QCryptographicHash::hash(source.toUtf8(), QCryptographicHash::Sha256)
+          .toHex();
+  return "RcloneBrowserNG/rclone-config-password/" +
+         QString::fromLatin1(digest);
+}
+
+QString passwordCommandValue() {
+  QString exe = QDir::toNativeSeparators(
+      QDir(qApp->applicationDirPath()).filePath("RcloneBrowserPassword.exe"));
+  exe.replace('"', "\\\"");
+  return '"' + exe + "\" " + kPasswordCommandArg;
+}
+
+bool storeRcloneConfigPassword(const QString &password, QString *error) {
+  if (error) {
+    error->clear();
+  }
+
+#if defined(Q_OS_WIN32)
+  const QByteArray passwordBytes = password.toUtf8();
+  const std::wstring target = credentialTarget().toStdWString();
+  std::wstring user = L"RcloneBrowserNG";
+
+  CREDENTIALW credential = {};
+  credential.Type = CRED_TYPE_GENERIC;
+  credential.TargetName = const_cast<LPWSTR>(target.c_str());
+  credential.CredentialBlobSize =
+      static_cast<DWORD>(passwordBytes.size());
+  credential.CredentialBlob =
+      reinterpret_cast<LPBYTE>(const_cast<char *>(passwordBytes.constData()));
+  credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+  credential.UserName = const_cast<LPWSTR>(user.c_str());
+
+  if (!CredWriteW(&credential, 0)) {
+    if (error) {
+      *error = QString("Windows Credential Manager write failed (%1).")
+                   .arg(GetLastError());
+    }
+    return false;
+  }
+  return true;
+#else
+  Q_UNUSED(password);
+  if (error) {
+    *error = "OS credential storage is not available in this build.";
+  }
+  return false;
+#endif
+}
+} // namespace
 
 // Software versions comparison
 // source: https://helloacm.com/how-to-compare-version-numbers-in-c/
@@ -237,34 +343,18 @@ void WriteSettings(QSettings *settings, QObject *widget) {
 }
 
 QStringList GetRcloneConf() {
-  if (gRcloneConf.isEmpty()) {
-    return QStringList();
+  QStringList args;
+
+  if (!gRcloneConf.isEmpty()) {
+    QString conf = resolveRcloneConfPath(gRcloneConf);
+    //    qDebug() << QString("utils.cpp conf: " + conf);
+    args << "--config" << conf;
   }
 
-  QString conf = gRcloneConf;
-  if (IsPortableMode() && QFileInfo(conf).isRelative()) {
-#ifdef Q_OS_MACOS
-    // on macOS excecutable file is located in
-    // ./rclone-browser.app/Contents/MasOS/rclone-browser to get actual bundle
-    // folder we have to traverse three levels up
-    conf = QDir(qApp->applicationDirPath() + "/../../..").filePath(conf);
-#else
-#ifdef Q_OS_WIN
-    conf = QDir(qApp->applicationDirPath()).filePath(conf);
-#else
-    QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-    if (xdg_config_home.isEmpty()) {
-      xdg_config_home =
-          QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
-    }
-    conf = QDir(xdg_config_home.isEmpty() ? qApp->applicationDirPath()
-                                          : xdg_config_home + "/..")
-               .filePath(conf);
-#endif
-#endif
-    //    qDebug() << QString("utils.cpp conf: " + conf);
+  if (IsRclonePasswordCommandEnabled()) {
+    args << "--password-command" << passwordCommandValue();
   }
-  return QStringList() << "--config" << conf;
+  return args;
 }
 
 void SetRcloneConf(const QString &rcloneConf) { gRcloneConf = rcloneConf; }
@@ -313,7 +403,7 @@ void SetRclone(const QString &rclone) {
 }
 
 void UseRclonePassword(QProcess *process) {
-  if (!gRclonePassword.isEmpty()) {
+  if (!gRclonePassword.isEmpty() && !IsRclonePasswordCommandEnabled()) {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("RCLONE_CONFIG_PASS", gRclonePassword);
     process->setProcessEnvironment(env);
@@ -321,7 +411,83 @@ void UseRclonePassword(QProcess *process) {
 }
 
 void SetRclonePassword(const QString &rclonePassword) {
+  if (IsRclonePasswordCommandEnabled()) {
+    QString error;
+    if (storeRcloneConfigPassword(rclonePassword, &error)) {
+      gRclonePassword.clear();
+      return;
+    }
+    qWarning().noquote() << error;
+    SetRclonePasswordCommandEnabled(false);
+  }
   gRclonePassword = rclonePassword;
+}
+
+bool IsRclonePasswordCommandEnabled() {
+#if !defined(Q_OS_WIN32)
+  return false;
+#else
+  auto settings = GetSettings();
+  return settings->value(kUsePasswordCommandKey, false).toBool();
+#endif
+}
+
+void SetRclonePasswordCommandEnabled(bool enabled) {
+  auto settings = GetSettings();
+  settings->setValue(kUsePasswordCommandKey, enabled);
+}
+
+QString ReadRcloneConfigPassword(QString *error) {
+  if (error) {
+    error->clear();
+  }
+
+#if defined(Q_OS_WIN32)
+  const std::wstring target = credentialTarget().toStdWString();
+  PCREDENTIALW credential = nullptr;
+  if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, &credential)) {
+    if (error) {
+      *error = QString("Windows Credential Manager read failed (%1).")
+                   .arg(GetLastError());
+    }
+    return QString();
+  }
+
+  const QByteArray passwordBytes(
+      reinterpret_cast<const char *>(credential->CredentialBlob),
+      static_cast<int>(credential->CredentialBlobSize));
+  CredFree(credential);
+  if (passwordBytes.size() >= 2 && passwordBytes.size() % 2 == 0) {
+    int nulOddBytes = 0;
+    for (int i = 1; i < passwordBytes.size(); i += 2) {
+      if (passwordBytes.at(i) == '\0') {
+        nulOddBytes++;
+      }
+    }
+    if (nulOddBytes >= passwordBytes.size() / 4) {
+      return QString::fromUtf16(
+          reinterpret_cast<const ushort *>(passwordBytes.constData()),
+          passwordBytes.size() / 2);
+    }
+  }
+  return QString::fromUtf8(passwordBytes);
+#else
+  if (error) {
+    *error = "OS credential storage is not available in this build.";
+  }
+  return QString();
+#endif
+}
+
+void ClearRcloneConfigPassword() {
+#if defined(Q_OS_WIN32)
+  const std::wstring target = credentialTarget().toStdWString();
+  CredDeleteW(target.c_str(), CRED_TYPE_GENERIC, 0);
+#endif
+}
+
+bool IsRclonePasswordCommandRequest(const QStringList &arguments) {
+  return arguments.contains(kPasswordCommandArg);
 }
 
 QStringList GetDriveSharedWithMe() {

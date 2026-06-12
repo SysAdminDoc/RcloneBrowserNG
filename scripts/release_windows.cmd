@@ -73,6 +73,7 @@ copy "%ROOT%\README.md" "%TARGET%\Readme.md"
 copy "%ROOT%\CHANGELOG.md" "%TARGET%\Changelog.md"
 copy "%ROOT%\LICENSE" "%TARGET%\License.txt"
 copy "%BUILD%\RcloneBrowser.exe" "%TARGET%"
+copy "%BUILD%\RcloneBrowserPassword.exe" "%TARGET%"
 
 windeployqt.exe --no-translations --no-angle --no-compiler-runtime --no-svg "%TARGET%\RcloneBrowser.exe"
 rd /s /q "%TARGET%\imageformats"

@@ -38,6 +38,7 @@ public:
   QString getHttpProxy() const;
   QString getHttpsProxy() const;
   QString getNoProxy() const;
+  bool getUsePasswordCommand() const;
 
 private:
   Ui::PreferencesDialog ui;

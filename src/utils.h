@@ -17,6 +17,11 @@ void SetRcloneConf(const QString &rcloneConf);
 
 void UseRclonePassword(QProcess *process);
 void SetRclonePassword(const QString &rclonePassword);
+bool IsRclonePasswordCommandEnabled();
+void SetRclonePasswordCommandEnabled(bool enabled);
+QString ReadRcloneConfigPassword(QString *error = nullptr);
+void ClearRcloneConfigPassword();
+bool IsRclonePasswordCommandRequest(const QStringList &arguments);
 
 QStringList GetDriveSharedWithMe();
 QStringList GetDefaultRcloneOptionsList();

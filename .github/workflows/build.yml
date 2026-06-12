@@ -87,4 +87,6 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x64
-          path: build/build/Release/RcloneBrowser.exe
+          path: |
+            build/build/Release/RcloneBrowser.exe
+            build/build/Release/RcloneBrowserPassword.exe
