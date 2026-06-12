@@ -1,0 +1,172 @@
+#include "rc_job_widget.h"
+#include "rclone_rc_engine.h"
+
+namespace {
+QString getNiceSize(quint64 size) {
+  static const char prefix[] = "KMGTPE";
+  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
+    quint64 base = quint64(1) << ((i + 1) * 10);
+    if (size >= base) {
+      double value = double(size) / double(base);
+      return QString("%1 %2")
+          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
+          .arg(QChar(prefix[i]));
+    }
+  }
+  return QString("%1 B").arg(size);
+}
+} // namespace
+
+RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
+                         const QStringList &displayArgs, const QString &source,
+                         const QString &dest, QWidget *parent)
+    : QWidget(parent), mEngine(engine), mJobId(jobId), mGroup("job/" + QString::number(jobId)),
+      mDisplayArgs(displayArgs) {
+  ui.setupUi(this);
+
+  ui.source->setText(source);
+  ui.source->setToolTip(source);
+  ui.dest->setText(dest);
+  ui.dest->setToolTip(dest);
+  ui.info->setText(info);
+  ui.info->setToolTip(info);
+  ui.info->setMinimumWidth(0);
+  ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+
+  ui.details->setVisible(false);
+  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  ui.output->setVisible(false);
+  ui.output->setMaximumBlockCount(10000);
+  ui.output->appendPlainText(QString("Started through rclone rc job %1.")
+                                 .arg(jobId));
+
+  QObject::connect(
+      ui.showDetails, &QToolButton::toggled, this, [=](bool checked) {
+        ui.details->setVisible(checked);
+        ui.showDetails->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+      });
+  QObject::connect(
+      ui.showOutput, &QToolButton::toggled, this, [=](bool checked) {
+        ui.output->setVisible(checked);
+        ui.showOutput->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+      });
+
+  ui.cancel->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
+    if (mRunning) {
+      int button = QMessageBox::question(
+          this, "Transfer",
+          QString("rclone rc job is still running. Do you want to cancel it?"),
+          QMessageBox::Yes | QMessageBox::No);
+      if (button == QMessageBox::Yes) {
+        cancel();
+      }
+    } else {
+      emit closed();
+    }
+  });
+
+  ui.copy->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
+  QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
+    QStringList quotedArgs;
+    for (const auto &arg : mDisplayArgs) {
+      if (arg.contains(' ') || arg.contains('"')) {
+        quotedArgs << '"' + QString(arg).replace('"', "\\\"") + '"';
+      } else {
+        quotedArgs << arg;
+      }
+    }
+    QGuiApplication::clipboard()->setText(quotedArgs.join(" "));
+  });
+
+  QObject::connect(&mPollTimer, &QTimer::timeout, this, &RcJobWidget::poll);
+  mPollTimer.start(1000);
+
+  ui.showDetails->setStyleSheet(
+      "QToolButton { border: 0; color: #43a047; }");
+  ui.showDetails->setText("Running");
+  poll();
+}
+
+RcJobWidget::~RcJobWidget() {}
+
+void RcJobWidget::showDetails() { ui.showDetails->setChecked(true); }
+
+void RcJobWidget::poll() {
+  QString error;
+  const QJsonObject stats = mEngine->coreStats(mGroup, &error);
+  if (error.isEmpty()) {
+    applyStats(stats);
+  }
+
+  const QJsonObject status = mEngine->jobStatus(mJobId, &error);
+  if (!error.isEmpty()) {
+    ui.output->appendPlainText(error);
+    return;
+  }
+  if (status.value("finished").toBool()) {
+    const bool success = status.value("success").toBool();
+    const QString jobError = status.value("error").toString();
+    const QJsonValue output = status.value("output");
+    if (output.isString() && !output.toString().isEmpty()) {
+      ui.output->appendPlainText(output.toString().trimmed());
+    }
+    finish(success, jobError);
+  }
+}
+
+void RcJobWidget::applyStats(const QJsonObject &stats) {
+  const double bytes = stats.value("bytes").toDouble();
+  const double totalBytes = stats.value("totalBytes").toDouble();
+  const double speed = stats.value("speed").toDouble();
+  const int pct =
+      totalBytes > 0 ? static_cast<int>(bytes / totalBytes * 100) : 0;
+  ui.size->setText(QString("%1, %2%")
+                       .arg(getNiceSize(static_cast<quint64>(bytes)))
+                       .arg(pct));
+  ui.totalsize->setText(getNiceSize(static_cast<quint64>(totalBytes)));
+  ui.bandwidth->setText(getNiceSize(static_cast<quint64>(speed)) + "/s");
+  ui.errors->setText(QString::number(stats.value("errors").toInt()));
+  ui.checks->setText(QString::number(stats.value("checks").toInt()));
+  ui.transferred->setText(QString::number(stats.value("transfers").toInt()));
+
+  const double elapsed = stats.value("elapsedTime").toDouble();
+  if (elapsed > 0) {
+    const int seconds = static_cast<int>(elapsed);
+    ui.elapsed->setText(QString("%1s").arg(seconds));
+  }
+}
+
+void RcJobWidget::finish(bool success, const QString &error) {
+  mPollTimer.stop();
+  mRunning = false;
+  if (success) {
+    ui.showDetails->setStyleSheet("QToolButton { border: 0; }");
+    ui.showDetails->setText("Finished");
+  } else {
+    if (!error.isEmpty()) {
+      ui.output->appendPlainText(error);
+    }
+    ui.showDetails->setStyleSheet("QToolButton { border: 0; color: #e53935; }");
+    ui.showDetails->setText("Error");
+    ui.showDetails->setChecked(true);
+    ui.showOutput->setChecked(true);
+  }
+  ui.cancel->setToolTip("Close");
+  emit finished(ui.info->text());
+}
+
+void RcJobWidget::cancel() {
+  if (!mRunning) {
+    return;
+  }
+  QString error;
+  mEngine->stopJob(mJobId, &error);
+  if (!error.isEmpty()) {
+    ui.output->appendPlainText(error);
+  }
+  finish(false, "Cancelled.");
+  emit closed();
+}
