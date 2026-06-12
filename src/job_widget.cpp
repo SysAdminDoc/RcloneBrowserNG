@@ -2,6 +2,8 @@
 #include "utils.h"
 
 namespace {
+constexpr int kMaxVisibleFileProgress = 12;
+
 QString getNiceSize(quint64 size) {
   static const char prefix[] = "KMGTPE";
   for (int i = sizeof(prefix) - 2; i >= 0; i--) {
@@ -28,8 +30,13 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   mArgs.append(args);
 
   ui.source->setText(source);
+  ui.source->setToolTip(source);
   ui.dest->setText(dest);
+  ui.dest->setToolTip(dest);
   ui.info->setText(info);
+  ui.info->setToolTip(info);
+  ui.info->setMinimumWidth(0);
+  ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
   ui.details->setVisible(false);
 
@@ -175,11 +182,18 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       // per-file progress from the "transferring" array
       QJsonArray xferring = stats.value("transferring").toArray();
       QSet<QLabel *> updated;
+      int visibleRows = 0;
+      int hiddenRows = 0;
       for (const QJsonValue &val : xferring) {
         QJsonObject f = val.toObject();
         QString name = f.value("name").toString();
         if (name.isEmpty())
           continue;
+        if (visibleRows >= kMaxVisibleFileProgress) {
+          hiddenRows++;
+          continue;
+        }
+        visibleRows++;
 
         auto it = mActive.find(name);
         QLabel *label;
@@ -215,6 +229,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
         updated.insert(label);
       }
+      setProgressOverflow(hiddenRows);
 
       // remove progress bars for files no longer in the transferring list
       for (auto it = mActive.begin(); it != mActive.end(); /* empty */) {
@@ -237,12 +252,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                        &QProcess::finished),
                    this, [=](int status, QProcess::ExitStatus) {
                      mProcess->deleteLater();
-                     for (auto label : mActive) {
-                       ui.progress->removeWidget(label->buddy());
-                       ui.progress->removeWidget(label);
-                       delete label->buddy();
-                       delete label;
-                     }
+                     clearFileProgress();
 
                      mRunning = false;
                      if (status == 0) {
@@ -273,6 +283,35 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 JobWidget::~JobWidget() {}
 
 void JobWidget::showDetails() { ui.showDetails->setChecked(true); }
+
+void JobWidget::setProgressOverflow(int hiddenCount) {
+  if (hiddenCount <= 0) {
+    if (mOverflowLabel) {
+      ui.progress->removeWidget(mOverflowLabel);
+      delete mOverflowLabel;
+      mOverflowLabel = nullptr;
+    }
+    return;
+  }
+
+  if (!mOverflowLabel) {
+    mOverflowLabel = new QLabel();
+    ui.progress->addRow(mOverflowLabel);
+  }
+  mOverflowLabel->setText(
+      QString("+%1 more active file(s) hidden").arg(hiddenCount));
+}
+
+void JobWidget::clearFileProgress() {
+  for (auto label : mActive) {
+    ui.progress->removeWidget(label->buddy());
+    ui.progress->removeWidget(label);
+    delete label->buddy();
+    delete label;
+  }
+  mActive.clear();
+  setProgressOverflow(0);
+}
 
 void JobWidget::cancel() {
   if (!mRunning) {
