@@ -1,16 +1,10 @@
 #include "list_of_job_options.h"
+#include "job_options_store.h"
 #include <QDataStream>
 #include <qdir.h>
 #include <qlogging.h>
 #include <qstandardpaths.h>
 #include <utils.h>
-
-static QDataStream &operator>>(QDataStream &dataStream, JobOptions &jo);
-static QDataStream &operator<<(QDataStream &dataStream, JobOptions &jo);
-static QDataStream &operator>>(QDataStream &in, JobOptions::Operation &e);
-static QDataStream &operator>>(QDataStream &in, JobOptions::SyncTiming &e);
-static QDataStream &operator>>(QDataStream &in, JobOptions::CompareOption &e);
-static QDataStream &operator>>(QDataStream &in, JobOptions::JobType &e);
 
 ListOfJobOptions *ListOfJobOptions::SavedJobOptions = nullptr;
 const QString ListOfJobOptions::persistenceFileName = "tasks.bin";
@@ -92,37 +86,34 @@ bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly))
     return false;
-  QDataStream instream(&file);
-  instream.setVersion(QDataStream::Qt_5_2);
 
-  while (!instream.atEnd()) {
-    JobOptions *jo = new JobOptions();
-    try {
-      instream >> *jo;
-    } catch (SerializationException &e) {
-      delete jo;
-      file.close();
+  JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&file);
+  if (!loaded.error.isEmpty()) {
+    file.close();
 
-      // rename the bad file aside so the user doesn't lose it entirely
-      QString corruptPath = filePath + ".corrupt";
-      int n = 1;
-      while (QFile::exists(corruptPath +
-                           (n > 1 ? QString::number(n) : QString()))) {
-        ++n;
-      }
-      corruptPath += (n > 1 ? QString::number(n) : QString());
-      QFile::rename(filePath, corruptPath);
-
-      dataIn.mLastLoadError =
-          QString("Saved tasks file could not be loaded (%1).\n\n"
-                  "The file has been renamed to:\n%2\n\n"
-                  "Your saved tasks will need to be recreated.")
-              .arg(e.Message, corruptPath);
-      return false;
+    // rename the bad file aside so the user doesn't lose it entirely
+    QString corruptPath = filePath + ".corrupt";
+    int n = 1;
+    while (QFile::exists(corruptPath +
+                         (n > 1 ? QString::number(n) : QString()))) {
+      ++n;
     }
-    dataIn.tasks.append(jo);
+    corruptPath += (n > 1 ? QString::number(n) : QString());
+    QFile::rename(filePath, corruptPath);
+
+    dataIn.mLastLoadError =
+        QString("Saved tasks file could not be loaded (%1).\n\n"
+                "The file has been renamed to:\n%2\n\n"
+                "Your saved tasks will need to be recreated.")
+            .arg(loaded.error, corruptPath);
+    return false;
   }
 
+  ClearJobOptionsList(&dataIn.tasks);
+  dataIn.tasks = loaded.tasks;
+  if (loaded.migratedFromLegacy) {
+    dataIn.PersistToUserData();
+  }
   return true;
 }
 
@@ -132,12 +123,9 @@ bool ListOfJobOptions::PersistToUserData() {
   QSaveFile file(GetPersistenceFilePath());
   if (!file.open(QIODevice::WriteOnly))
     return false;
-  QDataStream outstream(&file);
-  outstream.setVersion(QDataStream::Qt_5_2);
-
-  for (JobOptions *it : tasks) {
-    outstream << *it;
-  }
+  QString error;
+  if (!WriteJobOptionsStore(&file, tasks, &error))
+    return false;
 
   if (!file.commit())
     return false;
@@ -145,81 +133,4 @@ bool ListOfJobOptions::PersistToUserData() {
   emit tasksListUpdated();
 
   return true;
-}
-
-QDataStream &operator<<(QDataStream &stream, JobOptions &jo) {
-  stream << jo.myName() << JobOptions::classVersion << jo.description
-         << jo.jobType << jo.operation << /* jo.dryRun <<*/ jo.sync
-         << jo.syncTiming << jo.skipNewer << jo.skipExisting << jo.compare
-         << jo.compareOption << jo.verbose << jo.sameFilesystem
-         << jo.dontUpdateModified << jo.transfers << jo.checkers << jo.bandwidth
-         << jo.minSize << jo.minAge << jo.maxAge << jo.maxDepth
-         << jo.connectTimeout << jo.idleTimeout << jo.retries
-         << jo.lowLevelRetries << jo.deleteExcluded << jo.excluded << jo.extra
-         << jo.DriveSharedWithMe << jo.source << jo.dest << jo.isFolder
-         << jo.uniqueId;
-
-  return stream;
-}
-
-QDataStream &operator>>(QDataStream &stream, JobOptions &jo) {
-  QString actualName;
-  qint32 actualVersion;
-
-  stream >> actualName;
-  if (QString::compare(actualName, jo.myName()) != 0)
-    throw SerializationException("incorrect class");
-
-  stream >> actualVersion;
-  if (actualVersion > JobOptions::classVersion)
-    throw SerializationException("stored version is newer");
-
-  stream >> jo.description >> jo.jobType >> jo.operation >>
-      /* jo.dryRun >> */ jo.sync >> jo.syncTiming >> jo.skipNewer >>
-      jo.skipExisting >> jo.compare >> jo.compareOption >> jo.verbose >>
-      jo.sameFilesystem >> jo.dontUpdateModified >> jo.transfers >>
-      jo.checkers >> jo.bandwidth >> jo.minSize >> jo.minAge >> jo.maxAge >>
-      jo.maxDepth >> jo.connectTimeout >> jo.idleTimeout >> jo.retries >>
-      jo.lowLevelRetries >> jo.deleteExcluded >> jo.excluded >> jo.extra >>
-      jo.DriveSharedWithMe >> jo.source >> jo.dest;
-
-  // as fields are added in later revisions, check actualVersion here and
-  // conditionally extract any new fields iff they are expected based on the
-  // stream value
-  if (actualVersion >= 2) {
-    stream >> jo.isFolder;
-    if (actualVersion >= 3) {
-      stream >> jo.uniqueId;
-    }
-  }
-
-  return stream;
-}
-
-QDataStream &operator>>(QDataStream &in, JobOptions::Operation &e) {
-  quint32 v;
-  in >> v;
-  e = static_cast<JobOptions::Operation>(v);
-  return in;
-}
-
-QDataStream &operator>>(QDataStream &in, JobOptions::SyncTiming &e) {
-  quint32 v;
-  in >> v;
-  e = static_cast<JobOptions::SyncTiming>(v);
-  return in;
-}
-
-QDataStream &operator>>(QDataStream &in, JobOptions::CompareOption &e) {
-  quint32 v;
-  in >> v;
-  e = static_cast<JobOptions::CompareOption>(v);
-  return in;
-}
-
-QDataStream &operator>>(QDataStream &in, JobOptions::JobType &e) {
-  quint32 v;
-  in >> v;
-  e = static_cast<JobOptions::JobType>(v);
-  return in;
 }

@@ -69,6 +69,7 @@ set(SOURCE
   item_model.cpp
   utils.cpp
   job_options.cpp
+  job_options_store.cpp
   list_of_job_options.cpp
 )
 
@@ -76,6 +77,7 @@ set(OTHER
   pch.h
   utils.h
   job_options.h
+  job_options_store.h
   main_window.h
   remote_widget.h
   transfer_dialog.h
