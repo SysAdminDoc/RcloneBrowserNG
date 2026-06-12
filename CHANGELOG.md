@@ -58,6 +58,7 @@
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)
 
 ### UX
+-   CHANGED: The New Remote flow now uses a guided dialog with explanatory helper text, inline validation, focus/error styling, clearer provider descriptions, clearable fields, and provider matching by exact rclone prefix as well as display name
 -   CHANGED: Deepened the native Qt polish system with refined menu/tab/list/tree/scrollbar/dialog styling, stronger focus and disabled states, clearer status badges, consistent action bars, smoother read-only telemetry fields, and better accessible names across the main shell, remote browser, jobs, mounts, streams, transfers, export, progress, and preferences surfaces
 -   CHANGED: Added a shared Qt polish layer for cohesive light/dark styling, stronger focus/hover/disabled states, clearer empty states, refined action hierarchy, bounded remote icon sizing, and more accessible labels across remotes, tasks, jobs, mounts, streams, transfers, export, progress, and preferences dialogs
 -   FIXED: Job widgets now cap per-file progress rows and show an overflow count so many small active transfers cannot balloon or glitch the layout

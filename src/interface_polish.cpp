@@ -135,6 +135,10 @@ QLineEdit[metricValue="true"] {
   color: %7;
   font-weight: 600;
 }
+QLineEdit[fieldState="error"], QComboBox[fieldState="error"] {
+  border: 1px solid %16;
+  background: %17;
+}
 QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled,
 QComboBox:disabled, QSpinBox:disabled {
   background: %3;
@@ -258,6 +262,27 @@ QWidget[actionBar="true"] {
 QLabel[emptyState="true"] {
   color: %8;
   padding: 24px;
+}
+QLabel[notice="true"] {
+  background: %11;
+  border: 1px solid %5;
+  border-radius: 6px;
+  color: %7;
+  padding: 8px 10px;
+}
+QLabel[validationState="error"] {
+  background: %17;
+  border: 1px solid %16;
+  border-radius: 6px;
+  color: %16;
+  padding: 6px 8px;
+}
+QLabel[validationState="success"] {
+  background: %13;
+  border: 1px solid %12;
+  border-radius: 6px;
+  color: %12;
+  padding: 6px 8px;
 }
 QLabel[muted="true"] {
   color: %8;
@@ -442,7 +467,40 @@ void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
   Repolish(label);
 }
 
+void SetNotice(QLabel *label, const QString &text) {
+  if (!label) {
+    return;
+  }
+  label->setProperty("notice", true);
+  label->setAccessibleName("Information");
+  label->setWordWrap(true);
+  label->setText(text);
+  Repolish(label);
+}
+
+void SetValidationMessage(QLabel *label, const QString &state,
+                          const QString &text) {
+  if (!label) {
+    return;
+  }
+  label->setProperty("validationState", state);
+  label->setAccessibleName(text.isEmpty() ? QString("Validation message")
+                                          : text);
+  label->setWordWrap(true);
+  label->setText(text);
+  label->setVisible(!text.isEmpty());
+  Repolish(label);
+}
+
 void SetMuted(QWidget *widget) { setBoolProperty(widget, "muted", true); }
+
+void SetFieldState(QWidget *widget, const QString &state) {
+  if (!widget) {
+    return;
+  }
+  widget->setProperty("fieldState", state);
+  Repolish(widget);
+}
 
 void SetNavigationView(QAbstractItemView *view, const QString &accessibleName) {
   if (!view) {

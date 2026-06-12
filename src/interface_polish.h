@@ -12,7 +12,11 @@ void SetToolbarSurface(QWidget *widget);
 void SetActionBar(QWidget *widget);
 void SetEmptyState(QLabel *label, const QString &title,
                    const QString &detail = QString());
+void SetNotice(QLabel *label, const QString &text);
+void SetValidationMessage(QLabel *label, const QString &state,
+                          const QString &text);
 void SetMuted(QWidget *widget);
+void SetFieldState(QWidget *widget, const QString &state);
 void SetNavigationView(QAbstractItemView *view,
                        const QString &accessibleName = QString());
 void SetCompactToolButton(QAbstractButton *button,
