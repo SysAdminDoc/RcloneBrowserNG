@@ -49,6 +49,7 @@ private:
   bool confirmConfigMutation(const QString &action);
   QDateTime rcloneConfigLastModified() const;
   void noteConfigReloadIfChanged(const QDateTime &before);
+  void setStatusMessage(const QString &message);
 
   void addEmptyJobsMessage();
   void checkRcloneUpdate(const QString &currentVersion);
