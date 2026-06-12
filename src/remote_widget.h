@@ -13,13 +13,13 @@ public:
                bool isGoogle, QWidget *parent = nullptr);
   ~RemoteWidget();
 
+  QStringList getDriveSharedArgs() const;
+
 signals:
   void addTransfer(const QString &message, const QString &source,
                    const QString &remote, const QStringList &args);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
-
-  QStringList getDriveSharedArgs() const;
 
 private:
   Ui::RemoteWidget ui;

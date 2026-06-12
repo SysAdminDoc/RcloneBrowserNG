@@ -54,6 +54,7 @@ set(SOURCE
   remote_widget.cpp
   transfer_dialog.cpp
   export_dialog.cpp
+  export_list_writer.cpp
   progress_dialog.cpp
   job_widget.cpp
   mount_widget.cpp
@@ -74,6 +75,7 @@ set(OTHER
   remote_widget.h
   transfer_dialog.h
   export_dialog.h
+  export_list_writer.h
   progress_dialog.h
   job_widget.h
   mount_widget.h

@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(rclone-browser)
+include(CTest)
 
 if(WIN32)
   cmake_policy(SET CMP0020 NEW)
 endif()
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network)
 
 if(WIN32 AND QT_VERSION_MAJOR EQUAL 5)
   find_package(Qt5WinExtras REQUIRED)
@@ -35,3 +36,13 @@ string(STRIP "${RCLONE_BROWSER_VERSION}" RCLONE_BROWSER_VERSION)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${rclone-browser_BINARY_DIR}/build")
 
 add_subdirectory(src)
+
+if(BUILD_TESTING)
+  add_executable(export_list_writer_test
+    tests/export_list_writer_test.cpp
+    src/export_list_writer.cpp
+  )
+  target_include_directories(export_list_writer_test PRIVATE src)
+  target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core)
+  add_test(NAME export_list_writer_test COMMAND export_list_writer_test)
+endif()

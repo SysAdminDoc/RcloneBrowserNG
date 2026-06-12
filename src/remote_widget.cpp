@@ -1,4 +1,5 @@
 #include "remote_widget.h"
+#include "export_list_writer.h"
 #include "export_dialog.h"
 #include "icon_cache.h"
 #include "item_model.h"
@@ -550,16 +551,13 @@ QString root = isLocal ? "/" : QString();
       QString dst = e.getDestination();
       bool txt = e.onlyFilenames();
 
-      QFile *file = new QFile(dst);
-      if (!file->open(QFile::WriteOnly)) {
+      QSaveFile file(dst);
+      if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(
             this, "Error",
             QString("Cannot open file '%1' for writing!").arg(dst));
-        delete file;
         return;
       }
-
-      static const QRegularExpression re(R"(^(\d+) (\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ (.+)$)");
 
       QProcess process;
       UseRclonePassword(&process);
@@ -570,36 +568,30 @@ QString root = isLocal ? "/" : QString();
       process.setProcessChannelMode(QProcess::MergedChannels);
 
       ProgressDialog progress("Export", "Exporting...", dst, &process, this);
-      file->setParent(&progress);
+      QByteArray exportOutput;
 
-      QObject::connect(&progress, &ProgressDialog::outputAvailable, this,
-                       [=](const QString &output) {
-                         QTextStream out(file);
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-                         out.setCodec("UTF-8");
-#endif
-
-                         for (const auto &line : output.split('\n')) {
-                           QRegularExpressionMatch m = re.match(line.trimmed());
-                           if (m.hasMatch()) {
-                             QStringList cap = m.capturedTexts();
-
-                             if (txt) {
-                               out << cap[3] << '\n';
-                             } else {
-                               QString name = cap[3];
-                               if (name.contains(' ') || name.contains(',') ||
-                                   name.contains('"')) {
-                                 name = '"' + name.replace("\"", "\"\"") + '"';
-                               }
-                               out << name << ',' << '"' << cap[2] << '"' << ','
-                                   << cap[1].toULongLong() << '\n';
-                             }
-                           }
-                         }
+      QObject::connect(&progress, &ProgressDialog::outputAvailable, &progress,
+                       [&exportOutput](const QString &output) {
+                         exportOutput.append(output.toUtf8());
                        });
 
-      progress.exec();
+      if (progress.exec() != QDialog::Accepted ||
+          process.exitStatus() != QProcess::NormalExit ||
+          process.exitCode() != 0) {
+        return;
+      }
+
+      QString error;
+      const auto format = txt ? ExportListFormat::Text : ExportListFormat::Csv;
+      if (!WriteExportListFromLsjson(&file, exportOutput, format, &error)) {
+        QMessageBox::warning(this, "Error", error);
+        return;
+      }
+      if (!file.commit()) {
+        QMessageBox::warning(
+            this, "Error",
+            QString("Cannot save file '%1': %2").arg(dst, file.errorString()));
+      }
     }
   });
 
