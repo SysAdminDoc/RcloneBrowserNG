@@ -1,8 +1,41 @@
 #include "preferences_dialog.h"
+#include "interface_polish.h"
 #include "utils.h"
 
 PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.setupUi(this);
+  if (layout()) {
+    layout()->setSpacing(12);
+    layout()->setContentsMargins(12, 12, 12, 12);
+  }
+  UiPolish::SetWindowDefaults(this, QSize(760, 560));
+  if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
+    UiPolish::SetPrimaryButton(ok);
+  }
+  UiPolish::SetCompactToolButton(ui.rcloneBrowse, "Browse for rclone",
+                                 "Choose the rclone executable.");
+  UiPolish::SetCompactToolButton(ui.rcloneConfBrowse, "Browse for rclone.conf",
+                                 "Choose a custom rclone.conf file.");
+  UiPolish::SetCompactToolButton(ui.defaultDownloadDirBrowse,
+                                 "Browse for default download folder");
+  UiPolish::SetCompactToolButton(ui.defaultUploadDirBrowse,
+                                 "Browse for default upload folder");
+  UiPolish::SetMuted(ui.info);
+  UiPolish::SetMuted(ui.darkMode_info);
+  UiPolish::SetMuted(ui.info_4);
+
+  ui.rclone->setPlaceholderText("Use PATH lookup when empty");
+  ui.rcloneConf->setPlaceholderText("Use rclone's default config path");
+  ui.stream->setPlaceholderText("mpv -");
+  ui.mount->setPlaceholderText("--vfs-cache-mode writes");
+  ui.defaultDownloadDir->setPlaceholderText("Ask each time when empty");
+  ui.defaultUploadDir->setPlaceholderText("Ask each time when empty");
+  ui.defaultDownloadOptions->setPlaceholderText("Extra flags for downloads");
+  ui.defaultUploadOptions->setPlaceholderText("Extra flags for uploads");
+  ui.defaultRcloneOptions->setPlaceholderText("--fast-list");
+  ui.http_proxy->setPlaceholderText("http://127.0.0.1:1087");
+  ui.https_proxy->setPlaceholderText("https://127.0.0.1:1087");
+  ui.no_proxy->setPlaceholderText("localhost,127.0.0.0/8");
 
   QObject::connect(ui.rcloneBrowse, &QPushButton::clicked, this, [=]() {
     QString rclone = QFileDialog::getOpenFileName(
@@ -12,15 +45,17 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     }
 
     if (!QFileInfo(rclone).isExecutable()) {
-      QMessageBox::critical(this, "Error",
-                            QString("File %1 is not executable").arg(rclone));
+      QMessageBox::critical(this, "Invalid rclone executable",
+                            QString("%1 is not executable. Choose the rclone "
+                                    "binary, not a folder or shortcut.")
+                                .arg(rclone));
       return;
     }
 
     if (QFileInfo(rclone) == QFileInfo(qApp->applicationFilePath())) {
-      QMessageBox::critical(this, "Error",
-                            "You selected RcloneBrowser executable!\nPlease "
-                            "select rclone executable instead.");
+      QMessageBox::critical(this, "Invalid rclone executable",
+                            "That is Rclone Browser NG itself. Choose the "
+                            "rclone command-line executable instead.");
       return;
     }
 
@@ -157,9 +192,10 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   }
 
   ui.info_2->setText(
-      "See rclone <a "
+      "Manual proxy values are passed through HTTP_PROXY, HTTPS_PROXY and "
+      "NO_PROXY. See the rclone <a "
       "href=\"https://github.com/rclone/rclone/blob/master/docs/content/"
-      "faq.md#can-i-use-rclone-with-an-http-proxy\">FAQ</a> for details.");
+      "faq.md#can-i-use-rclone-with-an-http-proxy\">proxy FAQ</a> for details.");
   ui.info_2->setTextFormat(Qt::RichText);
   ui.info_2->setTextInteractionFlags(Qt::TextBrowserInteraction);
   ui.info_2->setOpenExternalLinks(true);
@@ -172,6 +208,14 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.http_proxy->setText(settings->value("Settings/http_proxy").toString());
   ui.https_proxy->setText(settings->value("Settings/https_proxy").toString());
   ui.no_proxy->setText(settings->value("Settings/no_proxy").toString());
+
+  auto updateProxyFields = [=]() {
+    const bool manual = ui.useProxy->isChecked();
+    ui.groupBox_8->setEnabled(manual);
+  };
+  QObject::connect(ui.useProxy, &QRadioButton::toggled, this,
+                   [=](bool) { updateProxyFields(); });
+  updateProxyFields();
 }
 
 PreferencesDialog::~PreferencesDialog() {}

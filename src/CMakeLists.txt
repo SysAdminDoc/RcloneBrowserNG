@@ -53,6 +53,7 @@ set(SOURCE
   main_window.cpp
   remote_widget.cpp
   transfer_dialog.cpp
+  interface_polish.cpp
   export_dialog.cpp
   export_list_writer.cpp
   remote_provider.cpp
@@ -82,6 +83,7 @@ set(OTHER
   main_window.h
   remote_widget.h
   transfer_dialog.h
+  interface_polish.h
   export_dialog.h
   export_list_writer.h
   remote_provider.h

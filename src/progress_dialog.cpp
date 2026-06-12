@@ -1,18 +1,25 @@
 #include "progress_dialog.h"
+#include "interface_polish.h"
 
 ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
                                const QString &message, QProcess *process,
                                QWidget *parent, bool close, bool trim)
     : QDialog(parent) {
   ui.setupUi(this);
+  UiPolish::SetWindowDefaults(this, QSize(620, 180));
   resize(width(), 0);
 
   setWindowTitle(title);
   ui.labelOperation->setText(operation);
   ui.labelInfo->setText(message);
+  ui.labelInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  UiPolish::SetMuted(ui.labelOperation);
+  ui.buttonShowOutput->setStyleSheet(QString());
 
-  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  UiPolish::SetOutputView(ui.output);
+  ui.output->setReadOnly(true);
   ui.output->setVisible(false);
+  ui.buttonShowOutput->setAccessibleName("Show command output");
 
   QObject::connect(ui.buttonBox, &QDialogButtonBox::rejected, this,
                    &QDialog::reject);

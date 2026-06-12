@@ -1,5 +1,6 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
+#include "interface_polish.h"
 
 namespace {
 QString getNiceSize(quint64 size) {
@@ -23,6 +24,12 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
     : QWidget(parent), mEngine(engine), mJobId(jobId), mGroup("job/" + QString::number(jobId)),
       mDisplayArgs(displayArgs) {
   ui.setupUi(this);
+  ui.showDetails->setStyleSheet(QString());
+  ui.showOutput->setStyleSheet(QString());
+  ui.copy->setStyleSheet(QString());
+  ui.cancel->setStyleSheet(QString());
+  UiPolish::SetCard(this);
+  UiPolish::SetToolbarSurface(ui.widget);
 
   ui.source->setText(source);
   ui.source->setToolTip(source);
@@ -32,9 +39,10 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
   ui.info->setToolTip(info);
   ui.info->setMinimumWidth(0);
   ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  ui.info->setAccessibleName("Transfer summary");
 
   ui.details->setVisible(false);
-  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  UiPolish::SetOutputView(ui.output);
   ui.output->setVisible(false);
   ui.output->setMaximumBlockCount(10000);
   ui.output->appendPlainText(QString("Started through rclone rc job %1.")
@@ -53,11 +61,14 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
 
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  UiPolish::SetCompactToolButton(ui.cancel, "Cancel transfer",
+                                 "Cancel this running transfer.");
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
       int button = QMessageBox::question(
           this, "Transfer",
-          QString("rclone rc job is still running. Do you want to cancel it?"),
+          QString("Cancel this transfer?\n\n"
+                  "The rclone rc job will be stopped and marked cancelled."),
           QMessageBox::Yes | QMessageBox::No);
       if (button == QMessageBox::Yes) {
         cancel();
@@ -69,6 +80,8 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
 
   ui.copy->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
+  UiPolish::SetCompactToolButton(ui.copy, "Copy transfer command",
+                                 "Copy the rclone rc command to the clipboard.");
   QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
     QStringList quotedArgs;
     for (const auto &arg : mDisplayArgs) {
@@ -84,9 +97,8 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
   QObject::connect(&mPollTimer, &QTimer::timeout, this, &RcJobWidget::poll);
   mPollTimer.start(1000);
 
-  ui.showDetails->setStyleSheet(
-      "QToolButton { border: 0; color: #43a047; }");
-  ui.showDetails->setText("Running");
+  UiPolish::SetStatus(ui.showDetails, "running", "Running");
+  ui.showOutput->setAccessibleName("Show transfer output");
   poll();
 }
 
@@ -143,14 +155,14 @@ void RcJobWidget::finish(bool success, const QString &error) {
   mPollTimer.stop();
   mRunning = false;
   if (success) {
-    ui.showDetails->setStyleSheet("QToolButton { border: 0; }");
-    ui.showDetails->setText("Finished");
+    UiPolish::SetStatus(ui.showDetails, "success", "Finished");
+  } else if (error == "Cancelled.") {
+    UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
   } else {
     if (!error.isEmpty()) {
       ui.output->appendPlainText(error);
     }
-    ui.showDetails->setStyleSheet("QToolButton { border: 0; color: #e53935; }");
-    ui.showDetails->setText("Error");
+    UiPolish::SetStatus(ui.showDetails, "error", "Needs attention");
     ui.showDetails->setChecked(true);
     ui.showOutput->setChecked(true);
   }

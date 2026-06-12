@@ -7,6 +7,7 @@
 #include "progress_dialog.h"
 #include "remote_path.h"
 #include "transfer_dialog.h"
+#include "interface_polish.h"
 #include "utils.h"
 
 QStringList RemoteWidget::getDriveSharedArgs() const {
@@ -20,6 +21,17 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                            QWidget *parent)
     : QWidget(parent) {
   ui.setupUi(this);
+  ui.horizontalLayout->setContentsMargins(8, 8, 8, 8);
+  ui.verticalLayout->setSpacing(8);
+  ui.buttonsGrid->setContentsMargins(8, 8, 8, 8);
+  ui.buttonsGrid->setHorizontalSpacing(6);
+  ui.buttonsGrid->setVerticalSpacing(6);
+  UiPolish::SetToolbarSurface(ui.buttons);
+  UiPolish::SetPathField(ui.path, "Current remote path");
+  ui.path->setPlaceholderText("Select a folder or file");
+  ui.tree->setAccessibleName("Remote file browser");
+  ui.tree->setRootIsDecorated(true);
+  ui.tree->setIndentation(18);
 
 QString root = isLocal ? "/" : QString();
 
@@ -66,6 +78,23 @@ QString root = isLocal ? "/" : QString();
   ui.buttonLink->setDefaultAction(ui.link);
   ui.buttonSize->setDefaultAction(ui.getSize);
   ui.buttonExport->setDefaultAction(ui.export_);
+  UiPolish::SetPrimaryButton(ui.buttonUpload);
+  UiPolish::SetPrimaryButton(ui.buttonDownload);
+  UiPolish::SetDestructiveButton(ui.buttonPurge);
+
+  ui.refresh->setToolTip("Reload the selected folder.");
+  ui.mkdir->setToolTip("Create a folder in the selected location.");
+  ui.rename->setToolTip("Rename the selected file or folder.");
+  ui.move->setToolTip("Move the selected file or folder to another remote path.");
+  ui.purge->setToolTip("Delete the selected file or folder.");
+  ui.mount->setToolTip("Mount the selected folder locally.");
+  ui.stream->setToolTip("Stream the selected file to an external player.");
+  ui.upload->setToolTip("Upload local files or folders to this remote.");
+  ui.download->setToolTip("Download the selected item locally.");
+  ui.getSize->setToolTip("Calculate total size for the selected folder.");
+  ui.getTree->setToolTip("Show the directory tree for the selected folder.");
+  ui.export_->setToolTip("Export a file list for the selected folder.");
+  ui.link->setToolTip("Create a public link when the backend supports it.");
 
   ui.tree->sortByColumn(0, Qt::AscendingOrder);
   ui.tree->header()->setSectionsMovable(false);
@@ -162,6 +191,9 @@ QString root = isLocal ? "/" : QString();
           ui.download->setDisabled(true);
           ui.checkBoxShared->setDisabled(true);
           path = model->path(model->parent(index));
+          ui.path->setText("Loading " +
+                           (isLocal ? QDir::toNativeSeparators(path.path())
+                                    : path.path()));
         } else {
           ui.refresh->setDisabled(false);
           bool driveShared = ui.checkBoxShared->checkState();
@@ -192,13 +224,13 @@ QString root = isLocal ? "/" : QString();
           ui.stream->setDisabled(isFolder);
           ui.checkBoxShared->setDisabled(!isGoogle);
           path = model->path(index);
+          ui.path->setText(isLocal ? QDir::toNativeSeparators(path.path())
+                                   : path.path());
         }
 
         ui.getSize->setDisabled(!isFolder);
         ui.getTree->setDisabled(!isFolder);
         ui.export_->setDisabled(!isFolder);
-        ui.path->setText(isLocal ? QDir::toNativeSeparators(path.path())
-                                 : path.path());
       });
 
   QObject::connect(ui.refresh, &QAction::triggered, this, [=]() {
@@ -228,7 +260,7 @@ QString root = isLocal ? "/" : QString();
     QString pathMsg =
         isLocal ? QDir::toNativeSeparators(path.path()) : path.path();
     QString name = QInputDialog::getText(
-        this, "New Folder", QString("Create folder in %1").arg(pathMsg));
+        this, "New Folder", QString("Folder name for:\n%1").arg(pathMsg));
     if (!name.isEmpty()) {
       QString folder = isLocal ? path.filePath(name)
                                : JoinRemotePath(path.path(), name);
@@ -268,7 +300,7 @@ QString root = isLocal ? "/" : QString();
 
     QString name = model->data(index, Qt::DisplayRole).toString();
     name = QInputDialog::getText(this, "Rename",
-                                 QString("New name for %1").arg(pathMsg),
+                                 QString("Rename:\n%1\n\nto").arg(pathMsg),
                                  QLineEdit::Normal, name);
     if (!name.isEmpty()) {
       const QString targetPath =
@@ -308,7 +340,7 @@ QString root = isLocal ? "/" : QString();
 
     QString name = path;
     name = QInputDialog::getText(
-        this, "Move", QString("New full path for %1").arg(pathMsg),
+        this, "Move", QString("Move:\n%1\n\nto remote path").arg(pathMsg),
         QLineEdit::Normal, name);
     if (!name.isEmpty()) {
       QProcess process;
@@ -344,8 +376,10 @@ QString root = isLocal ? "/" : QString();
 
     int button = QMessageBox::question(
         this, "Delete",
-        QString("Are you sure you want to delete %1 ?").arg(pathMsg),
-        QMessageBox::Yes | QMessageBox::No);
+        QString("Delete %1?\n\nThis starts a rclone delete job. Recovery "
+                "depends on the remote backend's trash or versioning support.")
+            .arg(pathMsg),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (button == QMessageBox::Yes) {
       QStringList args;
       args << (model->isFolder(index) ? "purge" : "delete");
@@ -384,8 +418,7 @@ QString root = isLocal ? "/" : QString();
     QString lastMount = settings->value("Settings/lastMountPoint", "Z:").toString();
     QString folder =
         QInputDialog::getText(this, "Mount",
-                              QString("(Make sure you have WinFsp-FUSE "
-                                      "installed)\n\nDrive to mount %1 to")
+                              QString("Drive letter or mount point for %1")
                                   .arg(remote),
                               QLineEdit::Normal, lastMount);
 #else
@@ -417,7 +450,7 @@ QString root = isLocal ? "/" : QString();
     if (!streamConfirmed) {
       QString result = QInputDialog::getText(
           this, "Stream",
-          "Enter stream command (file will be passed in STDIN):",
+          "Player command. Rclone will stream the file to the command's stdin:",
           QLineEdit::Normal, stream);
       if (result.isEmpty()) {
         return;

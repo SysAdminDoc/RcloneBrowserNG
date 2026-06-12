@@ -1,18 +1,36 @@
 #include "stream_widget.h"
+#include "interface_polish.h"
 
 StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                            const QString &remote, const QString &stream,
                            QWidget *parent)
     : QWidget(parent), mRclone(rclone), mPlayer(player) {
   ui.setupUi(this);
+  ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
+  ui.verticalLayout->setSpacing(0);
+  ui.horizontalLayout->setContentsMargins(10, 8, 10, 8);
+  ui.horizontalLayout->setSpacing(8);
+  ui.gridLayout_2->setContentsMargins(10, 8, 10, 10);
+  ui.gridLayout_2->setHorizontalSpacing(8);
+  ui.gridLayout_2->setVerticalSpacing(6);
+  ui.showDetails->setStyleSheet(QString());
+  ui.showOutput->setStyleSheet(QString());
+  ui.cancel->setStyleSheet(QString());
+  UiPolish::SetCard(this);
+  UiPolish::SetToolbarSurface(ui.widget);
 
   ui.remote->setText(remote);
+  ui.remote->setToolTip(remote);
   ui.stream->setText(stream);
+  ui.stream->setToolTip(stream);
   ui.info->setText(remote);
+  ui.info->setToolTip(remote);
+  ui.info->setMinimumWidth(0);
+  ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
   ui.details->setVisible(false);
 
-  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  UiPolish::SetOutputView(ui.output);
   ui.output->setVisible(false);
   // streams can run for hours - bound memory growth
   ui.output->setMaximumBlockCount(10000);
@@ -31,12 +49,14 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
 
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  UiPolish::SetCompactToolButton(ui.cancel, "Stop stream",
+                                 "Stop this stream and close the player pipe.");
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
       int button = QMessageBox::question(
-          this, "Stop", QString("Do you want to stop %1 stream?").arg(remote),
-          QMessageBox::Yes | QMessageBox::No);
+          this, "Stop Stream", QString("Stop streaming %1?").arg(remote),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
       if (button == QMessageBox::Yes) {
         cancel();
       }
@@ -58,13 +78,11 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                      mRclone->deleteLater();
                      mRunning = false;
                      if (status == 0) {
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; }");
-                       ui.showDetails->setText("Finished");
+                       UiPolish::SetStatus(ui.showDetails, "success",
+                                           "Finished");
                      } else {
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: #e53935; }");
-                       ui.showDetails->setText("Error");
+                       UiPolish::SetStatus(ui.showDetails, "error",
+                                           "Needs attention");
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
                      }
@@ -72,9 +90,8 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                      emit finished();
                    });
 
-  ui.showDetails->setStyleSheet(
-      "QToolButton { border: 0; color: #43a047; }");
-  ui.showDetails->setText("Streaming");
+  UiPolish::SetStatus(ui.showDetails, "running", "Streaming");
+  ui.showOutput->setAccessibleName("Show stream output");
 }
 
 StreamWidget::~StreamWidget() {}

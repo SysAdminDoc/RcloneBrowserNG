@@ -1,13 +1,32 @@
 #include "export_dialog.h"
+#include "interface_polish.h"
 #include "utils.h"
 
 ExportDialog::ExportDialog(const QString &remote, const QDir &path,
                            QWidget *parent)
     : QDialog(parent) {
   ui.setupUi(this);
-  resize(0, 0);
+  if (layout()) {
+    layout()->setSizeConstraint(QLayout::SetDefaultConstraint);
+    layout()->setSpacing(10);
+    layout()->setContentsMargins(12, 12, 12, 12);
+  }
+  UiPolish::SetWindowDefaults(this, QSize(640, 390));
+  UiPolish::SetToolbarSurface(ui.pathGroup);
+  UiPolish::SetPathField(ui.textFile, "Export destination file");
+  UiPolish::SetCompactToolButton(ui.fileBrowse, "Choose export file",
+                                 "Choose where to save the exported file list.");
+  if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
+    UiPolish::SetPrimaryButton(ok);
+  }
 
-  setWindowTitle("Export files list");
+  setWindowTitle("Export File List");
+  ui.textFile->setPlaceholderText("Choose a .txt or .csv destination");
+  ui.textMinSize->setPlaceholderText("100M");
+  ui.textMinAge->setPlaceholderText("1d");
+  ui.textMaxAge->setPlaceholderText("30d");
+  ui.textExtra->setPlaceholderText("Additional rclone flags");
+  ui.textExclude->setPlaceholderText("One --exclude pattern per line");
 
   mTarget = remote + ":" + path.path();
 
@@ -101,8 +120,8 @@ QStringList ExportDialog::getOptions() const {
 void ExportDialog::done(int r) {
   if (r == QDialog::Accepted) {
     if (ui.textFile->text().isEmpty()) {
-      QMessageBox::warning(this, "Warning",
-                           "Please enter destination filename!");
+      QMessageBox::warning(this, "Destination required",
+                           "Choose where to save the exported file list.");
       return;
     }
   }

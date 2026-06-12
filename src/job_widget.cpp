@@ -1,4 +1,5 @@
 #include "job_widget.h"
+#include "interface_polish.h"
 #include "utils.h"
 
 namespace {
@@ -24,6 +25,19 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      const QString &dest, QWidget *parent)
     : QWidget(parent), mProcess(process) {
   ui.setupUi(this);
+  ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
+  ui.verticalLayout->setSpacing(0);
+  ui.horizontalLayout->setContentsMargins(10, 8, 10, 8);
+  ui.horizontalLayout->setSpacing(8);
+  ui.gridLayout_2->setContentsMargins(10, 8, 10, 10);
+  ui.gridLayout_2->setHorizontalSpacing(8);
+  ui.gridLayout_2->setVerticalSpacing(6);
+  ui.showDetails->setStyleSheet(QString());
+  ui.showOutput->setStyleSheet(QString());
+  ui.copy->setStyleSheet(QString());
+  ui.cancel->setStyleSheet(QString());
+  UiPolish::SetCard(this);
+  UiPolish::SetToolbarSurface(ui.widget);
 
   mArgs.append(QDir::toNativeSeparators(GetRclone()));
   mArgs.append(GetRcloneConf());
@@ -37,10 +51,11 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   ui.info->setToolTip(info);
   ui.info->setMinimumWidth(0);
   ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  ui.info->setAccessibleName("Transfer summary");
 
   ui.details->setVisible(false);
 
-  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  UiPolish::SetOutputView(ui.output);
   ui.output->setVisible(false);
   // bound memory growth on long transfers; old lines scroll away instead
   // of the whole log being wiped at once
@@ -60,12 +75,15 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  UiPolish::SetCompactToolButton(ui.cancel, "Cancel transfer",
+                                 "Cancel this running transfer.");
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
       int button = QMessageBox::question(
           this, "Transfer",
-          QString("rclone process is still running. Do you want to cancel it?"),
+          QString("Cancel this transfer?\n\n"
+                  "Rclone will stop as soon as the process can be terminated."),
           QMessageBox::Yes | QMessageBox::No);
       if (button == QMessageBox::Yes) {
         cancel();
@@ -77,6 +95,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
   ui.copy->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
+  UiPolish::SetCompactToolButton(ui.copy, "Copy transfer command",
+                                 "Copy the rclone command to the clipboard.");
 
   QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
     QStringList quotedArgs;
@@ -258,13 +278,11 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      if (status == 0) {
                        // no explicit colour - inherit the palette so the
                        // label stays readable in light and dark mode
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; }");
-                       ui.showDetails->setText("Finished");
+                       UiPolish::SetStatus(ui.showDetails, "success",
+                                           "Finished");
                      } else {
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: #e53935; }");
-                       ui.showDetails->setText("Error");
+                       UiPolish::SetStatus(ui.showDetails, "error",
+                                           "Needs attention");
                        // surface the rclone output so the user can see why
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
@@ -275,9 +293,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      emit finished(ui.info->text());
                    });
 
-  ui.showDetails->setStyleSheet(
-      "QToolButton { border: 0; color: #43a047; }");
-  ui.showDetails->setText("Running");
+  UiPolish::SetStatus(ui.showDetails, "running", "Running");
+  ui.showOutput->setAccessibleName("Show transfer output");
 }
 
 JobWidget::~JobWidget() {}
