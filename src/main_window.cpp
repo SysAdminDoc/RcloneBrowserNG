@@ -134,12 +134,23 @@ MainWindow::MainWindow() {
   }
 
   QObject::connect(ui.preferences, &QAction::triggered, this, [=]() {
+    auto settings = GetSettings();
+    const QString oldRclone = settings->value("Settings/rclone").toString();
+    const QString oldRcloneConf =
+        settings->value("Settings/rcloneConf").toString();
+
     PreferencesDialog dialog(this);
     if (dialog.exec() == QDialog::Accepted) {
-      auto settings = GetSettings();
-      settings->setValue("Settings/rclone", dialog.getRclone().trimmed());
-      settings->setValue("Settings/rcloneConf",
-                         dialog.getRcloneConf().trimmed());
+      const QString newRclone = dialog.getRclone().trimmed();
+      const QString newRcloneConf = dialog.getRcloneConf().trimmed();
+      if (mJobCount > 0 &&
+          (newRclone != oldRclone || newRcloneConf != oldRcloneConf) &&
+          !confirmConfigMutation("Changing the rclone executable or config path")) {
+        return;
+      }
+
+      settings->setValue("Settings/rclone", newRclone);
+      settings->setValue("Settings/rcloneConf", newRcloneConf);
       settings->setValue("Settings/stream", dialog.getStream());
       settings->setValue("Settings/mount", dialog.getMount());
       settings->setValue("Settings/defaultDownloadDir",
@@ -179,8 +190,8 @@ MainWindow::MainWindow() {
                          dialog.getHttpsProxy().trimmed());
       settings->setValue("Settings/no_proxy", dialog.getNoProxy().trimmed());
 
-      SetRclone(dialog.getRclone());
-      SetRcloneConf(dialog.getRcloneConf());
+      SetRclone(newRclone);
+      SetRcloneConf(newRcloneConf);
       mFirstTime = true;
       rcloneGetVersion();
 
@@ -696,6 +707,11 @@ void MainWindow::rcloneGetVersion() {
 }
 
 void MainWindow::rcloneConfig() {
+  if (!confirmConfigMutation("Opening rclone config")) {
+    return;
+  }
+
+  const QDateTime configBefore = rcloneConfigLastModified();
 
   // for macOS and Linux we have to take care of possible spaces in rclone and
   // rclone.conf paths by using "" around them
@@ -720,6 +736,7 @@ void MainWindow::rcloneConfig() {
                        &QProcess::finished),
                    this, [=](int code, QProcess::ExitStatus) {
                      if (code == 0) {
+                       noteConfigReloadIfChanged(configBefore);
                        emit rcloneListRemotes();
                      }
                      p->deleteLater();
@@ -813,6 +830,67 @@ void MainWindow::rcloneConfig() {
   UseRclonePassword(p);
   p->start(QIODevice::NotOpen);
 #endif
+}
+
+bool MainWindow::confirmConfigMutation(const QString &action) {
+  if (mJobCount == 0) {
+    return true;
+  }
+
+  QMessageBox box(this);
+  box.setIcon(QMessageBox::Warning);
+  box.setWindowTitle(qApp->applicationDisplayName());
+  box.setText(action + " while jobs, mounts, or streams are active can leave "
+              "running rclone processes using stale configuration.");
+  box.setInformativeText(
+      QString("Active processes: %1\n\nStop the active process first, defer "
+              "the config change, or continue anyway if you understand that "
+              "running processes will not pick up the change.")
+          .arg(mJobCount));
+
+  QPushButton *continueButton = box.addButton("Continue Anyway",
+                                              QMessageBox::AcceptRole);
+  QPushButton *showJobsButton =
+      box.addButton("Show Jobs", QMessageBox::ActionRole);
+  box.addButton(QMessageBox::Cancel);
+  box.exec();
+
+  if (box.clickedButton() == continueButton) {
+    mStatusMessage->setText(
+        "Config edit continued while active rclone processes are running.");
+    return true;
+  }
+
+  if (box.clickedButton() == showJobsButton) {
+    ui.tabs->setCurrentIndex(1);
+    showNormal();
+  }
+
+  mStatusMessage->setText(
+      "Config edit deferred while active rclone processes are running.");
+  return false;
+}
+
+QDateTime MainWindow::rcloneConfigLastModified() const {
+  const QStringList configArgs = GetRcloneConf();
+  const int configIndex = configArgs.indexOf("--config");
+  if (configIndex < 0 || configIndex + 1 >= configArgs.count()) {
+    return QDateTime();
+  }
+
+  const QFileInfo info(configArgs.at(configIndex + 1));
+  return info.exists() ? info.lastModified() : QDateTime();
+}
+
+void MainWindow::noteConfigReloadIfChanged(const QDateTime &before) {
+  if (!before.isValid()) {
+    return;
+  }
+
+  const QDateTime after = rcloneConfigLastModified();
+  if (after.isValid() && after != before) {
+    mStatusMessage->setText("rclone config changed; remotes reloaded.");
+  }
 }
 
 void MainWindow::rcloneListRemotes() {
