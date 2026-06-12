@@ -4,6 +4,8 @@
 #include "list_of_job_options.h"
 #include "mount_widget.h"
 #include "preferences_dialog.h"
+#include "rc_job_widget.h"
+#include "rclone_rc_engine.h"
 #include "remote_widget.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
@@ -1167,6 +1169,8 @@ bool MainWindow::canClose() {
         mount->cancel();
       } else if (auto transfer = qobject_cast<JobWidget *>(widget)) {
         transfer->cancel();
+      } else if (auto rcTransfer = qobject_cast<RcJobWidget *>(widget)) {
+        rcTransfer->cancel();
       } else if (auto stream = qobject_cast<StreamWidget *>(widget)) {
         stream->cancel();
       }
@@ -1272,6 +1276,59 @@ void MainWindow::editSelectedTask() {
 
 void MainWindow::addTransfer(const QString &message, const QString &source,
                              const QString &dest, const QStringList &args) {
+  if (!args.isEmpty()) {
+    if (!mRcEngine) {
+      mRcEngine = new RcloneRcEngine(this);
+    }
+
+    QString rcError;
+    const int jobId = mRcEngine->runCommandAsync(args, &rcError);
+    if (jobId >= 0) {
+      auto widget =
+          new RcJobWidget(mRcEngine, jobId, message,
+                          mRcEngine->rcCommandForDisplay(args), source, dest);
+
+      auto line = new QFrame();
+      line->setFrameShape(QFrame::HLine);
+      line->setFrameShadow(QFrame::Sunken);
+
+      QObject::connect(widget, &RcJobWidget::finished, this,
+                       [=](const QString &info) {
+                         if (mNotifyFinishedTransfers) {
+                           qApp->alert(this);
+                           QApplication::beep();
+                           mSystemTray.showMessage("Transfer finished", info);
+                         }
+
+                         if (--mJobCount == 0) {
+                           ui.tabs->setTabText(1, "Jobs");
+                         } else {
+                           ui.tabs->setTabText(
+                               1, QString("Jobs (%1)").arg(mJobCount));
+                         }
+                       });
+
+      QObject::connect(widget, &RcJobWidget::closed, this, [=]() {
+        ui.jobs->removeWidget(widget);
+        ui.jobs->removeWidget(line);
+        widget->deleteLater();
+        delete line;
+        if (ui.jobs->count() == 2) {
+          ui.noJobsAvailable->show();
+        }
+      });
+
+      if (ui.jobs->count() == 2) {
+        ui.noJobsAvailable->hide();
+      }
+
+      ui.jobs->insertWidget(0, widget);
+      ui.jobs->insertWidget(1, line);
+      ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
+      return;
+    }
+  }
+
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
 

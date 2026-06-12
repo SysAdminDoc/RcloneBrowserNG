@@ -6,6 +6,8 @@
 #include "ui_main_window.h"
 
 class JobWidget;
+class RcJobWidget;
+class RcloneRcEngine;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -30,6 +32,7 @@ private:
 
   QSystemTrayIcon mSystemTray;
   JobWidget *mLastFinished = nullptr;
+  RcloneRcEngine *mRcEngine = nullptr;
 
   bool mAlwaysShowInTray;
   bool mCloseToTray;
