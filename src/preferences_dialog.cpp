@@ -68,6 +68,13 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       QDir::toNativeSeparators(settings->value("Settings/rclone").toString()));
   ui.rcloneConf->setText(QDir::toNativeSeparators(
       settings->value("Settings/rcloneConf").toString()));
+  ui.usePasswordCommand->setChecked(IsRclonePasswordCommandEnabled());
+#if !defined(Q_OS_WIN32)
+  ui.usePasswordCommand->setChecked(false);
+  ui.usePasswordCommand->setDisabled(true);
+  ui.usePasswordCommand->setToolTip(
+      "OS credential storage is not available in this build.");
+#endif
   ui.stream->setText(settings->value("Settings/stream").toString());
 
 #if defined(Q_OS_OPENBSD) || defined(Q_OS_NETBSD)
@@ -267,4 +274,8 @@ bool PreferencesDialog::getUseProxy() const {
   } else {
     return true;
   }
+}
+
+bool PreferencesDialog::getUsePasswordCommand() const {
+  return ui.usePasswordCommand->isChecked();
 }

@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Added an optional Windows Credential Manager mode for encrypted `rclone.conf` passwords; rclone now receives the password through `--password-command` and a console helper instead of inherited `RCLONE_CONFIG_PASS`
 -   NEW: Added a generated New Remote picker backed by `rclone rc --loopback config/providers`, so the creation flow lists the backend types supported by the installed rclone instead of relying on a stale hardcoded list
 -   NEW: Added a lazy `RcloneRcEngine` that runs transfer jobs through a long-lived authenticated `rclone rcd` with `core/command`, `core/stats`, and `job/stop`; legacy process spawning remains the fallback
 -   FIXED: Remote New Folder and Rename destination paths now use rclone-style path joining instead of `QDir::filePath`, avoiding macOS/remote path edge cases

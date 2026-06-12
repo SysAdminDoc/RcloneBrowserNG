@@ -143,6 +143,16 @@
             </property>
            </widget>
           </item>
+          <item row="5" column="1">
+           <widget class="QCheckBox" name="usePasswordCommand">
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;store the encrypted-config password in the OS credential manager and pass it to rclone with --password-command instead of RCLONE_CONFIG_PASS&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
+            <property name="text">
+             <string>Use OS credential manager for encrypted rclone.conf password</string>
+            </property>
+           </widget>
+          </item>
           <item row="13" column="0">
            <widget class="QLabel" name="label_11">
             <property name="text">
@@ -258,6 +268,7 @@
          <zorder>rcloneBrowse</zorder>
          <zorder>rcloneConfBrowse</zorder>
          <zorder>defaultDownloadDir</zorder>
+         <zorder>usePasswordCommand</zorder>
         </widget>
        </item>
        <item>
@@ -709,6 +720,7 @@
   <tabstop>rcloneBrowse</tabstop>
   <tabstop>rcloneConf</tabstop>
   <tabstop>rcloneConfBrowse</tabstop>
+  <tabstop>usePasswordCommand</tabstop>
   <tabstop>stream</tabstop>
   <tabstop>mount</tabstop>
   <tabstop>defaultDownloadDir</tabstop>

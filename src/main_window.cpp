@@ -210,6 +210,8 @@ MainWindow::MainWindow() {
     }
     SetRclone(settings->value("Settings/rclone").toString());
     SetRcloneConf(settings->value("Settings/rcloneConf").toString());
+    SetRclonePasswordCommandEnabled(
+        settings->value("Settings/usePasswordCommand", false).toBool());
 
     mAlwaysShowInTray =
         settings->value("Settings/alwaysShowInTray", false).toBool();
@@ -307,9 +309,16 @@ MainWindow::MainWindow() {
       settings->setValue("Settings/https_proxy",
                          dialog.getHttpsProxy().trimmed());
       settings->setValue("Settings/no_proxy", dialog.getNoProxy().trimmed());
+      const bool oldUsePasswordCommand = IsRclonePasswordCommandEnabled();
+      settings->setValue("Settings/usePasswordCommand",
+                         dialog.getUsePasswordCommand());
 
       SetRclone(newRclone);
       SetRcloneConf(newRcloneConf);
+      SetRclonePasswordCommandEnabled(dialog.getUsePasswordCommand());
+      if (oldUsePasswordCommand && !dialog.getUsePasswordCommand()) {
+        ClearRcloneConfigPassword();
+      }
       mFirstTime = true;
       rcloneGetVersion();
 
@@ -1478,6 +1487,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
 
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
+  QStringList processArgs = GetRcloneConf() + args;
 
   auto widget = new JobWidget(transfer, message, args, source, dest);
 
@@ -1523,7 +1533,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
   ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
 
   UseRclonePassword(transfer);
-  transfer->start(GetRclone(), GetRcloneConf() + args, QIODevice::ReadOnly);
+  transfer->start(GetRclone(), processArgs, QIODevice::ReadOnly);
 }
 
 void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
