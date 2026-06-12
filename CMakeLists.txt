@@ -69,4 +69,17 @@ if(BUILD_TESTING)
   target_include_directories(remote_provider_test PRIVATE src)
   target_link_libraries(remote_provider_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME remote_provider_test COMMAND remote_provider_test)
+
+  add_executable(job_options_store_test
+    tests/job_options_store_test.cpp
+    src/job_options_store.cpp
+    src/job_options.cpp
+    src/utils.cpp
+  )
+  target_include_directories(job_options_store_test PRIVATE src)
+  target_link_libraries(job_options_store_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(job_options_store_test advapi32)
+  endif()
+  add_test(NAME job_options_store_test COMMAND job_options_store_test)
 endif()
