@@ -45,4 +45,12 @@ if(BUILD_TESTING)
   target_include_directories(export_list_writer_test PRIVATE src)
   target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core)
   add_test(NAME export_list_writer_test COMMAND export_list_writer_test)
+
+  add_executable(vfs_upload_state_test
+    tests/vfs_upload_state_test.cpp
+    src/vfs_upload_state.cpp
+  )
+  target_include_directories(vfs_upload_state_test PRIVATE src)
+  target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core)
+  add_test(NAME vfs_upload_state_test COMMAND vfs_upload_state_test)
 endif()

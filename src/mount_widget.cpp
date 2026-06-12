@@ -1,5 +1,6 @@
 #include "mount_widget.h"
 #include "utils.h"
+#include "vfs_upload_state.h"
 
 MountWidget::MountWidget(QProcess *process, const QString &remote,
                          const QString &folder, const QString &rcAddr,
@@ -103,10 +104,125 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
 MountWidget::~MountWidget() {}
 
+QString MountWidget::rcAddr() const {
+  if (!mRcAddr.isEmpty()) {
+    return mRcAddr;
+  }
+  return "localhost:" + QString::number(GetRcMountPort(ui.folder->text()));
+}
+
+bool MountWidget::runRcCommand(const QString &command, QByteArray *output,
+                               QString *error) const {
+  if (!output) {
+    return false;
+  }
+
+  QProcess process;
+  QStringList args;
+  args << "rc" << command << "--rc-addr" << rcAddr();
+  if (!mRcUser.isEmpty()) {
+    args << "--rc-user" << mRcUser;
+  }
+  if (!mRcPass.isEmpty()) {
+    args << "--rc-pass" << mRcPass;
+  }
+
+  UseRclonePassword(&process);
+  process.start(GetRclone(), args, QIODevice::ReadOnly);
+  if (!process.waitForStarted(3000)) {
+    if (error) {
+      *error = "failed to start rclone rc";
+    }
+    return false;
+  }
+  if (!process.waitForFinished(5000)) {
+    process.kill();
+    process.waitForFinished();
+    if (error) {
+      *error = "rclone rc timed out";
+    }
+    return false;
+  }
+
+  *output = process.readAllStandardOutput();
+  if (process.exitStatus() != QProcess::NormalExit ||
+      process.exitCode() != 0) {
+    const QString detail =
+        QString::fromUtf8(process.readAllStandardError()).trimmed();
+    if (error) {
+      *error = detail.isEmpty() ? QString("rclone rc exited with code %1")
+                                      .arg(process.exitCode())
+                                : detail;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool MountWidget::confirmNoPendingVfsUploads() {
+  QByteArray output;
+  QString error;
+
+  VfsUploadState state;
+  if (runRcCommand("vfs/queue", &output, &error)) {
+    state = ParseVfsQueueState(output);
+    if (!state.valid) {
+      error = state.error;
+    }
+  }
+
+  if (!state.valid) {
+    QByteArray statsOutput;
+    QString statsError;
+    if (runRcCommand("vfs/stats", &statsOutput, &statsError)) {
+      state = ParseVfsStatsUploadState(statsOutput);
+      if (!state.valid) {
+        error = state.error;
+      }
+    } else if (error.isEmpty()) {
+      error = statsError;
+    }
+  }
+
+  if (!state.valid) {
+    const int button = QMessageBox::warning(
+        this, "Unmount",
+        QString("Rclone Browser NG could not check whether the VFS cache has "
+                "pending uploads.\n\n%1\n\nUnmount anyway?")
+            .arg(error.isEmpty() ? "The rc endpoint did not return usable data."
+                                 : error),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    return button == QMessageBox::Yes;
+  }
+
+  if (!state.hasPendingUploads()) {
+    return true;
+  }
+
+  const QString bytes =
+      state.bytesKnown ? FormatUploadByteSize(state.pendingBytes)
+                       : QString("unknown size");
+  const int button = QMessageBox::warning(
+      this, "Pending uploads",
+      QString("The VFS cache still has %1 file(s) / %2 not yet uploaded.\n\n"
+              "Unmount anyway?")
+          .arg(state.pendingFiles)
+          .arg(bytes),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+  return button == QMessageBox::Yes;
+}
+
 void MountWidget::cancel() {
   if (!mRunning) {
     return;
   }
+
+#if defined(Q_OS_WIN32)
+  if (!confirmNoPendingVfsUploads()) {
+    return;
+  }
+#endif
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD)
   QProcess::startDetached("umount", QStringList() << ui.folder->text());
@@ -115,10 +231,7 @@ void MountWidget::cancel() {
   QStringList args;
   args << "rc";
   args << "core/quit";
-  args << "--rc-addr"
-       << (mRcAddr.isEmpty()
-               ? "localhost:" + QString::number(GetRcMountPort(ui.folder->text()))
-               : mRcAddr);
+  args << "--rc-addr" << rcAddr();
   // authenticate with the per-mount credential the endpoint was started with
   if (!mRcUser.isEmpty()) {
     args << "--rc-user" << mRcUser;
