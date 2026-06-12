@@ -122,10 +122,17 @@ int main(int argc, char *argv[]) {
     tmpDir = applicationPath.absolutePath();
 #else
     QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-    tmpDir = xdg_config_home + "/rclone-browser";
+    if (xdg_config_home.isEmpty()) {
+      xdg_config_home =
+          QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    }
+    if (xdg_config_home.isEmpty()) {
+      xdg_config_home = QDir::home().filePath(".config");
+    }
+    tmpDir = QDir(xdg_config_home).filePath("rclone-browser");
     // create ./rclone-browser folder
     if (!QDir(tmpDir).exists()) {
-      QDir().mkdir(tmpDir);
+      QDir().mkpath(tmpDir);
     }
 #endif
 #endif

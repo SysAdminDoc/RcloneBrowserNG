@@ -75,6 +75,19 @@ QString MakeRcPassword() {
 }
 
 static QString GetIniFilename() {
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
+  auto linuxConfigHome = []() {
+    QString configHome = qEnvironmentVariable("XDG_CONFIG_HOME");
+    if (configHome.isEmpty()) {
+      configHome = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    }
+    if (configHome.isEmpty()) {
+      configHome = QDir::home().filePath(".config");
+    }
+    return configHome;
+  };
+#endif
+
 #ifdef Q_OS_MACOS
   QFileInfo applicationPath(qApp->applicationFilePath());
   //  qDebug() << QString(applicationPath.absolutePath());
@@ -95,29 +108,25 @@ static QString GetIniFilename() {
   QFileInfo applicationPath(qApp->applicationFilePath());
   return applicationPath.dir().filePath(applicationPath.baseName() + ".ini");
 #else
-  QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-  return xdg_config_home + "/rclone-browser/rclone-browser.ini";
+  return QDir(linuxConfigHome()).filePath("rclone-browser/rclone-browser.ini");
 #endif
 #endif
 }
 
 bool IsPortableMode() {
   QString ini = GetIniFilename();
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
   QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
   //  qDebug() << QString("utils.cpp $XDG_CONFIG_HOME: " + xdg_config_home);
   QString appimage = qgetenv("APPIMAGE");
   //  qDebug() << QString("utils.cpp $APPIMAGE: " + appimage);
 
-  // cat ".config" from $XDG_CONFIG_HOME
-  // it should be the same as appimage if run from AppImage
-  xdg_config_home = xdg_config_home.left(xdg_config_home.length() - 7);
-  //  qDebug() << QString("utils.cpp $XDG_CONFIG_HOME-7: " + xdg_config_home);
-
   if (!xdg_config_home.isEmpty() && !appimage.isEmpty() &&
-      xdg_config_home == appimage) {
+      QDir::cleanPath(xdg_config_home) == QDir::cleanPath(appimage + ".config")) {
 
     return true;
   }
+#endif
 
   if (QFileInfo(ini).exists()) {
 
@@ -244,7 +253,13 @@ QStringList GetRcloneConf() {
     conf = QDir(qApp->applicationDirPath()).filePath(conf);
 #else
     QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-    conf = QDir(xdg_config_home + "/..").filePath(conf);
+    if (xdg_config_home.isEmpty()) {
+      xdg_config_home =
+          QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    }
+    conf = QDir(xdg_config_home.isEmpty() ? qApp->applicationDirPath()
+                                          : xdg_config_home + "/..")
+               .filePath(conf);
 #endif
 #endif
     //    qDebug() << QString("utils.cpp conf: " + conf);
@@ -267,7 +282,13 @@ QString GetRclone() {
     rclone = QDir(qApp->applicationDirPath()).filePath(rclone);
 #else
     QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-    rclone = QDir(xdg_config_home + "/..").filePath(rclone);
+    if (xdg_config_home.isEmpty()) {
+      xdg_config_home =
+          QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    }
+    rclone = QDir(xdg_config_home.isEmpty() ? qApp->applicationDirPath()
+                                            : xdg_config_home + "/..")
+                 .filePath(rclone);
 #endif
 #endif
     //    qDebug() << QString("utils.cpp rclone portable: " + rclone);
