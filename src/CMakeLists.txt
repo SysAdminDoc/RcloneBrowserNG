@@ -55,6 +55,7 @@ set(SOURCE
   transfer_dialog.cpp
   export_dialog.cpp
   export_list_writer.cpp
+  vfs_upload_state.cpp
   progress_dialog.cpp
   job_widget.cpp
   mount_widget.cpp
@@ -76,6 +77,7 @@ set(OTHER
   transfer_dialog.h
   export_dialog.h
   export_list_writer.h
+  vfs_upload_state.h
   progress_dialog.h
   job_widget.h
   mount_widget.h

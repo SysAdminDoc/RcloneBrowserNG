@@ -31,4 +31,9 @@ private:
   QString mRcAddr;
   QString mRcUser;
   QString mRcPass;
+
+  QString rcAddr() const;
+  bool runRcCommand(const QString &command, QByteArray *output,
+                    QString *error) const;
+  bool confirmNoPendingVfsUploads();
 };
