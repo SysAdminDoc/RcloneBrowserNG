@@ -317,8 +317,12 @@ MainWindow::MainWindow() {
     QString name = item->text();
     bool isLocal = type == "local";
     bool isGoogle = type == "drive";
+    bool isGooglePhotos =
+        type.compare("google photos", Qt::CaseInsensitive) == 0;
 
-    auto remote = new RemoteWidget(&mIcons, name, isLocal, isGoogle, ui.tabs);
+    auto remote =
+        new RemoteWidget(&mIcons, name, isLocal, isGoogle, isGooglePhotos,
+                         ui.tabs);
     QObject::connect(remote, &RemoteWidget::addMount, this,
                      &MainWindow::addMount);
     QObject::connect(remote, &RemoteWidget::addStream, this,

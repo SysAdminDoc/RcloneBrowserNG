@@ -26,3 +26,7 @@ QString ChildRemotePathFromLsjson(const QString &parentPath,
   }
   return JoinRemotePath(parentPath, childPath);
 }
+
+bool IsGooglePhotosRecursiveAlbumPath(const QString &path) {
+  return path.startsWith("album/") || path.startsWith("shared-album/");
+}

@@ -45,7 +45,8 @@ class ItemSorter;
 class ItemModel : public QAbstractItemModel {
   Q_OBJECT
 public:
-  ItemModel(IconCache *icons, const QString &remote, QObject *parent);
+  ItemModel(IconCache *icons, const QString &remote, bool googlePhotos,
+            QObject *parent);
   ~ItemModel();
 
   const QDir &path(const QModelIndex &index) const;
@@ -103,6 +104,7 @@ private:
   int mSortColumn = 0;
   Qt::SortOrder mSortOrder = Qt::AscendingOrder;
   bool mDriveShared = false;
+  bool mGooglePhotos = false;
 
   Item *get(const QModelIndex &index) const;
   void load(const QPersistentModelIndex &parentIndex, Item *parent);
