@@ -28,6 +28,7 @@
 -   FIXED: Transfer dialog leaked a JobOptions object on every plain (non-saved) run
 
 ### Security
+-   SECURITY: Mount startup now warns once per detected version for vulnerable WinFsp (CVE-2026-3006, WinFsp <= 2.1.25156) and for old macFUSE versions before 5.2
 -   SECURITY: `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` called early in main on Windows to prevent DLL planting from the application directory
 -   SECURITY: rclone executable paths ending in `.bat` or `.cmd` are now rejected (BatBadBut, CVE-2024-24576)
 -   SECURITY: Windows mounts now authenticate the rclone remote-control endpoint with a random per-mount credential — prevents CVE-2026-41176 (CVSS 9.2) and CVE-2026-49980 (CVSS 9.8) exploitation via unauthenticated loopback rc
