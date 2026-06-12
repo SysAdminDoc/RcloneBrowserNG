@@ -1427,6 +1427,11 @@ void MainWindow::checkBrowserUpdate() {
 }
 
 void MainWindow::addMount(const QString &remote, const QString &folder) {
+  startMount(remote, folder, true, 0);
+}
+
+void MainWindow::startMount(const QString &remote, const QString &folder,
+                            bool keepMounted, int restartAttempt) {
 #if defined(Q_OS_WIN32)
   const QString winFspDll = findWinFspDll();
   if (winFspDll.isEmpty()) {
@@ -1492,11 +1497,13 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 #endif
 
   auto widget =
-      new MountWidget(mount, remote, folder, rcAddr, rcUser, rcPass);
+      new MountWidget(mount, remote, folder, rcAddr, rcUser, rcPass,
+                      keepMounted);
 
   auto line = new QFrame();
   line->setFrameShape(QFrame::HLine);
   line->setFrameShadow(QFrame::Sunken);
+  const QDateTime mountStarted = QDateTime::currentDateTimeUtc();
 
   QObject::connect(widget, &MountWidget::finished, this, [=]() {
     if (--mJobCount == 0) {
@@ -1505,6 +1512,40 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
       ui.tabs->setTabText(1, QString("Jobs (%1)").arg(mJobCount));
     }
   });
+
+  QObject::connect(widget, &MountWidget::stopped, this,
+                   [=](bool requestedUnmount, bool) {
+                     if (requestedUnmount || !widget->keepMounted()) {
+                       return;
+                     }
+
+                     const int nextAttempt =
+                         mountStarted.secsTo(QDateTime::currentDateTimeUtc()) >=
+                                 300
+                             ? 1
+                             : restartAttempt + 1;
+                     if (nextAttempt > 5) {
+                       QMessageBox::warning(
+                           this, "Mount stopped",
+                           QString("The mount %1 on %2 stopped unexpectedly "
+                                   "and automatic remount gave up after 5 "
+                                   "attempts.")
+                               .arg(remote)
+                               .arg(folder));
+                       return;
+                     }
+
+                     const int delayMs =
+                         qMin(60000, 5000 * (1 << qMin(nextAttempt - 1, 4)));
+                     widget->setRemountScheduled(delayMs, nextAttempt);
+                     QPointer<MountWidget> widgetGuard(widget);
+                     QTimer::singleShot(delayMs, this, [=]() {
+                       if (!widgetGuard) {
+                         return;
+                       }
+                       startMount(remote, folder, true, nextAttempt);
+                     });
+                   });
 
   QObject::connect(widget, &MountWidget::closed, this, [=]() {
     ui.jobs->removeWidget(widget);

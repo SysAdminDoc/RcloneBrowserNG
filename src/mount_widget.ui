@@ -49,6 +49,19 @@
        <widget class="QLabel" name="info"/>
       </item>
       <item>
+       <widget class="QCheckBox" name="keepMounted">
+        <property name="toolTip">
+         <string>Automatically remount if the rclone mount process exits unexpectedly</string>
+        </property>
+        <property name="text">
+         <string>Keep mounted</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QToolButton" name="copy">
         <property name="toolTip">
          <string>Copy mount command to clipboard</string>
@@ -166,8 +179,9 @@
    </item>
   </layout>
  </widget>
- <tabstops>
+  <tabstops>
   <tabstop>showDetails</tabstop>
+  <tabstop>keepMounted</tabstop>
   <tabstop>cancel</tabstop>
   <tabstop>remote</tabstop>
   <tabstop>folder</tabstop>
