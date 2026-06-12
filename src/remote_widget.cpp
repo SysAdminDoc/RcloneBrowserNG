@@ -5,6 +5,7 @@
 #include "item_model.h"
 #include "list_of_job_options.h"
 #include "progress_dialog.h"
+#include "remote_path.h"
 #include "transfer_dialog.h"
 #include "utils.h"
 
@@ -229,7 +230,8 @@ QString root = isLocal ? "/" : QString();
     QString name = QInputDialog::getText(
         this, "New Folder", QString("Create folder in %1").arg(pathMsg));
     if (!name.isEmpty()) {
-      QString folder = path.filePath(name);
+      QString folder = isLocal ? path.filePath(name)
+                               : JoinRemotePath(path.path(), name);
       QString folderMsg = isLocal ? QDir::toNativeSeparators(folder) : folder;
 
       QProcess process;
@@ -269,14 +271,17 @@ QString root = isLocal ? "/" : QString();
                                  QString("New name for %1").arg(pathMsg),
                                  QLineEdit::Normal, name);
     if (!name.isEmpty()) {
+      const QString targetPath =
+          isLocal ? model->path(index.parent()).filePath(name)
+                  : JoinRemotePath(model->path(index.parent()).path(), name);
+
       QProcess process;
       UseRclonePassword(&process);
       process.setProgram(GetRclone());
       process.setArguments(
           QStringList() << "moveto" << GetRcloneConf() << getDriveSharedArgs()
                         << GetDefaultRcloneOptionsList() << remote + ":" + path
-                        << remote + ":" +
-                               model->path(index.parent()).filePath(name));
+                        << remote + ":" + targetPath);
       process.setProcessChannelMode(QProcess::MergedChannels);
 
       ProgressDialog progress("Rename", "Renaming...", pathMsg, &process, this);
