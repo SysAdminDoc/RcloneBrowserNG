@@ -29,4 +29,8 @@ private:
 
   QStringList mArgs;
   QHash<QString, QLabel *> mActive;
+  QLabel *mOverflowLabel = nullptr;
+
+  void setProgressOverflow(int hiddenCount);
+  void clearFileProgress();
 };
