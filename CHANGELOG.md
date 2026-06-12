@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Added a generated New Remote picker backed by `rclone rc --loopback config/providers`, so the creation flow lists the backend types supported by the installed rclone instead of relying on a stale hardcoded list
 -   NEW: Added a lazy `RcloneRcEngine` that runs transfer jobs through a long-lived authenticated `rclone rcd` with `core/command`, `core/stats`, and `job/stop`; legacy process spawning remains the fallback
 -   FIXED: Remote New Folder and Rename destination paths now use rclone-style path joining instead of `QDir::filePath`, avoiding macOS/remote path edge cases
 -   FIXED: Google Photos album folders now use recursive `lsjson --files-only` listing so album contents appear instead of empty folders

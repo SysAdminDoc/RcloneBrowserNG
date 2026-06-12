@@ -19,6 +19,7 @@ public:
 private slots:
   void rcloneGetVersion();
   void rcloneConfig();
+  void createRemote();
   void rcloneListRemotes();
   void listTasks();
 
@@ -53,6 +54,10 @@ private:
   QDateTime rcloneConfigLastModified() const;
   void noteConfigReloadIfChanged(const QDateTime &before);
   void setStatusMessage(const QString &message);
+  QString terminalRcloneConfigCommand(const QStringList &args) const;
+  bool startDetachedTerminalCommand(const QStringList &args,
+                                    const QDateTime &configBefore,
+                                    const QString &errorTitle);
   void startMount(const QString &remote, const QString &folder,
                   bool keepMounted, int restartAttempt);
 

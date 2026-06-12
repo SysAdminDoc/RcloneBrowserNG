@@ -6,6 +6,7 @@
 #include "preferences_dialog.h"
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
+#include "remote_provider.h"
 #include "remote_widget.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
@@ -83,6 +84,49 @@ QString macFuseVersion() {
   return QString();
 }
 #endif
+
+QString shellQuote(QString arg) {
+  return "'" + arg.replace("'", "'\"'\"'") + "'";
+}
+
+QVector<RemoteProvider> loadRemoteProviders(QWidget *parent, QString *error) {
+  if (error) {
+    error->clear();
+  }
+
+  QProcess p(parent);
+  UseRclonePassword(&p);
+  QStringList args = GetRcloneConf();
+  args << "rc"
+       << "--loopback"
+       << "config/providers";
+  p.start(GetRclone(), args, QIODevice::ReadOnly);
+  if (!p.waitForStarted(5000)) {
+    if (error) {
+      *error = "Failed to start rclone.";
+    }
+    return {};
+  }
+  if (!p.waitForFinished(15000)) {
+    p.kill();
+    p.waitForFinished(2000);
+    if (error) {
+      *error = "Timed out while reading rclone providers.";
+    }
+    return {};
+  }
+  if (p.exitCode() != 0) {
+    if (error) {
+      const QString stderrText =
+          QString::fromUtf8(p.readAllStandardError()).trimmed();
+      *error = stderrText.isEmpty() ? "rclone config/providers failed."
+                                    : stderrText;
+    }
+    return {};
+  }
+
+  return ParseRemoteProviders(p.readAllStandardOutput(), error);
+}
 
 } // namespace
 
@@ -306,6 +350,8 @@ MainWindow::MainWindow() {
 
   QObject::connect(ui.config, &QPushButton::clicked, this,
                    &MainWindow::rcloneConfig);
+  QObject::connect(ui.newRemote, &QPushButton::clicked, this,
+                   &MainWindow::createRemote);
   QObject::connect(ui.refresh, &QPushButton::clicked, this,
                    &MainWindow::rcloneListRemotes);
 
@@ -793,21 +839,123 @@ void MainWindow::rcloneConfig() {
   }
 
   const QDateTime configBefore = rcloneConfigLastModified();
+  startDetachedTerminalCommand(QStringList() << "config", configBefore,
+                               "rclone config");
+}
 
-  // for macOS and Linux we have to take care of possible spaces in rclone and
-  // rclone.conf paths by using "" around them
-  QString terminalRcloneCmd;
-  if (!GetRcloneConf().isEmpty()) {
-    terminalRcloneCmd = "\"" + GetRclone() + "\"" + " config" + " --config " +
-                        "\"" + GetRcloneConf().at(1) + "\"";
-  } else {
-    terminalRcloneCmd = "\"" + GetRclone() + "\"" + " config";
+void MainWindow::createRemote() {
+  if (!confirmConfigMutation("Creating a new remote")) {
+    return;
   }
 
+  QString error;
+  const QVector<RemoteProvider> providers = loadRemoteProviders(this, &error);
+  if (!error.isEmpty()) {
+    QMessageBox::critical(this, qApp->applicationDisplayName(), error);
+    return;
+  }
+
+  QDialog dialog(this);
+  dialog.setWindowTitle("New Remote");
+  auto layout = new QVBoxLayout(&dialog);
+  auto form = new QFormLayout();
+  layout->addLayout(form);
+
+  auto name = new QLineEdit(&dialog);
+  name->setPlaceholderText("remote name");
+  form->addRow("Name:", name);
+
+  auto provider = new QComboBox(&dialog);
+  provider->setEditable(true);
+  provider->setInsertPolicy(QComboBox::NoInsert);
+  provider->setMaxVisibleItems(30);
+  if (provider->completer()) {
+    provider->completer()->setCaseSensitivity(Qt::CaseInsensitive);
+    provider->completer()->setFilterMode(Qt::MatchContains);
+  }
+  for (const RemoteProvider &p : providers) {
+    provider->addItem(RemoteProviderDisplayName(p), p.prefix);
+    provider->setItemData(provider->count() - 1, p.description,
+                          Qt::ToolTipRole);
+  }
+  form->addRow("Type:", provider);
+
+  auto description = new QLabel(&dialog);
+  description->setWordWrap(true);
+  description->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  form->addRow("Description:", description);
+  auto updateDescription = [=](int index) {
+    description->setText(provider->itemData(index, Qt::ToolTipRole).toString());
+  };
+  QObject::connect(provider, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                   &dialog, updateDescription);
+  updateDescription(provider->currentIndex());
+
+  auto buttons =
+      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                           &dialog);
+  layout->addWidget(buttons);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog,
+                   &QDialog::reject);
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
+    const QString remoteName = name->text().trimmed();
+    if (remoteName.isEmpty() || remoteName.contains(':') ||
+        remoteName.contains('\n') || remoteName.contains('\r')) {
+      QMessageBox::warning(&dialog, qApp->applicationDisplayName(),
+                           "Enter a remote name without ':' or line breaks.");
+      return;
+    }
+
+    const int providerIndex =
+        provider->findText(provider->currentText(), Qt::MatchFixedString);
+    if (providerIndex < 0) {
+      QMessageBox::warning(&dialog, qApp->applicationDisplayName(),
+                           "Select one of the rclone provider types.");
+      return;
+    }
+
+    provider->setCurrentIndex(providerIndex);
+    dialog.accept();
+  });
+
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const int providerIndex =
+      provider->findText(provider->currentText(), Qt::MatchFixedString);
+  const QString providerPrefix = provider->itemData(providerIndex).toString();
+  const QString remoteName = name->text().trimmed();
+  const QDateTime configBefore = rcloneConfigLastModified();
+  if (startDetachedTerminalCommand(QStringList()
+                                       << "config"
+                                       << "create" << remoteName
+                                       << providerPrefix << "--all",
+                                   configBefore, "Create remote")) {
+    setStatusMessage(QString("Creating remote %1 (%2)...")
+                         .arg(remoteName, providerPrefix));
+  }
+}
+
+QString MainWindow::terminalRcloneConfigCommand(const QStringList &args) const {
+  QStringList fullArgs;
+  fullArgs << GetRclone() << GetRcloneConf() << args;
+
+  QStringList quoted;
+  quoted.reserve(fullArgs.size());
+  for (const QString &arg : fullArgs) {
+    quoted << shellQuote(arg);
+  }
+  return quoted.join(' ');
+}
+
+bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
+                                              const QDateTime &configBefore,
+                                              const QString &errorTitle) {
+  const QStringList fullArgs = GetRcloneConf() + args;
+
 #if defined(Q_OS_WIN32) && (QT_VERSION < QT_VERSION_CHECK(5, 7, 0))
-  QProcess::startDetached(GetRclone(), QStringList()
-                                           << "config" << GetRcloneConf());
-  return;
+  return QProcess::startDetached(GetRclone(), fullArgs);
 #else
 
   QProcess *p = new QProcess(this);
@@ -822,7 +970,6 @@ void MainWindow::rcloneConfig() {
                      }
                      p->deleteLater();
                    });
-#endif
 
 #if defined(Q_OS_WIN32)
 #if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
@@ -832,7 +979,7 @@ void MainWindow::rcloneConfig() {
         args->startupInfo->dwFlags &= ~STARTF_USESTDHANDLES;
       });
   p->setProgram(GetRclone());
-  p->setArguments(QStringList() << "config" << GetRcloneConf());
+  p->setArguments(fullArgs);
 #endif
 
 #elif defined(Q_OS_MACOS)
@@ -842,13 +989,14 @@ void MainWindow::rcloneConfig() {
       QDir::tempPath() + "/rclone_config_XXXXXX.command", p);
   tmp->setAutoRemove(false); // Terminal reads it after we return
   if (!tmp->open()) {
-    QMessageBox::critical(this, "Error",
-                          "Cannot create temporary file to launch rclone "
-                          "config.");
+    QMessageBox::critical(
+        this, errorTitle,
+        "Cannot create temporary file to launch rclone config.");
     p->deleteLater();
-    return;
+    return false;
   }
-  QTextStream(tmp) << "#!/bin/sh\n" << terminalRcloneCmd << "\n";
+  QTextStream(tmp) << "#!/bin/sh\n" << terminalRcloneConfigCommand(args)
+                   << "\n";
   tmp->close();
   tmp->setPermissions(QFileDevice::ReadUser | QFileDevice::WriteUser |
                       QFileDevice::ExeUser);
@@ -892,17 +1040,14 @@ void MainWindow::rcloneConfig() {
                             "Please set path to terminal executable in "
                             "$TERMINAL environment variable.",
                             QMessageBox::Ok);
-      return;
+      p->deleteLater();
+      return false;
     }
   }
 
   QStringList termArgs;
   termArgs << execFlag;
-  if (!GetRcloneConf().isEmpty()) {
-    termArgs << GetRclone() << "config" << "--config" << GetRcloneConf().at(1);
-  } else {
-    termArgs << GetRclone() << "config";
-  }
+  termArgs << GetRclone() << fullArgs;
   p->setArguments(termArgs);
   p->setProgram(terminal);
 #endif
@@ -910,6 +1055,8 @@ void MainWindow::rcloneConfig() {
 #if !defined(Q_OS_WIN32) || (QT_VERSION >= QT_VERSION_CHECK(5, 7, 0))
   UseRclonePassword(p);
   p->start(QIODevice::NotOpen);
+#endif
+  return true;
 #endif
 }
 

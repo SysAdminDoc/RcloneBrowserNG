@@ -43,7 +43,7 @@ if(BUILD_TESTING)
     src/export_list_writer.cpp
   )
   target_include_directories(export_list_writer_test PRIVATE src)
-  target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core)
+  target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME export_list_writer_test COMMAND export_list_writer_test)
 
   add_executable(vfs_upload_state_test
@@ -51,7 +51,7 @@ if(BUILD_TESTING)
     src/vfs_upload_state.cpp
   )
   target_include_directories(vfs_upload_state_test PRIVATE src)
-  target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core)
+  target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME vfs_upload_state_test COMMAND vfs_upload_state_test)
 
   add_executable(remote_path_test
@@ -59,6 +59,14 @@ if(BUILD_TESTING)
     src/remote_path.cpp
   )
   target_include_directories(remote_path_test PRIVATE src)
-  target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core)
+  target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME remote_path_test COMMAND remote_path_test)
+
+  add_executable(remote_provider_test
+    tests/remote_provider_test.cpp
+    src/remote_provider.cpp
+  )
+  target_include_directories(remote_provider_test PRIVATE src)
+  target_link_libraries(remote_provider_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME remote_provider_test COMMAND remote_provider_test)
 endif()
