@@ -1,5 +1,6 @@
 #include "item_model.h"
 #include "icon_cache.h"
+#include "remote_path.h"
 #include "utils.h"
 #include <algorithm>
 
@@ -141,7 +142,7 @@ void ItemModel::refresh(const QModelIndex &index) {
 void ItemModel::rename(const QModelIndex &index, const QString &name) {
   Item *item = get(index);
   item->name = name;
-  item->path.setPath(item->parent->path.filePath(item->name));
+  item->path.setPath(JoinRemotePath(item->parent->path.path(), item->name));
   emit dataChanged(index, index, QVector<int>{Qt::DisplayRole});
 }
 
@@ -449,6 +450,8 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
             child->parent = parent;
             child->isFolder = obj.value("IsDir").toBool();
             child->name = obj.value("Name").toString();
+            child->path.setPath(
+                ChildRemotePathFromLsjson(parent->path.path(), obj));
             if (!child->isFolder)
               child->size = static_cast<quint64>(obj.value("Size").toDouble());
 
@@ -493,7 +496,6 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
         for (auto &item : cache) {
           auto it = existing.find(item->name);
           if (it == existing.end()) {
-            item->path.setPath(parent->path.filePath(item->name));
             if (!item->isFolder && mFileIcons) {
               QString ext = QFileInfo(item->name).suffix();
               if (!mLoadedIcons.contains(ext)) {
