@@ -26,10 +26,11 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.buttonsGrid->setContentsMargins(8, 8, 8, 8);
   ui.buttonsGrid->setHorizontalSpacing(6);
   ui.buttonsGrid->setVerticalSpacing(6);
+  ui.splitter->setHandleWidth(8);
   UiPolish::SetToolbarSurface(ui.buttons);
   UiPolish::SetPathField(ui.path, "Current remote path");
   ui.path->setPlaceholderText("Select a folder or file");
-  ui.tree->setAccessibleName("Remote file browser");
+  UiPolish::SetNavigationView(ui.tree, "Remote file browser");
   ui.tree->setRootIsDecorated(true);
   ui.tree->setIndentation(18);
 
@@ -78,6 +79,15 @@ QString root = isLocal ? "/" : QString();
   ui.buttonLink->setDefaultAction(ui.link);
   ui.buttonSize->setDefaultAction(ui.getSize);
   ui.buttonExport->setDefaultAction(ui.export_);
+  const QList<QToolButton *> browserButtons = {
+      ui.buttonRefresh, ui.buttonMkdir, ui.buttonRename, ui.buttonMove,
+      ui.buttonPurge,   ui.buttonMount, ui.buttonStream, ui.buttonUpload,
+      ui.buttonDownload, ui.buttonSize, ui.buttonTree, ui.buttonLink,
+      ui.buttonExport};
+  for (QToolButton *button : browserButtons) {
+    button->setMinimumHeight(34);
+    button->setIconSize(QSize(18, 18));
+  }
   UiPolish::SetPrimaryButton(ui.buttonUpload);
   UiPolish::SetPrimaryButton(ui.buttonDownload);
   UiPolish::SetDestructiveButton(ui.buttonPurge);
@@ -95,9 +105,24 @@ QString root = isLocal ? "/" : QString();
   ui.getTree->setToolTip("Show the directory tree for the selected folder.");
   ui.export_->setToolTip("Export a file list for the selected folder.");
   ui.link->setToolTip("Create a public link when the backend supports it.");
+  ui.buttonRefresh->setAccessibleName("Refresh folder");
+  ui.buttonMkdir->setAccessibleName("Create folder");
+  ui.buttonRename->setAccessibleName("Rename selected item");
+  ui.buttonMove->setAccessibleName("Move selected item");
+  ui.buttonPurge->setAccessibleName("Delete selected item");
+  ui.buttonMount->setAccessibleName("Mount selected folder");
+  ui.buttonStream->setAccessibleName("Stream selected file");
+  ui.buttonUpload->setAccessibleName("Upload to this remote");
+  ui.buttonDownload->setAccessibleName("Download selected item");
+  ui.buttonSize->setAccessibleName("Calculate selected size");
+  ui.buttonTree->setAccessibleName("Show selected directory tree");
+  ui.buttonExport->setAccessibleName("Export selected file list");
+  ui.buttonLink->setAccessibleName("Create public link");
 
   ui.tree->sortByColumn(0, Qt::AscendingOrder);
   ui.tree->header()->setSectionsMovable(false);
+  ui.tree->header()->setHighlightSections(false);
+  ui.tree->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
   ItemModel *model = new ItemModel(iconCache, remote, isGooglePhotos, this);
   QObject::connect(ui.checkBoxShared, &QCheckBox::toggled, model,

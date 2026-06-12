@@ -18,9 +18,11 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   UiPolish::SetWindowDefaults(this, QSize(780, 580));
   resize(840, 620);
   setWindowTitle(isDownload ? "Download from remote" : "Upload to remote");
+  ui.tabWidget->setDocumentMode(true);
   UiPolish::SetToolbarSurface(ui.pathGroup);
   UiPolish::SetPathField(ui.textSource, "Transfer source");
   UiPolish::SetPathField(ui.textDest, "Transfer destination");
+  UiPolish::SetOutputView(ui.textExclude, "Exclude patterns");
   ui.textSource->setPlaceholderText(isDownload ? "remote:path" : "Local file or folder");
   ui.textDest->setPlaceholderText(isDownload ? "Local destination folder"
                                              : "remote:path");
@@ -58,8 +60,11 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     QPushButton *run =
         ui.buttonBox->addButton("&Run", QDialogButtonBox::AcceptRole);
     UiPolish::SetPrimaryButton(run);
-    dryRun->setToolTip("Run rclone with --dry-run to preview what would happen.");
-    run->setToolTip("Start the transfer now.");
+    dryRun->setToolTip(
+        "Preview the transfer with --dry-run; no files are changed.");
+    run->setToolTip("Start the transfer and apply changes.");
+    dryRun->setAccessibleName("Preview transfer with dry run");
+    run->setAccessibleName("Run transfer");
     QObject::connect(dryRun, &QPushButton::clicked, this,
                      [=]() { mDryRun = true; });
     // reset the flag in case a prior "Dry run" click was rejected by
@@ -71,6 +76,10 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   QPushButton *saveTask = ui.buttonBox->addButton(
       "&Save Task", QDialogButtonBox::ButtonRole::ActionRole);
   saveTask->setToolTip("Save these settings as a reusable task.");
+  saveTask->setAccessibleName("Save transfer as task");
+  if (auto restore = ui.buttonBox->button(QDialogButtonBox::RestoreDefaults)) {
+    restore->setToolTip("Restore recommended transfer defaults.");
+  }
 
   QObject::connect(
       ui.buttonBox->button(QDialogButtonBox::RestoreDefaults),
