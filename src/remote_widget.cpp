@@ -300,16 +300,16 @@ QString root = isLocal ? "/" : QString();
     QString path = model->path(index).path();
     QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
-    QString name = model->path(index.parent()).path() + "/";
-    name = QInputDialog::getText(this, "Move",
-                                 QString("New location for %1").arg(pathMsg),
-                                 QLineEdit::Normal, name);
+    QString name = path;
+    name = QInputDialog::getText(
+        this, "Move", QString("New full path for %1").arg(pathMsg),
+        QLineEdit::Normal, name);
     if (!name.isEmpty()) {
       QProcess process;
       UseRclonePassword(&process);
       process.setProgram(GetRclone());
       process.setArguments(
-          QStringList() << "move" << GetRcloneConf() << getDriveSharedArgs()
+          QStringList() << "moveto" << GetRcloneConf() << getDriveSharedArgs()
                         << GetDefaultRcloneOptionsList() << remote + ":" + path
                         << remote + ":" + name);
       process.setProcessChannelMode(QProcess::MergedChannels);
