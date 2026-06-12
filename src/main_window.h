@@ -50,6 +50,8 @@ private:
   QDateTime rcloneConfigLastModified() const;
   void noteConfigReloadIfChanged(const QDateTime &before);
   void setStatusMessage(const QString &message);
+  void startMount(const QString &remote, const QString &folder,
+                  bool keepMounted, int restartAttempt);
 
   void addEmptyJobsMessage();
   void checkRcloneUpdate(const QString &currentVersion);

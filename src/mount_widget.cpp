@@ -5,7 +5,7 @@
 MountWidget::MountWidget(QProcess *process, const QString &remote,
                          const QString &folder, const QString &rcAddr,
                          const QString &rcUser, const QString &rcPass,
-                         QWidget *parent)
+                         bool keepMounted, QWidget *parent)
     : QWidget(parent), mProcess(process), mRcAddr(rcAddr), mRcUser(rcUser),
       mRcPass(rcPass) {
   ui.setupUi(this);
@@ -13,6 +13,7 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
   ui.remote->setText(remote);
   ui.folder->setText(folder);
   ui.info->setText(QString("%1 on %2").arg(remote).arg(folder));
+  ui.keepMounted->setChecked(keepMounted);
 
   ui.details->setVisible(false);
 
@@ -79,10 +80,12 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
   QObject::connect(mProcess,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
-                   this, [=](int status, QProcess::ExitStatus) {
+                   this, [=](int status, QProcess::ExitStatus exitStatus) {
                      mProcess->deleteLater();
                      mRunning = false;
-                     if (status == 0) {
+                     const bool cleanExit =
+                         status == 0 && exitStatus == QProcess::NormalExit;
+                     if (cleanExit) {
                        ui.showDetails->setStyleSheet(
                            "QToolButton { border: 0; }");
                        ui.showDetails->setText("Unmounted");
@@ -95,6 +98,7 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                      }
                      ui.cancel->setToolTip("Close");
                      emit finished();
+                     emit stopped(mUserRequestedUnmount, cleanExit);
                    });
 
   ui.showDetails->setStyleSheet(
@@ -103,6 +107,22 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 }
 
 MountWidget::~MountWidget() {}
+
+bool MountWidget::keepMounted() const { return ui.keepMounted->isChecked(); }
+
+void MountWidget::setRemountScheduled(int delayMs, int attempt) {
+  ui.keepMounted->setEnabled(false);
+  ui.showDetails->setStyleSheet("QToolButton { border: 0; color: #f57c00; }");
+  ui.showDetails->setText(
+      QString("Remounting in %1 s").arg((delayMs + 999) / 1000));
+  ui.showDetails->setChecked(true);
+  ui.showOutput->setChecked(true);
+  ui.output->appendPlainText(
+      QString("Mount stopped unexpectedly; automatic remount attempt %1 is "
+              "scheduled in %2 seconds.")
+          .arg(attempt)
+          .arg((delayMs + 999) / 1000));
+}
 
 QString MountWidget::rcAddr() const {
   if (!mRcAddr.isEmpty()) {
@@ -223,6 +243,8 @@ void MountWidget::cancel() {
     return;
   }
 #endif
+
+  mUserRequestedUnmount = true;
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD)
   QProcess::startDetached("umount", QStringList() << ui.folder->text());
