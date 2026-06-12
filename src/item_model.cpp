@@ -153,6 +153,28 @@ bool ItemModel::isFolder(const QModelIndex &index) const {
   return get(index)->isFolder;
 }
 
+bool ItemModel::hasDuplicateSiblingName(const QModelIndex &index) const {
+  if (!index.isValid()) {
+    return false;
+  }
+
+  Item *item = get(index);
+  if (!item || !item->parent) {
+    return false;
+  }
+
+  int matches = 0;
+  for (Item *sibling : item->parent->childs) {
+    if (sibling->name == item->name) {
+      matches++;
+      if (matches > 1) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 QModelIndex ItemModel::addRoot(const QString &name, const QString &path) {
   emit layoutAboutToBeChanged();
 
