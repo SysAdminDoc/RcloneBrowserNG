@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   FIXED: Startup now removes stale single-instance lock files left by crashed or force-killed sessions and reports the owning pid for real live locks
 -   FIXED: Remote browser path state now preserves `lsjson` paths and special punctuation/trailing spaces instead of rebuilding every child path with `QDir::filePath`
 -   FIXED: Mount widgets now keep mounts alive by default and automatically remount after unexpected rclone exits with capped backoff
 -   FIXED: Windows unmount now checks the mount's rc `vfs/queue`/`vfs/stats` state and warns before unmounting with pending VFS uploads
