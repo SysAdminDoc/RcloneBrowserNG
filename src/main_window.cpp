@@ -465,7 +465,9 @@ MainWindow::MainWindow() {
   mSystemTray.setContextMenu(trayMenu);
 
   mStatusMessage = new QLabel();
-  ui.statusBar->addWidget(mStatusMessage);
+  mStatusMessage->setMinimumWidth(0);
+  mStatusMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  ui.statusBar->addWidget(mStatusMessage, 1);
   ui.statusBar->setStyleSheet("QStatusBar::item { border: 0; }");
 
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
@@ -569,7 +571,7 @@ void MainWindow::rcloneGetVersion() {
             QFileInfo ContentsPath(MacOSPath.dir().path());
             appBundlePath = QFileInfo(ContentsPath.dir().path());
 
-            mStatusMessage->setText(
+            setStatusMessage(
                 rclone_info1 + " in " +
                 QDir::toNativeSeparators(GetRclone().replace(
                     appBundlePath.fileName() + "/Contents/MacOS/../../../",
@@ -578,27 +580,28 @@ void MainWindow::rcloneGetVersion() {
 
           } else {
 
-            mStatusMessage->setText(rclone_info1 + " in " +
-                                    QDir::toNativeSeparators(GetRclone()) +
-                                    ", " + rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1 + " in " +
+                             QDir::toNativeSeparators(GetRclone()) + ", " +
+                             rclone_info2 + ", " + rclone_info3);
           }
 #else
 #ifdef Q_OS_WIN
-          mStatusMessage->setText(rclone_info1 + " in " +
-                                  QDir::toNativeSeparators(GetRclone()) + ", " +
-                                  rclone_info2 + ", " + rclone_info3);
+          setStatusMessage(rclone_info1 + " in " +
+                           QDir::toNativeSeparators(GetRclone()) + ", " +
+                           rclone_info2 + ", " + rclone_info3);
 #else
           if (IsPortableMode()) {
             QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
             QString appImageConfigFolder = xdg_config_home.right(xdg_config_home.length()-xdg_config_home.lastIndexOf("/"));
 
-            mStatusMessage->setText(rclone_info1 + " in " +
-                                  QDir::toNativeSeparators(GetRclone().replace(appImageConfigFolder + "/..",  "")) + ", " +
-                                  rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1 + " in " +
+                             QDir::toNativeSeparators(GetRclone().replace(
+                                 appImageConfigFolder + "/..", "")) +
+                             ", " + rclone_info2 + ", " + rclone_info3);
           } else {
-            mStatusMessage->setText(rclone_info1 + " in " +
-                                  QDir::toNativeSeparators(GetRclone()) + ", " +
-                                  rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1 + " in " +
+                             QDir::toNativeSeparators(GetRclone()) + ", " +
+                             rclone_info2 + ", " + rclone_info3);
          }
 #endif
 #endif
@@ -609,10 +612,10 @@ void MainWindow::rcloneGetVersion() {
           // Rclone Browser NG's Windows mount feature relies on
           if (!rclone_version_no.isEmpty() &&
               compareVersion(rclone_version_no.toStdString(), "1.74.3") == 2) {
-            mStatusMessage->setText(mStatusMessage->text() +
-                                    "  -  WARNING: rclone " + rclone_version_no +
-                                    " has security fixes available (update to "
-                                    "1.74.3+)");
+            setStatusMessage(
+                mStatusMessage->text() + "  -  WARNING: rclone " +
+                rclone_version_no +
+                " has security fixes available (update to 1.74.3+)");
             if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
                 rclone_version_no) {
               settings->setValue("Settings/rcloneCveWarnedVersion",
@@ -856,7 +859,7 @@ bool MainWindow::confirmConfigMutation(const QString &action) {
   box.exec();
 
   if (box.clickedButton() == continueButton) {
-    mStatusMessage->setText(
+    setStatusMessage(
         "Config edit continued while active rclone processes are running.");
     return true;
   }
@@ -866,7 +869,7 @@ bool MainWindow::confirmConfigMutation(const QString &action) {
     showNormal();
   }
 
-  mStatusMessage->setText(
+  setStatusMessage(
       "Config edit deferred while active rclone processes are running.");
   return false;
 }
@@ -889,8 +892,13 @@ void MainWindow::noteConfigReloadIfChanged(const QDateTime &before) {
 
   const QDateTime after = rcloneConfigLastModified();
   if (after.isValid() && after != before) {
-    mStatusMessage->setText("rclone config changed; remotes reloaded.");
+    setStatusMessage("rclone config changed; remotes reloaded.");
   }
+}
+
+void MainWindow::setStatusMessage(const QString &message) {
+  mStatusMessage->setText(message);
+  mStatusMessage->setToolTip(message);
 }
 
 void MainWindow::rcloneListRemotes() {

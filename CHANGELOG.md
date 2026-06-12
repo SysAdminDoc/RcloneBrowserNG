@@ -44,6 +44,7 @@
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)
 
 ### UX
+-   FIXED: Long rclone version/path status text no longer forces the main window layout wider or overlaps nearby content; the full text remains available as a tooltip
 -   NEW: Right-click a saved task to export it as a standalone .sh, .bat, or .ps1 script for OS schedulers
 -   NEW: Confirmation dialog before deleting a saved task
 -   NEW: Failed jobs auto-expand their details and output so the cause is immediately visible
