@@ -208,14 +208,36 @@ int main(int argc, char *argv[]) {
   QLockFile lockFile(tmpDir + "/.RcloneBrowser_" + lockUser + ".lock");
 
   if (!lockFile.tryLock(100)) {
+    if (lockFile.removeStaleLockFile() && lockFile.tryLock(100)) {
+      QMessageBox msgBox;
+      msgBox.setIcon(QMessageBox::Information);
+      msgBox.setText("Recovered from a stale Rclone Browser NG lock file.\n\n"
+                     "The previous process appears to have exited without "
+                     "releasing its single-instance lock.");
+      msgBox.exec();
+    } else {
+      qint64 lockPid = 0;
+      QString lockHostname;
+      QString lockAppName;
+      QString lockDetails;
+      if (lockFile.getLockInfo(&lockPid, &lockHostname, &lockAppName)) {
+        lockDetails =
+            QString("\n\nLock owner: %1 on %2 (pid %3)")
+                .arg(lockAppName.isEmpty() ? "unknown process" : lockAppName)
+                .arg(lockHostname.isEmpty() ? "unknown host" : lockHostname)
+                .arg(lockPid);
+      }
+
     // if already running display warning and quit
-    QMessageBox msgBox;
-    msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setText("Rclone Browser NG is already running."
-                   "\r\n\nOnly one instance is allowed.");
-    msgBox.exec();
-    return static_cast<int>(
-        0x80004004); // exit immediately if another instance is running
+      QMessageBox msgBox;
+      msgBox.setIcon(QMessageBox::Warning);
+      msgBox.setText("Rclone Browser NG is already running."
+                     "\r\n\nOnly one instance is allowed." +
+                     lockDetails);
+      msgBox.exec();
+      return static_cast<int>(
+          0x80004004); // exit immediately if another instance is running
+    }
   }
 
   MainWindow w;
