@@ -6,6 +6,10 @@
     <string>NSApplication</string>
     <key>CFBundleIconFile</key>
     <string>icon.icns</string>
+    <key>CFBundleName</key>
+    <string>Rclone Browser NG</string>
+    <key>CFBundleDisplayName</key>
+    <string>Rclone Browser NG</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
