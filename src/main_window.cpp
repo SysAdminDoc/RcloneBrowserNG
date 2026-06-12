@@ -1,6 +1,7 @@
 #include "main_window.h"
 #include "job_options.h"
 #include "job_widget.h"
+#include "mount_backend.h"
 #include "list_of_job_options.h"
 #include "mount_widget.h"
 #include "preferences_dialog.h"
@@ -60,28 +61,6 @@ QString windowsFileVersion(const QString &path) {
       .arg(LOWORD(info->dwFileVersionMS))
       .arg(HIWORD(info->dwFileVersionLS))
       .arg(LOWORD(info->dwFileVersionLS));
-}
-#endif
-
-#if defined(Q_OS_MACOS)
-QString macFuseVersion() {
-  const QStringList plists = {
-      "/Library/Filesystems/macfuse.fs/Contents/Info.plist",
-      "/Library/Filesystems/osxfuse.fs/Contents/Info.plist",
-  };
-
-  for (const QString &path : plists) {
-    if (!QFileInfo::exists(path)) {
-      continue;
-    }
-    QSettings plist(path, QSettings::NativeFormat);
-    const QString version =
-        plist.value("CFBundleShortVersionString").toString().trimmed();
-    if (!version.isEmpty()) {
-      return version;
-    }
-  }
-  return QString();
 }
 #endif
 
@@ -1650,6 +1629,10 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 
 void MainWindow::startMount(const QString &remote, const QString &folder,
                             bool keepMounted, int restartAttempt) {
+  auto settings = GetSettings();
+  const QString opt = settings->value("Settings/mount").toString();
+  const bool driveShared = settings->value("Settings/driveShared").toBool();
+
 #if defined(Q_OS_WIN32)
   const QString winFspDll = findWinFspDll();
   if (winFspDll.isEmpty()) {
@@ -1668,7 +1651,6 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   const QString winFspVersion = windowsFileVersion(winFspDll);
   if (!winFspVersion.isEmpty() &&
       compareVersion(winFspVersion.toStdString(), "2.1.25156") != 1) {
-    auto settings = GetSettings();
     if (settings->value("Settings/winFspWarnedVersion").toString() !=
         winFspVersion) {
       settings->setValue("Settings/winFspWarnedVersion", winFspVersion);
@@ -1682,19 +1664,23 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
     }
   }
 #elif defined(Q_OS_MACOS)
-  const QString fuseVersion = macFuseVersion();
-  if (!fuseVersion.isEmpty() &&
-      compareVersion(fuseVersion.toStdString(), "5.2") == 2) {
-    auto settings = GetSettings();
-    if (settings->value("Settings/macFuseWarnedVersion").toString() !=
-        fuseVersion) {
-      settings->setValue("Settings/macFuseWarnedVersion", fuseVersion);
-      QMessageBox::warning(
-          this, "macFUSE update recommended",
-          QString("Detected macFUSE %1.\n\nmacFUSE versions before 5.2 have "
-                  "known FSKit mount issues on current macOS releases. Update "
-                  "macFUSE before relying on long-running mounts.")
-              .arg(fuseVersion));
+  MacMountBackendFacts macMountFacts;
+  macMountFacts.macFuseVersion = DetectMacFuseVersion();
+  macMountFacts.fuseTInstalled = DetectFuseTInstalled();
+  macMountFacts.nfsMountSupported =
+      RcloneCommandSupported(GetRclone(), "nfsmount");
+  macMountFacts.macOsMajorVersion =
+      IsMacOs26OrNewer() ? 26 : QOperatingSystemVersion::current().majorVersion();
+  if (!opt.isEmpty()) {
+    macMountFacts.userMountOptions = opt.split(' ', Qt::SkipEmptyParts);
+  }
+  const MountBackendPlan macMountPlan = PlanMacMountBackend(macMountFacts);
+  if (!macMountPlan.warningText.isEmpty()) {
+    if (settings->value(macMountPlan.warningKey).toString() !=
+        macMountPlan.warningVersion) {
+      settings->setValue(macMountPlan.warningKey, macMountPlan.warningVersion);
+      QMessageBox::warning(this, macMountPlan.warningTitle,
+                           macMountPlan.warningText);
     }
   }
 #endif
@@ -1783,12 +1769,15 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   ui.jobs->insertWidget(1, line);
   ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
 
-  auto settings = GetSettings();
-  QString opt = settings->value("Settings/mount").toString();
-  bool driveShared = settings->value("Settings/driveShared").toBool();
-
   QStringList args;
-  args << "mount";
+  QString mountCommand = "mount";
+  QStringList mountBackendArgs;
+#if defined(Q_OS_MACOS)
+  mountCommand = macMountPlan.command;
+  mountBackendArgs = macMountPlan.argsBeforeRemote;
+#endif
+
+  args << mountCommand;
 
 #if defined(Q_OS_WIN32)
   args << "--rc";
@@ -1814,6 +1803,7 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   if (!opt.isEmpty()) {
     args.append(opt.split(' ', Qt::SkipEmptyParts));
   }
+  args.append(mountBackendArgs);
   args << remote << folder;
 
   UseRclonePassword(mount);

@@ -36,7 +36,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Run multiple jobs in the background, with per-file progress
 *   Drag & drop from your file explorer to upload
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
-*   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/), macOS needs [macFUSE](https://macfuse.github.io/))
+*   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
 *   Optional tray icon with finished-transfer notifications
 *   Portable mode — keep the app, rclone and its config on a memory stick
 *   Google Drive "shared with me" support
@@ -80,6 +80,8 @@ Download binaries for Windows, macOS and Linux from the [releases](https://githu
 5.  `cmake .. -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6)`
 6.  `make`
 7.  Package with Qt libraries to create a self-contained app: `$(brew --prefix qt@6)/bin/macdeployqt build/rclone-browser.app`
+
+For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fuse-t, or an rclone build that includes `nfsmount`. Rclone Browser NG detects these at mount time and avoids steering users toward legacy kext-only setups.
 
 ### Windows
 
