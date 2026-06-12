@@ -15,7 +15,8 @@ QStringList RemoteWidget::getDriveSharedArgs() const {
 }
 
 RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
-                           bool isLocal, bool isGoogle, QWidget *parent)
+                           bool isLocal, bool isGoogle, bool isGooglePhotos,
+                           QWidget *parent)
     : QWidget(parent) {
   ui.setupUi(this);
 
@@ -68,7 +69,7 @@ QString root = isLocal ? "/" : QString();
   ui.tree->sortByColumn(0, Qt::AscendingOrder);
   ui.tree->header()->setSectionsMovable(false);
 
-  ItemModel *model = new ItemModel(iconCache, remote, this);
+  ItemModel *model = new ItemModel(iconCache, remote, isGooglePhotos, this);
   QObject::connect(ui.checkBoxShared, &QCheckBox::toggled, model,
                    &ItemModel::setDriveShared);
   ui.tree->setModel(model);

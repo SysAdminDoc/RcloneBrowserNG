@@ -39,5 +39,14 @@ int main() {
   require(ChildRemotePathFromLsjson(".", fallbackName) == special,
           "Name fallback did not preserve special characters");
 
+  require(IsGooglePhotosRecursiveAlbumPath("album/family"),
+          "Google Photos album path was not recognized");
+  require(IsGooglePhotosRecursiveAlbumPath("shared-album/family"),
+          "Google Photos shared album path was not recognized");
+  require(!IsGooglePhotosRecursiveAlbumPath("album"),
+          "Google Photos album root should stay one-level");
+  require(!IsGooglePhotosRecursiveAlbumPath("media/by-month"),
+          "Google Photos media paths should not use the album fallback");
+
   return 0;
 }

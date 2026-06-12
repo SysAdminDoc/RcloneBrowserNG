@@ -82,8 +82,9 @@ private:
   Qt::SortOrder mOrder;
 };
 
-ItemModel::ItemModel(IconCache *icons, const QString &remote, QObject *parent)
-    : QAbstractItemModel(parent), mRemote(remote),
+ItemModel::ItemModel(IconCache *icons, const QString &remote, bool googlePhotos,
+                     QObject *parent)
+    : QAbstractItemModel(parent), mRemote(remote), mGooglePhotos(googlePhotos),
       mFixedFont(QFontDatabase::systemFont(QFontDatabase::FixedFont)) {
   QStyle *style = qApp->style();
   mDriveIcon = style->standardIcon(QStyle::SP_DriveNetIcon);
@@ -560,8 +561,14 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   args << "lsjson" << GetRcloneConf();
   if (mDriveShared)
     args << "--drive-shared-with-me";
-  args << GetShowHidden() << "--no-mimetype" << "--max-depth" << "1"
-       << GetDefaultRcloneOptionsList()
+  args << GetShowHidden() << "--no-mimetype";
+  if (mGooglePhotos &&
+      IsGooglePhotosRecursiveAlbumPath(parent->path.path())) {
+    args << "--recursive" << "--files-only";
+  } else {
+    args << "--max-depth" << "1";
+  }
+  args << GetDefaultRcloneOptionsList()
        << mRemote + ":" + parent->path.path();
   proc->start(GetRclone(), args, QIODevice::ReadOnly);
 }

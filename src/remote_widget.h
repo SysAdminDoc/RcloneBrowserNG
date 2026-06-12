@@ -10,7 +10,7 @@ class RemoteWidget : public QWidget {
 
 public:
   RemoteWidget(IconCache *icons, const QString &remote, bool isLocal,
-               bool isGoogle, QWidget *parent = nullptr);
+               bool isGoogle, bool isGooglePhotos, QWidget *parent = nullptr);
   ~RemoteWidget();
 
   QStringList getDriveSharedArgs() const;
