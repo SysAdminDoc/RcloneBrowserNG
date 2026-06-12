@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   FIXED: Move now uses `rclone moveto` with an explicit destination path so moving a folder preserves the folder wrapper instead of moving only its contents
 -   FIXED: Destructive actions now warn when the selected row has duplicate sibling names, preventing silent multi-delete/move/rename surprises on remotes such as Google Drive
 -   FIXED: Config editing now warns when jobs, mounts, or streams are active and can defer the change or continue explicitly; modified custom rclone configs note that remotes were reloaded
 -   CHANGED: Export file lists now use `rclone lsjson --recursive --files-only` instead of regex-parsing `rclone lsl`; CSV output quotes fields safely and malformed JSON produces a visible error instead of silently dropping entries
