@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   FIXED: Destructive actions now warn when the selected row has duplicate sibling names, preventing silent multi-delete/move/rename surprises on remotes such as Google Drive
 -   FIXED: Config editing now warns when jobs, mounts, or streams are active and can defer the change or continue explicitly; modified custom rclone configs note that remotes were reloaded
 -   CHANGED: Export file lists now use `rclone lsjson --recursive --files-only` instead of regex-parsing `rclone lsl`; CSV output quotes fields safely and malformed JSON produces a visible error instead of silently dropping entries
 -   CHANGED: Transfer progress now uses `--use-json-log` instead of regex-parsing `--stats` text output — eliminates the recurring "new rclone broke progress display" failure mode; per-file progress bars work reliably across all rclone versions

@@ -81,6 +81,32 @@ QString root = isLocal ? "/" : QString();
     return rows.isEmpty() ? QModelIndex() : rows.front();
   };
 
+  auto confirmUnambiguousDestructiveAction =
+      [=](const QModelIndex &index, const QString &operation) -> bool {
+    if (!model->hasDuplicateSiblingName(index)) {
+      return true;
+    }
+
+    const QString name = model->data(index, Qt::DisplayRole).toString();
+    const QString path = model->path(index).path();
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(operation);
+    box.setText(QString("More than one item named \"%1\" exists in this "
+                        "folder.")
+                    .arg(name));
+    box.setInformativeText(
+        QString("rclone path operations address this selection as:\n\n%1:%2\n\n"
+                "On remotes that allow duplicate names, such as Google Drive, "
+                "that path can match more than the row currently selected.")
+            .arg(remote, path));
+    QPushButton *continueButton = box.addButton("Continue Anyway",
+                                                QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == continueButton;
+  };
+
   // rclone failures used to leave a silently empty folder, which reads as
   // "no files here" - surface them instead
   auto errorShowing = std::make_shared<bool>(false);
@@ -230,6 +256,9 @@ QString root = isLocal ? "/" : QString();
     if (!index.isValid()) {
       return;
     }
+    if (!confirmUnambiguousDestructiveAction(index, "Rename")) {
+      return;
+    }
 
     QString path = model->path(index).path();
     QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
@@ -264,6 +293,9 @@ QString root = isLocal ? "/" : QString();
     if (!index.isValid()) {
       return;
     }
+    if (!confirmUnambiguousDestructiveAction(index, "Move")) {
+      return;
+    }
 
     QString path = model->path(index).path();
     QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
@@ -295,6 +327,9 @@ QString root = isLocal ? "/" : QString();
 
     QModelIndex index = selectedIndex();
     if (!index.isValid()) {
+      return;
+    }
+    if (!confirmUnambiguousDestructiveAction(index, "Delete")) {
       return;
     }
 

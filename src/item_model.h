@@ -55,6 +55,7 @@ public:
   void setDriveShared(bool shared) { mDriveShared = shared; }
   bool isTopLevel(const QModelIndex &index) const;
   bool isFolder(const QModelIndex &index) const;
+  bool hasDuplicateSiblingName(const QModelIndex &index) const;
 
   QModelIndex addRoot(const QString &name, const QString &path);
 
