@@ -914,17 +914,30 @@ void MainWindow::createRemote() {
   }
 
   QDialog dialog(this);
-  dialog.setWindowTitle("New Remote");
-  UiPolish::SetWindowDefaults(&dialog, QSize(520, 260));
+  dialog.setWindowTitle("Create Remote");
+  UiPolish::SetWindowDefaults(&dialog, QSize(600, 340));
   auto layout = new QVBoxLayout(&dialog);
   layout->setSpacing(12);
+  layout->setContentsMargins(12, 12, 12, 12);
+
+  auto intro = new QLabel(&dialog);
+  UiPolish::SetNotice(
+      intro,
+      "Choose a name and provider type. Rclone Browser NG will open rclone's "
+      "interactive setup in a terminal so credentials stay with rclone.");
+  layout->addWidget(intro);
+
   auto form = new QFormLayout();
   form->setLabelAlignment(Qt::AlignRight);
+  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  form->setHorizontalSpacing(10);
+  form->setVerticalSpacing(8);
   layout->addLayout(form);
 
   auto name = new QLineEdit(&dialog);
   name->setPlaceholderText("e.g. work-drive");
-  name->setAccessibleName("Remote name");
+  name->setClearButtonEnabled(true);
+  UiPolish::SetPathField(name, "Remote name");
   form->addRow("Remote name:", name);
 
   auto provider = new QComboBox(&dialog);
@@ -932,7 +945,10 @@ void MainWindow::createRemote() {
   provider->setInsertPolicy(QComboBox::NoInsert);
   provider->setMaxVisibleItems(30);
   provider->setAccessibleName("Provider type");
+  provider->setMinimumContentsLength(34);
+  provider->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   provider->lineEdit()->setPlaceholderText("Search provider types");
+  provider->lineEdit()->setClearButtonEnabled(true);
   if (provider->completer()) {
     provider->completer()->setCaseSensitivity(Qt::CaseInsensitive);
     provider->completer()->setFilterMode(Qt::MatchContains);
@@ -950,11 +966,42 @@ void MainWindow::createRemote() {
   UiPolish::SetMuted(description);
   form->addRow("Description:", description);
   auto updateDescription = [=](int index) {
-    description->setText(provider->itemData(index, Qt::ToolTipRole).toString());
+    const QString text = provider->itemData(index, Qt::ToolTipRole).toString();
+    description->setText(text.isEmpty()
+                             ? "This provider did not include a description."
+                             : text);
   };
   QObject::connect(provider, QOverload<int>::of(&QComboBox::currentIndexChanged),
                    &dialog, updateDescription);
   updateDescription(provider->currentIndex());
+
+  auto validation = new QLabel(&dialog);
+  UiPolish::SetValidationMessage(validation, QString(), QString());
+  layout->addWidget(validation);
+  auto clearValidation = [&]() {
+    UiPolish::SetValidationMessage(validation, QString(), QString());
+    UiPolish::SetFieldState(name, QString());
+    UiPolish::SetFieldState(provider, QString());
+  };
+  QObject::connect(name, &QLineEdit::textChanged, &dialog,
+                   [&]() { clearValidation(); });
+  QObject::connect(provider->lineEdit(), &QLineEdit::textChanged, &dialog,
+                   [&]() { clearValidation(); });
+
+  auto resolveProviderIndex = [&]() -> int {
+    const QString text = provider->currentText().trimmed();
+    int index = provider->findText(text, Qt::MatchFixedString);
+    if (index >= 0) {
+      return index;
+    }
+    for (int i = 0; i < provider->count(); ++i) {
+      const QString prefix = provider->itemData(i).toString();
+      if (prefix.compare(text, Qt::CaseInsensitive) == 0) {
+        return i;
+      }
+    }
+    return -1;
+  };
 
   auto buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
@@ -970,20 +1017,27 @@ void MainWindow::createRemote() {
     const QString remoteName = name->text().trimmed();
     if (remoteName.isEmpty() || remoteName.contains(':') ||
         remoteName.contains('\n') || remoteName.contains('\r')) {
-      QMessageBox::warning(&dialog, qApp->applicationDisplayName(),
-                           "Enter a remote name without ':' or line breaks.");
+      UiPolish::SetFieldState(name, "error");
+      UiPolish::SetValidationMessage(
+          validation, "error",
+          "Enter a remote name without ':' or line breaks.");
+      name->setFocus(Qt::OtherFocusReason);
       return;
     }
 
-    const int providerIndex =
-        provider->findText(provider->currentText(), Qt::MatchFixedString);
+    const int providerIndex = resolveProviderIndex();
     if (providerIndex < 0) {
-      QMessageBox::warning(&dialog, qApp->applicationDisplayName(),
-                           "Select one of the rclone provider types.");
+      UiPolish::SetFieldState(provider, "error");
+      UiPolish::SetValidationMessage(
+          validation, "error",
+          "Select a provider from the list, or enter an exact rclone provider "
+          "prefix such as s3, drive, sftp, or local.");
+      provider->setFocus(Qt::OtherFocusReason);
       return;
     }
 
     provider->setCurrentIndex(providerIndex);
+    clearValidation();
     dialog.accept();
   });
 
@@ -991,8 +1045,7 @@ void MainWindow::createRemote() {
     return;
   }
 
-  const int providerIndex =
-      provider->findText(provider->currentText(), Qt::MatchFixedString);
+  const int providerIndex = resolveProviderIndex();
   const QString providerPrefix = provider->itemData(providerIndex).toString();
   const QString remoteName = name->text().trimmed();
   const QDateTime configBefore = rcloneConfigLastModified();
