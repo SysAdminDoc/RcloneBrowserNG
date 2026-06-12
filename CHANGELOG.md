@@ -48,6 +48,7 @@
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
+-   NEW: macOS mount startup now detects FSKit-capable macFUSE, fuse-t, and rclone `nfsmount`; it prefers userspace-capable backends and only warns when no modern backend is available
 -   FIXED: Installed identity now consistently uses Rclone Browser NG across the app display name, main window, Linux desktop entry, macOS bundle display name, Windows installer metadata, and CI metadata validation
 -   NEW: WinFsp detection — mounting on Windows now checks for WinFsp and offers a download link if missing, instead of failing with a cryptic rclone error
 -   FIXED: AppStream metainfo rewritten for NG identity (`io.github.sysadmindoc.rclonebrowserng`), installed to `share/metainfo/`, and embedded in AppImage — unblocks Flathub and distro packaging

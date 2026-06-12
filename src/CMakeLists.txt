@@ -56,6 +56,7 @@ set(SOURCE
   export_dialog.cpp
   export_list_writer.cpp
   remote_provider.cpp
+  mount_backend.cpp
   rclone_rc_engine.cpp
   rc_job_widget.cpp
   remote_path.cpp
@@ -84,6 +85,7 @@ set(OTHER
   export_dialog.h
   export_list_writer.h
   remote_provider.h
+  mount_backend.h
   rclone_rc_engine.h
   rc_job_widget.h
   remote_path.h

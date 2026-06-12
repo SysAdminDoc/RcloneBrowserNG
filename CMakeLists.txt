@@ -82,4 +82,12 @@ if(BUILD_TESTING)
     target_link_libraries(job_options_store_test advapi32)
   endif()
   add_test(NAME job_options_store_test COMMAND job_options_store_test)
+
+  add_executable(mount_backend_test
+    tests/mount_backend_test.cpp
+    src/mount_backend.cpp
+  )
+  target_include_directories(mount_backend_test PRIVATE src)
+  target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME mount_backend_test COMMAND mount_backend_test)
 endif()
