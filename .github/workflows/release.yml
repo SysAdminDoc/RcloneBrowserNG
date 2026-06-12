@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-appimage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            appstream \
+            cmake \
+            desktop-file-utils \
+            g++ \
+            libgl1-mesa-dev \
+            patchelf \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-qmake \
+            wget
+      - name: Build AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+
+          desktop-file-validate assets/rclone-browser.desktop
+          appstreamcli validate --no-net assets/rclone-browser.appdata.xml
+
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build --parallel
+          DESTDIR="$PWD/AppDir" cmake --install build
+
+          cp README.md AppDir/Readme.md
+          cp CHANGELOG.md AppDir/Changelog.md
+          cp LICENSE AppDir/License.txt
+
+          mkdir -p tools release
+          wget -q -O tools/linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O tools/linuxdeploy-plugin-qt-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          wget -q -O tools/linuxdeploy-plugin-appimage-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x tools/*.AppImage
+
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export PATH="$PWD/tools:$PATH"
+          export VERSION="$version"
+          tools/linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/rclone-browser.desktop \
+            --plugin qt \
+            --output appimage
+
+          appimage="$(find . -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
+          test -n "$appimage"
+          mv "$appimage" "release/RcloneBrowserNG-${version}-linux-x86_64.AppImage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux-appimage
+          path: release/*
+
+  macos-dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install dependencies
+        run: brew install qt@6
+      - name: Build DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          qt_prefix="$(brew --prefix qt@6)"
+
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$qt_prefix"
+          cmake --build build --parallel
+
+          app="build/build/rclone-browser.app"
+          "$qt_prefix/bin/macdeployqt" "$app" -dmg -verbose=2
+
+          mkdir -p release
+          mv "build/build/rclone-browser.dmg" \
+            "release/RcloneBrowserNG-${version}-macos-arm64.dmg"
+          ditto -c -k --keepParent "$app" \
+            "release/RcloneBrowserNG-${version}-macos-arm64.app.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-macos
+          path: release/*
+
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: '6.7.*'
+          arch: win64_msvc2019_64
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress --yes
+      - name: Build Windows packages
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME
+          if ($version.StartsWith('v')) {
+            $version = $version.Substring(1)
+          }
+          $name = "RcloneBrowserNG-$version-windows-x64"
+          $dist = Join-Path $PWD "release\$name"
+
+          cmake -S . -B build -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:Qt6_DIR"
+          cmake --build build --config Release
+
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item README.md "$dist\Readme.md"
+          Copy-Item CHANGELOG.md "$dist\Changelog.md"
+          Copy-Item LICENSE "$dist\License.txt"
+          Copy-Item build\build\Release\RcloneBrowser.exe $dist
+          Copy-Item build\build\Release\RcloneBrowserPassword.exe $dist
+
+          windeployqt --no-translations "$dist\RcloneBrowser.exe"
+
+          $zip = Join-Path $PWD "release\$name.zip"
+          Compress-Archive -Path $dist -DestinationPath $zip -Force
+
+          Push-Location scripts
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/dMyAppVersion=$version" `
+            "/dMyAppId={{0AF9BF43-8D44-4AFF-AE60-6CECF1BF0D31}" `
+            "/dMyAppDir=$name" `
+            "/dMyAppArch=x64" `
+            "/O..\release" `
+            "/F$name-setup" `
+            "rclone-browser-win-installer.iss"
+          Pop-Location
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-windows-x64
+          path: |
+            release/*.zip
+            release/*.exe
+
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    needs:
+      - linux-appimage
+      - macos-dmg
+      - windows-x64
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: dist/*
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* \
+              --title "Rclone Browser NG $version" \
+              --generate-notes
+          fi
