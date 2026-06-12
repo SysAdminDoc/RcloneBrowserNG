@@ -11,6 +11,7 @@
 #include "remote_widget.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
+#include "interface_polish.h"
 #include "utils.h"
 #ifdef Q_OS_MACOS
 #include "osx_helper.h"
@@ -144,8 +145,7 @@ static void applyDarkTheme() {
 
   qApp->setPalette(darkPalette);
 
-  qApp->setStyleSheet("QToolTip { color: #ffffff; background-color: #2a2a2a; "
-                      "border: 1px solid #767676; }");
+  UiPolish::ApplyApplicationStyle(true);
 }
 
 MainWindow::MainWindow() {
@@ -173,13 +173,52 @@ MainWindow::MainWindow() {
     bool oldMac = (sysInfo == "10.9" || sysInfo == "10.10" ||
                    sysInfo == "10.11" || sysInfo == "10.12" ||
                    sysInfo == "10.13");
-    if (explicitDark && oldMac)
+    bool darkApplied = false;
+    if (explicitDark && oldMac) {
       applyDarkTheme();
+      darkApplied = true;
+    }
+    UiPolish::ApplyApplicationStyle(darkApplied);
 #else
-    if (explicitDark || systemDark)
+    const bool useDarkStyle = explicitDark || systemDark;
+    if (useDarkStyle) {
       applyDarkTheme();
+    } else {
+      UiPolish::ApplyApplicationStyle(false);
+    }
 #endif
   }
+
+  UiPolish::SetWindowDefaults(this, QSize(720, 460));
+  ui.verticalLayout->setContentsMargins(12, 12, 12, 12);
+  ui.verticalLayout_2->setContentsMargins(12, 12, 12, 12);
+  ui.verticalLayout_4->setContentsMargins(0, 0, 0, 0);
+  ui.verticalLayout_5->setContentsMargins(12, 12, 12, 12);
+  ui.verticalLayout_6->setSpacing(10);
+  ui.jobs->setSpacing(8);
+  ui.tasksActionBar->setMaximumHeight(QWIDGETSIZE_MAX);
+  UiPolish::SetEmptyState(
+      ui.noJobsAvailable, "No active work",
+      "Transfers, mounts and streams will appear here with live progress.");
+  UiPolish::SetMuted(ui.statusBar);
+  UiPolish::SetToolbarSurface(ui.tasksActionBar);
+  ui.remotes->setAccessibleName("Configured rclone remotes");
+  ui.remotes->setSpacing(4);
+  ui.remotes->setUniformItemSizes(true);
+  ui.remotes->setTextElideMode(Qt::ElideMiddle);
+  ui.tasksListWidget->setAccessibleName("Saved tasks");
+  ui.tasksListWidget->setSpacing(4);
+  ui.tasksListWidget->setUniformItemSizes(true);
+  ui.tasksListWidget->setTextElideMode(Qt::ElideRight);
+  ui.config->setAccessibleName("Open rclone configuration");
+  ui.newRemote->setAccessibleName("Create a new rclone remote");
+  ui.refresh->setAccessibleName("Refresh remotes");
+  ui.open->setAccessibleName("Open selected remote");
+  ui.config->setToolTip("Open rclone config in a terminal.");
+  ui.newRemote->setToolTip("Create a remote using the provider list from the installed rclone.");
+  ui.refresh->setToolTip("Reload remotes from rclone.conf.");
+  ui.open->setToolTip("Open the selected remote in a browser tab.");
+  UiPolish::SetPrimaryButton(ui.open);
 
   mSystemTray.setIcon(qApp->windowIcon());
   {
@@ -375,21 +414,30 @@ MainWindow::MainWindow() {
 
   QObject::connect(ui.tasksListWidget, &QListWidget::currentItemChanged, this,
                    [=](QListWidgetItem *current) {
-                     ui.buttonDeleteTask->setEnabled(current != nullptr);
-                     ui.buttonEditTask->setEnabled(current != nullptr);
-                     ui.buttonRunTask->setEnabled(current != nullptr);
-                     ui.buttonDryrunTask->setEnabled(current != nullptr);
-                     ui.buttonCopyTaskCmd->setEnabled(current != nullptr);
+                     auto task =
+                         static_cast<JobOptionsListWidgetItem *>(current);
+                     const bool hasTask = task && task->GetData();
+                     ui.buttonDeleteTask->setEnabled(hasTask);
+                     ui.buttonEditTask->setEnabled(hasTask);
+                     ui.buttonRunTask->setEnabled(hasTask);
+                     ui.buttonDryrunTask->setEnabled(hasTask);
+                     ui.buttonCopyTaskCmd->setEnabled(hasTask);
                    });
 
   QObject::connect(ui.buttonRunTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
+    if (!item || !item->GetData()) {
+      return;
+    }
     runItem(item);
   });
   QObject::connect(ui.buttonDryrunTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
+    if (!item || !item->GetData()) {
+      return;
+    }
     runItem(item, true);
   });
 
@@ -405,7 +453,8 @@ MainWindow::MainWindow() {
   QObject::connect(ui.buttonCopyTaskCmd, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
-    if (!item) return;
+    if (!item || !item->GetData())
+      return;
     JobOptions *jo = item->GetData();
     QStringList cmd;
     cmd << QDir::toNativeSeparators(GetRclone());
@@ -428,7 +477,7 @@ MainWindow::MainWindow() {
       [=](const QPoint &pos) {
         auto *item = static_cast<JobOptionsListWidgetItem *>(
             ui.tasksListWidget->itemAt(pos));
-        if (!item)
+        if (!item || !item->GetData())
           return;
         QMenu menu;
         QAction *exportAction = menu.addAction("Export as script...");
@@ -491,7 +540,7 @@ MainWindow::MainWindow() {
   QObject::connect(ui.buttonDeleteTask, &QPushButton::clicked, this, [=]() {
     JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
-    if (!item) {
+    if (!item || !item->GetData()) {
       return;
     }
     JobOptions *jo = item->GetData();
@@ -514,10 +563,23 @@ MainWindow::MainWindow() {
                    &MainWindow::listTasks);
 
   QStyle *style = QApplication::style();
+  ui.config->setIcon(style->standardIcon(QStyle::SP_FileDialogDetailedView));
+  ui.newRemote->setIcon(style->standardIcon(QStyle::SP_FileDialogNewFolder));
+  ui.refresh->setIcon(style->standardIcon(QStyle::SP_BrowserReload));
+  ui.open->setIcon(style->standardIcon(QStyle::SP_DialogOpenButton));
   ui.buttonDeleteTask->setIcon(style->standardIcon(QStyle::SP_TrashIcon));
   ui.buttonEditTask->setIcon(style->standardIcon(QStyle::SP_FileIcon));
   ui.buttonRunTask->setIcon(style->standardIcon(QStyle::SP_CommandLink));
   ui.buttonCopyTaskCmd->setIcon(style->standardIcon(QStyle::SP_FileLinkIcon));
+  ui.buttonDryrunTask->setIcon(style->standardIcon(QStyle::SP_FileDialogContentsView));
+  ui.buttonDryrunTask->setText("Dry Run");
+  ui.buttonCopyTaskCmd->setText("Copy Command");
+  ui.buttonDryrunTask->setToolTip("Run the selected task with --dry-run.");
+  ui.buttonRunTask->setToolTip("Run the selected saved task.");
+  ui.buttonEditTask->setToolTip("Edit task options.");
+  ui.buttonDeleteTask->setToolTip("Delete the selected saved task.");
+  UiPolish::SetPrimaryButton(ui.buttonRunTask);
+  UiPolish::SetDestructiveButton(ui.buttonDeleteTask);
   mUploadIcon = style->standardIcon(QStyle::SP_ArrowUp);
   mDownloadIcon = style->standardIcon(QStyle::SP_ArrowDown);
 
@@ -845,18 +907,24 @@ void MainWindow::createRemote() {
 
   QDialog dialog(this);
   dialog.setWindowTitle("New Remote");
+  UiPolish::SetWindowDefaults(&dialog, QSize(520, 260));
   auto layout = new QVBoxLayout(&dialog);
+  layout->setSpacing(12);
   auto form = new QFormLayout();
+  form->setLabelAlignment(Qt::AlignRight);
   layout->addLayout(form);
 
   auto name = new QLineEdit(&dialog);
-  name->setPlaceholderText("remote name");
-  form->addRow("Name:", name);
+  name->setPlaceholderText("e.g. work-drive");
+  name->setAccessibleName("Remote name");
+  form->addRow("Remote name:", name);
 
   auto provider = new QComboBox(&dialog);
   provider->setEditable(true);
   provider->setInsertPolicy(QComboBox::NoInsert);
   provider->setMaxVisibleItems(30);
+  provider->setAccessibleName("Provider type");
+  provider->lineEdit()->setPlaceholderText("Search provider types");
   if (provider->completer()) {
     provider->completer()->setCaseSensitivity(Qt::CaseInsensitive);
     provider->completer()->setFilterMode(Qt::MatchContains);
@@ -866,11 +934,12 @@ void MainWindow::createRemote() {
     provider->setItemData(provider->count() - 1, p.description,
                           Qt::ToolTipRole);
   }
-  form->addRow("Type:", provider);
+  form->addRow("Provider:", provider);
 
   auto description = new QLabel(&dialog);
   description->setWordWrap(true);
   description->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  UiPolish::SetMuted(description);
   form->addRow("Description:", description);
   auto updateDescription = [=](int index) {
     description->setText(provider->itemData(index, Qt::ToolTipRole).toString());
@@ -882,6 +951,10 @@ void MainWindow::createRemote() {
   auto buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                            &dialog);
+  if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
+    ok->setText("Create");
+    UiPolish::SetPrimaryButton(ok);
+  }
   layout->addWidget(buttons);
   QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog,
                    &QDialog::reject);
@@ -1218,10 +1291,12 @@ void MainWindow::rcloneListRemotes() {
                size = 1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
              }
 #endif
-            ui.remotes->setIconSize(QSize(size, size));
+            const int displaySize = qBound(22, size, 34);
+            ui.remotes->setIconSize(QSize(displaySize, displaySize));
 
+            const QString iconType = QString(type).replace(' ', '_');
             QString path =
-                ":/remotes/images/" + type.replace(' ', '_') + img_add + ".png";
+                ":/remotes/images/" + iconType + img_add + ".png";
             QIcon icon(QFile(path).exists()
                            ? path
                            : ":/remotes/images/unknown" + img_add + ".png");
@@ -1229,7 +1304,16 @@ void MainWindow::rcloneListRemotes() {
             QListWidgetItem *item = new QListWidgetItem(icon, name);
             item->setData(Qt::UserRole, type);
             item->setToolTip(tooltip);
+            item->setSizeHint(QSize(0, displaySize + 14));
             ui.remotes->addItem(item);
+          }
+          if (ui.remotes->count() == 0) {
+            auto *empty = new QListWidgetItem(
+                "No remotes configured yet. Use New Remote or Config to add one.");
+            empty->setFlags(Qt::NoItemFlags);
+            empty->setForeground(qApp->palette().color(QPalette::Disabled,
+                                                       QPalette::Text));
+            ui.remotes->addItem(empty);
           }
         } else {
           if (p->error() != QProcess::FailedToStart) {
@@ -1362,10 +1446,26 @@ void MainWindow::listTasks() {
         jo->description);
     ui.tasksListWidget->addItem(item);
   }
+
+  if (ui.tasksListWidget->count() == 0) {
+    auto *empty = new JobOptionsListWidgetItem(
+        nullptr, QIcon(),
+        "No saved tasks yet. Save a transfer from Upload or Download to reuse it.");
+    empty->setFlags(Qt::NoItemFlags);
+    empty->setForeground(qApp->palette().color(QPalette::Disabled,
+                                               QPalette::Text));
+    ui.tasksListWidget->addItem(empty);
+  }
+
+  ui.buttonDeleteTask->setEnabled(false);
+  ui.buttonEditTask->setEnabled(false);
+  ui.buttonRunTask->setEnabled(false);
+  ui.buttonDryrunTask->setEnabled(false);
+  ui.buttonCopyTaskCmd->setEnabled(false);
 }
 
 void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
-  if (item == nullptr)
+  if (item == nullptr || item->GetData() == nullptr)
     return;
   JobOptions *jo = item->GetData();
 
@@ -1390,7 +1490,7 @@ void MainWindow::editSelectedTask() {
   auto selection = ui.tasksListWidget->selectionModel()->currentIndex();
   JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
       ui.tasksListWidget->currentItem());
-  if (!item) {
+  if (!item || !item->GetData()) {
     return;
   }
   JobOptions *jo = item->GetData();

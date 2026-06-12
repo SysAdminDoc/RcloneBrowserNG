@@ -1,5 +1,6 @@
 #include "transfer_dialog.h"
 #include "list_of_job_options.h"
+#include "interface_polish.h"
 #include "utils.h"
 
 TransferDialog::TransferDialog(bool isDownload, bool isDrop,
@@ -9,8 +10,27 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     : QDialog(parent), mIsDownload(isDownload), mIsFolder(isFolder),
       mIsEditMode(editMode), mJobOptions(task) {
   ui.setupUi(this);
-  resize(0, 0);
-  setWindowTitle(isDownload ? "Download" : "Upload");
+  if (layout()) {
+    layout()->setSizeConstraint(QLayout::SetDefaultConstraint);
+    layout()->setSpacing(10);
+    layout()->setContentsMargins(12, 12, 12, 12);
+  }
+  UiPolish::SetWindowDefaults(this, QSize(780, 580));
+  resize(840, 620);
+  setWindowTitle(isDownload ? "Download from remote" : "Upload to remote");
+  UiPolish::SetToolbarSurface(ui.pathGroup);
+  UiPolish::SetPathField(ui.textSource, "Transfer source");
+  UiPolish::SetPathField(ui.textDest, "Transfer destination");
+  ui.textSource->setPlaceholderText(isDownload ? "remote:path" : "Local file or folder");
+  ui.textDest->setPlaceholderText(isDownload ? "Local destination folder"
+                                             : "remote:path");
+  ui.textExtra->setPlaceholderText("Additional rclone flags for this transfer");
+  ui.textDescription->setPlaceholderText("Name this task if you want to save it");
+  ui.textBandwidth->setPlaceholderText("off, 10M, or timetable syntax");
+  ui.textMinSize->setPlaceholderText("100M");
+  ui.textMinAge->setPlaceholderText("1d");
+  ui.textMaxAge->setPlaceholderText("30d");
+  ui.textExclude->setPlaceholderText("One --exclude pattern per line");
 
   QStyle *style = qApp->style();
   ui.buttonSourceFile->setIcon(style->standardIcon(QStyle::SP_FileIcon));
@@ -19,12 +39,27 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   ui.buttonDefaultSource->setIcon(style->standardIcon(QStyle::SP_DirHomeIcon));
   ui.buttonDefaultDest->setIcon(style->standardIcon(QStyle::SP_DirHomeIcon));
+  ui.buttonSourceFile->setStyleSheet(QString());
+  ui.buttonSourceFolder->setStyleSheet(QString());
+  ui.buttonDefaultSource->setStyleSheet(QString());
+  ui.buttonDest->setStyleSheet(QString());
+  ui.buttonDefaultDest->setStyleSheet(QString());
+  UiPolish::SetCompactToolButton(ui.buttonSourceFile, "Choose source file");
+  UiPolish::SetCompactToolButton(ui.buttonSourceFolder, "Choose source folder");
+  UiPolish::SetCompactToolButton(ui.buttonDefaultSource,
+                                 "Use default source folder");
+  UiPolish::SetCompactToolButton(ui.buttonDest, "Choose destination folder");
+  UiPolish::SetCompactToolButton(ui.buttonDefaultDest,
+                                 "Use default destination folder");
 
   if (!mIsEditMode) {
     QPushButton *dryRun =
-        ui.buttonBox->addButton("&Dry run", QDialogButtonBox::AcceptRole);
+        ui.buttonBox->addButton("&Dry Run", QDialogButtonBox::AcceptRole);
     QPushButton *run =
         ui.buttonBox->addButton("&Run", QDialogButtonBox::AcceptRole);
+    UiPolish::SetPrimaryButton(run);
+    dryRun->setToolTip("Run rclone with --dry-run to preview what would happen.");
+    run->setToolTip("Start the transfer now.");
     QObject::connect(dryRun, &QPushButton::clicked, this,
                      [=]() { mDryRun = true; });
     // reset the flag in case a prior "Dry run" click was rejected by
@@ -34,7 +69,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   }
 
   QPushButton *saveTask = ui.buttonBox->addButton(
-      "&Save task", QDialogButtonBox::ButtonRole::ActionRole);
+      "&Save Task", QDialogButtonBox::ButtonRole::ActionRole);
+  saveTask->setToolTip("Save these settings as a reusable task.");
 
   QObject::connect(
       ui.buttonBox->button(QDialogButtonBox::RestoreDefaults),
@@ -88,16 +124,16 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   QObject::connect(saveTask, &QPushButton::clicked, this, [=]() {
     // validate before saving task...
     if (ui.textDescription->text().isEmpty()) {
-      QMessageBox::warning(this, "Warning",
-                           "Please enter task description to Save!");
+      QMessageBox::warning(this, "Task name required",
+                           "Add a task description before saving.");
       ui.textDescription->setFocus(Qt::FocusReason::OtherFocusReason);
       return;
     }
     // even though the below does not match the condition on the Run buttons
     // it SEEMS like blanking either one would be a problem, right?
     if (ui.textDest->text().isEmpty() || ui.textSource->text().isEmpty()) {
-      QMessageBox::warning(this, "Error",
-                           "Invalid Task, source and destination required!");
+      QMessageBox::warning(this, "Source and destination required",
+                           "Saved tasks need both a source and destination.");
       return;
     }
     JobOptions *jobo = getJobOptions();
@@ -203,6 +239,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   // Info only - should not be edited
   // would be nice to display it only for Google Drive - todo
   ui.checkisDriveSharedWithMe->setDisabled(true);
+  ui.checkisDriveSharedWithMe->setToolTip(
+      "Inherited from the current Google Drive tab.");
 
   ui.checkisDriveSharedWithMe->setChecked(
       settings->value("Settings/driveShared", false).toBool());
@@ -501,12 +539,14 @@ void TransferDialog::done(int r) {
   if (r == QDialog::Accepted) {
     if (mIsDownload) {
       if (ui.textDest->text().isEmpty()) {
-        QMessageBox::warning(this, "Warning", "Please enter destination!");
+        QMessageBox::warning(this, "Destination required",
+                             "Choose a local destination before running.");
         return;
       }
     } else {
       if (ui.textSource->text().isEmpty()) {
-        QMessageBox::warning(this, "Warning", "Please enter source!");
+        QMessageBox::warning(this, "Source required",
+                             "Choose a local file or folder before running.");
         return;
       }
     }

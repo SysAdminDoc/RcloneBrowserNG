@@ -1,4 +1,5 @@
 #include "mount_widget.h"
+#include "interface_polish.h"
 #include "utils.h"
 #include "vfs_upload_state.h"
 
@@ -9,15 +10,34 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
     : QWidget(parent), mProcess(process), mRcAddr(rcAddr), mRcUser(rcUser),
       mRcPass(rcPass) {
   ui.setupUi(this);
+  ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
+  ui.verticalLayout->setSpacing(0);
+  ui.horizontalLayout->setContentsMargins(10, 8, 10, 8);
+  ui.horizontalLayout->setSpacing(8);
+  ui.gridLayout_2->setContentsMargins(10, 8, 10, 10);
+  ui.gridLayout_2->setHorizontalSpacing(8);
+  ui.gridLayout_2->setVerticalSpacing(6);
+  ui.showDetails->setStyleSheet(QString());
+  ui.showOutput->setStyleSheet(QString());
+  ui.copy->setStyleSheet(QString());
+  ui.cancel->setStyleSheet(QString());
+  UiPolish::SetCard(this);
+  UiPolish::SetToolbarSurface(ui.widget);
 
   ui.remote->setText(remote);
+  ui.remote->setToolTip(remote);
   ui.folder->setText(folder);
+  ui.folder->setToolTip(folder);
   ui.info->setText(QString("%1 on %2").arg(remote).arg(folder));
+  ui.info->setToolTip(ui.info->text());
+  ui.info->setMinimumWidth(0);
+  ui.info->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   ui.keepMounted->setChecked(keepMounted);
+  ui.keepMounted->setAccessibleName("Keep mounted");
 
   ui.details->setVisible(false);
 
-  ui.output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  UiPolish::SetOutputView(ui.output);
   ui.output->setVisible(false);
   // long-lived mounts can log indefinitely - bound memory growth
   ui.output->setMaximumBlockCount(10000);
@@ -36,6 +56,8 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
   ui.copy->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_FileLinkIcon));
+  UiPolish::SetCompactToolButton(ui.copy, "Copy mount command",
+                                 "Copy the rclone mount command to the clipboard.");
 
   QObject::connect(ui.copy, &QToolButton::clicked, this, [=]() {
     QStringList args;
@@ -52,15 +74,17 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  UiPolish::SetCompactToolButton(ui.cancel, "Unmount",
+                                 "Unmount this remote.");
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
       int button = QMessageBox::question(
           this, "Unmount",
 #if defined(Q_OS_WIN)
-          QString("Do you want to unmount %1 drive?").arg(folder),
+          QString("Unmount %1 drive?").arg(folder),
 #else
-          QString("Do you want to unmount %1 folder?").arg(folder),
+          QString("Unmount %1 folder?").arg(folder),
 #endif
           QMessageBox::Yes | QMessageBox::No);
       if (button == QMessageBox::Yes) {
@@ -86,13 +110,11 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                      const bool cleanExit =
                          status == 0 && exitStatus == QProcess::NormalExit;
                      if (cleanExit) {
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; }");
-                       ui.showDetails->setText("Unmounted");
+                       UiPolish::SetStatus(ui.showDetails, "idle",
+                                           "Unmounted");
                      } else {
-                       ui.showDetails->setStyleSheet(
-                           "QToolButton { border: 0; color: #e53935; }");
-                       ui.showDetails->setText("Error");
+                       UiPolish::SetStatus(ui.showDetails, "error",
+                                           "Needs attention");
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
                      }
@@ -101,9 +123,8 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                      emit stopped(mUserRequestedUnmount, cleanExit);
                    });
 
-  ui.showDetails->setStyleSheet(
-      "QToolButton { border: 0; color: #43a047; }");
-  ui.showDetails->setText("Mounted");
+  UiPolish::SetStatus(ui.showDetails, "success", "Mounted");
+  ui.showOutput->setAccessibleName("Show mount output");
 }
 
 MountWidget::~MountWidget() {}
@@ -112,8 +133,8 @@ bool MountWidget::keepMounted() const { return ui.keepMounted->isChecked(); }
 
 void MountWidget::setRemountScheduled(int delayMs, int attempt) {
   ui.keepMounted->setEnabled(false);
-  ui.showDetails->setStyleSheet("QToolButton { border: 0; color: #f57c00; }");
-  ui.showDetails->setText(
+  UiPolish::SetStatus(
+      ui.showDetails, "warning",
       QString("Remounting in %1 s").arg((delayMs + 999) / 1000));
   ui.showDetails->setChecked(true);
   ui.showOutput->setChecked(true);
