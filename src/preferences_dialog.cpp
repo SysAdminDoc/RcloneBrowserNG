@@ -191,16 +191,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.darkMode->setChecked(
       settings->value("Settings/darkMode", false).toBool());
 
-// dark mode option for all systems but latest macOS
-// on macOS Mojave or newer dark mode is managed by OS
 #if defined(Q_OS_MACOS)
-  QString sysInfo = QSysInfo::productVersion();
-  if (sysInfo == "10.9" || sysInfo == "10.10" || sysInfo == "10.11" ||
-      sysInfo == "10.12" || sysInfo == "10.13") {
-  } else {
-    ui.darkMode->hide();
-    ui.darkMode_info->hide();
-  }
+  ui.darkMode->hide();
+  ui.darkMode_info->hide();
 #endif
 
   if ((settings->value("Settings/iconSize").toString()) == "small") {
