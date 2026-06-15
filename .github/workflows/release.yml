@@ -33,8 +33,8 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
 
-          desktop-file-validate assets/rclone-browser.desktop
-          appstreamcli validate --no-net assets/rclone-browser.appdata.xml
+          desktop-file-validate assets/io.github.sysadmindoc.rclonebrowserng.desktop
+          appstreamcli validate --no-net assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml
 
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build --parallel
@@ -58,7 +58,7 @@ jobs:
           export VERSION="$version"
           tools/linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
-            --desktop-file AppDir/usr/share/applications/rclone-browser.desktop \
+            --desktop-file AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop \
             --plugin qt \
             --output appimage
 

@@ -20,8 +20,8 @@ jobs:
           sudo apt-get install -y appstream cmake desktop-file-utils g++ qt6-base-dev libgl1-mesa-dev
       - name: Validate desktop metadata
         run: |
-          desktop-file-validate assets/rclone-browser.desktop
-          appstreamcli validate --no-net assets/rclone-browser.appdata.xml
+          desktop-file-validate assets/io.github.sysadmindoc.rclonebrowserng.desktop
+          appstreamcli validate --no-net assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml
       - name: Build
         run: |
           mkdir build && cd build
