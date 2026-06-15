@@ -241,48 +241,52 @@ int main(int argc, char *argv[]) {
         0x80004004); // exit immediately if folder not writable
   }
 
-  // qDebug() << QString("main.cpp tmpDir:  " + tmpDir);
-
   QString lockUser = qEnvironmentVariable("USER");
   if (lockUser.isEmpty()) lockUser = qEnvironmentVariable("USERNAME");
   if (lockUser.isEmpty()) lockUser = QString::number(qHash(QDir::homePath()));
-  QLockFile lockFile(tmpDir + "/.RcloneBrowser_" + lockUser + ".lock");
 
-  if (!lockFile.tryLock(100)) {
-    if (lockFile.removeStaleLockFile() && lockFile.tryLock(100)) {
-      QMessageBox msgBox;
-      msgBox.setIcon(QMessageBox::Information);
-      msgBox.setText("Recovered from a stale Rclone Browser NG lock file.\n\n"
-                     "The previous process appears to have exited without "
-                     "releasing its single-instance lock.");
-      msgBox.exec();
-    } else {
-      qint64 lockPid = 0;
-      QString lockHostname;
-      QString lockAppName;
-      QString lockDetails;
-      if (lockFile.getLockInfo(&lockPid, &lockHostname, &lockAppName)) {
-        lockDetails =
-            QString("\n\nLock owner: %1 on %2 (pid %3)")
-                .arg(lockAppName.isEmpty() ? "unknown process" : lockAppName)
-                .arg(lockHostname.isEmpty() ? "unknown host" : lockHostname)
-                .arg(lockPid);
-      }
+  const QString serverName =
+      "RcloneBrowserNG_" + lockUser + "_" +
+      QString::number(qHash(tmpDir));
 
-    // if already running display warning and quit
-      QMessageBox msgBox;
-      msgBox.setIcon(QMessageBox::Warning);
-      msgBox.setText("Rclone Browser NG is already running."
-                     "\r\n\nOnly one instance is allowed." +
-                     lockDetails);
-      msgBox.exec();
-      return static_cast<int>(
-          0x80004004); // exit immediately if another instance is running
+  // Try to connect to an already-running instance.
+  {
+    QLocalSocket socket;
+    socket.connectToServer(serverName);
+    if (socket.waitForConnected(500)) {
+      socket.write("raise");
+      socket.waitForBytesWritten(1000);
+      socket.disconnectFromServer();
+      return 0;
     }
+  }
+
+  // No running instance found — clean up any leftover server and start ours.
+  QLocalServer::removeServer(serverName);
+  QLocalServer server;
+  if (!server.listen(serverName)) {
+    QMessageBox::warning(nullptr, "Rclone Browser NG",
+                         "Could not create single-instance server:\n" +
+                             server.errorString());
+  }
+
+  // Also keep the lockfile for backwards compat and stale-pid reporting
+  QLockFile lockFile(tmpDir + "/.RcloneBrowser_" + lockUser + ".lock");
+  if (!lockFile.tryLock(100)) {
+    lockFile.removeStaleLockFile();
+    lockFile.tryLock(100);
   }
 
   MainWindow w;
   w.show();
+
+  QObject::connect(&server, &QLocalServer::newConnection, &w, [&]() {
+    while (auto *client = server.nextPendingConnection()) {
+      client->waitForReadyRead(500);
+      client->deleteLater();
+      w.bringToFront();
+    }
+  });
 
   return app.exec();
 }

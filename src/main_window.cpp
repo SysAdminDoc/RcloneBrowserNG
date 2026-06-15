@@ -720,6 +720,19 @@ MainWindow::MainWindow() {
   }
 }
 
+void MainWindow::bringToFront() {
+  setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
+  show();
+  raise();
+  activateWindow();
+#ifdef Q_OS_MACOS
+  osxShowDockIcon();
+#endif
+  if (mAlwaysShowInTray || mCloseToTray) {
+    mSystemTray.setVisible(mAlwaysShowInTray);
+  }
+}
+
 MainWindow::~MainWindow() {
   auto settings = GetSettings();
   settings->setValue("MainWindow/geometry", saveGeometry());
