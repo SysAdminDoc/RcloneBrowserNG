@@ -16,6 +16,9 @@ public:
   MainWindow();
   ~MainWindow();
 
+public slots:
+  void bringToFront();
+
 private slots:
   void rcloneGetVersion();
   void rcloneConfig();
