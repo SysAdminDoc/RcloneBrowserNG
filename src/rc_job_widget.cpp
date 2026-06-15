@@ -1,22 +1,8 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "interface_polish.h"
+#include "utils.h"
 
-namespace {
-QString getNiceSize(quint64 size) {
-  static const char prefix[] = "KMGTPE";
-  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
-    quint64 base = quint64(1) << ((i + 1) * 10);
-    if (size >= base) {
-      double value = double(size) / double(base);
-      return QString("%1 %2")
-          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
-          .arg(QChar(prefix[i]));
-    }
-  }
-  return QString("%1 B").arg(size);
-}
-} // namespace
 
 RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
                          const QStringList &displayArgs, const QString &source,
@@ -147,10 +133,10 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
   const int pct =
       totalBytes > 0 ? static_cast<int>(bytes / totalBytes * 100) : 0;
   ui.size->setText(QString("%1, %2%")
-                       .arg(getNiceSize(static_cast<quint64>(bytes)))
+                       .arg(GetNiceSize(static_cast<quint64>(bytes)))
                        .arg(pct));
-  ui.totalsize->setText(getNiceSize(static_cast<quint64>(totalBytes)));
-  ui.bandwidth->setText(getNiceSize(static_cast<quint64>(speed)) + "/s");
+  ui.totalsize->setText(GetNiceSize(static_cast<quint64>(totalBytes)));
+  ui.bandwidth->setText(GetNiceSize(static_cast<quint64>(speed)) + "/s");
   ui.errors->setText(QString::number(stats.value("errors").toInt()));
   ui.checks->setText(QString::number(stats.value("checks").toInt()));
   ui.transferred->setText(QString::number(stats.value("transfers").toInt()));

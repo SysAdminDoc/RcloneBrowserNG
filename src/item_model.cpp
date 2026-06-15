@@ -16,19 +16,6 @@ static void advanceSpinner(QString &text) {
   text[spinnerPos] = spinner[next];
 }
 
-QString getNiceSize(quint64 size) {
-  static const char prefix[] = "KMGTPE";
-  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
-    quint64 base = quint64(1) << ((i + 1) * 10);
-    if (size >= base) {
-      double value = double(size) / double(base);
-      return QString("%1 %2")
-          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
-          .arg(QChar(prefix[i]));
-    }
-  }
-  return QString("%1 B").arg(size);
-}
 } // namespace
 
 class ItemSorter {
@@ -294,7 +281,7 @@ QVariant ItemModel::data(const QModelIndex &index, int role) const {
       if (item->isFolder || item->state == Item::Special) {
         return QString();
       } else {
-        return getNiceSize(item->size);
+        return GetNiceSize(item->size);
       }
     case 2:
       return item->modified;

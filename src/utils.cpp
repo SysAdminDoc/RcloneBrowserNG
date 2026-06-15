@@ -526,3 +526,17 @@ QStringList GetShowHidden() {
   }
   return showHiddenOption;
 }
+
+QString GetNiceSize(quint64 size) {
+  static const char prefix[] = "KMGTPE";
+  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
+    quint64 base = quint64(1) << ((i + 1) * 10);
+    if (size >= base) {
+      double value = double(size) / double(base);
+      return QString("%1 %2")
+          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
+          .arg(QChar(prefix[i]));
+    }
+  }
+  return QString("%1 B").arg(size);
+}

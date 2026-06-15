@@ -71,7 +71,14 @@ jobs:
           path: release/*
 
   macos-dmg:
-    runs-on: macos-14
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install dependencies
@@ -91,12 +98,12 @@ jobs:
 
           mkdir -p release
           mv "build/build/rclone-browser.dmg" \
-            "release/RcloneBrowserNG-${version}-macos-arm64.dmg"
+            "release/RcloneBrowserNG-${version}-macos-${{ matrix.arch }}.dmg"
           ditto -c -k --keepParent "$app" \
-            "release/RcloneBrowserNG-${version}-macos-arm64.app.zip"
+            "release/RcloneBrowserNG-${version}-macos-${{ matrix.arch }}.app.zip"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-macos
+          name: release-macos-${{ matrix.arch }}
           path: release/*
 
   windows-x64:
