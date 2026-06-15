@@ -200,6 +200,31 @@ MainWindow::MainWindow() {
       "Transfers, mounts and streams will appear here with live progress.");
   UiPolish::SetMuted(ui.statusBar);
   UiPolish::SetActionBar(ui.tasksActionBar);
+  mRemotesFilter = new QLineEdit(this);
+  mRemotesFilter->setPlaceholderText("Filter remotes…");
+  mRemotesFilter->setClearButtonEnabled(true);
+  mRemotesFilter->setAccessibleName("Filter remotes");
+  UiPolish::SetPathField(mRemotesFilter, "Filter remotes");
+  if (auto *layout = ui.remotes->parentWidget()->layout()) {
+    static_cast<QVBoxLayout *>(layout)->insertWidget(0, mRemotesFilter);
+  }
+  QObject::connect(mRemotesFilter, &QLineEdit::textChanged, this,
+                   [=](const QString &text) {
+                     for (int i = 0; i < ui.remotes->count(); ++i) {
+                       auto *item = ui.remotes->item(i);
+                       if (!(item->flags() & Qt::ItemIsEnabled)) {
+                         continue;
+                       }
+                       item->setHidden(
+                           !text.isEmpty() &&
+                           !item->text().contains(text, Qt::CaseInsensitive));
+                     }
+                   });
+  auto *clearFilter = new QShortcut(QKeySequence(Qt::Key_Escape), mRemotesFilter);
+  clearFilter->setContext(Qt::WidgetShortcut);
+  QObject::connect(clearFilter, &QShortcut::activated, mRemotesFilter,
+                   &QLineEdit::clear);
+
   UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
   ui.remotes->setUniformItemSizes(true);
@@ -1281,6 +1306,9 @@ void MainWindow::setStatusMessage(const QString &message) {
 
 void MainWindow::rcloneListRemotes() {
   ui.remotes->clear();
+  if (mRemotesFilter) {
+    mRemotesFilter->clear();
+  }
 
   QProcess *p = new QProcess();
 
