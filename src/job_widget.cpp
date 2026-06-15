@@ -4,20 +4,6 @@
 
 namespace {
 constexpr int kMaxVisibleFileProgress = 12;
-
-QString getNiceSize(quint64 size) {
-  static const char prefix[] = "KMGTPE";
-  for (int i = sizeof(prefix) - 2; i >= 0; i--) {
-    quint64 base = quint64(1) << ((i + 1) * 10);
-    if (size >= base) {
-      double value = double(size) / double(base);
-      return QString("%1 %2")
-          .arg(value, 0, 'f', value >= 100 ? 0 : 1)
-          .arg(QChar(prefix[i]));
-    }
-  }
-  return QString("%1 B").arg(size);
-}
 } // namespace
 
 JobWidget::JobWidget(QProcess *process, const QString &info,
@@ -155,12 +141,12 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                     ? static_cast<int>(bytes / totalBytes * 100)
                     : 0;
       ui.size->setText(QString("%1, %2%")
-                           .arg(getNiceSize(static_cast<quint64>(bytes)))
+                           .arg(GetNiceSize(static_cast<quint64>(bytes)))
                            .arg(pct));
       ui.totalsize->setText(
-          getNiceSize(static_cast<quint64>(totalBytes)));
+          GetNiceSize(static_cast<quint64>(totalBytes)));
       ui.bandwidth->setText(
-          getNiceSize(static_cast<quint64>(speed)) + "/s");
+          GetNiceSize(static_cast<quint64>(speed)) + "/s");
 
       double eta = stats.value("eta").toDouble();
       if (eta > 0) {
@@ -256,7 +242,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         bar->setToolTip(
             QString("File: %1\nSpeed: %2/s  ETA: %3s")
                 .arg(name,
-                     getNiceSize(static_cast<quint64>(fSpeed)),
+                     GetNiceSize(static_cast<quint64>(fSpeed)),
                      QString::number(static_cast<int>(fEta))));
 
         updated.insert(label);

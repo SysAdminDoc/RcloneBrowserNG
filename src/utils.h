@@ -27,6 +27,8 @@ QStringList GetDriveSharedWithMe();
 QStringList GetDefaultRcloneOptionsList();
 QStringList GetShowHidden();
 
+QString GetNiceSize(quint64 size);
+
 unsigned int compareVersion(std::string, std::string);
 
 // Windows mount remote-control endpoint. The port is derived from the mount
