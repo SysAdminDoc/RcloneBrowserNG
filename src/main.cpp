@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
   app.setApplicationDisplayName("Rclone Browser NG");
   app.setApplicationName("rclone-browser");
   app.setOrganizationName("rclone-browser");
-  QGuiApplication::setDesktopFileName("rclone-browser");
+  QGuiApplication::setDesktopFileName("io.github.sysadmindoc.rclonebrowserng");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
 
   if (IsRclonePasswordCommandRequest(app.arguments())) {

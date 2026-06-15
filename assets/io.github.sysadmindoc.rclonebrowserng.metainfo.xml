@@ -23,7 +23,7 @@
   <developer id="io.github.sysadmindoc">
     <name>SysAdminDoc</name>
   </developer>
-  <launchable type="desktop-id">rclone-browser.desktop</launchable>
+  <launchable type="desktop-id">io.github.sysadmindoc.rclonebrowserng.desktop</launchable>
   <provides>
     <binary>rclone-browser</binary>
   </provides>
