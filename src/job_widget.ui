@@ -35,7 +35,7 @@
       <item>
        <widget class="QToolButton" name="showDetails">
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0 }</string>
+         <string notr="true"/>
         </property>
         <property name="checkable">
          <bool>true</bool>
@@ -57,7 +57,7 @@
          <string>Copy command to clipboard</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0 }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -67,7 +67,7 @@
          <string>Cancel</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0 }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -292,7 +292,7 @@
       <item row="5" column="0" colspan="2">
        <widget class="QToolButton" name="showOutput">
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0 }</string>
+         <string notr="true"/>
         </property>
         <property name="text">
          <string>Show Output</string>
