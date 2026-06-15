@@ -14,6 +14,8 @@ public:
   ~RemoteWidget();
 
   QStringList getDriveSharedArgs() const;
+  void refreshCurrentDir();
+  void focusPathBar();
 
 signals:
   void addTransfer(const QString &message, const QString &source,
