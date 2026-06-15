@@ -16,10 +16,12 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
   setWindowTitle(title);
   ui.labelOperation->setText(operation);
   ui.labelInfo->setText(message);
+  ui.labelInfo->setWordWrap(true);
   ui.labelInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
   UiPolish::SetMuted(ui.labelOperation);
   ui.buttonShowOutput->setStyleSheet(QString());
   UiPolish::SetDisclosureButton(ui.buttonShowOutput, "Show command output");
+  UiPolish::SetStatus(ui.buttonShowOutput, "running", "Running");
 
   UiPolish::SetOutputView(ui.output);
   ui.output->setReadOnly(true);
@@ -41,15 +43,34 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
   QObject::connect(process,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
-                   this, [=](int code, QProcess::ExitStatus status) {
-                     if (status == QProcess::NormalExit && code == 0) {
-                       if (close) {
-                         emit accept();
-                       }
-                     } else {
-                       ui.buttonShowOutput->setChecked(true);
-                       ui.buttonBox->setEnabled(true);
-                     }
+                    this, [=](int code, QProcess::ExitStatus status) {
+                      if (status == QProcess::NormalExit && code == 0) {
+                        UiPolish::SetStatus(ui.buttonShowOutput, "success",
+                                            "Finished");
+                        ui.buttonBox->setEnabled(true);
+                        if (close) {
+                          emit accept();
+                        }
+                      } else {
+                        UiPolish::SetStatus(ui.buttonShowOutput, "error",
+                                            "Failed");
+                        if (ui.output->toPlainText().trimmed().isEmpty()) {
+                          ui.output->appendPlainText(
+                              QString("Command exited with status %1.")
+                                  .arg(code));
+                        }
+                        ui.buttonShowOutput->setChecked(true);
+                        ui.buttonBox->setEnabled(true);
+                      }
+                    });
+
+  QObject::connect(process, &QProcess::errorOccurred, this,
+                   [=](QProcess::ProcessError) {
+                     UiPolish::SetStatus(ui.buttonShowOutput, "error",
+                                         "Failed to start");
+                     ui.output->appendPlainText(process->errorString());
+                     ui.buttonShowOutput->setChecked(true);
+                     ui.buttonBox->setEnabled(true);
                    });
 
   QObject::connect(process, &QProcess::readyRead, this, [=]() {

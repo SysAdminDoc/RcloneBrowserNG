@@ -210,15 +210,33 @@ MainWindow::MainWindow() {
   }
   QObject::connect(mRemotesFilter, &QLineEdit::textChanged, this,
                    [=](const QString &text) {
+                     bool hasAnyRemote = false;
+                     bool hasVisibleMatch = false;
                      for (int i = 0; i < ui.remotes->count(); ++i) {
                        auto *item = ui.remotes->item(i);
                        if (!(item->flags() & Qt::ItemIsEnabled)) {
                          continue;
                        }
-                       item->setHidden(
-                           !text.isEmpty() &&
-                           !item->text().contains(text, Qt::CaseInsensitive));
+                       hasAnyRemote = true;
+                       const bool matches =
+                           text.isEmpty() ||
+                           item->text().contains(text, Qt::CaseInsensitive);
+                       item->setHidden(!matches);
+                       hasVisibleMatch = hasVisibleMatch || matches;
                      }
+                     if (!mRemotesFilterEmptyItem) {
+                       mRemotesFilterEmptyItem = new QListWidgetItem(
+                           "No remotes match this filter.");
+                       mRemotesFilterEmptyItem->setFlags(Qt::NoItemFlags);
+                       mRemotesFilterEmptyItem->setForeground(
+                           qApp->palette().color(QPalette::Disabled,
+                                                 QPalette::Text));
+                       mRemotesFilterEmptyItem->setSizeHint(QSize(0, 54));
+                       ui.remotes->addItem(mRemotesFilterEmptyItem);
+                     }
+                     mRemotesFilterEmptyItem->setHidden(text.isEmpty() ||
+                                                        hasVisibleMatch ||
+                                                        !hasAnyRemote);
                    });
   UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
@@ -1284,10 +1302,13 @@ void MainWindow::setStatusMessage(const QString &message) {
 }
 
 void MainWindow::rcloneListRemotes() {
-  ui.remotes->clear();
   if (mRemotesFilter) {
+    const bool wasBlocked = mRemotesFilter->blockSignals(true);
     mRemotesFilter->clear();
+    mRemotesFilter->blockSignals(wasBlocked);
   }
+  ui.remotes->clear();
+  mRemotesFilterEmptyItem = nullptr;
 
   QProcess *p = new QProcess();
 
