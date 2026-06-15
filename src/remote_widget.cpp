@@ -787,6 +787,69 @@ QString root = isLocal ? "/" : QString();
     ui.tree->expand(index);
   }
 
+  ui.tree->setContextMenuPolicy(Qt::CustomContextMenu);
+  QObject::connect(
+      ui.tree, &QWidget::customContextMenuRequested, this,
+      [=](const QPoint &pos) {
+        QModelIndex index = ui.tree->indexAt(pos);
+        if (!index.isValid()) {
+          return;
+        }
+        QMenu menu;
+        if (model->isFolder(index)) {
+          QAction *archiveAction = menu.addAction("Archive…");
+          archiveAction->setToolTip(
+              "Move files older than a threshold to a dated archive folder.");
+          QAction *speedAction = menu.addAction("Speed Test…");
+          speedAction->setToolTip(
+              "Run upload/download speed probes against this remote.");
+
+          QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
+          if (!chosen) {
+            return;
+          }
+
+          QString path = model->path(index).path();
+          QString target = remote + ":" + path;
+
+          if (chosen == archiveAction) {
+            bool ok;
+            QString age = QInputDialog::getText(
+                this, "Archive", "Move files older than:", QLineEdit::Normal,
+                "30d", &ok);
+            if (!ok || age.trimmed().isEmpty()) {
+              return;
+            }
+            QProcess process;
+            UseRclonePassword(&process);
+            process.setProgram(GetRclone());
+            process.setArguments(QStringList()
+                                 << "archive" << GetRcloneConf()
+                                 << "--min-age" << age.trimmed()
+                                 << GetDefaultRcloneOptionsList() << target);
+            process.setProcessChannelMode(QProcess::MergedChannels);
+            ProgressDialog progress("Archive", "Archiving…", target, &process,
+                                    this, false);
+            progress.expand();
+            progress.allowToClose();
+            progress.exec();
+          } else if (chosen == speedAction) {
+            QProcess process;
+            UseRclonePassword(&process);
+            process.setProgram(GetRclone());
+            process.setArguments(QStringList()
+                                 << "test" << "speed" << GetRcloneConf()
+                                 << GetDefaultRcloneOptionsList() << target);
+            process.setProcessChannelMode(QProcess::MergedChannels);
+            ProgressDialog progress("Speed Test", "Testing…", target, &process,
+                                    this, false);
+            progress.expand();
+            progress.allowToClose();
+            progress.exec();
+          }
+        }
+      });
+
   QShortcut *close = new QShortcut(QKeySequence::Close, this);
   QObject::connect(close, &QShortcut::activated, this, [=]() {
     if (auto tabs = qobject_cast<QTabWidget *>(parent)) {
