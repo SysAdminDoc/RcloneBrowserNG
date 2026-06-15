@@ -48,6 +48,11 @@
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
+-   CHANGED: Desktop file, metainfo, and installed icons now use the reverse-DNS app ID (`io.github.sysadmindoc.rclonebrowserng`) required by Flatpak/Flathub; `setDesktopFileName` updated for Wayland focus-stealing compliance
+-   CHANGED: macOS CI and release workflows now build both ARM64 (macos-14) and x86_64 (macos-13) artifacts
+-   CHANGED: CodeQL workflow upgraded from pinned v3 to v4
+-   CHANGED: Consolidated duplicate `getNiceSize()` helper from item_model.cpp, job_widget.cpp, and rc_job_widget.cpp into a single `GetNiceSize()` in utils
+-   CHANGED: Removed dead macOS 10.9-10.13 code paths (dark mode and icon sizing) — deployment target has been macOS 11.0 since the Qt 6 port
 -   NEW: Added a tag-triggered GitHub release workflow that builds Windows zip/installer, macOS DMG/app zip, Linux AppImage, SHA256 sums, and GitHub provenance attestations
 -   NEW: macOS mount startup now detects FSKit-capable macFUSE, fuse-t, and rclone `nfsmount`; it prefers userspace-capable backends and only warns when no modern backend is available
 -   FIXED: Installed identity now consistently uses Rclone Browser NG across the app display name, main window, Linux desktop entry, macOS bundle display name, Windows installer metadata, and CI metadata validation
@@ -63,6 +68,11 @@
 -   CHANGED: Added a shared Qt polish layer for cohesive light/dark styling, stronger focus/hover/disabled states, clearer empty states, refined action hierarchy, bounded remote icon sizing, and more accessible labels across remotes, tasks, jobs, mounts, streams, transfers, export, progress, and preferences dialogs
 -   FIXED: Job widgets now cap per-file progress rows and show an overflow count so many small active transfers cannot balloon or glitch the layout
 -   FIXED: Long rclone version/path status text no longer forces the main window layout wider or overlaps nearby content; the full text remains available as a tooltip
+-   NEW: Launching a second instance now focuses the already-running window instead of showing an error dialog (QLocalServer IPC replaces the QLockFile-only approach)
+-   NEW: Open remote tabs are saved on app close and restored on next launch; tabs whose remote no longer exists are silently skipped
+-   NEW: Keyboard shortcuts: Ctrl+N (new remote), F5 (refresh), Ctrl+L (focus path bar), Ctrl+, (preferences), Ctrl+W (close tab)
+-   NEW: Typeahead filter field above the remotes list for users with many configured remotes; Escape clears the filter
+-   NEW: Large directory listings pass `--list-cutoff` to rclone (>= 1.74) for on-disk sorting, reducing rclone memory usage on backends with very large directories
 -   NEW: Right-click a saved task to export it as a standalone .sh, .bat, or .ps1 script for OS schedulers
 -   NEW: Confirmation dialog before deleting a saved task
 -   NEW: Failed jobs auto-expand their details and output so the cause is immediately visible
