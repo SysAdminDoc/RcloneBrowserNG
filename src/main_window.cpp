@@ -698,6 +698,14 @@ MainWindow::MainWindow() {
 MainWindow::~MainWindow() {
   auto settings = GetSettings();
   settings->setValue("MainWindow/geometry", saveGeometry());
+
+  QStringList openTabs;
+  for (int i = 0; i < ui.tabs->count(); ++i) {
+    if (qobject_cast<RemoteWidget *>(ui.tabs->widget(i))) {
+      openTabs << ui.tabs->tabText(i);
+    }
+  }
+  settings->setValue("MainWindow/openTabs", openTabs);
 }
 
 void MainWindow::rcloneGetVersion() {
@@ -1382,6 +1390,37 @@ void MainWindow::rcloneListRemotes() {
                                                        QPalette::Text));
             empty->setSizeHint(QSize(0, 54));
             ui.remotes->addItem(empty);
+          }
+
+          if (!mTabsRestored) {
+            mTabsRestored = true;
+            auto tabSettings = GetSettings();
+            QStringList saved =
+                tabSettings->value("MainWindow/openTabs").toStringList();
+            for (const QString &tabName : saved) {
+              for (int i = 0; i < ui.remotes->count(); ++i) {
+                auto *item = ui.remotes->item(i);
+                if (item->text() == tabName &&
+                    (item->flags() & Qt::ItemIsEnabled)) {
+                  QString type = item->data(Qt::UserRole).toString();
+                  bool isLocal = type == "local";
+                  bool isGoogle = type == "drive";
+                  bool isGooglePhotos =
+                      type.compare("google photos", Qt::CaseInsensitive) == 0;
+                  auto *remote = new RemoteWidget(
+                      &mIcons, tabName, isLocal, isGoogle, isGooglePhotos,
+                      ui.tabs);
+                  QObject::connect(remote, &RemoteWidget::addMount, this,
+                                   &MainWindow::addMount);
+                  QObject::connect(remote, &RemoteWidget::addStream, this,
+                                   &MainWindow::addStream);
+                  QObject::connect(remote, &RemoteWidget::addTransfer, this,
+                                   &MainWindow::addTransfer);
+                  ui.tabs->addTab(remote, tabName);
+                  break;
+                }
+              }
+            }
           }
         } else {
           if (p->error() != QProcess::FailedToStart) {

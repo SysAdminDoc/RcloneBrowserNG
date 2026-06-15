@@ -44,6 +44,7 @@ private:
   IconCache mIcons;
 
   bool mFirstTime = true;
+  bool mTabsRestored = false;
   int mJobCount = 0;
 
   bool canClose();
