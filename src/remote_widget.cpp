@@ -795,4 +795,11 @@ QString root = isLocal ? "/" : QString();
   });
 }
 
+void RemoteWidget::refreshCurrentDir() { ui.refresh->trigger(); }
+
+void RemoteWidget::focusPathBar() {
+  ui.path->setFocus();
+  ui.path->selectAll();
+}
+
 RemoteWidget::~RemoteWidget() {}
