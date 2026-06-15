@@ -64,14 +64,16 @@
 
 ### UX
 -   CHANGED: The New Remote flow now uses a guided dialog with explanatory helper text, inline validation, focus/error styling, clearer provider descriptions, clearable fields, and provider matching by exact rclone prefix as well as display name
+-   CHANGED: Transfer and export dialogs now keep required-field feedback inline with highlighted fields instead of interrupting users with modal warning boxes
+-   CHANGED: Remote browser right-click actions now open from one coherent context menu, including folder Archive and Speed Test tools, instead of showing separate menus
+-   CHANGED: Removed shortcut-only command bindings and mnemonic markers from the main and remote browser surfaces; actions are now exposed through visible buttons, menus, tabs, and context menus
 -   CHANGED: Deepened the native Qt polish system with refined menu/tab/list/tree/scrollbar/dialog styling, stronger focus and disabled states, clearer status badges, consistent action bars, smoother read-only telemetry fields, and better accessible names across the main shell, remote browser, jobs, mounts, streams, transfers, export, progress, and preferences surfaces
 -   CHANGED: Added a shared Qt polish layer for cohesive light/dark styling, stronger focus/hover/disabled states, clearer empty states, refined action hierarchy, bounded remote icon sizing, and more accessible labels across remotes, tasks, jobs, mounts, streams, transfers, export, progress, and preferences dialogs
 -   FIXED: Job widgets now cap per-file progress rows and show an overflow count so many small active transfers cannot balloon or glitch the layout
 -   FIXED: Long rclone version/path status text no longer forces the main window layout wider or overlaps nearby content; the full text remains available as a tooltip
 -   NEW: Launching a second instance now focuses the already-running window instead of showing an error dialog (QLocalServer IPC replaces the QLockFile-only approach)
 -   NEW: Open remote tabs are saved on app close and restored on next launch; tabs whose remote no longer exists are silently skipped
--   NEW: Keyboard shortcuts: Ctrl+N (new remote), F5 (refresh), Ctrl+L (focus path bar), Ctrl+, (preferences), Ctrl+W (close tab)
--   NEW: Typeahead filter field above the remotes list for users with many configured remotes; Escape clears the filter
+-   NEW: Typeahead filter field above the remotes list for users with many configured remotes; its clear button resets the filter
 -   NEW: Large directory listings pass `--list-cutoff` to rclone (>= 1.74) for on-disk sorting, reducing rclone memory usage on backends with very large directories
 -   NEW: Right-click a saved task to export it as a standalone .sh, .bat, or .ps1 script for OS schedulers
 -   NEW: Confirmation dialog before deleting a saved task

@@ -33,6 +33,15 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textMinAge->setPlaceholderText("1d");
   ui.textMaxAge->setPlaceholderText("30d");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
+  mValidation = new QLabel(this);
+  UiPolish::SetValidationMessage(mValidation, QString(), QString());
+  ui.gridLayout->addWidget(mValidation, 8, 0, 1, 2);
+  QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
+                   &TransferDialog::clearValidation);
+  QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
+                   &TransferDialog::clearValidation);
+  QObject::connect(ui.textDescription, &QLineEdit::textChanged, this,
+                   &TransferDialog::clearValidation);
 
   QStyle *style = qApp->style();
   ui.buttonSourceFile->setIcon(style->standardIcon(QStyle::SP_FileIcon));
@@ -56,9 +65,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   if (!mIsEditMode) {
     QPushButton *dryRun =
-        ui.buttonBox->addButton("&Dry Run", QDialogButtonBox::AcceptRole);
+        ui.buttonBox->addButton("Dry Run", QDialogButtonBox::AcceptRole);
     QPushButton *run =
-        ui.buttonBox->addButton("&Run", QDialogButtonBox::AcceptRole);
+        ui.buttonBox->addButton("Run", QDialogButtonBox::AcceptRole);
     UiPolish::SetPrimaryButton(run);
     dryRun->setToolTip(
         "Preview the transfer with --dry-run; no files are changed.");
@@ -74,7 +83,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   }
 
   QPushButton *saveTask = ui.buttonBox->addButton(
-      "&Save Task", QDialogButtonBox::ButtonRole::ActionRole);
+      "Save Task", QDialogButtonBox::ButtonRole::ActionRole);
   saveTask->setToolTip("Save these settings as a reusable task.");
   saveTask->setAccessibleName("Save transfer as task");
   if (auto restore = ui.buttonBox->button(QDialogButtonBox::RestoreDefaults)) {
@@ -132,17 +141,19 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   QObject::connect(saveTask, &QPushButton::clicked, this, [=]() {
     // validate before saving task...
-    if (ui.textDescription->text().isEmpty()) {
-      QMessageBox::warning(this, "Task name required",
-                           "Add a task description before saving.");
-      ui.textDescription->setFocus(Qt::FocusReason::OtherFocusReason);
+    if (ui.textDescription->text().trimmed().isEmpty()) {
+      showValidation(ui.textDescription,
+                     "Add a task name before saving this reusable transfer.");
       return;
     }
     // even though the below does not match the condition on the Run buttons
     // it SEEMS like blanking either one would be a problem, right?
-    if (ui.textDest->text().isEmpty() || ui.textSource->text().isEmpty()) {
-      QMessageBox::warning(this, "Source and destination required",
-                           "Saved tasks need both a source and destination.");
+    if (ui.textSource->text().trimmed().isEmpty()) {
+      showValidation(ui.textSource, "Saved tasks need a source path.");
+      return;
+    }
+    if (ui.textDest->text().trimmed().isEmpty()) {
+      showValidation(ui.textDest, "Saved tasks need a destination path.");
       return;
     }
     JobOptions *jobo = getJobOptions();
@@ -378,6 +389,22 @@ QString TransferDialog::getSource() const { return ui.textSource->text(); }
 
 QString TransferDialog::getDest() const { return ui.textDest->text(); }
 
+void TransferDialog::clearValidation() {
+  UiPolish::SetValidationMessage(mValidation, QString(), QString());
+  UiPolish::SetFieldState(ui.textSource, QString());
+  UiPolish::SetFieldState(ui.textDest, QString());
+  UiPolish::SetFieldState(ui.textDescription, QString());
+}
+
+void TransferDialog::showValidation(QWidget *field, const QString &message) {
+  clearValidation();
+  UiPolish::SetFieldState(field, "error");
+  UiPolish::SetValidationMessage(mValidation, "error", message);
+  if (field) {
+    field->setFocus(Qt::OtherFocusReason);
+  }
+}
+
 QStringList TransferDialog::getOptions() {
   JobOptions *jobo = getJobOptions();
   QStringList newWay = jobo->getOptions();
@@ -547,15 +574,15 @@ void TransferDialog::putJobOptions() {
 void TransferDialog::done(int r) {
   if (r == QDialog::Accepted) {
     if (mIsDownload) {
-      if (ui.textDest->text().isEmpty()) {
-        QMessageBox::warning(this, "Destination required",
-                             "Choose a local destination before running.");
+      if (ui.textDest->text().trimmed().isEmpty()) {
+        showValidation(ui.textDest,
+                       "Choose a local destination before running.");
         return;
       }
     } else {
-      if (ui.textSource->text().isEmpty()) {
-        QMessageBox::warning(this, "Source required",
-                             "Choose a local file or folder before running.");
+      if (ui.textSource->text().trimmed().isEmpty()) {
+        showValidation(ui.textSource,
+                       "Choose a local file or folder before running.");
         return;
       }
     }

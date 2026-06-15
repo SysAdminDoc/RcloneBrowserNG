@@ -24,6 +24,7 @@ public:
 
 private:
   Ui::TransferDialog ui;
+  QLabel *mValidation = nullptr;
 
   bool mIsDownload;
   bool mDryRun = false;
@@ -33,6 +34,8 @@ private:
   JobOptions *mJobOptions;
 
   void putJobOptions();
+  void clearValidation();
+  void showValidation(QWidget *field, const QString &message);
 
   void done(int r) override;
 

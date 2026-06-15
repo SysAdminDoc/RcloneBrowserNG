@@ -17,7 +17,11 @@ public:
 
 private:
   Ui::ExportDialog ui;
+  QLabel *mValidation = nullptr;
   QString mTarget;
+
+  void clearValidation();
+  void showValidation(QWidget *field, const QString &message);
 
   void done(int r) override;
 };
