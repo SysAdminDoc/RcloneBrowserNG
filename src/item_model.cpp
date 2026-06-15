@@ -555,6 +555,13 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   } else {
     args << "--max-depth" << "1";
   }
+  {
+    auto settings = GetSettings();
+    QString ver = settings->value("Settings/rcloneVersion").toString();
+    if (!ver.isEmpty() && compareVersion(ver.toStdString(), "1.74") != 2) {
+      args << "--list-cutoff" << "100000";
+    }
+  }
   args << GetDefaultRcloneOptionsList()
        << mRemote + ":" + parent->path.path();
   proc->start(GetRclone(), args, QIODevice::ReadOnly);
