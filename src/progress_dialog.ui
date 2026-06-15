@@ -53,7 +53,7 @@
       </sizepolicy>
      </property>
      <property name="styleSheet">
-      <string notr="true">QToolButton { border: none; }</string>
+      <string notr="true"/>
      </property>
      <property name="text">
       <string>Show Output</string>

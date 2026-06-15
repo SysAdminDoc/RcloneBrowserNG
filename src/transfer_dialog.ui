@@ -57,7 +57,7 @@
          <string>Choose folder</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0; }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -67,7 +67,7 @@
          <string>Restore default upload folder</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0; }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -80,7 +80,7 @@
          <string>Choose file</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0; }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -106,7 +106,7 @@
          <string>Choose folder</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0; }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
@@ -116,7 +116,7 @@
          <string>Restore default download folder</string>
         </property>
         <property name="styleSheet">
-         <string notr="true">QToolButton { border: 0; }</string>
+         <string notr="true"/>
         </property>
        </widget>
       </item>
