@@ -40,6 +40,7 @@ private:
   bool mNotifyFinishedTransfers;
 
   QLabel *mStatusMessage;
+  QLineEdit *mRemotesFilter = nullptr;
 
   IconCache mIcons;
 
