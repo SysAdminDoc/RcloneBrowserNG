@@ -67,7 +67,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;rclone config&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>&amp;Config...</string>
+             <string>Config...</string>
             </property>
            </widget>
           </item>
@@ -83,7 +83,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;create a new remote using the providers supported by this rclone&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>&amp;New Remote...</string>
+             <string>New Remote...</string>
             </property>
            </widget>
           </item>
@@ -116,7 +116,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;open remote&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>&amp;Open</string>
+             <string>Open</string>
             </property>
            </widget>
           </item>
@@ -278,7 +278,7 @@
                   </size>
                  </property>
                  <property name="text">
-                  <string>-&gt; Dry Run</string>
+                  <string>Dry Run</string>
                  </property>
                 </widget>
                </item>
@@ -378,7 +378,7 @@
                   </size>
                  </property>
                  <property name="text">
-                  <string>Copy Cmd</string>
+                  <string>Copy Command</string>
                  </property>
                  <property name="toolTip">
                   <string>Copy rclone command to clipboard</string>
@@ -409,7 +409,7 @@
    </property>
    <widget class="QMenu" name="menuFile">
     <property name="title">
-     <string>&amp;File</string>
+     <string>File</string>
     </property>
     <addaction name="preferences"/>
     <addaction name="separator"/>
@@ -417,7 +417,7 @@
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
-     <string>&amp;Help</string>
+     <string>Help</string>
     </property>
     <addaction name="about"/>
     <addaction name="aboutQt"/>
@@ -428,7 +428,7 @@
   <widget class="QStatusBar" name="statusBar"/>
   <action name="about">
    <property name="text">
-    <string>&amp;About</string>
+    <string>About</string>
    </property>
    <property name="menuRole">
     <enum>QAction::AboutRole</enum>
@@ -436,7 +436,7 @@
   </action>
   <action name="aboutQt">
    <property name="text">
-    <string>About &amp;Qt</string>
+    <string>About Qt</string>
    </property>
    <property name="menuRole">
     <enum>QAction::AboutQtRole</enum>
@@ -444,7 +444,7 @@
   </action>
   <action name="preferences">
    <property name="text">
-    <string>&amp;Preferences...</string>
+    <string>Preferences...</string>
    </property>
    <property name="menuRole">
     <enum>QAction::PreferencesRole</enum>
@@ -452,10 +452,7 @@
   </action>
   <action name="quit">
    <property name="text">
-    <string>&amp;Quit</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+Q</string>
+    <string>Quit</string>
    </property>
    <property name="menuRole">
     <enum>QAction::QuitRole</enum>

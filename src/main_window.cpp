@@ -220,11 +220,6 @@ MainWindow::MainWindow() {
                            !item->text().contains(text, Qt::CaseInsensitive));
                      }
                    });
-  auto *clearFilter = new QShortcut(QKeySequence(Qt::Key_Escape), mRemotesFilter);
-  clearFilter->setContext(Qt::WidgetShortcut);
-  QObject::connect(clearFilter, &QShortcut::activated, mRemotesFilter,
-                   &QLineEdit::clear);
-
   UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
   ui.remotes->setUniformItemSizes(true);
@@ -238,8 +233,8 @@ MainWindow::MainWindow() {
   ui.refresh->setAccessibleName("Refresh remotes");
   ui.open->setAccessibleName("Open selected remote");
   ui.config->setToolTip("Open rclone config in a terminal.");
-  ui.newRemote->setToolTip("Create a remote using the provider list from the installed rclone. (Ctrl+N)");
-  ui.refresh->setToolTip("Reload remotes from rclone.conf. (F5)");
+  ui.newRemote->setToolTip("Create a remote using the provider list from the installed rclone.");
+  ui.refresh->setToolTip("Reload remotes from rclone.conf.");
   ui.open->setToolTip("Open the selected remote in a browser tab.");
   UiPolish::SetPrimaryButton(ui.open);
 
@@ -620,34 +615,6 @@ MainWindow::MainWindow() {
   ui.tabs->tabBar()->setTabButton(2, QTabBar::LeftSide, nullptr);
   ui.tabs->tabBar()->installEventFilter(this);
   ui.tabs->setCurrentIndex(0);
-
-  // --- keyboard shortcuts ---
-  auto *shortcutNewRemote = new QShortcut(QKeySequence::New, this);
-  QObject::connect(shortcutNewRemote, &QShortcut::activated, this,
-                   &MainWindow::createRemote);
-
-  auto *shortcutPrefs = new QShortcut(QKeySequence::Preferences, this);
-  QObject::connect(shortcutPrefs, &QShortcut::activated, ui.preferences,
-                   &QAction::trigger);
-
-  auto *shortcutRefreshF5 = new QShortcut(QKeySequence::Refresh, this);
-  QObject::connect(shortcutRefreshF5, &QShortcut::activated, this, [=]() {
-    if (ui.tabs->currentIndex() == 0) {
-      rcloneListRemotes();
-    } else if (auto *rw = qobject_cast<RemoteWidget *>(
-                   ui.tabs->currentWidget())) {
-      rw->refreshCurrentDir();
-    }
-  });
-
-  auto *shortcutFocusPath =
-      new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), this);
-  QObject::connect(shortcutFocusPath, &QShortcut::activated, this, [=]() {
-    if (auto *rw =
-            qobject_cast<RemoteWidget *>(ui.tabs->currentWidget())) {
-      rw->focusPathBar();
-    }
-  });
 
   listTasks();
 

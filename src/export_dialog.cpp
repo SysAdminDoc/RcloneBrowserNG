@@ -32,6 +32,11 @@ ExportDialog::ExportDialog(const QString &remote, const QDir &path,
   ui.textMaxAge->setPlaceholderText("30d");
   ui.textExtra->setPlaceholderText("Additional rclone flags");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
+  mValidation = new QLabel(this);
+  UiPolish::SetValidationMessage(mValidation, QString(), QString());
+  ui.gridLayout->addWidget(mValidation, 8, 0, 1, 2);
+  QObject::connect(ui.textFile, &QLineEdit::textChanged, this,
+                   &ExportDialog::clearValidation);
 
   mTarget = remote + ":" + path.path();
 
@@ -81,6 +86,20 @@ QString ExportDialog::getDestination() const { return ui.textFile->text(); }
 
 bool ExportDialog::onlyFilenames() const { return ui.rbText->isChecked(); }
 
+void ExportDialog::clearValidation() {
+  UiPolish::SetValidationMessage(mValidation, QString(), QString());
+  UiPolish::SetFieldState(ui.textFile, QString());
+}
+
+void ExportDialog::showValidation(QWidget *field, const QString &message) {
+  clearValidation();
+  UiPolish::SetFieldState(field, "error");
+  UiPolish::SetValidationMessage(mValidation, "error", message);
+  if (field) {
+    field->setFocus(Qt::OtherFocusReason);
+  }
+}
+
 QStringList ExportDialog::getOptions() const {
   QStringList list;
   list << "lsjson" << "--recursive" << "--files-only" << "--no-mimetype";
@@ -124,9 +143,9 @@ QStringList ExportDialog::getOptions() const {
 
 void ExportDialog::done(int r) {
   if (r == QDialog::Accepted) {
-    if (ui.textFile->text().isEmpty()) {
-      QMessageBox::warning(this, "Destination required",
-                           "Choose where to save the exported file list.");
+    if (ui.textFile->text().trimmed().isEmpty()) {
+      showValidation(ui.textFile,
+                     "Choose where to save the exported file list.");
       return;
     }
   }
