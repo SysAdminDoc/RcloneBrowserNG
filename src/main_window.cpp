@@ -169,16 +169,11 @@ MainWindow::MainWindow() {
     systemDark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 #endif
 #if defined(Q_OS_MACOS)
-    QString sysInfo = QSysInfo::productVersion();
-    bool oldMac = (sysInfo == "10.9" || sysInfo == "10.10" ||
-                   sysInfo == "10.11" || sysInfo == "10.12" ||
-                   sysInfo == "10.13");
-    bool darkApplied = false;
-    if (explicitDark && oldMac) {
-      applyDarkTheme();
-      darkApplied = true;
-    }
-    UiPolish::ApplyApplicationStyle(darkApplied);
+    // On macOS 11+ (our deployment target), Qt respects the system dark
+    // mode natively — no Fusion override needed.
+    Q_UNUSED(explicitDark);
+    Q_UNUSED(systemDark);
+    UiPolish::ApplyApplicationStyle(false);
 #else
     const bool useDarkStyle = explicitDark || systemDark;
     if (useDarkStyle) {
@@ -1332,25 +1327,8 @@ void MainWindow::rcloneListRemotes() {
              size = lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
 #endif
 #else
-             QString sysInfo = QSysInfo::productVersion();
-             // dark mode on older macOS
-             if (sysInfo == "10.9" ||
-                 sysInfo == "10.10" ||
-                 sysInfo == "10.11" ||
-                 sysInfo == "10.12" ||
-                 sysInfo == "10.13") {
-
-               // on older macOS we also have to adjust icon size per mode
-               if (darkModeIni) {
-                 size = darkModeIconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
-               } else {
-                 size = lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
-               }
-
-             } else {
-               // for macOS > 10.13 native dark mode does not change IconSize base
-               size = 1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
-             }
+             // macOS 11+ (deployment target): native dark mode does not change IconSize base
+             size = 1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
 #endif
             const int displaySize = qBound(22, size, 34);
             ui.remotes->setIconSize(QSize(displaySize, displaySize));
