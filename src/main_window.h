@@ -44,6 +44,7 @@ private:
 
   QLabel *mStatusMessage;
   QLineEdit *mRemotesFilter = nullptr;
+  QListWidgetItem *mRemotesFilterEmptyItem = nullptr;
 
   IconCache mIcons;
 

@@ -65,6 +65,8 @@
 ### UX
 -   CHANGED: The New Remote flow now uses a guided dialog with explanatory helper text, inline validation, focus/error styling, clearer provider descriptions, clearable fields, and provider matching by exact rclone prefix as well as display name
 -   CHANGED: Transfer and export dialogs now keep required-field feedback inline with highlighted fields instead of interrupting users with modal warning boxes
+-   CHANGED: Progress dialogs now show explicit Running/Finished/Failed states and recover cleanly when rclone cannot start
+-   CHANGED: The remotes filter now shows a calm no-results row instead of leaving the list blank
 -   CHANGED: Remote browser right-click actions now open from one coherent context menu, including folder Archive and Speed Test tools, instead of showing separate menus
 -   CHANGED: Removed shortcut-only command bindings and mnemonic markers from the main and remote browser surfaces; actions are now exposed through visible buttons, menus, tabs, and context menus
 -   CHANGED: Deepened the native Qt polish system with refined menu/tab/list/tree/scrollbar/dialog styling, stronger focus and disabled states, clearer status badges, consistent action bars, smoother read-only telemetry fields, and better accessible names across the main shell, remote browser, jobs, mounts, streams, transfers, export, progress, and preferences surfaces
