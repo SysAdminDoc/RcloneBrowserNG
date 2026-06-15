@@ -706,9 +706,9 @@ MainWindow::MainWindow() {
   if (rclone.isEmpty()) {
     rclone = QStandardPaths::findExecutable("rclone");
     if (rclone.isEmpty()) {
-      QMessageBox::information(
-          this, "Error",
-          "Cannot check rclone version!\nPlease verify rclone location.");
+      QMessageBox::warning(
+          this, "Configuration needed",
+          "Cannot find rclone. Please select its location in Preferences.");
       emit ui.preferences->trigger();
     } else {
       auto settings = GetSettings();
@@ -786,12 +786,11 @@ void MainWindow::rcloneGetVersion() {
 
           if (result == 2) {
             QMessageBox::warning(
-                this, "",
-                "For mount functionality to work you need "
-                "rclone version at least v1.50 "
-                "and your current version is v" +
+                this, "Mount unavailable",
+                "Mounting requires rclone v1.50 or newer. "
+                "You have v" +
                     rclone_version_no +
-                    ". Mount will be disabled. \n\nPlease consider upgrading.");
+                    ".\n\nMount is disabled until rclone is updated.");
           };
 #endif
 
@@ -1822,10 +1821,10 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
             if (compareVersion(latest.toStdString(),
                                currentVersion.toStdString()) == 1) {
               QMessageBox::information(
-                  this, "",
-                  QString(R"(<p>New rclone version is available</p>)"
-                          R"(<p>You have: v%1<br />New version: v%2</p>)"
-                          R"(<p>Visit rclone <a href="https://rclone.org/downloads/">downloads</a> page to upgrade</p>)")
+                  this, "rclone update available",
+                  QString(R"(<p>A newer version of rclone is available.</p>)"
+                          R"(<p>Installed: v%1<br />Available: v%2</p>)"
+                          R"(<p>Visit the rclone <a href="https://rclone.org/downloads/">downloads</a> page to upgrade.</p>)")
                       .arg(currentVersion, latest));
             }
           });
@@ -1873,12 +1872,12 @@ void MainWindow::checkBrowserUpdate() {
 
     if (compareVersion(latest.toStdString(), RCLONE_BROWSER_VERSION) == 1) {
       QMessageBox::information(
-          this, "",
+          this, "App update available",
           QString(
-              R"(<p>New Rclone Browser NG version is available</p>)"
-              R"(<p>You have: v)" RCLONE_BROWSER_VERSION
-              R"(<br />New version: v%1</p>)"
-              R"(<p>Visit <a href="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest">releases</a> page to download</p>)")
+              R"(<p>A newer version of Rclone Browser NG is available.</p>)"
+              R"(<p>Installed: v)" RCLONE_BROWSER_VERSION
+              R"(<br />Available: v%1</p>)"
+              R"(<p>Visit <a href="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest">releases</a> to download.</p>)")
               .arg(latest));
     }
   });
