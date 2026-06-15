@@ -1431,6 +1431,10 @@ void MainWindow::rcloneListRemotes() {
                                                        QPalette::Text));
             empty->setSizeHint(QSize(0, 54));
             ui.remotes->addItem(empty);
+
+            if (!mTabsRestored) {
+              QTimer::singleShot(0, this, &MainWindow::createRemote);
+            }
           }
 
           if (!mTabsRestored) {
