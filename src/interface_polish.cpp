@@ -25,19 +25,20 @@ struct Tone {
 
 Tone tones(bool dark) {
   if (dark) {
-    return {"#1f2329", "#252a31", "#2d333c", "#171b20", "#3b4450",
-            "#566273", "#f2f5f8", "#aab4c0", "#7fb4ff", "#9bc5ff",
-            "#24354d", "#72d38f", "#203c2a", "#f1b85f", "#44351f",
-            "#ff8a8a", "#442829", "#09111d"};
+    return {"#1e2228", "#24292f", "#2b3139", "#191d23", "#384150",
+            "#536070", "#f0f3f7", "#9aa5b4", "#7fb4ff", "#99c4ff",
+            "#243550", "#6dcf8a", "#1f3828", "#edb55c", "#3f321d",
+            "#ff8585", "#3e2527", "#0a1220"};
   }
-  return {"#f5f7fb", "#ffffff", "#f9fafc", "#ffffff", "#d8dee8",
-          "#b8c2d0", "#202733", "#667181", "#2f6fdd", "#245fc2",
-          "#eaf2ff", "#208a4f", "#e8f6ee", "#a86600", "#fff3dc",
-          "#c83f45", "#fdecee", "#ffffff"};
+  return {"#f4f6fa", "#ffffff", "#f8f9fc", "#ffffff", "#dce2eb",
+          "#bcc5d2", "#1d2530", "#64707f", "#2e6edb", "#2460c0",
+          "#e9f1ff", "#1f8a4e", "#e7f5ed", "#a56500", "#fff3db",
+          "#c63e44", "#fcebee", "#ffffff"};
 }
 
 QString styleFor(const Tone &t) {
   return QString(R"(
+/* ── Base ─────────────────────────────────────────────── */
 QMainWindow, QDialog {
   background: %1;
   color: %7;
@@ -47,14 +48,16 @@ QWidget {
   selection-background-color: %9;
   selection-color: %18;
 }
+
+/* ── Menu bar ─────────────────────────────────────────── */
 QMenuBar {
   background: %1;
   border-bottom: 1px solid %5;
-  padding: 2px 4px;
+  padding: 2px 6px;
 }
 QMenuBar::item {
   background: transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   padding: 5px 10px;
 }
 QMenuBar::item:selected {
@@ -63,6 +66,8 @@ QMenuBar::item:selected {
 QMenuBar::item:pressed {
   background: %3;
 }
+
+/* ── Tabs ─────────────────────────────────────────────── */
 QTabWidget::pane {
   border: 1px solid %5;
   border-top: 0;
@@ -74,7 +79,7 @@ QTabBar::tab {
   border-bottom: 0;
   border-top-left-radius: 6px;
   border-top-right-radius: 6px;
-  padding: 7px 14px;
+  padding: 7px 16px;
   margin-right: 2px;
   min-height: 20px;
 }
@@ -95,32 +100,38 @@ QTabBar::close-button {
   margin: 2px;
 }
 QTabBar::close-button:hover {
-  background: %17;
+  background: %5;
 }
+
+/* ── Scroll areas ─────────────────────────────────────── */
 QScrollArea {
   border: 0;
   background: transparent;
 }
+
+/* ── Group boxes ──────────────────────────────────────── */
 QGroupBox {
   border: 1px solid %5;
   border-radius: 8px;
   margin-top: 16px;
-  padding: 12px 10px 10px 10px;
+  padding: 14px 12px 12px 12px;
   background: %2;
 }
 QGroupBox::title {
   subcontrol-origin: margin;
-  left: 10px;
-  padding: 0 5px;
+  left: 12px;
+  padding: 0 6px;
   color: %8;
   font-weight: 600;
 }
+
+/* ── Inputs ───────────────────────────────────────────── */
 QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox {
   background: %4;
   color: %7;
   border: 1px solid %5;
   border-radius: 6px;
-  padding: 5px 7px;
+  padding: 5px 8px;
   min-height: 22px;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
@@ -134,6 +145,7 @@ QLineEdit:read-only {
 QLineEdit[metricValue="true"] {
   color: %7;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 QLineEdit[fieldState="error"], QComboBox[fieldState="error"] {
   border: 1px solid %16;
@@ -145,24 +157,37 @@ QComboBox:disabled, QSpinBox:disabled {
   color: %8;
   border-color: %5;
 }
-QComboBox::drop-down, QSpinBox::up-button, QSpinBox::down-button {
+QComboBox::drop-down {
+  border: 0;
+  width: 26px;
+}
+QSpinBox::up-button, QSpinBox::down-button {
   border: 0;
   width: 24px;
 }
+
+/* ── Checkboxes and radios ────────────────────────────── */
 QCheckBox, QRadioButton {
   spacing: 8px;
-  min-height: 24px;
+  min-height: 26px;
 }
+QCheckBox::indicator, QRadioButton::indicator {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
 QPushButton, QToolButton {
   background: %3;
   border: 1px solid %5;
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   min-height: 26px;
   color: %7;
 }
 QPushButton:focus, QToolButton:focus {
   border-color: %9;
+  outline: none;
 }
 QPushButton:hover, QToolButton:hover {
   background: %11;
@@ -186,6 +211,10 @@ QPushButton[primary="true"], QToolButton[primary="true"] {
 QPushButton[primary="true"]:hover, QToolButton[primary="true"]:hover {
   background: %10;
   border-color: %10;
+}
+QPushButton[primary="true"]:pressed, QToolButton[primary="true"]:pressed {
+  background: %10;
+  border-color: %6;
 }
 QPushButton[destructive="true"], QToolButton[destructive="true"] {
   color: %16;
@@ -213,6 +242,8 @@ QToolButton[disclosure="true"]:hover {
   background: %11;
   border-color: %5;
 }
+
+/* ── Status badges ────────────────────────────────────── */
 QToolButton[status="running"] {
   color: %9;
   background: %11;
@@ -243,6 +274,8 @@ QToolButton[status="idle"] {
   border-color: %5;
   font-weight: 600;
 }
+
+/* ── Cards and surfaces ───────────────────────────────── */
 QWidget[polishCard="true"] {
   background: %2;
   border: 1px solid %5;
@@ -258,35 +291,40 @@ QWidget[actionBar="true"] {
   background: %3;
   border: 1px solid %5;
   border-radius: 8px;
+  padding: 4px;
 }
+
+/* ── Labels ───────────────────────────────────────────── */
 QLabel[emptyState="true"] {
   color: %8;
-  padding: 24px;
+  padding: 32px 24px;
 }
 QLabel[notice="true"] {
   background: %11;
   border: 1px solid %5;
   border-radius: 6px;
   color: %7;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 QLabel[validationState="error"] {
   background: %17;
   border: 1px solid %16;
   border-radius: 6px;
   color: %16;
-  padding: 6px 8px;
+  padding: 8px 10px;
 }
 QLabel[validationState="success"] {
   background: %13;
   border: 1px solid %12;
   border-radius: 6px;
   color: %12;
-  padding: 6px 8px;
+  padding: 8px 10px;
 }
 QLabel[muted="true"] {
   color: %8;
 }
+
+/* ── List and tree views ──────────────────────────────── */
 QListView, QTreeView {
   background: %2;
   alternate-background-color: %3;
@@ -298,6 +336,7 @@ QListView, QTreeView {
 QListView::item, QTreeView::item {
   min-height: 28px;
   padding: 4px 8px;
+  border-radius: 4px;
 }
 QListView::item:selected, QTreeView::item:selected {
   background: %11;
@@ -310,93 +349,127 @@ QListView::item:selected:active, QTreeView::item:selected:active {
 QListView::item:hover, QTreeView::item:hover {
   background: %3;
 }
+
+/* ── Header view ──────────────────────────────────────── */
 QHeaderView::section {
   background: %3;
   color: %8;
   border: 0;
   border-bottom: 1px solid %5;
-  padding: 6px 8px;
+  padding: 6px 10px;
   font-weight: 600;
 }
+
+/* ── Splitter ─────────────────────────────────────────── */
 QSplitter::handle {
   background: %1;
 }
 QSplitter::handle:hover {
   background: %11;
 }
+
+/* ── Progress bar ─────────────────────────────────────── */
 QProgressBar {
   border: 1px solid %5;
-  border-radius: 5px;
+  border-radius: 6px;
   background: %3;
   text-align: center;
   min-height: 18px;
 }
 QProgressBar::chunk {
   background: %9;
-  border-radius: 4px;
+  border-radius: 5px;
 }
+
+/* ── Status bar ───────────────────────────────────────── */
 QStatusBar {
   background: %3;
   color: %8;
   border-top: 1px solid %5;
+  padding: 2px 4px;
 }
 QStatusBar::item {
   border: 0;
 }
+
+/* ── Menus ─────────────────────────────────────────────── */
 QMenu {
   background: %2;
   border: 1px solid %5;
+  border-radius: 6px;
+  padding: 4px;
 }
 QMenu::item {
-  padding: 6px 24px 6px 18px;
+  padding: 7px 28px 7px 16px;
+  border-radius: 4px;
+  margin: 1px 2px;
 }
 QMenu::item:selected {
   background: %11;
 }
-QDialogButtonBox QPushButton {
-  min-width: 86px;
+QMenu::separator {
+  height: 1px;
+  background: %5;
+  margin: 4px 8px;
 }
+
+/* ── Dialog buttons ───────────────────────────────────── */
+QDialogButtonBox QPushButton {
+  min-width: 88px;
+}
+
+/* ── Scrollbars ───────────────────────────────────────── */
 QScrollBar:vertical {
-  background: %2;
+  background: transparent;
   border: 0;
-  width: 12px;
+  width: 10px;
   margin: 0;
 }
 QScrollBar::handle:vertical {
   background: %5;
   border-radius: 4px;
-  min-height: 28px;
+  min-height: 32px;
   margin: 2px;
 }
 QScrollBar::handle:vertical:hover {
   background: %6;
 }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+  background: transparent;
   height: 0;
 }
 QScrollBar:horizontal {
-  background: %2;
+  background: transparent;
   border: 0;
-  height: 12px;
+  height: 10px;
   margin: 0;
 }
 QScrollBar::handle:horizontal {
   background: %5;
   border-radius: 4px;
-  min-width: 28px;
+  min-width: 32px;
   margin: 2px;
 }
 QScrollBar::handle:horizontal:hover {
   background: %6;
 }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+  background: transparent;
   width: 0;
 }
+QAbstractScrollArea::corner {
+  background: transparent;
+}
+
+/* ── Tooltips ─────────────────────────────────────────── */
 QToolTip {
   color: %7;
   background-color: %2;
   border: 1px solid %6;
-  padding: 5px;
+  border-radius: 5px;
+  padding: 6px 8px;
 }
 )")
       .arg(t.window, t.surface, t.surfaceRaised, t.field, t.border,
@@ -460,10 +533,13 @@ void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
   label->setTextFormat(Qt::RichText);
   const QString escapedTitle = title.toHtmlEscaped();
   const QString escapedDetail = detail.toHtmlEscaped();
-  label->setText(detail.isEmpty()
-                     ? escapedTitle
-                     : QString("<b>%1</b><br><span>%2</span>")
-                           .arg(escapedTitle, escapedDetail));
+  label->setText(
+      detail.isEmpty()
+          ? QString("<span style='font-size:13px; font-weight:600;'>%1</span>")
+                .arg(escapedTitle)
+          : QString("<span style='font-size:13px; font-weight:600;'>%1</span>"
+                    "<br><span style='font-size:12px; opacity:0.7;'>%2</span>")
+                .arg(escapedTitle, escapedDetail));
   Repolish(label);
 }
 

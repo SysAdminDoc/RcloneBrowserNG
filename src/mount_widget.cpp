@@ -12,10 +12,10 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
   ui.setupUi(this);
   ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
   ui.verticalLayout->setSpacing(0);
-  ui.horizontalLayout->setContentsMargins(10, 8, 10, 8);
+  ui.horizontalLayout->setContentsMargins(12, 10, 12, 10);
   ui.horizontalLayout->setSpacing(8);
-  ui.gridLayout_2->setContentsMargins(10, 8, 10, 10);
-  ui.gridLayout_2->setHorizontalSpacing(8);
+  ui.gridLayout_2->setContentsMargins(12, 10, 12, 12);
+  ui.gridLayout_2->setHorizontalSpacing(10);
   ui.gridLayout_2->setVerticalSpacing(6);
   ui.showDetails->setStyleSheet(QString());
   ui.showOutput->setStyleSheet(QString());

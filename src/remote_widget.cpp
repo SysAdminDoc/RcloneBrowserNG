@@ -21,12 +21,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                            QWidget *parent)
     : QWidget(parent) {
   ui.setupUi(this);
-  ui.horizontalLayout->setContentsMargins(8, 8, 8, 8);
+  ui.horizontalLayout->setContentsMargins(10, 10, 10, 10);
   ui.verticalLayout->setSpacing(8);
-  ui.buttonsGrid->setContentsMargins(8, 8, 8, 8);
+  ui.buttonsGrid->setContentsMargins(10, 8, 10, 8);
   ui.buttonsGrid->setHorizontalSpacing(6);
   ui.buttonsGrid->setVerticalSpacing(6);
-  ui.splitter->setHandleWidth(8);
+  ui.splitter->setHandleWidth(6);
   UiPolish::SetToolbarSurface(ui.buttons);
   UiPolish::SetPathField(ui.path, "Current remote path");
   ui.path->setPlaceholderText("Select a folder or file");
