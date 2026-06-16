@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Bandwidth timetable editor — a "..." button next to the bandwidth field opens a table editor for rclone's time-of-day bandwidth syntax; add/remove rows, see a live preview of the generated `--bwlimit` flag
 -   CHANGED: Tasks now stored as human-readable JSON (`tasks.json`) instead of binary `tasks.bin`. Existing binary task files are automatically migrated on first load. The JSON format is indented and includes all task fields for easy hand-editing and version control.
 -   NEW: Cross-remote search — File > Search Remotes fans out `rclone lsjson -R --include` across all configured remotes, streaming matches into a sortable results table with remote, path, size, and modification time; cancellable; double-click a result to open its location
 -   NEW: Quick bandwidth snail toggle — a "Slow/Full" button in the status bar instantly drops all new transfers to 128K or restores full speed with one click
