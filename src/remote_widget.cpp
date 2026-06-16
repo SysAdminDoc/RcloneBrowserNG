@@ -336,6 +336,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.buttonLink->setDefaultAction(ui.link);
   ui.buttonSize->setDefaultAction(ui.getSize);
   ui.buttonExport->setDefaultAction(ui.export_);
+  ui.upload->setText("Upload");
+  ui.download->setText("Download");
+  ui.getSize->setText("Size");
+  ui.getTree->setText("Tree");
+  ui.export_->setText("Export");
+  ui.link->setText("Public Link");
   const QList<QToolButton *> browserButtons = {
       ui.buttonRefresh, ui.buttonMkdir, ui.buttonRename, ui.buttonMove,
       ui.buttonPurge,   ui.buttonMount, ui.buttonStream, ui.buttonUpload,
@@ -349,19 +355,37 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   UiPolish::SetPrimaryButton(ui.buttonDownload);
   UiPolish::SetDestructiveButton(ui.buttonPurge);
 
-  ui.refresh->setToolTip("Reload the selected folder.");
-  ui.mkdir->setToolTip("Create a folder in the selected location.");
-  ui.rename->setToolTip("Rename the selected file or folder.");
-  ui.move->setToolTip("Move the selected file or folder to another remote path.");
-  ui.purge->setToolTip("Delete the selected file or folder.");
-  ui.mount->setToolTip("Mount the selected folder locally.");
-  ui.stream->setToolTip("Stream the selected file to an external player.");
-  ui.upload->setToolTip("Upload local files or folders to this remote.");
-  ui.download->setToolTip("Download the selected item locally.");
-  ui.getSize->setToolTip("Calculate total size for the selected folder.");
-  ui.getTree->setToolTip("Show the directory tree for the selected folder.");
-  ui.export_->setToolTip("Export a file list for the selected folder.");
-  ui.link->setToolTip("Create a public link when the backend supports it.");
+  auto setActionTooltip = [](QAction *action, const QString &text) {
+    action->setToolTip(text);
+    action->setStatusTip(text);
+  };
+  const QString refreshTip = "Reload the selected folder.";
+  const QString mkdirTip = "Create a folder in the selected location.";
+  const QString renameTip = "Rename the selected file or folder.";
+  const QString moveTip =
+      "Move the selected file or folder to another remote path.";
+  const QString purgeTip = "Delete the selected file or folder.";
+  const QString mountTip = "Mount the selected folder locally.";
+  const QString streamTip = "Stream the selected file to an external player.";
+  const QString uploadTip = "Upload local files or folders to this remote.";
+  const QString downloadTip = "Download the selected item locally.";
+  const QString sizeTip = "Calculate total size for the selected folder.";
+  const QString treeTip = "Show the directory tree for the selected folder.";
+  const QString exportTip = "Export a file list for the selected folder.";
+  const QString linkTip = "Create a public link when the backend supports it.";
+  setActionTooltip(ui.refresh, refreshTip);
+  setActionTooltip(ui.mkdir, mkdirTip);
+  setActionTooltip(ui.rename, renameTip);
+  setActionTooltip(ui.move, moveTip);
+  setActionTooltip(ui.purge, purgeTip);
+  setActionTooltip(ui.mount, mountTip);
+  setActionTooltip(ui.stream, streamTip);
+  setActionTooltip(ui.upload, uploadTip);
+  setActionTooltip(ui.download, downloadTip);
+  setActionTooltip(ui.getSize, sizeTip);
+  setActionTooltip(ui.getTree, treeTip);
+  setActionTooltip(ui.export_, exportTip);
+  setActionTooltip(ui.link, linkTip);
   ui.buttonRefresh->setAccessibleName("Refresh folder");
   ui.buttonMkdir->setAccessibleName("Create folder");
   ui.buttonRename->setAccessibleName("Rename selected item");
@@ -377,7 +401,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.buttonLink->setAccessibleName("Create public link");
 
   mFileFilter = new QLineEdit(this);
-  mFileFilter->setPlaceholderText("Filter files in current folder...");
+  mFileFilter->setPlaceholderText("Filter files in current folder");
   mFileFilter->setClearButtonEnabled(true);
   mFileFilter->setAccessibleName("Filter files");
   mFileFilter->setVisible(false);
@@ -559,12 +583,26 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       [=]() {
         auto rows = ui.tree->selectionModel()->selectedRows();
         int count = rows.size();
+        const QString selectTip = "Select a file or folder first.";
 
         for (auto child : findChildren<QAction *>()) {
           child->setDisabled(count == 0);
         }
 
         if (count == 0) {
+          setActionTooltip(ui.refresh, "Select a loaded folder to refresh.");
+          setActionTooltip(ui.mkdir, "Select a folder before creating a child folder.");
+          setActionTooltip(ui.rename, selectTip);
+          setActionTooltip(ui.move, selectTip);
+          setActionTooltip(ui.purge, selectTip);
+          setActionTooltip(ui.mount, "Select a folder to mount.");
+          setActionTooltip(ui.stream, "Select a file to stream.");
+          setActionTooltip(ui.upload, "Select a folder before uploading.");
+          setActionTooltip(ui.download, selectTip);
+          setActionTooltip(ui.getSize, "Select a folder to calculate its size.");
+          setActionTooltip(ui.getTree, "Select a folder to show its tree.");
+          setActionTooltip(ui.export_, "Select a folder to export a file list.");
+          setActionTooltip(ui.link, selectTip);
           showPathMessage(QString());
           return;
         }
@@ -574,6 +612,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
         bool topLevel = model->isTopLevel(index);
         bool isFolder = model->isFolder(index);
+        bool loading = model->isLoading(index);
+        bool driveShared = false;
 
         ui.rename->setDisabled(multiSelect || topLevel);
         ui.move->setDisabled(multiSelect || topLevel);
@@ -584,7 +624,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         ui.export_->setDisabled(multiSelect || !isFolder);
 
         QDir path;
-        if (model->isLoading(index)) {
+        if (loading) {
           ui.refresh->setDisabled(true);
           ui.move->setDisabled(true);
           ui.rename->setDisabled(true);
@@ -598,7 +638,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           showPathMessage("Loading " + displayPath(path.path()));
         } else {
           ui.refresh->setDisabled(false);
-          bool driveShared = ui.checkBoxShared->checkState();
+          driveShared = ui.checkBoxShared->checkState();
           ui.mkdir->setDisabled(driveShared);
           if (!multiSelect) {
             ui.rename->setDisabled(topLevel || driveShared);
@@ -642,6 +682,45 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           ui.getTree->setDisabled(!isFolder);
           ui.export_->setDisabled(!isFolder);
         }
+
+        const QString singleOnly = "Select one item to use this action.";
+        const QString folderOnly = "Select a folder to use this action.";
+        const QString fileOnly = "Select a file to use this action.";
+        const QString rootLocked =
+            "This action is not available at the remote root.";
+        const QString sharedLocked =
+            "Not available while browsing Google Drive Shared with Me.";
+        const QString loadingLocked = "Wait for the current listing to finish.";
+        auto tipFor = [&](QAction *action, const QString &enabledTip,
+                          const QString &disabledTip) {
+          setActionTooltip(action, action->isEnabled() ? enabledTip
+                                                       : disabledTip);
+        };
+        const QString renameDisabled =
+            loading ? loadingLocked
+                    : (multiSelect ? singleOnly
+                                   : (topLevel ? rootLocked : sharedLocked));
+        const QString moveDisabled = renameDisabled;
+        const QString folderDisabled =
+            loading ? loadingLocked : (multiSelect ? singleOnly : folderOnly);
+        const QString streamDisabled =
+            loading ? loadingLocked : (multiSelect ? singleOnly : fileOnly);
+        const QString mutableDisabled =
+            loading ? loadingLocked : (driveShared ? sharedLocked : rootLocked);
+        tipFor(ui.refresh, refreshTip, loadingLocked);
+        tipFor(ui.mkdir, mkdirTip, driveShared ? sharedLocked : folderOnly);
+        tipFor(ui.rename, renameTip, renameDisabled);
+        tipFor(ui.move, moveTip, moveDisabled);
+        tipFor(ui.purge, purgeTip, mutableDisabled);
+        tipFor(ui.mount, mountTip, folderDisabled);
+        tipFor(ui.stream, streamTip, streamDisabled);
+        tipFor(ui.upload, uploadTip, driveShared ? sharedLocked : folderOnly);
+        tipFor(ui.download, downloadTip, loading ? loadingLocked : selectTip);
+        tipFor(ui.getSize, sizeTip, folderDisabled);
+        tipFor(ui.getTree, treeTip, folderDisabled);
+        tipFor(ui.export_, exportTip, folderDisabled);
+        tipFor(ui.link, linkTip,
+               loading ? loadingLocked : (multiSelect ? singleOnly : linkTip));
       });
 
   QObject::connect(ui.refresh, &QAction::triggered, this, [=]() {

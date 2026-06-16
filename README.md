@@ -35,7 +35,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Upload, download, create folders, rename, move and delete files and folders
 *   Calculate folder sizes, export file lists, copy rclone commands to clipboard
 *   Run multiple jobs in the background, with per-file progress
-*   Cohesive light and dark native interface with clear focus states, status badges, inline validation and polished empty/loading/error feedback
+*   Cohesive light and dark native interface with clear focus states, status badges, context-aware action hints, inline validation and polished empty/loading/error feedback
 *   Drag & drop from your file explorer to upload
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
 *   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)

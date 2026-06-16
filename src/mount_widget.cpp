@@ -84,17 +84,7 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
-      int button = QMessageBox::question(
-          this, "Unmount",
-#if defined(Q_OS_WIN)
-          QString("Unmount %1 drive?").arg(folder),
-#else
-          QString("Unmount %1 folder?").arg(folder),
-#endif
-          QMessageBox::Yes | QMessageBox::No);
-      if (button == QMessageBox::Yes) {
-        cancel();
-      }
+      cancel();
     } else {
       emit closed();
     }
@@ -114,6 +104,10 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                    this, [=](int status, QProcess::ExitStatus exitStatus) {
                      mProcess->deleteLater();
                      mRunning = false;
+                     ui.cancel->setEnabled(true);
+                     UiPolish::SetCompactToolButton(
+                         ui.cancel, "Close mount card",
+                         "Remove this mount from the jobs list.");
                      const bool cleanExit =
                          status == 0 && exitStatus == QProcess::NormalExit;
                      if (cleanExit) {
@@ -125,7 +119,6 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
                      }
-                     ui.cancel->setToolTip("Close");
                      emit finished();
                      emit stopped(mUserRequestedUnmount, cleanExit);
                    });
@@ -264,6 +257,9 @@ void MountWidget::cancel() {
   if (!mRunning) {
     return;
   }
+  if (mStopping) {
+    return;
+  }
 
 #if defined(Q_OS_WIN32)
   if (!confirmNoPendingVfsUploads()) {
@@ -272,6 +268,12 @@ void MountWidget::cancel() {
 #endif
 
   mUserRequestedUnmount = true;
+  mStopping = true;
+  ui.keepMounted->setEnabled(false);
+  ui.cancel->setEnabled(false);
+  ui.cancel->setToolTip("Unmounting...");
+  UiPolish::SetStatus(ui.showDetails, "warning", "Unmounting");
+  ui.output->appendPlainText("Unmount requested; stopping rclone mount...");
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD)
   QProcess::startDetached("umount", QStringList() << ui.folder->text());
@@ -300,13 +302,15 @@ void MountWidget::cancel() {
                                             << "-u" << ui.folder->text());
 #endif
 
-  if (!mProcess->waitForFinished(10000)) {
-    mProcess->terminate();
-    if (!mProcess->waitForFinished(5000)) {
-      mProcess->kill();
-      mProcess->waitForFinished();
+  QPointer<QProcess> processGuard(mProcess);
+  QTimer::singleShot(10000, this, [processGuard]() {
+    if (processGuard && processGuard->state() != QProcess::NotRunning) {
+      processGuard->terminate();
+      QTimer::singleShot(5000, processGuard, [processGuard]() {
+        if (processGuard && processGuard->state() != QProcess::NotRunning) {
+          processGuard->kill();
+        }
+      });
     }
-  }
-
-  emit closed();
+  });
 }

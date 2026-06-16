@@ -58,12 +58,7 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
-      int button = QMessageBox::question(
-          this, "Stop Stream", QString("Stop streaming %1?").arg(remote),
-          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-      if (button == QMessageBox::Yes) {
-        cancel();
-      }
+      cancel();
     } else {
       emit closed();
     }
@@ -81,7 +76,14 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                    this, [=](int status, QProcess::ExitStatus) {
                      mRclone->deleteLater();
                      mRunning = false;
-                     if (status == 0) {
+                     ui.cancel->setEnabled(true);
+                     UiPolish::SetCompactToolButton(
+                         ui.cancel, "Close stream card",
+                         "Remove this stream from the jobs list.");
+                     if (mUserStopped) {
+                       UiPolish::SetStatus(ui.showDetails, "warning",
+                                           "Stopped");
+                     } else if (status == 0) {
                        UiPolish::SetStatus(ui.showDetails, "success",
                                            "Finished");
                      } else {
@@ -90,7 +92,6 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
                      }
-                     ui.cancel->setToolTip("Close");
                      emit finished();
                    });
 
@@ -103,15 +104,26 @@ void StreamWidget::cancel() {
   if (!mRunning) {
     return;
   }
+  if (mStopping) {
+    return;
+  }
 
+  mStopping = true;
+  mUserStopped = true;
+  UiPolish::SetStatus(ui.showDetails, "warning", "Stopping");
+  ui.cancel->setEnabled(false);
+  ui.cancel->setToolTip("Stopping stream...");
+  ui.output->appendPlainText("Stop requested; closing stream processes...");
   mPlayer->terminate();
   mRclone->terminate();
-  if (!mRclone->waitForFinished(5000)) {
-    mRclone->kill();
-    mRclone->waitForFinished();
-  }
-  if (mPlayer->state() != QProcess::NotRunning) {
-    mPlayer->kill();
-    mPlayer->waitForFinished(2000);
-  }
+  QPointer<QProcess> rcloneGuard(mRclone);
+  QPointer<QProcess> playerGuard(mPlayer);
+  QTimer::singleShot(5000, this, [rcloneGuard, playerGuard]() {
+    if (rcloneGuard && rcloneGuard->state() != QProcess::NotRunning) {
+      rcloneGuard->kill();
+    }
+    if (playerGuard && playerGuard->state() != QProcess::NotRunning) {
+      playerGuard->kill();
+    }
+  });
 }

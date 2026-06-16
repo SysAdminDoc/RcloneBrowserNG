@@ -31,10 +31,13 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textDescription->setPlaceholderText("Name this task if you want to save it");
   ui.textBandwidth->setPlaceholderText("off, 10M, or timetable syntax");
   auto *bwEditBtn = new QToolButton(this);
-  bwEditBtn->setText("...");
+  bwEditBtn->setIcon(
+      qApp->style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+  bwEditBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
   bwEditBtn->setToolTip("Open the bandwidth timetable editor.");
   bwEditBtn->setAccessibleName("Edit bandwidth timetable");
-  bwEditBtn->setMaximumWidth(28);
+  bwEditBtn->setMinimumSize(QSize(32, 30));
+  bwEditBtn->setMaximumWidth(34);
   if (auto *form =
           qobject_cast<QFormLayout *>(ui.textBandwidth->parentWidget()->layout())) {
     int row = -1;
