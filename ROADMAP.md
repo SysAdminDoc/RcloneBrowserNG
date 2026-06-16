@@ -58,8 +58,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Support for rclone "serve"** — GUI for rclone's serve HTTP/FTP/WebDAV.  
-  _Sources: kapitainsky #129_
 
 
 
@@ -174,12 +172,6 @@ All items trace back to public GitHub issues/PRs:
 
 
 
-- [ ] P3 — Serve management tab (HTTP/WebDAV/FTP/DLNA/NFS/S3)
-  Why: rclone serve now spans 9 protocols; the official GUI and RClone Manager expose it; old GUIs don't.
-  Evidence: rclone.org/commands/rclone_serve/; rclone.org/gui
-  Touches: new serve widget, engine
-  Acceptance: start/stop a serve from the GUI with status and resulting URL shown.
-  Complexity: M
 
 - [ ] P3 — Versioning / snapshot browser (S3 versions / --backup-dir) with restore
   Why: only S3Drive (paid) does it; rclone backends support it; zero free desktop competition.
@@ -205,12 +197,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: UI strings translatable; a .ts workflow exists and the English template is generated in CI.
   Complexity: L
 
-- [ ] P3 — Accessibility pass (accessibleName / setBuddy / tab order)
-  Why: zero accessibility metadata; Qt's UIA/VoiceOver/Orca bridges make a minimal pass cheap.
-  Evidence: RESEARCH.md accessibility; doc.qt.io/qt-6/accessible-qwidget.html
-  Touches: *.ui files, widget constructors
-  Acceptance: icon-only buttons have accessible names, form fields have buddies, tab order is logical; a screen reader can drive core flows.
-  Complexity: M
 
 
 ### P2 — Mount & remote trust (supplemental)

@@ -1213,7 +1213,16 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           copyUrlAction = menu.addAction("Download URL here...");
           copyUrlAction->setToolTip(
               "Download a file from a URL directly to this remote folder.");
-        } else {
+        }
+
+        QAction *serveAction = nullptr;
+        if (model->isFolder(index)) {
+          serveAction = menu.addAction("Serve...");
+          serveAction->setToolTip(
+              "Serve this folder over HTTP, WebDAV, FTP, or other protocols.");
+        }
+
+        if (!model->isFolder(index)) {
           menu.addSeparator();
           editAction = menu.addAction("Open/Edit...");
           editAction->setToolTip(
@@ -1224,7 +1233,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         if (!chosen || (chosen != editAction && chosen != compareAction &&
                         chosen != archiveAction && chosen != speedAction &&
                         chosen != copyUrlAction && chosen != dedupeAction &&
-                        chosen != copyToRemote)) {
+                        chosen != copyToRemote && chosen != serveAction)) {
           return;
         }
 
@@ -1365,6 +1374,55 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           emit addTransfer(
               QString("Copy %1 -> %2").arg(target, dest.trimmed()),
               target, dest.trimmed(), args);
+        } else if (chosen == serveAction) {
+          QStringList protocols;
+          protocols << "http" << "webdav" << "ftp" << "dlna" << "s3" << "nfs";
+          bool ok;
+          QString protocol = QInputDialog::getItem(
+              this, "Serve", "Protocol:", protocols, 0, false, &ok);
+          if (!ok)
+            return;
+          QString addrDefault = (protocol == "dlna") ? "" : ":8080";
+          QString addr = QInputDialog::getText(
+              this, "Serve",
+              QString("Listen address for %1 serve:").arg(protocol),
+              QLineEdit::Normal, addrDefault, &ok);
+          if (!ok)
+            return;
+          QStringList args;
+          args << "serve" << protocol << GetRcloneConf();
+          if (!addr.trimmed().isEmpty()) {
+            args << "--addr" << addr.trimmed();
+          }
+          args << getDriveSharedArgs() << GetDefaultRcloneOptionsList()
+               << target;
+          QProcess *proc = new QProcess(this);
+          proc->setProcessChannelMode(QProcess::MergedChannels);
+          UseRclonePassword(proc);
+          proc->start(GetRclone(), args, QIODevice::ReadOnly);
+          QString url =
+              (protocol == "http" || protocol == "webdav")
+                  ? QString("http://localhost%1").arg(
+                        addr.trimmed().isEmpty() ? ":8080" : addr.trimmed())
+                  : QString();
+
+          auto *widget = new StreamWidget(proc, new QProcess(this), target,
+                                          "rclone serve " + protocol);
+          auto *line = new QFrame();
+          line->setFrameShape(QFrame::HLine);
+          line->setFrameShadow(QFrame::Sunken);
+          QObject::connect(widget, &StreamWidget::closed, this, [=]() {
+            proc->terminate();
+            if (!proc->waitForFinished(3000))
+              proc->kill();
+          });
+          if (!url.isEmpty()) {
+            QMessageBox::information(
+                this, "Serve",
+                QString("Serving %1 via %2\n\n%3\n\nThe serve runs in the "
+                        "Jobs tab until stopped.")
+                    .arg(target, protocol, url));
+          }
         }
       });
 
