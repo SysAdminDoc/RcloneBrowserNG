@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Staleness detection and overdue-job alerting — a background timer checks job history against scheduled tasks every 5 minutes; if a scheduled task hasn't run successfully within its expected interval + margin, a tray notification warns about the overdue task(s)
 -   NEW: Auto-update capability — rclone update dialog now offers a "Run selfupdate" button that upgrades rclone in place; browser update dialog offers an "Open Downloads" button that launches the GitHub releases page directly
 -   NEW: Windows Explorer "Send to remote" integration — Help > Install Explorer Send To creates a shortcut in the Windows SendTo folder; right-click files in Explorer > Send to > Upload to Remote starts an upload to a chosen remote
 -   NEW: Bisync conflict-resolution options — when Bisync is selected in the transfer dialog, a conflict-resolution dropdown appears with strategies (newer/older/larger/smaller/path1/path2); the chosen strategy is passed via `--conflict-resolve`

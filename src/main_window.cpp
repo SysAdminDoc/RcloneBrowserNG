@@ -1241,6 +1241,13 @@ MainWindow::MainWindow() {
 
   listTasks();
 
+  auto *stalenessTimer = new QTimer(this);
+  stalenessTimer->setInterval(5 * 60 * 1000);
+  QObject::connect(stalenessTimer, &QTimer::timeout, this,
+                   &MainWindow::checkStaleness);
+  stalenessTimer->start();
+  QTimer::singleShot(30000, this, &MainWindow::checkStaleness);
+
   QObject::connect(&mSystemTray, &QSystemTrayIcon::activated, this,
                    [=](QSystemTrayIcon::ActivationReason reason) {
                      if (reason == QSystemTrayIcon::DoubleClick ||
@@ -2924,6 +2931,53 @@ void MainWindow::noteJobFinished(bool success) {
   }
   updateJobIndicators();
   drainTransferQueue();
+}
+
+void MainWindow::checkStaleness() {
+  if (!ScheduleManager::isSupported())
+    return;
+  QString error;
+  auto schedules = ScheduleManager::listSchedules(&error);
+  if (schedules.isEmpty())
+    return;
+
+  auto history = JobHistoryStore::Load();
+
+  QStringList overdue;
+  QDateTime now = QDateTime::currentDateTimeUtc();
+  for (const auto &sched : schedules) {
+    QDateTime lastRun;
+    for (int i = history.size() - 1; i >= 0; --i) {
+      if (history[i].name.contains(sched.taskName) && history[i].success) {
+        lastRun = history[i].finishedAt;
+        break;
+      }
+    }
+    if (!lastRun.isValid())
+      continue;
+
+    int expectedIntervalSec = 86400;
+    if (sched.interval.contains("HOUR") || sched.interval == "hourly")
+      expectedIntervalSec = 3600;
+    else if (sched.interval.contains("WEEK") || sched.interval == "weekly")
+      expectedIntervalSec = 604800;
+    else if (sched.interval.contains("MINUTE"))
+      expectedIntervalSec = 900;
+
+    int margin = expectedIntervalSec / 2;
+    if (lastRun.secsTo(now) > expectedIntervalSec + margin) {
+      overdue << sched.taskName;
+    }
+  }
+
+  if (!overdue.isEmpty()) {
+    mSystemTray.showMessage(
+        "Overdue scheduled tasks",
+        QString("%1 scheduled task(s) haven't run on time:\n%2")
+            .arg(overdue.size())
+            .arg(overdue.join(", ")),
+        QSystemTrayIcon::Warning, 10000);
+  }
 }
 
 void MainWindow::drainTransferQueue() {
