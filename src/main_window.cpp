@@ -677,22 +677,15 @@ MainWindow::MainWindow() {
   QObject::connect(ui.refresh, &QPushButton::clicked, this,
                    &MainWindow::rcloneListRemotes);
 
-  QObject::connect(ui.open, &QPushButton::clicked, this, [=]() {
-    auto selection = ui.remotes->selectedItems();
-    if (selection.isEmpty()) {
-      return;
-    }
-    auto item = selection.front();
-    QString type = item->data(Qt::UserRole).toString();
-    QString name = item->text();
+  auto makeRemoteWidget = [this](const QString &name, const QString &type,
+                                  QWidget *parent) -> RemoteWidget * {
     bool isLocal = type == "local";
     bool isGoogle = type == "drive";
     bool isGooglePhotos =
         type.compare("google photos", Qt::CaseInsensitive) == 0;
-
-    auto remote =
+    auto *remote =
         new RemoteWidget(&mIcons, name, isLocal, isGoogle, isGooglePhotos,
-                         ui.tabs);
+                         parent);
     QObject::connect(remote, &RemoteWidget::addMount, this,
                      &MainWindow::addMount);
     QObject::connect(remote, &RemoteWidget::addStream, this,
@@ -707,8 +700,81 @@ MainWindow::MainWindow() {
                                          << remoteName + ":",
                            configBefore, "Reconnect remote");
                      });
+    return remote;
+  };
 
-    int index = ui.tabs->addTab(remote, name);
+  QObject::connect(ui.open, &QPushButton::clicked, this, [=]() {
+    auto selection = ui.remotes->selectedItems();
+    if (selection.isEmpty()) {
+      return;
+    }
+    auto item = selection.front();
+    auto *remote = makeRemoteWidget(item->text(),
+                                     item->data(Qt::UserRole).toString(),
+                                     ui.tabs);
+    int index = ui.tabs->addTab(remote, item->text());
+    ui.tabs->setCurrentIndex(index);
+  });
+
+  auto *dualPaneBtn = new QPushButton("Dual Pane", this);
+  dualPaneBtn->setToolTip(
+      "Open a side-by-side split view with two remote browsers.");
+  dualPaneBtn->setAccessibleName("Open dual-pane view");
+  dualPaneBtn->setEnabled(false);
+  if (auto *layout = ui.open->parentWidget()->layout()) {
+    static_cast<QHBoxLayout *>(layout)->insertWidget(
+        static_cast<QHBoxLayout *>(layout)->indexOf(ui.open) + 1, dualPaneBtn);
+  }
+  QObject::connect(ui.remotes, &QListWidget::itemSelectionChanged, this,
+                   [this, dualPaneBtn]() {
+                     dualPaneBtn->setEnabled(
+                         !ui.remotes->selectedItems().isEmpty());
+                   });
+  QObject::connect(dualPaneBtn, &QPushButton::clicked, this, [=]() {
+    auto selection = ui.remotes->selectedItems();
+    if (selection.isEmpty())
+      return;
+    auto *leftItem = selection.front();
+    QString leftName = leftItem->text();
+    QString leftType = leftItem->data(Qt::UserRole).toString();
+
+    QStringList remoteNames;
+    remoteNames << "(Local filesystem)";
+    for (int i = 0; i < ui.remotes->count(); ++i) {
+      auto *ri = ui.remotes->item(i);
+      if ((ri->flags() & Qt::ItemIsEnabled) && !ri->isHidden())
+        remoteNames << ri->text();
+    }
+    bool ok;
+    QString rightName = QInputDialog::getItem(
+        this, "Dual Pane",
+        QString("Right panel remote (left is %1):").arg(leftName),
+        remoteNames, 0, false, &ok);
+    if (!ok)
+      return;
+
+    QString rightType = "local";
+    if (rightName != "(Local filesystem)") {
+      for (int i = 0; i < ui.remotes->count(); ++i) {
+        auto *ri = ui.remotes->item(i);
+        if (ri->text() == rightName) {
+          rightType = ri->data(Qt::UserRole).toString();
+          break;
+        }
+      }
+    } else {
+      rightName = "/";
+      rightType = "local";
+    }
+
+    auto *splitter = new QSplitter(Qt::Horizontal, ui.tabs);
+    splitter->addWidget(makeRemoteWidget(leftName, leftType, splitter));
+    splitter->addWidget(makeRemoteWidget(rightName, rightType, splitter));
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+
+    int index = ui.tabs->addTab(
+        splitter, QString("%1 | %2").arg(leftName, rightName));
     ui.tabs->setCurrentIndex(index);
   });
 
