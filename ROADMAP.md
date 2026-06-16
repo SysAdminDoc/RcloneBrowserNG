@@ -358,13 +358,6 @@ All items trace back to public GitHub issues/PRs:
 
 
 
-- [ ] P2 — Watch-folder live sync (keep remote up to date)
-  Why: WinSCP's "keep up to date" / FreeFileSync RealTimeSync equivalent is the most requested missing workflow in rclone GUI land (RClone Manager #204) and fits a resident tray app perfectly.
-  Evidence: winscp.net/eng/docs/task_keep_up_to_date; Zarestia-Dev/rclone-manager#204
-  Touches: new watcher service (QFileSystemWatcher + debounce), task model, tray
-  Acceptance: a task type watches a local folder and runs debounced `rclone copy/sync` on changes; survives app restart; pause/resume from tray.
-  Complexity: L
-
 - [ ] P2 — Cross-remote search
   Why: searching a filename across all configured remotes is a genuine differentiator only one niche macOS app ships; streaming results keep it responsive.
   Evidence: github.com/H4R1B0/rclone-gui (BFS streaming search); mmozeiko #64 (single-remote search already listed)

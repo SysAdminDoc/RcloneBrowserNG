@@ -44,7 +44,8 @@ QDataStream &operator<<(QDataStream &stream, const JobOptions &jo) {
          << jo.deleteExcluded << jo.excluded << jo.extra
          << jo.DriveSharedWithMe << jo.source << jo.dest << jo.isFolder
          << jo.uniqueId << jo.heartbeatUrl << jo.nameTransform
-         << jo.preCommand << jo.postCommand << jo.webhookUrl;
+         << jo.preCommand << jo.postCommand << jo.webhookUrl
+         << jo.watchFolder;
 
   return stream;
 }
@@ -86,6 +87,9 @@ void readJobOptions(QDataStream &stream, JobOptions &jo,
             stream >> jo.preCommand >> jo.postCommand;
             if (actualVersion >= 7) {
               stream >> jo.webhookUrl;
+              if (actualVersion >= 8) {
+                stream >> jo.watchFolder;
+              }
             }
           }
         }

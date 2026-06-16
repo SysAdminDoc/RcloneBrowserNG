@@ -36,6 +36,7 @@ private:
   Ui::MainWindow ui;
 
   QSystemTrayIcon mSystemTray;
+  QMenu *mWatchMenu = nullptr;
   JobWidget *mLastFinished = nullptr;
   RcloneRcEngine *mRcEngine = nullptr;
 
@@ -53,6 +54,9 @@ private:
   bool mTabsRestored = false;
   int mJobCount = 0;
   bool mLastJobFailed = false;
+  QHash<QUuid, QFileSystemWatcher *> mWatchers;
+  QHash<QUuid, QTimer *> mWatchTimers;
+  QSet<QUuid> mPausedWatchTasks;
 
   bool canClose();
   void closeEvent(QCloseEvent *ev) override;
@@ -93,6 +97,10 @@ private:
   QNetworkAccessManager *mNetworkManager = nullptr;
 
   void runItem(JobOptionsListWidgetItem *item, bool dryrun = false);
+  void runJobOptions(JobOptions *jo, bool dryrun = false,
+                     bool confirmSync = true);
+  void refreshTaskWatchers();
+  void rebuildWatchTrayMenu();
   void editSelectedTask();
   QIcon mUploadIcon;
   QIcon mDownloadIcon;

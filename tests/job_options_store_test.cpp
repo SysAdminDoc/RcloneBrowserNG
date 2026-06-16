@@ -25,6 +25,7 @@ JobOptions *makeTask() {
   jo->dest = "remote:backup";
   jo->isFolder = true;
   jo->DriveSharedWithMe = true;
+  jo->watchFolder = true;
   jo->uniqueId = QUuid::fromString("{11111111-2222-3333-4444-555555555555}");
   return jo;
 }
@@ -47,7 +48,7 @@ void writeLegacyTask(QIODevice *device, const JobOptions &jo) {
          << jo.dest << jo.isFolder << jo.uniqueId;
 }
 
-void requireTaskMatches(const JobOptions *task) {
+void requireTaskMatches(const JobOptions *task, bool expectWatchFolder = true) {
   require(task->description == "Nightly upload", "description changed");
   require(task->operation == JobOptions::Sync, "operation changed");
   require(task->syncTiming == JobOptions::After, "sync timing changed");
@@ -56,6 +57,7 @@ void requireTaskMatches(const JobOptions *task) {
   require(task->dest == "remote:backup", "dest changed");
   require(task->isFolder, "folder flag changed");
   require(task->DriveSharedWithMe, "Drive shared flag changed");
+  require(task->watchFolder == expectWatchFolder, "watch folder flag changed");
   require(task->uniqueId ==
               QUuid::fromString("{11111111-2222-3333-4444-555555555555}"),
           "unique id changed");
@@ -98,7 +100,7 @@ int main() {
           "failed to read legacy store: " + legacy.error);
   require(legacy.migratedFromLegacy, "legacy store was not marked migrated");
   require(legacy.tasks.size() == 1, "legacy store task count changed");
-  requireTaskMatches(legacy.tasks.first());
+  requireTaskMatches(legacy.tasks.first(), false);
   ClearJobOptionsList(&legacy.tasks);
 
   QByteArray newerBytes;

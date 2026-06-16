@@ -64,6 +64,7 @@ public:
   QString preCommand;
   QString postCommand;
   QString webhookUrl;
+  bool watchFolder;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

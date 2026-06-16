@@ -733,7 +733,10 @@ MainWindow::MainWindow() {
                          taskStore->lastLoadError());
   }
   QObject::connect(taskStore, &ListOfJobOptions::tasksListUpdated, this,
-                   &MainWindow::listTasks);
+                   [this]() {
+                     listTasks();
+                     refreshTaskWatchers();
+                   });
 
   QStyle *style = QApplication::style();
   ui.config->setIcon(style->standardIcon(QStyle::SP_FileDialogDetailedView));
@@ -816,6 +819,7 @@ MainWindow::MainWindow() {
   QAction *trayHistory = trayMenu->addAction("Job &History");
   QObject::connect(trayHistory, &QAction::triggered, this,
                    &MainWindow::showJobHistory);
+  mWatchMenu = trayMenu->addMenu("Watch &Folders");
   QObject::connect(trayMenu->addAction("&Quit"), &QAction::triggered, this,
                    &QWidget::close);
   mSystemTray.setContextMenu(trayMenu);
@@ -832,6 +836,7 @@ MainWindow::MainWindow() {
   ui.statusBar->addWidget(mStatusMessage, 1);
 
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
+  refreshTaskWatchers();
 
   QString rclone = GetRclone();
   if (rclone.isEmpty()) {
@@ -1731,8 +1736,10 @@ void MainWindow::listTasks() {
     const QString operation = jo->sync ? "Sync"
                               : jo->operation == JobOptions::Move ? "Move"
                                                                   : "Copy";
-    item->setToolTip(QString("%1 %2\n%3 -> %4")
-                         .arg(direction, operation, jo->source, jo->dest));
+    item->setToolTip(QString("%1 %2%3\n%4 -> %5")
+                         .arg(direction, operation,
+                              jo->watchFolder ? " (watching)" : QString(),
+                              jo->source, jo->dest));
     item->setSizeHint(QSize(0, 44));
     ui.tasksListWidget->addItem(item);
   }
@@ -1758,9 +1765,15 @@ void MainWindow::listTasks() {
 void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
   if (item == nullptr || item->GetData() == nullptr)
     return;
-  JobOptions *jo = item->GetData();
+  runJobOptions(item->GetData(), dryrun, true);
+}
 
-  if (jo->sync && !dryrun) {
+void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
+  if (jo == nullptr) {
+    return;
+  }
+
+  if (confirmSync && jo->sync && !dryrun) {
     int button = QMessageBox::question(
         this, "Run Task",
         QString("This Sync task may delete files at the destination.\n"
@@ -1837,6 +1850,107 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
         });
   } else {
     addTransfer(message, jo->source, jo->dest, args);
+  }
+}
+
+void MainWindow::refreshTaskWatchers() {
+  qDeleteAll(mWatchers);
+  qDeleteAll(mWatchTimers);
+  mWatchers.clear();
+  mWatchTimers.clear();
+
+  auto addWatchedDirectories = [](QFileSystemWatcher *watcher,
+                                  const QString &rootPath) {
+    QStringList directories;
+    directories << rootPath;
+    QDirIterator it(rootPath, QDir::Dirs | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+      directories << it.next();
+    }
+    for (const QString &dir : directories) {
+      if (!watcher->directories().contains(dir)) {
+        watcher->addPath(dir);
+      }
+    }
+  };
+
+  for (JobOptions *jo : ListOfJobOptions::getInstance()->getTasks()) {
+    if (!jo->watchFolder || jo->jobType != JobOptions::Upload ||
+        jo->source.isEmpty()) {
+      continue;
+    }
+
+    const QFileInfo sourceInfo(jo->source);
+    if (!sourceInfo.isDir()) {
+      continue;
+    }
+
+    const QUuid taskId = jo->uniqueId;
+    const QString sourcePath = sourceInfo.absoluteFilePath();
+    auto *watcher = new QFileSystemWatcher(this);
+    auto *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(2000);
+    addWatchedDirectories(watcher, sourcePath);
+
+    auto schedule = [=]() {
+      if (mPausedWatchTasks.contains(taskId)) {
+        return;
+      }
+      addWatchedDirectories(watcher, sourcePath);
+      timer->start();
+    };
+    QObject::connect(watcher, &QFileSystemWatcher::directoryChanged, this,
+                     [schedule](const QString &) { schedule(); });
+    QObject::connect(timer, &QTimer::timeout, this, [=]() {
+      if (mPausedWatchTasks.contains(taskId)) {
+        return;
+      }
+      for (JobOptions *task : ListOfJobOptions::getInstance()->getTasks()) {
+        if (task->uniqueId == taskId) {
+          runJobOptions(task, false, false);
+          return;
+        }
+      }
+    });
+
+    mWatchers.insert(taskId, watcher);
+    mWatchTimers.insert(taskId, timer);
+  }
+
+  rebuildWatchTrayMenu();
+}
+
+void MainWindow::rebuildWatchTrayMenu() {
+  if (!mWatchMenu) {
+    return;
+  }
+
+  mWatchMenu->clear();
+  bool hasItems = false;
+  for (JobOptions *jo : ListOfJobOptions::getInstance()->getTasks()) {
+    if (!jo->watchFolder || !mWatchers.contains(jo->uniqueId)) {
+      continue;
+    }
+    hasItems = true;
+    const bool paused = mPausedWatchTasks.contains(jo->uniqueId);
+    QAction *action = mWatchMenu->addAction(
+        QString("%1 %2").arg(paused ? "Resume" : "Pause", jo->description));
+    const QUuid taskId = jo->uniqueId;
+    QObject::connect(action, &QAction::triggered, this, [this, taskId]() {
+      if (mPausedWatchTasks.contains(taskId)) {
+        mPausedWatchTasks.remove(taskId);
+      } else {
+        mPausedWatchTasks.insert(taskId);
+      }
+      rebuildWatchTrayMenu();
+    });
+  }
+
+  if (!hasItems) {
+    QAction *empty = mWatchMenu->addAction("No active folder watches");
+    empty->setEnabled(false);
   }
 }
 

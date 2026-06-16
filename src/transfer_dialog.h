@@ -30,6 +30,7 @@ private:
   QLineEdit *mPreCommand = nullptr;
   QLineEdit *mPostCommand = nullptr;
   QLineEdit *mWebhookUrl = nullptr;
+  QCheckBox *mWatchFolder = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
 
