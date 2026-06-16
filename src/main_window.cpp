@@ -214,6 +214,9 @@ MainWindow::MainWindow() {
                          continue;
                        }
                        hasAnyRemote = true;
+                       if (item->data(Qt::UserRole + 1).toBool()) {
+                         continue;
+                       }
                        const bool matches =
                            text.isEmpty() ||
                            item->text().contains(text, Qt::CaseInsensitive);
@@ -1595,6 +1598,54 @@ void MainWindow::rcloneListRemotes() {
             item->setSizeHint(QSize(0, displaySize + 14));
             ui.remotes->addItem(item);
           }
+
+          bool hasCrypt = false;
+          for (int i = 0; i < ui.remotes->count(); ++i) {
+            if (ui.remotes->item(i)->data(Qt::UserRole).toString() == "crypt")
+              hasCrypt = true;
+          }
+          if (hasCrypt) {
+            auto *dump = new QProcess(this);
+            QObject::connect(
+                dump,
+                static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                    &QProcess::finished),
+                this, [this, dump](int code, QProcess::ExitStatus) {
+                  dump->deleteLater();
+                  if (code != 0)
+                    return;
+                  QJsonDocument doc =
+                      QJsonDocument::fromJson(dump->readAllStandardOutput());
+                  if (!doc.isObject())
+                    return;
+                  QSet<QString> cryptBackends;
+                  QJsonObject root = doc.object();
+                  for (auto it = root.begin(); it != root.end(); ++it) {
+                    QJsonObject cfg = it.value().toObject();
+                    if (cfg.value("type").toString() != "crypt")
+                      continue;
+                    QString backing = cfg.value("remote").toString();
+                    int colon = backing.indexOf(':');
+                    if (colon > 0)
+                      cryptBackends.insert(backing.left(colon));
+                  }
+                  if (cryptBackends.isEmpty())
+                    return;
+                  for (int i = 0; i < ui.remotes->count(); ++i) {
+                    auto *item = ui.remotes->item(i);
+                    if (cryptBackends.contains(item->text())) {
+                      item->setHidden(true);
+                      item->setData(Qt::UserRole + 1, true);
+                    }
+                  }
+                });
+            UseRclonePassword(dump);
+            dump->start(GetRclone(),
+                        QStringList() << "config" << "dump" << GetRcloneConf()
+                                      << "--ask-password=false",
+                        QIODevice::ReadOnly);
+          }
+
           if (ui.remotes->count() == 0) {
             auto *empty = new QListWidgetItem(
                 "No remotes configured yet. Use New Remote or Config to add one.");
