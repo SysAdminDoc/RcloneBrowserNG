@@ -262,12 +262,6 @@ All items trace back to public GitHub issues/PRs:
 ### P2 — Distribution & CI
 
 
-- [ ] P2 — Publish to winget, Scoop, and a -ng AUR package
-  Why: inherited Repology entries point at the dead upstream; peers (Syncthing Tray, Cyberduck) ship these channels.
-  Evidence: repology.org/project/rclone-browser/packages; microsoft/winget-pkgs
-  Touches: packaging manifests, CI (wingetcreate)
-  Acceptance: winget/scoop/AUR all install the current NG release; version bumps automated in CI.
-  Complexity: M
 
 ### P2 — Trust / differentiator features
 
@@ -369,12 +363,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: pick two paths (local or remote), see matched/differing/missing files in a filterable list, and enqueue copy/delete actions per selection.
   Complexity: L
 
-- [ ] P2 — Job run history with per-run stats and tray status states
-  Why: every backup-class competitor (Backrest, Vorta) persists run history; the tray icon should reflect idle/syncing/error; rclone upstream asks for exactly this for bisync (#7474).
-  Evidence: github.com/rclone/rclone/issues/7474; github.com/garethgeorge/backrest; github.com/borgbase/vorta
-  Touches: job_widget.cpp, main_window.cpp tray code, new history store (JSON)
-  Acceptance: finished jobs persist (start/end, bytes, files, errors, exit status) and are browsable; tray icon shows distinct idle/active/error states.
-  Complexity: M
 
 - [ ] P2 — Edit-in-place: open remote file, auto re-upload on save
   Why: table-stakes in WinSCP/Cyberduck, absent from every rclone GUI; pairs with the existing file-preview item.

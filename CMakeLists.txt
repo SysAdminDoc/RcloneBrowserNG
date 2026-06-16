@@ -83,6 +83,18 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME job_options_store_test COMMAND job_options_store_test)
 
+  add_executable(job_history_test
+    tests/job_history_test.cpp
+    src/job_history.cpp
+    src/utils.cpp
+  )
+  target_include_directories(job_history_test PRIVATE src)
+  target_link_libraries(job_history_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(job_history_test advapi32)
+  endif()
+  add_test(NAME job_history_test COMMAND job_history_test)
+
   add_executable(mount_backend_test
     tests/mount_backend_test.cpp
     src/mount_backend.cpp

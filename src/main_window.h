@@ -1,6 +1,7 @@
 #pragma once
 
 #include "icon_cache.h"
+#include "job_history.h"
 #include "job_options.h"
 #include "pch.h"
 #include "ui_main_window.h"
@@ -51,6 +52,7 @@ private:
   bool mFirstTime = true;
   bool mTabsRestored = false;
   int mJobCount = 0;
+  bool mLastJobFailed = false;
 
   bool canClose();
   void closeEvent(QCloseEvent *ev) override;
@@ -75,7 +77,14 @@ private:
                              const QString &webhookUrl = QString(),
                              const QString &taskName = QString());
   void addRcJobWidget(RcJobWidget *widget,
-                      const QString &heartbeatUrl = QString());
+                      const QString &heartbeatUrl = QString(),
+                      const QString &webhookUrl = QString(),
+                      const QString &taskName = QString());
+  void showJobHistory();
+  void noteJobStarted();
+  void noteJobFinished(bool success);
+  void updateJobIndicators();
+  void persistJobHistory(const JobHistoryEntry &entry);
   void sendHeartbeat(const QString &url, bool success);
   void sendWebhook(const QString &url, const QString &taskName, bool success,
                    const QString &error = QString());

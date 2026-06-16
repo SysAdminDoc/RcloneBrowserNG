@@ -63,6 +63,7 @@ set(SOURCE
   stream_widget.cpp
   preferences_dialog.cpp
   icon_cache.cpp
+  job_history.cpp
   item_model.cpp
   utils.cpp
   job_options.cpp
@@ -94,6 +95,7 @@ set(OTHER
   stream_widget.h
   preferences_dialog.h
   icon_cache.h
+  job_history.h
   list_of_job_options.h
   item_model.h
 )
