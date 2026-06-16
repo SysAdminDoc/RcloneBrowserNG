@@ -256,6 +256,17 @@ MainWindow::MainWindow() {
         storageUsage->setToolTip(
             "Show storage consumption for this remote.");
         auto *duplicate = menu.addAction("Duplicate Remote...");
+        menu.addSeparator();
+        auto *autoMount = menu.addAction("Auto-mount on launch");
+        autoMount->setCheckable(true);
+        {
+          auto s = GetSettings();
+          QStringList autoMounts =
+              s->value("Settings/autoMountRemotes").toStringList();
+          autoMount->setChecked(autoMounts.contains(remoteName));
+        }
+        autoMount->setToolTip(
+            "Mount this remote automatically when the app starts.");
         auto *chosen = menu.exec(ui.remotes->viewport()->mapToGlobal(pos));
         if (chosen == testConn) {
           setStatusMessage(QString("Testing %1...").arg(remoteName));
@@ -379,6 +390,22 @@ MainWindow::MainWindow() {
                           .arg(remoteName, err.left(500)));
                 }
               });
+        } else if (chosen == autoMount) {
+          auto s = GetSettings();
+          QStringList autoMounts =
+              s->value("Settings/autoMountRemotes").toStringList();
+          if (autoMount->isChecked()) {
+            if (!autoMounts.contains(remoteName)) {
+              autoMounts.append(remoteName);
+            }
+            setStatusMessage(
+                QString("%1 will auto-mount on launch.").arg(remoteName));
+          } else {
+            autoMounts.removeAll(remoteName);
+            setStatusMessage(
+                QString("%1 removed from auto-mount.").arg(remoteName));
+          }
+          s->setValue("Settings/autoMountRemotes", autoMounts);
         }
       });
   UiPolish::SetNavigationView(ui.tasksListWidget, "Saved tasks");
@@ -1868,6 +1895,14 @@ void MainWindow::rcloneListRemotes() {
                   break;
                 }
               }
+            }
+
+            auto autoSettings = GetSettings();
+            QStringList autoMounts =
+                autoSettings->value("Settings/autoMountRemotes")
+                    .toStringList();
+            for (const QString &name : autoMounts) {
+              addMount(name + ":", QString());
             }
           }
         } else {

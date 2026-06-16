@@ -28,8 +28,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Scheduled tasks / cron** — Built-in scheduler for recurring sync/copy/mount jobs. The single most requested feature across the ecosystem.  
   _Sources: kapitainsky #200, #177, #73; docker #34; rclone forum_
 
-- [ ] **Auto-mount remotes on launch** — Option to automatically mount configured remotes when the app starts.  
-  _Sources: kapitainsky #146, #250, #60_
 
 
 - [ ] **Auto-update capability** — Check for and apply updates to both RcloneBrowserNG and rclone.  
