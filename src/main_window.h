@@ -20,6 +20,7 @@ public:
 
 public slots:
   void bringToFront();
+  void handleSendToFiles(const QStringList &files);
 
 private slots:
   void rcloneGetVersion();

@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Windows Explorer "Send to remote" integration — Help > Install Explorer Send To creates a shortcut in the Windows SendTo folder; right-click files in Explorer > Send to > Upload to Remote starts an upload to a chosen remote
 -   NEW: Bisync conflict-resolution options — when Bisync is selected in the transfer dialog, a conflict-resolution dropdown appears with strategies (newer/older/larger/smaller/path1/path2); the chosen strategy is passed via `--conflict-resolve`
 -   NEW: Backup-dir retention policy — the transfer dialog now has a "Backup dir" field supporting `{date}` placeholders for auto-dated snapshot folders, plus a "Retain backups" count to limit how many snapshots are kept
 -   NEW: Bandwidth timetable editor — a "..." button next to the bandwidth field opens a table editor for rclone's time-of-day bandwidth syntax; add/remove rows, see a live preview of the generated `--bwlimit` flag

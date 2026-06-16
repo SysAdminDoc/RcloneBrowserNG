@@ -634,6 +634,53 @@ MainWindow::MainWindow() {
   ui.menuHelp->addSeparator();
   ui.menuHelp->addAction(copyDiagnostics);
   ui.menuHelp->addAction(saveSupportBundle);
+
+#if defined(Q_OS_WIN32)
+  auto *installSendTo = new QAction("Install Explorer Send To...", this);
+  installSendTo->setToolTip(
+      "Create a Windows Explorer 'Send to' shortcut for uploading "
+      "files to a remote via right-click.");
+  ui.menuHelp->addAction(installSendTo);
+  QObject::connect(installSendTo, &QAction::triggered, this, [this]() {
+    QString sendToDir =
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+        "/Microsoft/Windows/SendTo";
+    QDir().mkpath(sendToDir);
+    QString linkPath = sendToDir + "/Upload to Remote (RcloneBrowserNG).lnk";
+
+    IShellLinkW *psl = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                                  IID_IShellLinkW, reinterpret_cast<void **>(&psl));
+    if (SUCCEEDED(hr) && psl) {
+      psl->SetPath(reinterpret_cast<LPCWSTR>(
+          QDir::toNativeSeparators(qApp->applicationFilePath()).utf16()));
+      psl->SetArguments(L"--send-to");
+      psl->SetDescription(L"Upload to a remote via Rclone Browser NG");
+
+      IPersistFile *ppf = nullptr;
+      hr = psl->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&ppf));
+      if (SUCCEEDED(hr) && ppf) {
+        hr = ppf->Save(reinterpret_cast<LPCOLESTR>(linkPath.utf16()), TRUE);
+        ppf->Release();
+      }
+      psl->Release();
+    }
+
+    if (SUCCEEDED(hr)) {
+      setStatusMessage("Send To shortcut installed.");
+      QMessageBox::information(
+          this, "Send To",
+          "The 'Upload to Remote' shortcut has been added to your "
+          "Explorer right-click > Send to menu.\n\n"
+          "Right-click any file in Explorer and choose Send to > "
+          "Upload to Remote (RcloneBrowserNG) to start an upload.");
+    } else {
+      QMessageBox::warning(this, "Send To",
+                           "Could not create the Send To shortcut.");
+    }
+  });
+#endif
+
   QObject::connect(copyDiagnostics, &QAction::triggered, this, [=]() {
     auto caps = RcloneCapabilities::detect();
     QGuiApplication::clipboard()->setText(caps.summary());
@@ -3392,4 +3439,47 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
   rclone->start(GetRclone(),
                 QStringList() << "cat" << GetRcloneConf() << remote,
                 QProcess::WriteOnly);
+}
+
+void MainWindow::handleSendToFiles(const QStringList &files) {
+  if (files.isEmpty())
+    return;
+
+  bringToFront();
+
+  QStringList remoteNames;
+  for (int i = 0; i < ui.remotes->count(); ++i) {
+    auto *item = ui.remotes->item(i);
+    if ((item->flags() & Qt::ItemIsEnabled) && !item->isHidden())
+      remoteNames << item->text();
+  }
+  if (remoteNames.isEmpty()) {
+    QMessageBox::warning(this, "Send To",
+                         "No remotes configured. Add a remote first.");
+    return;
+  }
+
+  bool ok;
+  QString remote = QInputDialog::getItem(
+      this, "Upload to Remote", "Choose destination remote:", remoteNames, 0,
+      false, &ok);
+  if (!ok)
+    return;
+
+  for (const QString &file : files) {
+    QFileInfo fi(file);
+    QDir parentDir = fi.absoluteDir();
+    bool isFolder = fi.isDir();
+
+    QStringList args;
+    args << "copy" << "--verbose" << "--use-json-log" << "--stats" << "1s"
+         << "--stats-file-name-length" << "0"
+         << GetDefaultRcloneOptionsList()
+         << QDir::toNativeSeparators(fi.absoluteFilePath())
+         << remote + ":" + fi.fileName();
+
+    addTransfer(
+        QString("Upload %1 to %2").arg(fi.fileName(), remote),
+        fi.absoluteFilePath(), remote + ":" + fi.fileName(), args);
+  }
 }
