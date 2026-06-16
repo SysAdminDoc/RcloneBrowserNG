@@ -47,8 +47,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Convert tasks.bin to human-readable format** — Replace binary task storage with JSON/XML.  
   _Sources: kapitainsky #143_
 
-- [ ] **CLI interface to run saved tasks** — Run saved tasks from the command line without opening the GUI.  
-  _Sources: kapitainsky #181_
 
 ### File Browser / Navigation
 - [ ] **Dual-pane interface** — Side-by-side local/remote or remote/remote browsing.  
