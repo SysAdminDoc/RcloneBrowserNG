@@ -112,6 +112,7 @@ private:
   void persistJobHistory(const JobHistoryEntry &entry);
   void updateGlobalStats();
   void drainTransferQueue();
+  void checkStaleness();
   void sendHeartbeat(const QString &url, bool success);
   void sendWebhook(const QString &url, const QString &taskName, bool success,
                    const QString &error = QString());

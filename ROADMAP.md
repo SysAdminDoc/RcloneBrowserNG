@@ -285,12 +285,6 @@ All items trace back to public GitHub issues/PRs:
 
 #### P3 — Scheduler enhancements
 
-- [ ] P3 — Staleness detection and overdue-job alerting
-  Why: BorgBase's killer feature — continuously watches last-sync timestamps and alerts if a backup is overdue. "Nothing happened" is the hardest failure mode to catch. No rclone GUI does this. Depends on the scheduler item.
-  Evidence: borgbase.com (staleness monitoring); github.com/borgbase/vorta; creativeprojects.github.io/resticprofile (status file)
-  Touches: scheduler (depends on scheduled-tasks item), tray icon, notification system
-  Acceptance: scheduled tasks track last-run timestamp; when a task exceeds its expected interval by a configurable margin, badge the tray icon and show a notification; overdue tasks highlighted in the task list.
-  Complexity: S (once scheduler exists)
 
 - [ ] P3 — Adaptive bandwidth throttling based on user network activity
   Why: Free Download Manager's "traffic usage modes" auto-throttle downloads when the user is actively browsing and use full speed when idle. Extends the existing bandwidth limit and timetable editor items with an automatic mode.
