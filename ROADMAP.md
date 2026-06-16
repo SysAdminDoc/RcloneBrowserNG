@@ -85,8 +85,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Support for rclone "serve"** — GUI for rclone's serve HTTP/FTP/WebDAV.  
   _Sources: kapitainsky #129_
 
-- [ ] **Dedupe command** — GUI interface for rclone dedupe.  
-  _Sources: kapitainsky #196_
 
 
 
