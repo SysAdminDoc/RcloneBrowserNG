@@ -50,6 +50,7 @@ set(SOURCE
   interface_polish.cpp
   export_dialog.cpp
   export_list_writer.cpp
+  folder_compare.cpp
   remote_provider.cpp
   mount_backend.cpp
   rclone_rc_engine.cpp
@@ -82,6 +83,7 @@ set(OTHER
   interface_polish.h
   export_dialog.h
   export_list_writer.h
+  folder_compare.h
   remote_provider.h
   mount_backend.h
   rclone_rc_engine.h

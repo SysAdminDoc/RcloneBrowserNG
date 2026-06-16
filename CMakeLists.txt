@@ -95,6 +95,18 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME job_history_test COMMAND job_history_test)
 
+  add_executable(folder_compare_test
+    tests/folder_compare_test.cpp
+    src/folder_compare.cpp
+    src/utils.cpp
+  )
+  target_include_directories(folder_compare_test PRIVATE src)
+  target_link_libraries(folder_compare_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(folder_compare_test advapi32)
+  endif()
+  add_test(NAME folder_compare_test COMMAND folder_compare_test)
+
   add_executable(mount_backend_test
     tests/mount_backend_test.cpp
     src/mount_backend.cpp
