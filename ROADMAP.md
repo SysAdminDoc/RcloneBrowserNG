@@ -104,8 +104,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #138, #47; rclone forum (Portuguese, others)_
 
 
-- [ ] **Multiple config file support** — Switch between different rclone.conf files.  
-  _Sources: kapitainsky #19_
 
 
 - [ ] **Proxy support in GUI** — HTTP/SOCKS proxy configuration exposed in preferences (partially exists since v1.8.0 but incomplete).  
