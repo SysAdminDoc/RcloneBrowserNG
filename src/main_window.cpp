@@ -887,6 +887,28 @@ MainWindow::MainWindow() {
   mStatusMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   ui.statusBar->addWidget(mStatusMessage, 1);
 
+  auto *bwLabel = new QLabel("Limit:", this);
+  UiPolish::SetMuted(bwLabel);
+  mBandwidthLimit = new QLineEdit(this);
+  mBandwidthLimit->setMaximumWidth(90);
+  mBandwidthLimit->setPlaceholderText("off");
+  mBandwidthLimit->setToolTip(
+      "Global bandwidth limit (e.g. 10M, 1G, or off). Applied to new "
+      "transfers when the per-job bandwidth field is empty.");
+  mBandwidthLimit->setAccessibleName("Global bandwidth limit");
+  {
+    auto settings = GetSettings();
+    mBandwidthLimit->setText(
+        settings->value("Settings/globalBandwidthLimit").toString());
+  }
+  QObject::connect(mBandwidthLimit, &QLineEdit::editingFinished, this, [this]() {
+    auto settings = GetSettings();
+    settings->setValue("Settings/globalBandwidthLimit",
+                       mBandwidthLimit->text().trimmed());
+  });
+  ui.statusBar->addPermanentWidget(bwLabel);
+  ui.statusBar->addPermanentWidget(mBandwidthLimit);
+
   mStatsLabel = new QLabel();
   mStatsLabel->setAccessibleName("Cumulative transfer statistics");
   UiPolish::SetMuted(mStatsLabel);
