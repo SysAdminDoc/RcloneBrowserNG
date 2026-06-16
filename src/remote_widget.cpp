@@ -1022,11 +1022,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *compareAction = nullptr;
         QAction *speedAction = nullptr;
         QAction *copyUrlAction = nullptr;
+        QAction *dedupeAction = nullptr;
         if (model->isFolder(index)) {
           menu.addSeparator();
           compareAction = menu.addAction("Compare Folders...");
           compareAction->setToolTip(
               "Run rclone check --combined against another folder.");
+          dedupeAction = menu.addAction("Dedupe...");
+          dedupeAction->setToolTip(
+              "Find and remove duplicate files in this folder.");
           archiveAction = menu.addAction("Archive...");
           archiveAction->setToolTip(
               "Move files older than a threshold to a dated archive folder.");
@@ -1046,7 +1050,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
         if (!chosen || (chosen != editAction && chosen != compareAction &&
                         chosen != archiveAction && chosen != speedAction &&
-                        chosen != copyUrlAction)) {
+                        chosen != copyUrlAction && chosen != dedupeAction)) {
           return;
         }
 
@@ -1129,6 +1133,35 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           ProgressDialog progress("Download URL", "Downloading...",
                                   url.trimmed() + " -> " + target, &process,
                                   this, false);
+          progress.expand();
+          progress.allowToClose();
+          progress.exec();
+          if (process.exitCode() == 0) {
+            refreshCurrentDir();
+          }
+        } else if (chosen == dedupeAction) {
+          QStringList modes;
+          modes << "interactive" << "skip" << "first" << "newest" << "oldest"
+                << "largest" << "smallest" << "rename";
+          bool ok;
+          QString mode = QInputDialog::getItem(
+              this, "Dedupe",
+              "Dedupe mode (how to resolve duplicates):", modes, 1,
+              false, &ok);
+          if (!ok) {
+            return;
+          }
+          QProcess process;
+          UseRclonePassword(&process);
+          process.setProgram(GetRclone());
+          process.setArguments(QStringList()
+                               << "dedupe" << GetRcloneConf() << "--dedupe-mode"
+                               << mode << getDriveSharedArgs()
+                               << GetDefaultRcloneOptionsList() << "--verbose"
+                               << target);
+          process.setProcessChannelMode(QProcess::MergedChannels);
+          ProgressDialog progress("Dedupe", "Deduplicating...", target,
+                                  &process, this, false);
           progress.expand();
           progress.allowToClose();
           progress.exec();
