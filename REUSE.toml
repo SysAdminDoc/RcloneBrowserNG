@@ -1,0 +1,28 @@
+version = 1
+
+[[annotations]]
+path = [
+  "src/**",
+  "scripts/**",
+  "assets/**",
+  "CMakeLists.txt",
+  "src/CMakeLists.txt",
+  "VERSION",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE",
+  ".gitignore",
+  ".github/**",
+]
+SPDX-FileCopyrightText = "2013-2026 RcloneBrowserNG contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["LICENSES/**"]
+SPDX-FileCopyrightText = "2013-2026 RcloneBrowserNG contributors"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["REUSE.toml"]
+SPDX-FileCopyrightText = "2013-2026 RcloneBrowserNG contributors"
+SPDX-License-Identifier = "MIT"
