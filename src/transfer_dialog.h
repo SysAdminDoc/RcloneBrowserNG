@@ -26,6 +26,7 @@ private:
   Ui::TransferDialog ui;
   QLabel *mValidation = nullptr;
   QLineEdit *mHeartbeatUrl = nullptr;
+  QLineEdit *mNameTransform = nullptr;
 
   bool mIsDownload;
   bool mDryRun = false;
