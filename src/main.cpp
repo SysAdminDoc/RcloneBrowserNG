@@ -268,7 +268,15 @@ int main(int argc, char *argv[]) {
   }
 
   MainWindow w;
-  w.show();
+  bool startMinimized =
+      app.arguments().contains("--minimized") ||
+      app.arguments().contains("--tray") ||
+      settings->value("Settings/startMinimized", false).toBool();
+  if (startMinimized && QSystemTrayIcon::isSystemTrayAvailable()) {
+    w.hide();
+  } else {
+    w.show();
+  }
 
   QObject::connect(&server, &QLocalServer::newConnection, &w, [&]() {
     while (auto *client = server.nextPendingConnection()) {

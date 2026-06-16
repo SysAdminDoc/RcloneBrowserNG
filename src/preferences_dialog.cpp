@@ -184,6 +184,17 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.checkRcloneUpdates->setChecked(
       settings->value("Settings/checkRcloneUpdates", true).toBool());
 
+  mStartMinimized = new QCheckBox("Start minimized to system tray", this);
+  mStartMinimized->setToolTip(
+      "Launch the app hidden in the system tray instead of showing the window.");
+  mStartMinimized->setAccessibleName("Start minimized to system tray");
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.notifyFinishedTransfers->parentWidget()->layout())) {
+    int idx = layout->indexOf(ui.notifyFinishedTransfers);
+    if (idx >= 0)
+      layout->insertWidget(idx + 1, mStartMinimized);
+  }
+
   if (QSystemTrayIcon::isSystemTrayAvailable()) {
     ui.alwaysShowInTray->setChecked(
         settings->value("Settings/alwaysShowInTray", false).toBool());
@@ -191,6 +202,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
         settings->value("Settings/closeToTray", false).toBool());
     ui.notifyFinishedTransfers->setChecked(
         settings->value("Settings/notifyFinishedTransfers", true).toBool());
+    mStartMinimized->setChecked(
+        settings->value("Settings/startMinimized", false).toBool());
   } else {
     ui.alwaysShowInTray->setChecked(false);
     ui.alwaysShowInTray->setDisabled(true);
@@ -198,6 +211,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     ui.closeToTray->setDisabled(true);
     ui.notifyFinishedTransfers->setChecked(false);
     ui.notifyFinishedTransfers->setDisabled(true);
+    mStartMinimized->setChecked(false);
+    mStartMinimized->setDisabled(true);
   }
 
   ui.showFolderIcons->setChecked(
@@ -295,6 +310,10 @@ QString PreferencesDialog::getDefaultRcloneOptions() const {
 
 QString PreferencesDialog::getDefaultExclude() const {
   return mDefaultExclude->toPlainText().trimmed();
+}
+
+bool PreferencesDialog::getStartMinimized() const {
+  return mStartMinimized->isChecked();
 }
 
 bool PreferencesDialog::getCheckRcloneBrowserUpdates() const {
