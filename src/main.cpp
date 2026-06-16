@@ -84,6 +84,12 @@ int main(int argc, char *argv[]) {
             settings->value("Settings/https_proxy").toByteArray());
     qputenv("NO_PROXY", settings->value("Settings/no_proxy").toByteArray());
     qputenv("no_proxy", settings->value("Settings/no_proxy").toByteArray());
+    QByteArray socksProxy =
+        settings->value("Settings/socksProxy").toByteArray();
+    if (!socksProxy.isEmpty()) {
+      qputenv("ALL_PROXY", socksProxy);
+      qputenv("all_proxy", socksProxy);
+    }
   }
 
   // remmber darkMode state on app startup

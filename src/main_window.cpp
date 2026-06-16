@@ -570,6 +570,8 @@ MainWindow::MainWindow() {
       settings->setValue("Settings/https_proxy",
                          dialog.getHttpsProxy().trimmed());
       settings->setValue("Settings/no_proxy", dialog.getNoProxy().trimmed());
+      settings->setValue("Settings/socksProxy",
+                         dialog.getSocksProxy().trimmed());
       const bool oldUsePasswordCommand = IsRclonePasswordCommandEnabled();
       settings->setValue("Settings/usePasswordCommand",
                          dialog.getUsePasswordCommand());

@@ -100,6 +100,22 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.https_proxy->setPlaceholderText("https://127.0.0.1:1087");
   ui.no_proxy->setPlaceholderText("localhost,127.0.0.0/8");
 
+  mSocksProxy = new QLineEdit(this);
+  mSocksProxy->setPlaceholderText("socks5://127.0.0.1:1080");
+  mSocksProxy->setClearButtonEnabled(true);
+  mSocksProxy->setAccessibleName("SOCKS proxy");
+  UiPolish::SetPathField(mSocksProxy, "SOCKS proxy");
+  auto *socksLabel = new QLabel("SOCKS proxy:", this);
+  socksLabel->setBuddy(mSocksProxy);
+  if (auto *form = qobject_cast<QFormLayout *>(
+          ui.no_proxy->parentWidget()->layout())) {
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(ui.no_proxy, &row, &role);
+    if (row >= 0)
+      form->insertRow(row + 1, socksLabel, mSocksProxy);
+  }
+
   QObject::connect(ui.rcloneBrowse, &QPushButton::clicked, this, [=]() {
     QString rclone = QFileDialog::getOpenFileName(
         this, "Select rclone executable", ui.rclone->text());
@@ -284,6 +300,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.http_proxy->setText(settings->value("Settings/http_proxy").toString());
   ui.https_proxy->setText(settings->value("Settings/https_proxy").toString());
   ui.no_proxy->setText(settings->value("Settings/no_proxy").toString());
+  mSocksProxy->setText(settings->value("Settings/socksProxy").toString());
 
   auto updateProxyFields = [=]() {
     const bool manual = ui.useProxy->isChecked();
@@ -402,6 +419,10 @@ QString PreferencesDialog::getHttpsProxy() const {
 }
 
 QString PreferencesDialog::getNoProxy() const { return ui.no_proxy->text(); }
+
+QString PreferencesDialog::getSocksProxy() const {
+  return mSocksProxy->text();
+}
 
 bool PreferencesDialog::getUseProxy() const {
   if (ui.useSystemSettings->isChecked()) {
