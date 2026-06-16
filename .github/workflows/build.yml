@@ -74,14 +74,25 @@ jobs:
           path: build/build/rclone-browser.app
 
   windows:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            qt_version: '6.7.*'
+            arch: win64_msvc2019_64
+            artifact: windows-x64
+          - runner: windows-11-arm
+            qt_version: '6.8.*'
+            arch: win64_msvc2022_arm64
+            artifact: windows-arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
         with:
-          version: '6.7.*'
-          arch: win64_msvc2019_64
+          version: ${{ matrix.qt_version }}
+          arch: ${{ matrix.arch }}
       - name: Build
         shell: cmd
         run: |
@@ -93,7 +104,7 @@ jobs:
           cmake --build . --config Release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-x64
+          name: ${{ matrix.artifact }}
           path: |
             build/build/Release/RcloneBrowser.exe
             build/build/Release/RcloneBrowserPassword.exe
