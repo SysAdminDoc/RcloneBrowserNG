@@ -70,8 +70,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Extended mount UI** — Directory navigation, cache settings, read-only toggle in mount dialog.  
-  _Sources: kapitainsky #52_
 
 ### Monitoring & Logging
 
