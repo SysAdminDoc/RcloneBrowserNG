@@ -73,8 +73,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Exclude files UI for sync** — Visual exclude/include filter builder in the transfer dialog.  
   _Sources: kapitainsky #252_
 
-- [ ] **Multi-file selection auto-generates --include-from** — Selecting multiple files builds a filter file automatically.  
-  _Sources: kapitainsky #188_
 
 - [ ] **Support for rclone "serve"** — GUI for rclone's serve HTTP/FTP/WebDAV.  
   _Sources: kapitainsky #129_
@@ -85,8 +83,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 ### Mount Enhancements
 
 
-- [ ] **Map as network drive on Windows** — Mount as a Windows network drive letter.  
-  _Sources: kapitainsky #210_
 
 - [ ] **Extended mount UI** — Directory navigation, cache settings, read-only toggle in mount dialog.  
   _Sources: kapitainsky #52_

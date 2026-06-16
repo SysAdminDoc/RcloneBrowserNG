@@ -872,22 +872,47 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   QObject::connect(ui.download, &QAction::triggered, this, [=]() {
     auto settings = GetSettings();
 
-
-    QModelIndex index = selectedIndex();
-    if (!index.isValid()) {
+    auto rows = ui.tree->selectionModel()->selectedRows();
+    if (rows.isEmpty()) {
       return;
     }
-    QDir path = model->path(index);
 
     {auto s = GetSettings(); s->setValue("Settings/driveShared", ui.checkBoxShared->isChecked());}
-    TransferDialog t(true, false, remote, path, model->isFolder(index), this);
-    if (t.exec() == QDialog::Accepted) {
-      QString src = t.getSource();
-      QString dst = t.getDest();
 
-      QStringList args = t.getOptions();
-      emit addTransfer(QString("%1 %2").arg(t.getMode()).arg(src), src, dst,
-                       args);
+    if (rows.size() > 1) {
+      QModelIndex parentIdx = rows.front().parent();
+      QDir parentPath = model->path(parentIdx);
+      QStringList includeFilters;
+      for (const auto &idx : rows) {
+        QString name = model->data(idx, Qt::DisplayRole).toString();
+        if (!name.isEmpty()) {
+          includeFilters << name;
+        }
+      }
+      TransferDialog t(true, false, remote, parentPath, true, this);
+      if (t.exec() == QDialog::Accepted) {
+        QStringList args = t.getOptions();
+        for (const QString &name : includeFilters) {
+          args.prepend(name);
+          args.prepend("--include");
+        }
+        QString src = t.getSource();
+        QString dst = t.getDest();
+        emit addTransfer(
+            QString("%1 %2 (%3 items)").arg(t.getMode(), src).arg(rows.size()),
+            src, dst, args);
+      }
+    } else {
+      QModelIndex index = rows.front();
+      QDir path = model->path(index);
+      TransferDialog t(true, false, remote, path, model->isFolder(index), this);
+      if (t.exec() == QDialog::Accepted) {
+        QString src = t.getSource();
+        QString dst = t.getDest();
+        QStringList args = t.getOptions();
+        emit addTransfer(QString("%1 %2").arg(t.getMode()).arg(src), src, dst,
+                         args);
+      }
     }
   });
 
