@@ -90,8 +90,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Dedupe command** — GUI interface for rclone dedupe.  
   _Sources: kapitainsky #196_
 
-- [ ] **Remote URL upload (copyurl)** — Download a URL directly to a remote.  
-  _Sources: kapitainsky #199_
 
 - [ ] **Use trash on delete (Google Drive)** — Move to trash instead of permanent delete.  
   _Sources: mmozeiko #73_
