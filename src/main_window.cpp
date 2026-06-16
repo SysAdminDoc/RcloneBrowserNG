@@ -12,6 +12,7 @@
 #include "stream_widget.h"
 #include "transfer_dialog.h"
 #include "interface_polish.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 #ifdef Q_OS_MACOS
 #include "osx_helper.h"
@@ -390,6 +391,15 @@ MainWindow::MainWindow() {
   });
 
   QObject::connect(ui.about, &QAction::triggered, this, [=]() {
+    auto caps = RcloneCapabilities::detect();
+    QString env = QString(
+        R"(<p style="font-size:small; color:gray;">)"
+        R"(rclone %1 &middot; Qt %2 &middot; %3 %4 (%5)</p>)")
+        .arg(caps.rcloneVersion.isEmpty() ? "?" : "v" + caps.rcloneVersion,
+             qVersion(),
+             QSysInfo::productType(),
+             QSysInfo::productVersion(),
+             QSysInfo::currentCpuArchitecture());
     QMessageBox::about(
         this, qApp->applicationDisplayName(),
         QString(
@@ -400,8 +410,21 @@ MainWindow::MainWindow() {
 
             R"(<p>Previous maintenance and features<br /><a href="https://github.com/kapitainsky/RcloneBrowser">kapitainsky</a> and <a href="https://github.com/kapitainsky/RcloneBrowser/graphs/contributors">contributors</a></p>)"
 
-            R"(<p>Original version<br /><a href="https://mmozeiko.github.io/RcloneBrowser">Martins Mozeiko</a></p>)"));
+            R"(<p>Original version<br /><a href="https://mmozeiko.github.io/RcloneBrowser">Martins Mozeiko</a></p>)")
+        + env);
   });
+
+  auto *copyDiagnostics = new QAction("Copy Diagnostics", this);
+  copyDiagnostics->setToolTip(
+      "Copy environment and capability info to the clipboard for bug reports.");
+  ui.menuHelp->addSeparator();
+  ui.menuHelp->addAction(copyDiagnostics);
+  QObject::connect(copyDiagnostics, &QAction::triggered, this, [=]() {
+    auto caps = RcloneCapabilities::detect();
+    QGuiApplication::clipboard()->setText(caps.summary());
+    ui.statusBar->showMessage("Diagnostics copied to clipboard.", 4000);
+  });
+
   QObject::connect(ui.aboutQt, &QAction::triggered, qApp,
                    &QApplication::aboutQt);
 

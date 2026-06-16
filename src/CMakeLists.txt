@@ -59,6 +59,7 @@ set(SOURCE
   remote_provider.cpp
   mount_backend.cpp
   rclone_rc_engine.cpp
+  rclone_capabilities.cpp
   rc_job_widget.cpp
   remote_path.cpp
   vfs_upload_state.cpp
@@ -89,6 +90,7 @@ set(OTHER
   remote_provider.h
   mount_backend.h
   rclone_rc_engine.h
+  rclone_capabilities.h
   rc_job_widget.h
   remote_path.h
   vfs_upload_state.h
