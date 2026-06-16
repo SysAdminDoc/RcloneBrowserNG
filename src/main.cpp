@@ -314,6 +314,17 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  QStringList sendToFiles;
+  int sendToIdx = app.arguments().indexOf("--send-to");
+  if (sendToIdx >= 0) {
+    for (int i = sendToIdx + 1; i < app.arguments().size(); ++i) {
+      QString arg = app.arguments().at(i);
+      if (arg.startsWith("--"))
+        break;
+      sendToFiles << arg;
+    }
+  }
+
   MainWindow w;
   bool startMinimized =
       app.arguments().contains("--minimized") ||
@@ -323,6 +334,12 @@ int main(int argc, char *argv[]) {
     w.hide();
   } else {
     w.show();
+  }
+
+  if (!sendToFiles.isEmpty()) {
+    QTimer::singleShot(500, &w, [&w, sendToFiles]() {
+      w.handleSendToFiles(sendToFiles);
+    });
   }
 
   QObject::connect(&server, &QLocalServer::newConnection, &w, [&]() {

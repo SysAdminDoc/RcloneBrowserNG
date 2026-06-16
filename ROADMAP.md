@@ -228,12 +228,6 @@ All items trace back to public GitHub issues/PRs:
   Complexity: M
 
 
-- [ ] P3 — OS shell integration: Explorer "Send to remote…" / Finder Services
-  Why: pushing files without opening the app is the "native feel" differentiator a Qt app can own against webview competitors.
-  Evidence: Zarestia-Dev/rclone-manager#80; github.com/H4R1B0/rclone-gui (Finder Services)
-  Touches: installer/registry (Windows SendTo), macOS Services plist, main.cpp argument handling (depends on SingleApplication item)
-  Acceptance: right-click a file in Explorer/Finder → send to a chosen remote folder; routes into the running instance's job queue.
-  Complexity: M
 
 - [ ] P3 — Condition-gated schedules: unmetered network / AC power
   Why: Vorta/Round-Sync gate runs on power/network conditions; laptops syncing over hotspots is the failure mode; extends the scheduled-tasks item once it exists.
