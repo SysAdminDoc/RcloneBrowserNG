@@ -31,6 +31,7 @@ private:
   QLineEdit *mPostCommand = nullptr;
   QLineEdit *mWebhookUrl = nullptr;
   QRadioButton *mRbBisync = nullptr;
+  QComboBox *mConflictResolve = nullptr;
   QLineEdit *mBackupDir = nullptr;
   QSpinBox *mBackupRetain = nullptr;
   QCheckBox *mWatchFolder = nullptr;

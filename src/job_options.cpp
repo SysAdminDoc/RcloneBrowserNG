@@ -41,6 +41,9 @@ QStringList JobOptions::getOptions() const {
     list << "sync";
   } else if (operation == Bisync) {
     list << "bisync";
+    if (!conflictResolve.isEmpty() && conflictResolve != "none") {
+      list << "--conflict-resolve" << conflictResolve;
+    }
   }
 
   if (dryRun) {

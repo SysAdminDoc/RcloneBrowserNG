@@ -253,12 +253,6 @@ All items trace back to public GitHub issues/PRs:
 
 
 
-- [ ] P3 — Bisync conflict-resolution dialog
-  Why: bisync is stable since rclone 1.71 with `--conflict-resolve/--conflict-loser/--conflict-suffix`; an interactive keep-local/keep-remote/keep-both chooser was archived Celeste's signature feature and de-risks the planned bisync GUI.
-  Evidence: forum.rclone.org rclone 1.71 release notes; github.com/hwittenborn/celeste
-  Touches: bisync feature (depends on existing bisync item)
-  Acceptance: conflicts detected in a bisync run present a per-file resolution list before re-running with the chosen strategy.
-  Complexity: M
 
 
 ### 2026-06-12 Refresh — P1
