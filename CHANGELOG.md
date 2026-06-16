@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Google Drive deletes now use trash — delete operations on Google Drive remotes automatically include `--drive-use-trash` so files go to Google Drive's trash instead of being permanently deleted
 -   NEW: Retry failed jobs — failed transfers show a Retry button that re-runs the same transfer with the original arguments
 -   NEW: Storage usage per remote — right-click a remote in the list to see total/used/free/trash space via `rclone about --json`
 -   NEW: Remote URL upload (`copyurl`) — right-click a folder in the remote browser to download a file from any URL directly to that remote path via `rclone copyurl`

@@ -676,6 +676,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QStringList args;
         args << (model->isFolder(idx) ? "purge" : "delete");
         args << getDriveSharedArgs();
+        if (isGoogle) {
+          args << "--drive-use-trash";
+        }
         args << GetDefaultRcloneOptionsList();
         args << "--verbose";
         args << "--use-json-log";
