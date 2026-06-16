@@ -111,8 +111,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Real-time error log** — Live error log panel during transfers.  
   _Sources: kapitainsky #233, #134_
 
-- [ ] **Global upload/download statistics** — Cumulative transfer counter across all jobs.  
-  _Sources: kapitainsky #111_
 
 
 ### Miscellaneous
