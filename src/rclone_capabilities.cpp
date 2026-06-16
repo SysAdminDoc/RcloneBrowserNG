@@ -64,6 +64,54 @@ QString RcloneCapabilities::summary() const {
   return lines.join('\n');
 }
 
+namespace Diagnostics {
+
+namespace {
+struct LogEntry {
+  QString source;
+  QString line;
+};
+QList<LogEntry> &logBuffer() {
+  static QList<LogEntry> buf;
+  return buf;
+}
+constexpr int kMaxLogEntries = 200;
+} // namespace
+
+QString redactSecrets(const QString &text) {
+  QString out = text;
+  static const QRegularExpression patterns[] = {
+      QRegularExpression(R"((--rc-pass)\s+\S+)"),
+      QRegularExpression(R"((pass|password|token|secret|key|credential)[\s=:]+\S+)",
+                         QRegularExpression::CaseInsensitiveOption),
+      QRegularExpression(R"((RCLONE_CONFIG_PASS)=\S+)"),
+      QRegularExpression(R"((Authorization:\s*(?:Basic|Bearer))\s+\S+)",
+                         QRegularExpression::CaseInsensitiveOption),
+  };
+  for (const auto &re : patterns) {
+    out.replace(re, "\\1 <redacted>");
+  }
+  return out;
+}
+
+void appendLog(const QString &source, const QString &line) {
+  auto &buf = logBuffer();
+  if (buf.size() >= kMaxLogEntries) {
+    buf.removeFirst();
+  }
+  buf.append({source, line});
+}
+
+QString recentLog() {
+  QStringList lines;
+  for (const auto &entry : logBuffer()) {
+    lines << QString("[%1] %2").arg(entry.source, entry.line);
+  }
+  return lines.join('\n');
+}
+
+} // namespace Diagnostics
+
 RcloneCapabilities RcloneCapabilities::detect() {
   RcloneCapabilities caps;
 

@@ -417,12 +417,39 @@ MainWindow::MainWindow() {
   auto *copyDiagnostics = new QAction("Copy Diagnostics", this);
   copyDiagnostics->setToolTip(
       "Copy environment and capability info to the clipboard for bug reports.");
+  auto *saveSupportBundle = new QAction("Save Support Bundle...", this);
+  saveSupportBundle->setToolTip(
+      "Save a detailed support bundle with environment info and recent job "
+      "output (secrets redacted) for bug reports.");
   ui.menuHelp->addSeparator();
   ui.menuHelp->addAction(copyDiagnostics);
+  ui.menuHelp->addAction(saveSupportBundle);
   QObject::connect(copyDiagnostics, &QAction::triggered, this, [=]() {
     auto caps = RcloneCapabilities::detect();
     QGuiApplication::clipboard()->setText(caps.summary());
     ui.statusBar->showMessage("Diagnostics copied to clipboard.", 4000);
+  });
+  QObject::connect(saveSupportBundle, &QAction::triggered, this, [=]() {
+    QString path = QFileDialog::getSaveFileName(
+        this, "Save Support Bundle", "rclonebrowserng-support.txt",
+        "Text files (*.txt)");
+    if (path.isEmpty()) {
+      return;
+    }
+    auto caps = RcloneCapabilities::detect();
+    QString log = Diagnostics::recentLog();
+    QString bundle = caps.summary();
+    if (!log.isEmpty()) {
+      bundle += "\n\n--- Recent output (secrets redacted) ---\n";
+      bundle += Diagnostics::redactSecrets(log);
+    }
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      file.write(bundle.toUtf8());
+      file.close();
+      ui.statusBar->showMessage(
+          "Support bundle saved to " + QFileInfo(path).fileName(), 4000);
+    }
   });
 
   QObject::connect(ui.aboutQt, &QAction::triggered, qApp,
