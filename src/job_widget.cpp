@@ -2,6 +2,9 @@
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
+#if !defined(Q_OS_WIN32)
+#include <csignal>
+#endif
 
 SparklineWidget::SparklineWidget(QWidget *parent) : QWidget(parent) {
   setFixedHeight(28);
@@ -131,6 +134,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         ui.output->setVisible(checked);
         ui.showOutput->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
       });
+
+  auto *pauseBtn = new QToolButton(this);
+  pauseBtn->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_MediaPause));
+  UiPolish::SetCompactToolButton(pauseBtn, "Pause transfer",
+                                 "Pause or resume this running transfer.");
+  ui.horizontalLayout->insertWidget(ui.horizontalLayout->indexOf(ui.cancel),
+                                    pauseBtn);
+  QObject::connect(pauseBtn, &QToolButton::clicked, this,
+                   &JobWidget::togglePause);
 
   ui.cancel->setIcon(
       QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
@@ -425,6 +438,43 @@ void JobWidget::clearFileProgress() {
   }
   mActive.clear();
   setProgressOverflow(0);
+}
+
+void JobWidget::togglePause() {
+  if (!mRunning || mProcess->state() != QProcess::Running)
+    return;
+
+#if defined(Q_OS_WIN32)
+  HANDLE hProcess =
+      OpenProcess(PROCESS_SUSPEND_RESUME, FALSE,
+                  static_cast<DWORD>(mProcess->processId()));
+  if (!hProcess)
+    return;
+  using NtFunc = LONG(NTAPI *)(HANDLE);
+  auto ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (mPaused) {
+    auto NtResume = reinterpret_cast<NtFunc>(
+        GetProcAddress(ntdll, "NtResumeProcess"));
+    if (NtResume)
+      NtResume(hProcess);
+  } else {
+    auto NtSuspend = reinterpret_cast<NtFunc>(
+        GetProcAddress(ntdll, "NtSuspendProcess"));
+    if (NtSuspend)
+      NtSuspend(hProcess);
+  }
+  CloseHandle(hProcess);
+#else
+  ::kill(static_cast<pid_t>(mProcess->processId()),
+         mPaused ? SIGCONT : SIGSTOP);
+#endif
+
+  mPaused = !mPaused;
+  if (mPaused) {
+    UiPolish::SetStatus(ui.showDetails, "warning", "Paused");
+  } else {
+    UiPolish::SetStatus(ui.showDetails, "running", "Running");
+  }
 }
 
 void JobWidget::cancel() {

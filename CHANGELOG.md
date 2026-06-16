@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Pause and resume running transfers — a Pause button on each job suspends the rclone process (NtSuspendProcess on Windows, SIGSTOP on Unix) and shows a "Paused" status; click again to resume
 -   NEW: Live throughput sparkline per job — each running transfer shows a 60-sample speed-over-time graph in the details pane, drawn with the accent color and gradient fill
 -   NEW: Bisync (bidirectional sync) GUI — a Bisync radio button in the transfer dialog runs `rclone bisync` between source and destination; disabled when rclone < 1.58
 -   NEW: CLI interface to run saved tasks — `--run-task "My Task"` runs a saved task headlessly without opening the GUI and exits with rclone's exit code; `--list-tasks` prints all saved task names
