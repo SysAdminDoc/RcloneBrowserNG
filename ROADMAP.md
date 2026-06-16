@@ -250,12 +250,6 @@ All items trace back to public GitHub issues/PRs:
   Complexity: L
 
 
-- [ ] P3 — Backup-dir retention policy UI
-  Why: `--backup-dir` with dated folders + retention (keep N / prune older than X) is the script-land standard (rclone_jobber/dfb) no GUI offers; pairs with the version-browser item.
-  Evidence: github.com/awesome-rclone/awesome-rclone (rclone_jobber, dfb); newhinton/Round-Sync#182
-  Touches: job_options.cpp/.h, transfer_dialog.cpp, a prune step on job completion
-  Acceptance: a task can enable dated backup-dirs with a retention rule the app enforces after successful runs.
-  Complexity: M
 
 
 

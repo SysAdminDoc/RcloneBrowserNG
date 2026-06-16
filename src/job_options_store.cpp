@@ -248,6 +248,8 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["postCommand"] = jo.postCommand;
   obj["webhookUrl"] = jo.webhookUrl;
   obj["watchFolder"] = jo.watchFolder;
+  obj["backupDir"] = jo.backupDir;
+  obj["backupRetainCount"] = jo.backupRetainCount;
   return obj;
 }
 
@@ -294,6 +296,8 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   jo->postCommand = obj["postCommand"].toString();
   jo->webhookUrl = obj["webhookUrl"].toString();
   jo->watchFolder = obj["watchFolder"].toBool();
+  jo->backupDir = obj["backupDir"].toString();
+  jo->backupRetainCount = obj["backupRetainCount"].toInt();
   return jo;
 }
 } // namespace
