@@ -1,73 +1,74 @@
-#!/bin/sh
+#!/bin/bash
+set -euo pipefail
 
-set -e
+# Rclone Browser NG — local macOS release build script.
+# Matches the CI release workflow; see .github/workflows/release.yml.
+#
+# Usage: ./scripts/release_macOS.sh
+#
+# Requirements:
+#   - Xcode command line tools
+#   - Homebrew
+#   - cmake and qt@6 (brew install cmake qt@6)
 
-QTDIR=/usr/local/opt/qt
+ARCH="$(uname -m)"
+
+for cmd in cmake brew; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: '$cmd' not found."
+    exit 1
+  fi
+done
+
+QT_PREFIX="$(brew --prefix qt@6 2>/dev/null || true)"
+if [ -z "$QT_PREFIX" ] || [ ! -d "$QT_PREFIX" ]; then
+  echo "ERROR: Qt 6 not found. Install with: brew install qt@6"
+  exit 1
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
-VERSION=$(cat "$ROOT"/VERSION)-$(git rev-parse --short HEAD)
-BUILD="$ROOT"/build
-TARGET=rclone-browser-$VERSION-macos
-DMG=rclone-browser-$VERSION-macos
-APP="$TARGET"/"Rclone Browser.app"
-
-# clean from previous builds (if for the same version in releases)
-if [ -d "$BUILD" ]; then
-  rm -rf "$BUILD"
-fi
-if [ -d "$ROOT"/release/"$TARGET" ]; then
-  rm -rf "$ROOT"/release/"$TARGET"*
-fi
-if [ -f "$ROOT"/release/"$DMG".dmg ]; then
-  rm "$ROOT"/release/"$DMG".dmg
-fi
-if [ -d "$ROOT"/release/"Rclone Browser.app" ]; then
-  rm -rf "$ROOT"/release/"Rclone Browser.app"
+VERSION="$(cat "$ROOT/VERSION")"
+COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$COMMIT" ]; then
+  FULLVER="${VERSION}-${COMMIT}"
+else
+  FULLVER="$VERSION"
 fi
 
+JOBS="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+BUILD="$ROOT/build"
+RELEASE="$ROOT/release"
+NAME="RcloneBrowserNG-${FULLVER}-macos-${ARCH}"
 
+# Clean previous build
+rm -rf "$BUILD"
+rm -rf "$RELEASE/$NAME"*
+mkdir -p "$BUILD" "$RELEASE"
 
-mkdir -p "$BUILD"
+# Build
 cd "$BUILD"
-# brew install cmake qt5
-cmake .. -DCMAKE_PREFIX_PATH="$QTDIR" -DCMAKE_BUILD_TYPE=Release
-# brew install coreutils
-make --jobs=$(nproc --all)
-cd build
-"$QTDIR"/bin/macdeployqt rclone-browser.app -executable="rclone-browser.app/Contents/MacOS/rclone-browser" -qmldir=../src/
-cd ../..
+cmake "$ROOT" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+cmake --build . --parallel "$JOBS"
 
+APP="$BUILD/build/rclone-browser.app"
+if [ ! -d "$APP" ]; then
+  echo "ERROR: Build did not produce rclone-browser.app"
+  exit 1
+fi
 
-mkdir -p release
-cd release
-mkdir "$TARGET"
-cp -R "$BUILD"/build/rclone-browser.app "$APP"
-cp "$ROOT"/README.md "$APP"/Readme.md
-cp "$ROOT"/CHANGELOG.md "$APP"/Changelog.md
-cp "$ROOT"/LICENSE "$APP"/License.txt
-mv "$APP"/Contents/MacOS/rclone-browser "$APP"/Contents/MacOS/"Rclone Browser"
+# Deploy Qt frameworks and create DMG
+"$QT_PREFIX/bin/macdeployqt" "$APP" -dmg -verbose=2
 
-sed -i .bak 's/rclone-browser/Rclone Browser/g' "$APP"/Contents/Info.plist
-rm "$APP"/Contents/*.bak
+DMG="$BUILD/build/rclone-browser.dmg"
+if [ -f "$DMG" ]; then
+  mv "$DMG" "$RELEASE/${NAME}.dmg"
+  echo "DMG: $RELEASE/${NAME}.dmg"
+fi
 
-cat >"$APP"/Contents/MacOS/qt.conf <<EOF
-[Paths]
-Plugins = Plugins
-EOF
+# Create compressed app zip
+ditto -c -k --keepParent "$APP" "$RELEASE/${NAME}.app.zip"
+echo "ZIP: $RELEASE/${NAME}.app.zip"
 
 echo
-echo "Preparing zip file"
-# brew install p7zip
-7za a -mx=9 -r -tzip "$TARGET".zip "$TARGET"
-
-## gpg --detach-sign "$TARGET".zip.sig "$TARGET".zip
-
-echo
-echo "Preparing dmg file"
-# brew install node && npm install -g appdmg
-# https://github.com/LinusU/node-appdmg
-cp -R "$TARGET"/"Rclone Browser.app" .
-cd ../scripts
-appdmg ../assets/appdmg.json ../release/"$DMG".dmg
-cd ../release
-rm -rf "Rclone Browser.app"
+echo "Release artifacts in $RELEASE:"
+ls -1 "$RELEASE/${NAME}"*
