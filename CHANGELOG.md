@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Remote-to-remote transfers — right-click any file or folder and choose "Copy to Remote..." to copy directly between two remotes without downloading locally
 -   NEW: Job queue manager — a configurable "Max concurrent transfers" setting in Preferences (default: unlimited) queues excess transfers and starts them as slots free up
 -   NEW: Pause and resume running transfers — a Pause button on each job suspends the rclone process (NtSuspendProcess on Windows, SIGSTOP on Unix) and shows a "Paused" status; click again to resume
 -   NEW: Live throughput sparkline per job — each running transfer shows a 60-sample speed-over-time graph in the details pane, drawn with the accent color and gradient fill

@@ -1144,6 +1144,10 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *speedAction = nullptr;
         QAction *copyUrlAction = nullptr;
         QAction *dedupeAction = nullptr;
+        QAction *copyToRemote = nullptr;
+        copyToRemote = menu.addAction("Copy to Remote...");
+        copyToRemote->setToolTip(
+            "Copy this item directly to another remote without downloading locally.");
         if (model->isFolder(index)) {
           menu.addSeparator();
           compareAction = menu.addAction("Compare Folders...");
@@ -1171,7 +1175,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
         if (!chosen || (chosen != editAction && chosen != compareAction &&
                         chosen != archiveAction && chosen != speedAction &&
-                        chosen != copyUrlAction && chosen != dedupeAction)) {
+                        chosen != copyUrlAction && chosen != dedupeAction &&
+                        chosen != copyToRemote)) {
           return;
         }
 
@@ -1289,6 +1294,29 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           if (process.exitCode() == 0) {
             refreshCurrentDir();
           }
+        } else if (chosen == copyToRemote) {
+          auto copySettings = GetSettings();
+          QString lastDest =
+              copySettings->value("Settings/lastRemoteToRemoteDest").toString();
+          bool ok;
+          QString dest = QInputDialog::getText(
+              this, "Copy to Remote",
+              "Destination remote:path (e.g. backupremote:folder):",
+              QLineEdit::Normal, lastDest, &ok);
+          if (!ok || dest.trimmed().isEmpty()) {
+            return;
+          }
+          copySettings->setValue("Settings/lastRemoteToRemoteDest",
+                                dest.trimmed());
+          QStringList args;
+          args << "copy" << getDriveSharedArgs()
+               << GetDefaultRcloneOptionsList() << "--verbose"
+               << "--use-json-log" << "--stats" << "1s"
+               << "--stats-file-name-length" << "0"
+               << target << dest.trimmed();
+          emit addTransfer(
+              QString("Copy %1 -> %2").arg(target, dest.trimmed()),
+              target, dest.trimmed(), args);
         }
       });
 
