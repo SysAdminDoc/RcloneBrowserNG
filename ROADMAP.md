@@ -43,8 +43,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 ### File Browser / Navigation
-- [ ] **Dual-pane interface** — Side-by-side local/remote or remote/remote browsing.  
-  _Sources: kapitainsky #71; mmozeiko #80, #98_
 
 
 
