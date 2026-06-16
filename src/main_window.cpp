@@ -420,6 +420,8 @@ MainWindow::MainWindow() {
                          dialog.getDefaultUploadOptions().trimmed());
       settings->setValue("Settings/defaultRcloneOptions",
                          dialog.getDefaultRcloneOptions().trimmed());
+      settings->setValue("Settings/defaultExclude",
+                         dialog.getDefaultExclude());
 
       settings->setValue("Settings/checkRcloneBrowserUpdates",
                          dialog.getCheckRcloneBrowserUpdates());

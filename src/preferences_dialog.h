@@ -39,7 +39,9 @@ public:
   QString getHttpsProxy() const;
   QString getNoProxy() const;
   bool getUsePasswordCommand() const;
+  QString getDefaultExclude() const;
 
 private:
   Ui::PreferencesDialog ui;
+  QPlainTextEdit *mDefaultExclude = nullptr;
 };

@@ -133,8 +133,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #116_
 
 
-- [ ] **Default exclude list** — Configurable global exclude patterns.  
-  _Sources: mmozeiko #75_
 
 - [ ] **Create and save connection profiles** — Named profiles with different rclone configs/options.  
   _Sources: mmozeiko #102_

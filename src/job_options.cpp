@@ -154,6 +154,11 @@ QStringList JobOptions::getOptions() const {
   list << "--stats" << "1s";
   list << "--stats-file-name-length" << "0";
 
+  QStringList defaultExcludes = GetDefaultExcludeList();
+  if (!defaultExcludes.isEmpty()) {
+    list << defaultExcludes;
+  }
+
   QStringList defaultRcloneOptionsList = GetDefaultRcloneOptionsList();
   if (!defaultRcloneOptionsList.isEmpty()) {
     list << defaultRcloneOptionsList;
