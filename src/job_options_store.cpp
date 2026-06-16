@@ -207,3 +207,131 @@ void ClearJobOptionsList(QList<JobOptions *> *tasks) {
   qDeleteAll(*tasks);
   tasks->clear();
 }
+
+namespace {
+QJsonObject jobOptionsToJson(const JobOptions &jo) {
+  QJsonObject obj;
+  obj["description"] = jo.description;
+  obj["jobType"] = static_cast<int>(jo.jobType);
+  obj["operation"] = static_cast<int>(jo.operation);
+  obj["sync"] = jo.sync;
+  obj["syncTiming"] = static_cast<int>(jo.syncTiming);
+  obj["skipNewer"] = jo.skipNewer;
+  obj["skipExisting"] = jo.skipExisting;
+  obj["compare"] = jo.compare;
+  obj["compareOption"] = static_cast<int>(jo.compareOption);
+  obj["verbose"] = jo.verbose;
+  obj["sameFilesystem"] = jo.sameFilesystem;
+  obj["dontUpdateModified"] = jo.dontUpdateModified;
+  obj["transfers"] = jo.transfers;
+  obj["checkers"] = jo.checkers;
+  obj["bandwidth"] = jo.bandwidth;
+  obj["minSize"] = jo.minSize;
+  obj["minAge"] = jo.minAge;
+  obj["maxAge"] = jo.maxAge;
+  obj["maxDepth"] = jo.maxDepth;
+  obj["connectTimeout"] = jo.connectTimeout;
+  obj["idleTimeout"] = jo.idleTimeout;
+  obj["retries"] = jo.retries;
+  obj["lowLevelRetries"] = jo.lowLevelRetries;
+  obj["deleteExcluded"] = jo.deleteExcluded;
+  obj["excluded"] = jo.excluded;
+  obj["extra"] = jo.extra;
+  obj["source"] = jo.source;
+  obj["dest"] = jo.dest;
+  obj["isFolder"] = jo.isFolder;
+  obj["uniqueId"] = jo.uniqueId.toString();
+  obj["DriveSharedWithMe"] = jo.DriveSharedWithMe;
+  obj["heartbeatUrl"] = jo.heartbeatUrl;
+  obj["nameTransform"] = jo.nameTransform;
+  obj["preCommand"] = jo.preCommand;
+  obj["postCommand"] = jo.postCommand;
+  obj["webhookUrl"] = jo.webhookUrl;
+  obj["watchFolder"] = jo.watchFolder;
+  return obj;
+}
+
+JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
+  auto *jo = new JobOptions();
+  jo->description = obj["description"].toString();
+  jo->jobType = static_cast<JobOptions::JobType>(obj["jobType"].toInt());
+  jo->operation = static_cast<JobOptions::Operation>(obj["operation"].toInt());
+  jo->sync = obj["sync"].toBool();
+  jo->syncTiming =
+      static_cast<JobOptions::SyncTiming>(obj["syncTiming"].toInt());
+  jo->skipNewer = obj["skipNewer"].toBool();
+  jo->skipExisting = obj["skipExisting"].toBool();
+  jo->compare = obj["compare"].toBool();
+  jo->compareOption =
+      static_cast<JobOptions::CompareOption>(obj["compareOption"].toInt());
+  jo->verbose = obj["verbose"].toBool();
+  jo->sameFilesystem = obj["sameFilesystem"].toBool();
+  jo->dontUpdateModified = obj["dontUpdateModified"].toBool();
+  jo->transfers = obj["transfers"].toString();
+  jo->checkers = obj["checkers"].toString();
+  jo->bandwidth = obj["bandwidth"].toString();
+  jo->minSize = obj["minSize"].toString();
+  jo->minAge = obj["minAge"].toString();
+  jo->maxAge = obj["maxAge"].toString();
+  jo->maxDepth = obj["maxDepth"].toInt();
+  jo->connectTimeout = obj["connectTimeout"].toString();
+  jo->idleTimeout = obj["idleTimeout"].toString();
+  jo->retries = obj["retries"].toString();
+  jo->lowLevelRetries = obj["lowLevelRetries"].toString();
+  jo->deleteExcluded = obj["deleteExcluded"].toBool();
+  jo->excluded = obj["excluded"].toString();
+  jo->extra = obj["extra"].toString();
+  jo->source = obj["source"].toString();
+  jo->dest = obj["dest"].toString();
+  jo->isFolder = obj["isFolder"].toBool();
+  jo->uniqueId = QUuid::fromString(obj["uniqueId"].toString());
+  if (jo->uniqueId.isNull())
+    jo->uniqueId = QUuid::createUuid();
+  jo->DriveSharedWithMe = obj["DriveSharedWithMe"].toBool();
+  jo->heartbeatUrl = obj["heartbeatUrl"].toString();
+  jo->nameTransform = obj["nameTransform"].toString();
+  jo->preCommand = obj["preCommand"].toString();
+  jo->postCommand = obj["postCommand"].toString();
+  jo->webhookUrl = obj["webhookUrl"].toString();
+  jo->watchFolder = obj["watchFolder"].toBool();
+  return jo;
+}
+} // namespace
+
+JobOptionsStoreLoadResult ReadJobOptionsStoreJson(QIODevice *device) {
+  JobOptionsStoreLoadResult result;
+  QByteArray data = device->readAll();
+  QJsonDocument doc = QJsonDocument::fromJson(data);
+  if (!doc.isObject()) {
+    result.error = "invalid JSON task store";
+    return result;
+  }
+  QJsonObject root = doc.object();
+  QJsonArray arr = root["tasks"].toArray();
+  for (const QJsonValue &val : arr) {
+    if (!val.isObject())
+      continue;
+    result.tasks.append(jobOptionsFromJson(val.toObject()));
+  }
+  return result;
+}
+
+bool WriteJobOptionsStoreJson(QIODevice *device,
+                              const QList<JobOptions *> &tasks,
+                              QString *error) {
+  QJsonArray arr;
+  for (const JobOptions *jo : tasks) {
+    arr.append(jobOptionsToJson(*jo));
+  }
+  QJsonObject root;
+  root["version"] = 1;
+  root["tasks"] = arr;
+  QJsonDocument doc(root);
+  QByteArray data = doc.toJson(QJsonDocument::Indented);
+  if (device->write(data) != data.size()) {
+    if (error)
+      *error = "failed to write JSON task store";
+    return false;
+  }
+  return true;
+}
