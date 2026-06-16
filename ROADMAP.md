@@ -47,8 +47,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Pause running jobs** — Pause and resume active transfers.  
   _Sources: mmozeiko #71_
 
-- [ ] **Multi-select tasks and batch run** — Select and run multiple saved tasks at once.  
-  _Sources: kapitainsky #98, #80_
 
 
 
