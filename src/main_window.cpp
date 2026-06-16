@@ -615,33 +615,41 @@ MainWindow::MainWindow() {
                      }
                    });
 
-  QObject::connect(ui.tasksListWidget, &QListWidget::currentItemChanged, this,
-                   [=](QListWidgetItem *current) {
-                     auto task =
-                         static_cast<JobOptionsListWidgetItem *>(current);
-                     const bool hasTask = task && task->GetData();
-                     ui.buttonDeleteTask->setEnabled(hasTask);
-                     ui.buttonEditTask->setEnabled(hasTask);
-                     ui.buttonRunTask->setEnabled(hasTask);
-                     ui.buttonDryrunTask->setEnabled(hasTask);
-                     ui.buttonCopyTaskCmd->setEnabled(hasTask);
+  ui.tasksListWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
+
+  QObject::connect(ui.tasksListWidget, &QListWidget::itemSelectionChanged, this,
+                   [=]() {
+                     QList<QListWidgetItem *> sel =
+                         ui.tasksListWidget->selectedItems();
+                     int validCount = 0;
+                     for (auto *item : sel) {
+                       auto *task =
+                           static_cast<JobOptionsListWidgetItem *>(item);
+                       if (task && task->GetData())
+                         ++validCount;
+                     }
+                     const bool hasOne = validCount == 1;
+                     const bool hasAny = validCount > 0;
+                     ui.buttonDeleteTask->setEnabled(hasAny);
+                     ui.buttonEditTask->setEnabled(hasOne);
+                     ui.buttonRunTask->setEnabled(hasAny);
+                     ui.buttonDryrunTask->setEnabled(hasAny);
+                     ui.buttonCopyTaskCmd->setEnabled(hasOne);
                    });
 
   QObject::connect(ui.buttonRunTask, &QPushButton::clicked, this, [=]() {
-    JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
-        ui.tasksListWidget->currentItem());
-    if (!item || !item->GetData()) {
-      return;
+    for (auto *item : ui.tasksListWidget->selectedItems()) {
+      auto *task = static_cast<JobOptionsListWidgetItem *>(item);
+      if (task && task->GetData())
+        runItem(task);
     }
-    runItem(item);
   });
   QObject::connect(ui.buttonDryrunTask, &QPushButton::clicked, this, [=]() {
-    JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
-        ui.tasksListWidget->currentItem());
-    if (!item || !item->GetData()) {
-      return;
+    for (auto *item : ui.tasksListWidget->selectedItems()) {
+      auto *task = static_cast<JobOptionsListWidgetItem *>(item);
+      if (task && task->GetData())
+        runItem(task, true);
     }
-    runItem(item, true);
   });
 
   //    QObject::connect(ui.tasksListWidget, &QListWidget::itemDoubleClicked,
@@ -741,19 +749,28 @@ MainWindow::MainWindow() {
       });
 
   QObject::connect(ui.buttonDeleteTask, &QPushButton::clicked, this, [=]() {
-    JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
-        ui.tasksListWidget->currentItem());
-    if (!item || !item->GetData()) {
-      return;
+    QList<QListWidgetItem *> sel = ui.tasksListWidget->selectedItems();
+    QList<JobOptions *> toDelete;
+    for (auto *item : sel) {
+      auto *task = static_cast<JobOptionsListWidgetItem *>(item);
+      if (task && task->GetData())
+        toDelete << task->GetData();
     }
-    JobOptions *jo = item->GetData();
-    int button = QMessageBox::question(
-        this, "Delete Task",
-        QString("Delete saved task \"%1\"?\n\nThis cannot be undone.")
-            .arg(jo->description),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (toDelete.isEmpty())
+      return;
+    QString prompt =
+        toDelete.size() == 1
+            ? QString("Delete saved task \"%1\"?\n\nThis cannot be undone.")
+                  .arg(toDelete.first()->description)
+            : QString("Delete %1 saved tasks?\n\nThis cannot be undone.")
+                  .arg(toDelete.size());
+    int button = QMessageBox::question(this, "Delete Task", prompt,
+                                       QMessageBox::Yes | QMessageBox::No,
+                                       QMessageBox::No);
     if (button == QMessageBox::Yes) {
-      ListOfJobOptions::getInstance()->Forget(jo);
+      auto *store = ListOfJobOptions::getInstance();
+      for (auto *jo : toDelete)
+        store->Forget(jo);
     }
   });
 
@@ -780,15 +797,15 @@ MainWindow::MainWindow() {
   ui.buttonDryrunTask->setIcon(style->standardIcon(QStyle::SP_FileDialogContentsView));
   ui.buttonDryrunTask->setText("Dry Run");
   ui.buttonCopyTaskCmd->setText("Copy Command");
-  ui.buttonDryrunTask->setToolTip("Run the selected task with --dry-run.");
-  ui.buttonRunTask->setToolTip("Run the selected saved task.");
-  ui.buttonEditTask->setToolTip("Edit task options.");
-  ui.buttonDeleteTask->setToolTip("Delete the selected saved task.");
-  ui.buttonCopyTaskCmd->setToolTip("Copy the selected task's rclone command.");
-  ui.buttonDryrunTask->setAccessibleName("Dry run selected task");
-  ui.buttonRunTask->setAccessibleName("Run selected task");
+  ui.buttonDryrunTask->setToolTip("Dry-run selected task(s) with --dry-run.");
+  ui.buttonRunTask->setToolTip("Run selected saved task(s). Shift/Ctrl-click to select multiple.");
+  ui.buttonEditTask->setToolTip("Edit task options (single selection only).");
+  ui.buttonDeleteTask->setToolTip("Delete selected saved task(s).");
+  ui.buttonCopyTaskCmd->setToolTip("Copy the selected task's rclone command (single selection only).");
+  ui.buttonDryrunTask->setAccessibleName("Dry run selected tasks");
+  ui.buttonRunTask->setAccessibleName("Run selected tasks");
   ui.buttonEditTask->setAccessibleName("Edit selected task");
-  ui.buttonDeleteTask->setAccessibleName("Delete selected task");
+  ui.buttonDeleteTask->setAccessibleName("Delete selected tasks");
   ui.buttonCopyTaskCmd->setAccessibleName("Copy selected task command");
   UiPolish::SetPrimaryButton(ui.buttonRunTask);
   UiPolish::SetDestructiveButton(ui.buttonDeleteTask);
