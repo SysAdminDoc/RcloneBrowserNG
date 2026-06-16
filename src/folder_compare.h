@@ -51,6 +51,7 @@ private:
   QComboBox *mStatusFilter = nullptr;
   QLineEdit *mTextFilter = nullptr;
   QLabel *mSummary = nullptr;
+  QLabel *mEmptyState = nullptr;
   QTableWidget *mTable = nullptr;
   QPushButton *mCopyToDestinationButton = nullptr;
   QPushButton *mCopyToSourceButton = nullptr;

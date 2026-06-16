@@ -10,6 +10,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   }
   UiPolish::SetWindowDefaults(this, QSize(760, 560));
   ui.tabWidget->setDocumentMode(true);
+  UiPolish::SetDialogButtonBox(ui.buttonBox);
   if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
     UiPolish::SetPrimaryButton(ok);
   }

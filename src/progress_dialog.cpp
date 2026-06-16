@@ -22,6 +22,7 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
   ui.buttonShowOutput->setStyleSheet(QString());
   UiPolish::SetDisclosureButton(ui.buttonShowOutput, "Show command output");
   UiPolish::SetStatus(ui.buttonShowOutput, "running", "Running");
+  UiPolish::SetDialogButtonBox(ui.buttonBox);
 
   UiPolish::SetOutputView(ui.output);
   ui.output->setReadOnly(true);

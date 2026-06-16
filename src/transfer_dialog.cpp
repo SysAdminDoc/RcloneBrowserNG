@@ -52,6 +52,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     QDialog dlg(this);
     dlg.setWindowTitle("Bandwidth Timetable");
     dlg.resize(500, 350);
+    UiPolish::SetWindowDefaults(&dlg, QSize(500, 350));
     auto *layout = new QVBoxLayout(&dlg);
     layout->setSpacing(8);
     auto *hint = new QLabel(
@@ -63,8 +64,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
     auto *table = new QTableWidget(0, 2, &dlg);
     table->setHorizontalHeaderLabels({"Time (HH:MM)", "Bandwidth"});
+    UiPolish::SetTableView(table, "Bandwidth timetable entries");
     table->horizontalHeader()->setStretchLastSection(true);
-    table->setAccessibleName("Bandwidth timetable entries");
     layout->addWidget(table, 1);
 
     QString current = ui.textBandwidth->text().trimmed();
@@ -84,6 +85,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     auto *btnRow = new QHBoxLayout();
     auto *addBtn = new QPushButton("Add Row", &dlg);
     auto *removeBtn = new QPushButton("Remove Row", &dlg);
+    UiPolish::SetDestructiveButton(removeBtn);
     btnRow->addWidget(addBtn);
     btnRow->addWidget(removeBtn);
     btnRow->addStretch();
@@ -121,6 +123,10 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    UiPolish::SetDialogButtonBox(buttons);
+    if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
+      UiPolish::SetPrimaryButton(ok);
+    }
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
                      &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
@@ -374,6 +380,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   if (auto restore = ui.buttonBox->button(QDialogButtonBox::RestoreDefaults)) {
     restore->setToolTip("Restore recommended transfer defaults.");
   }
+
+  UiPolish::SetDialogButtonBox(ui.buttonBox);
 
   QObject::connect(
       ui.buttonBox->button(QDialogButtonBox::RestoreDefaults),

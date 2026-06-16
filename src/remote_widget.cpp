@@ -7,6 +7,7 @@
 #include "list_of_job_options.h"
 #include "progress_dialog.h"
 #include "remote_path.h"
+#include "stream_widget.h"
 #include "transfer_dialog.h"
 #include "interface_polish.h"
 #include "utils.h"
@@ -280,8 +281,10 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
             dlg.setWindowTitle(
                 QString("Trashed files in %1").arg(remote));
             dlg.resize(600, 400);
+            UiPolish::SetWindowDefaults(&dlg, QSize(520, 320));
             auto *layout = new QVBoxLayout(&dlg);
             auto *list = new QListWidget(&dlg);
+            UiPolish::SetNavigationView(list, "Trashed files");
             list->addItems(items);
             layout->addWidget(list);
             auto *hint = new QLabel(
@@ -384,6 +387,29 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     layout->insertWidget(layout->indexOf(ui.tree), mFileFilter);
   }
 
+  auto *pathTools = new QWidget(this);
+  auto *pathToolsLayout = new QHBoxLayout(pathTools);
+  pathToolsLayout->setContentsMargins(0, 0, 0, 0);
+  pathToolsLayout->setSpacing(4);
+  auto *filterFilesButton = new QToolButton(pathTools);
+  filterFilesButton->setIcon(style->standardIcon(QStyle::SP_FileDialogContentsView));
+  filterFilesButton->setText("Filter");
+  filterFilesButton->setCheckable(true);
+  filterFilesButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  UiPolish::SetCompactToolButton(
+      filterFilesButton, "Show file filter",
+      "Show or hide the filter field for the current folder.");
+  auto *editPathButton = new QToolButton(pathTools);
+  editPathButton->setIcon(style->standardIcon(QStyle::SP_DirLinkIcon));
+  editPathButton->setText("Path");
+  editPathButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  UiPolish::SetCompactToolButton(
+      editPathButton, "Edit current path",
+      "Type a loaded remote path directly.");
+  pathToolsLayout->addWidget(filterFilesButton);
+  pathToolsLayout->addWidget(editPathButton);
+  ui.buttonsGrid->addWidget(pathTools, 1, 6);
+
   ui.tree->sortByColumn(0, Qt::AscendingOrder);
   ui.tree->header()->setSectionsMovable(false);
   ui.tree->header()->setHighlightSections(false);
@@ -411,21 +437,18 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                      }
                    });
 
-  QAction *filterAction = new QAction(this);
-  filterAction->setShortcut(QKeySequence("Ctrl+F"));
-  filterAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-  addAction(filterAction);
-  QObject::connect(filterAction, &QAction::triggered, this, [this]() {
-    mFileFilter->setVisible(true);
-    mFileFilter->setFocus(Qt::ShortcutFocusReason);
-    mFileFilter->selectAll();
-  });
-
-  QAction *editPathAction = new QAction(this);
-  editPathAction->setShortcut(QKeySequence("Ctrl+L"));
-  editPathAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-  addAction(editPathAction);
-  QObject::connect(editPathAction, &QAction::triggered, this,
+  QObject::connect(filterFilesButton, &QToolButton::toggled, this,
+                   [this](bool checked) {
+                     mFileFilter->setVisible(checked);
+                     if (checked) {
+                       mFileFilter->setFocus(Qt::OtherFocusReason);
+                       mFileFilter->selectAll();
+                     } else {
+                       mFileFilter->clear();
+                       ui.tree->setFocus(Qt::OtherFocusReason);
+                     }
+                   });
+  QObject::connect(editPathButton, &QToolButton::clicked, this,
                    [this]() { showPathEditor(); });
   QObject::connect(ui.path, &QLineEdit::returnPressed, this, [this]() {
     const QModelIndex index = findLoadedPath(ui.path->text());
@@ -827,6 +850,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
     QDialog dlg(this);
     dlg.setWindowTitle(QString("Mount %1").arg(remote));
+    UiPolish::SetWindowDefaults(&dlg, QSize(460, 220));
     auto *layout = new QFormLayout(&dlg);
     layout->setSpacing(10);
     layout->setContentsMargins(12, 12, 12, 12);
@@ -842,6 +866,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     mountPoint->setPlaceholderText("/mnt/remote");
 #endif
     mountPoint->setAccessibleName("Mount point");
+    UiPolish::SetPathField(mountPoint, "Mount point");
     layout->addRow("Mount point:", mountPoint);
 
 #if !defined(Q_OS_WIN32)
@@ -872,6 +897,10 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     auto *buttons =
         new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                              &dlg);
+    UiPolish::SetDialogButtonBox(buttons);
+    if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
+      UiPolish::SetPrimaryButton(ok);
+    }
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
                      &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
@@ -1049,8 +1078,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         if (t.wasEnqueued()) {
           emit enqueueTransfer(msg, src, dst, args);
         } else {
-          emit addTransfer(msg, src, dst,
-                         args);
+          emit addTransfer(msg, src, dst, args);
+        }
       }
     }
   });

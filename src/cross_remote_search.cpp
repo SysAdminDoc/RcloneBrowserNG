@@ -18,8 +18,10 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   mQueryEdit->setAccessibleName("Search query");
   UiPolish::SetPathField(mQueryEdit, "Search query");
   mCaseSensitive = new QCheckBox("Case-sensitive", this);
+  mCaseSensitive->setToolTip("Match uppercase and lowercase exactly.");
   mSearchButton = new QPushButton("Search", this);
   UiPolish::SetPrimaryButton(mSearchButton);
+  mSearchButton->setEnabled(false);
   mSearchButton->setAccessibleName("Start search");
   mCancelButton = new QPushButton("Cancel", this);
   mCancelButton->setEnabled(false);
@@ -30,25 +32,31 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   queryRow->addWidget(mCancelButton);
   layout->addLayout(queryRow);
 
-  mStatus = new QLabel("Enter a pattern and click Search.", this);
+  mStatus = new QLabel("Enter a pattern to search every configured remote.", this);
   UiPolish::SetMuted(mStatus);
   layout->addWidget(mStatus);
 
+  mEmptyState = new QLabel(this);
+  UiPolish::SetEmptyState(
+      mEmptyState, "No search running",
+      "Use a filename pattern such as *.jpg, invoice*, or report?.pdf.");
+  layout->addWidget(mEmptyState);
+
   mResults = new QTableWidget(0, 4, this);
   mResults->setHorizontalHeaderLabels({"Remote", "Path", "Size", "Modified"});
+  UiPolish::SetTableView(mResults, "Search results");
   mResults->horizontalHeader()->setStretchLastSection(true);
   mResults->horizontalHeader()->setSectionResizeMode(
       0, QHeaderView::ResizeToContents);
   mResults->horizontalHeader()->setSectionResizeMode(
       2, QHeaderView::ResizeToContents);
-  mResults->setSelectionBehavior(QAbstractItemView::SelectRows);
   mResults->setSelectionMode(QAbstractItemView::SingleSelection);
   mResults->setEditTriggers(QAbstractItemView::NoEditTriggers);
   mResults->setSortingEnabled(true);
-  mResults->setAccessibleName("Search results");
   layout->addWidget(mResults, 1);
 
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
+  UiPolish::SetDialogButtonBox(buttons);
   QObject::connect(buttons, &QDialogButtonBox::rejected, this,
                    &QDialog::reject);
   layout->addWidget(buttons);
@@ -59,6 +67,13 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
                    &CrossRemoteSearchDialog::cancelSearch);
   QObject::connect(mQueryEdit, &QLineEdit::returnPressed, this,
                    &CrossRemoteSearchDialog::startSearch);
+  QObject::connect(mQueryEdit, &QLineEdit::textChanged, this,
+                   [this](const QString &text) {
+                     UiPolish::SetFieldState(mQueryEdit, QString());
+                     if (mRunning.isEmpty()) {
+                       mSearchButton->setEnabled(!text.trimmed().isEmpty());
+                     }
+                   });
 
   QObject::connect(mResults, &QTableWidget::cellDoubleClicked, this,
                    [this](int row, int) {
@@ -77,13 +92,26 @@ void CrossRemoteSearchDialog::startSearch() {
   cancelSearch();
 
   QString query = mQueryEdit->text().trimmed();
-  if (query.isEmpty())
+  if (query.isEmpty()) {
+    UiPolish::SetFieldState(mQueryEdit, "error");
+    mStatus->setText("Enter a filename pattern before searching.");
+    mEmptyState->setVisible(true);
+    UiPolish::SetEmptyState(mEmptyState, "Search needs a pattern",
+                            "Examples: *.jpg, invoice*, report?.pdf");
     return;
+  }
 
   mResults->setRowCount(0);
   mTotalMatches = 0;
+  mFailedRemotes = 0;
+  mRemoteErrors.clear();
+  mStatus->setToolTip(QString());
   mSearchButton->setEnabled(false);
   mCancelButton->setEnabled(true);
+  UiPolish::SetFieldState(mQueryEdit, QString());
+  mEmptyState->setVisible(true);
+  UiPolish::SetEmptyState(mEmptyState, "Searching remotes",
+                          "Matches will appear here as rclone returns them.");
 
   int started = 0;
   for (const QString &remote : mRemotes) {
@@ -127,16 +155,43 @@ void CrossRemoteSearchDialog::startSearch() {
         proc,
         static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
             &QProcess::finished),
-        this, [this, proc](int, QProcess::ExitStatus) {
+        this, [this, proc, remote](int code, QProcess::ExitStatus) {
+          if (code != 0) {
+            ++mFailedRemotes;
+            const QString stderrText =
+                QString::fromUtf8(proc->readAllStandardError()).trimmed();
+            mRemoteErrors << QString("%1: %2")
+                                 .arg(remote,
+                                      stderrText.isEmpty()
+                                          ? QString("rclone exited with status %1")
+                                                .arg(code)
+                                          : stderrText.left(500));
+          }
           mRunning.removeOne(proc);
           proc->deleteLater();
           if (mRunning.isEmpty()) {
-            mSearchButton->setEnabled(true);
+            mSearchButton->setEnabled(!mQueryEdit->text().trimmed().isEmpty());
             mCancelButton->setEnabled(false);
-            mStatus->setText(
+            QString status =
                 QString("Done. %1 file(s) found across %2 remote(s).")
                     .arg(mTotalMatches)
-                    .arg(mRemotes.size()));
+                    .arg(mRemotes.size());
+            if (mFailedRemotes > 0) {
+              status += QString(" %1 remote(s) need attention.")
+                            .arg(mFailedRemotes);
+              mStatus->setToolTip(mRemoteErrors.join("\n\n"));
+            }
+            mStatus->setText(status);
+            mEmptyState->setVisible(mTotalMatches == 0);
+            if (mTotalMatches == 0) {
+              UiPolish::SetEmptyState(
+                  mEmptyState,
+                  mFailedRemotes > 0 ? "No matches from completed remotes"
+                                     : "No matching files",
+                  mFailedRemotes > 0
+                      ? "Check the status tooltip for remote errors, or refine the pattern."
+                      : "Try a broader pattern or disable case-sensitive matching.");
+            }
           }
         });
 
@@ -148,6 +203,7 @@ void CrossRemoteSearchDialog::startSearch() {
 }
 
 void CrossRemoteSearchDialog::cancelSearch() {
+  const bool hadRunning = !mRunning.isEmpty();
   for (auto *proc : mRunning) {
     proc->disconnect();
     proc->kill();
@@ -155,14 +211,22 @@ void CrossRemoteSearchDialog::cancelSearch() {
     proc->deleteLater();
   }
   mRunning.clear();
-  mSearchButton->setEnabled(true);
+  mSearchButton->setEnabled(!mQueryEdit->text().trimmed().isEmpty());
   mCancelButton->setEnabled(false);
-  if (mTotalMatches > 0)
+  if (!hadRunning) {
+    return;
+  }
+  if (mTotalMatches > 0) {
     mStatus->setText(
         QString("Cancelled. %1 file(s) found before cancellation.")
             .arg(mTotalMatches));
-  else
+  } else {
     mStatus->setText("Search cancelled.");
+    mEmptyState->setVisible(true);
+    UiPolish::SetEmptyState(
+        mEmptyState, "Search cancelled",
+        "Start another search when you are ready.");
+  }
 }
 
 void CrossRemoteSearchDialog::addResult(const QString &remote,
@@ -187,6 +251,7 @@ void CrossRemoteSearchDialog::addResult(const QString &remote,
 
   mResults->setSortingEnabled(true);
   ++mTotalMatches;
+  mEmptyState->setVisible(false);
   mStatus->setText(
       QString("Searching... %1 found so far (%2 remote(s) pending)")
           .arg(mTotalMatches)

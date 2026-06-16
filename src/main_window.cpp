@@ -724,7 +724,10 @@ MainWindow::MainWindow() {
 
   QObject::connect(
       ui.remotes, &QListWidget::currentItemChanged, this,
-      [=](QListWidgetItem *current) { ui.open->setEnabled(current != NULL); });
+      [=](QListWidgetItem *current) {
+        ui.open->setEnabled(current != nullptr &&
+                            (current->flags() & Qt::ItemIsEnabled));
+      });
   QObject::connect(ui.remotes, &QListWidget::itemActivated, ui.open,
                    &QPushButton::clicked);
 
@@ -737,43 +740,7 @@ MainWindow::MainWindow() {
 
   auto makeRemoteWidget = [this](const QString &name, const QString &type,
                                   QWidget *parent) -> RemoteWidget * {
-    bool isLocal = type == "local";
-    bool isGoogle = type == "drive";
-    bool isGooglePhotos =
-        type.compare("google photos", Qt::CaseInsensitive) == 0;
-    auto *remote =
-        new RemoteWidget(&mIcons, name, isLocal, isGoogle, isGooglePhotos,
-                         parent);
-    QObject::connect(remote, &RemoteWidget::addMount, this,
-                     &MainWindow::addMount);
-    QObject::connect(remote, &RemoteWidget::addStream, this,
-                     &MainWindow::addStream);
-    QObject::connect(remote, &RemoteWidget::addTransfer, this,
-                     &MainWindow::addTransfer);
-    QObject::connect(
-        remote, &RemoteWidget::enqueueTransfer, this,
-        [this](const QString &msg, const QString &src, const QString &dst,
-               const QStringList &args) {
-          auto *item = new QListWidgetItem(msg, mStagingList);
-          item->setData(Qt::UserRole, msg);
-          item->setData(Qt::UserRole + 1, src);
-          item->setData(Qt::UserRole + 2, dst);
-          item->setData(Qt::UserRole + 3, args);
-          item->setToolTip(QString("%1 -> %2").arg(src, dst));
-          setStatusMessage(
-              QString("Enqueued: %1 (%2 staged)")
-                  .arg(msg)
-                  .arg(mStagingList->count()));
-        });
-    QObject::connect(remote, &RemoteWidget::requestReconnect, this,
-                     [this](const QString &remoteName) {
-                       const QDateTime configBefore = rcloneConfigLastModified();
-                       startDetachedTerminalCommand(
-                           QStringList() << "config" << "reconnect"
-                                         << remoteName + ":",
-                           configBefore, "Reconnect remote");
-                     });
-    return remote;
+    return createRemoteWidgetInstance(name, type, parent);
   };
 
   QObject::connect(ui.open, &QPushButton::clicked, this, [=]() {
@@ -931,23 +898,43 @@ MainWindow::MainWindow() {
   }
   QObject::connect(mTasksFilter, &QLineEdit::textChanged, this,
                    [this](const QString &text) {
+                     bool hasAnyTask = false;
+                     bool hasVisibleMatch = false;
                      for (int i = 0; i < ui.tasksListWidget->count(); ++i) {
                        auto *item = ui.tasksListWidget->item(i);
+                       if (item == mTasksFilterEmptyItem) {
+                         continue;
+                       }
                        auto *task =
                            static_cast<JobOptionsListWidgetItem *>(item);
                        if (!task->GetData()) {
-                         item->setHidden(!text.isEmpty());
+                         item->setHidden(false);
                          continue;
                        }
-                       item->setHidden(
-                           !text.isEmpty() &&
-                           !task->GetData()->description.contains(
-                               text, Qt::CaseInsensitive) &&
-                           !task->GetData()->source.contains(
-                               text, Qt::CaseInsensitive) &&
-                           !task->GetData()->dest.contains(
-                               text, Qt::CaseInsensitive));
+                       hasAnyTask = true;
+                       const bool matches =
+                           text.isEmpty() ||
+                           task->GetData()->description.contains(
+                               text, Qt::CaseInsensitive) ||
+                           task->GetData()->source.contains(
+                               text, Qt::CaseInsensitive) ||
+                           task->GetData()->dest.contains(
+                               text, Qt::CaseInsensitive);
+                       item->setHidden(!matches);
+                       hasVisibleMatch = hasVisibleMatch || matches;
                      }
+                     if (!mTasksFilterEmptyItem) {
+                       mTasksFilterEmptyItem = new JobOptionsListWidgetItem(
+                           nullptr, QIcon(), "No saved tasks match this filter.");
+                       mTasksFilterEmptyItem->setFlags(Qt::NoItemFlags);
+                       mTasksFilterEmptyItem->setForeground(
+                           qApp->palette().color(QPalette::Disabled,
+                                                 QPalette::Text));
+                       mTasksFilterEmptyItem->setSizeHint(QSize(0, 58));
+                       ui.tasksListWidget->addItem(mTasksFilterEmptyItem);
+                     }
+                     mTasksFilterEmptyItem->setHidden(
+                         text.isEmpty() || hasVisibleMatch || !hasAnyTask);
                    });
 
   ui.tasksListWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -1763,6 +1750,49 @@ void MainWindow::rcloneGetVersion() {
            QIODevice::ReadOnly);
 }
 
+RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
+                                                     const QString &type,
+                                                     QWidget *parent) {
+  const bool isLocal = type == "local";
+  const bool isGoogle = type == "drive";
+  const bool isGooglePhotos =
+      type.compare("google photos", Qt::CaseInsensitive) == 0;
+  auto *remote =
+      new RemoteWidget(&mIcons, name, isLocal, isGoogle, isGooglePhotos,
+                       parent);
+  QObject::connect(remote, &RemoteWidget::addMount, this,
+                   &MainWindow::addMount);
+  QObject::connect(remote, &RemoteWidget::addStream, this,
+                   &MainWindow::addStream);
+  QObject::connect(remote, &RemoteWidget::addTransfer, this,
+                   &MainWindow::addTransfer);
+  QObject::connect(
+      remote, &RemoteWidget::enqueueTransfer, this,
+      [this](const QString &msg, const QString &src, const QString &dst,
+             const QStringList &args) {
+        auto *item = new QListWidgetItem(msg, mStagingList);
+        item->setData(Qt::UserRole, msg);
+        item->setData(Qt::UserRole + 1, src);
+        item->setData(Qt::UserRole + 2, dst);
+        item->setData(Qt::UserRole + 3, args);
+        item->setToolTip(QString("%1 -> %2").arg(src, dst));
+        setStatusMessage(QString("Enqueued: %1 (%2 staged)")
+                             .arg(msg)
+                             .arg(mStagingList->count()));
+      });
+  QObject::connect(remote, &RemoteWidget::requestReconnect, this,
+                   [this](const QString &remoteName) {
+                     const QDateTime configBefore = rcloneConfigLastModified();
+                     startDetachedTerminalCommand(QStringList()
+                                                      << "config"
+                                                      << "reconnect"
+                                                      << remoteName + ":",
+                                                  configBefore,
+                                                  "Reconnect remote");
+                   });
+  return remote;
+}
+
 void MainWindow::rcloneConfig() {
   if (!confirmConfigMutation("Opening rclone config")) {
     return;
@@ -1878,6 +1908,7 @@ void MainWindow::createRemote() {
   auto buttons =
       new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                            &dialog);
+  UiPolish::SetDialogButtonBox(buttons);
   if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
     ok->setText("Create");
     UiPolish::SetPrimaryButton(ok);
@@ -2293,7 +2324,8 @@ void MainWindow::rcloneListRemotes() {
                 if (item->text() == tabName &&
                     (item->flags() & Qt::ItemIsEnabled)) {
                   QString type = item->data(Qt::UserRole).toString();
-                  auto *remote = makeRemoteWidget(tabName, type, ui.tabs);
+                  auto *remote =
+                      createRemoteWidgetInstance(tabName, type, ui.tabs);
                   ui.tabs->addTab(remote, tabName);
                   break;
                 }
@@ -2447,6 +2479,7 @@ void MainWindow::listTasks() {
     mTasksFilter->blockSignals(wasBlocked);
   }
   ui.tasksListWidget->clear();
+  mTasksFilterEmptyItem = nullptr;
 
   ListOfJobOptions *ljo = ListOfJobOptions::getInstance();
 
@@ -2876,7 +2909,10 @@ void MainWindow::showJobHistory() {
   QDialog dialog(this);
   dialog.setWindowTitle("Job History");
   dialog.resize(980, 420);
+  UiPolish::SetWindowDefaults(&dialog, QSize(760, 360));
   QVBoxLayout *layout = new QVBoxLayout(&dialog);
+  layout->setContentsMargins(12, 12, 12, 12);
+  layout->setSpacing(8);
   QTableWidget *table = new QTableWidget(&dialog);
   table->setColumnCount(9);
   table->setHorizontalHeaderLabels(QStringList()
@@ -2889,10 +2925,9 @@ void MainWindow::showJobHistory() {
                                    << "Files"
                                    << "Errors"
                                    << "Exit");
+  UiPolish::SetTableView(table, "Job history");
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::SingleSelection);
-  table->verticalHeader()->setVisible(false);
   table->horizontalHeader()->setStretchLastSection(false);
   table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
   table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
@@ -2921,13 +2956,17 @@ void MainWindow::showJobHistory() {
     }
   }
 
-  layout->addWidget(table);
   if (entries.isEmpty()) {
-    QLabel *empty = new QLabel("No completed jobs have been recorded yet.", &dialog);
-    UiPolish::SetMuted(empty);
+    QLabel *empty = new QLabel(&dialog);
+    UiPolish::SetEmptyState(
+        empty, "No completed jobs yet",
+        "Finished transfers will appear here with duration, size, and status.");
     layout->addWidget(empty);
+  } else {
+    layout->addWidget(table);
   }
   QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+  UiPolish::SetDialogButtonBox(buttons);
   QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
   layout->addWidget(buttons);
   dialog.exec();
