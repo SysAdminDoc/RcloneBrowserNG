@@ -1,165 +1,118 @@
 #!/bin/bash
+set -euo pipefail
 
-set -e
+# Rclone Browser NG — local Linux AppImage build script.
+# Matches the CI release workflow; see .github/workflows/release.yml.
+#
+# Usage: ./scripts/release_AppImage.sh
+#
+# Supported architectures: x86_64, aarch64
+#
+# Requirements:
+#   - Ubuntu 22.04+ or equivalent (glibc 2.35+)
+#   - cmake, g++, make, patchelf, wget
+#   - Qt 6 development packages (qt6-base-dev, qt6-base-dev-tools, qt6-qmake)
+#   - desktop-file-utils, appstream (for validation)
+#   - linuxdeploy, linuxdeploy-plugin-qt, linuxdeploy-plugin-appimage (auto-downloaded)
 
-# x86_64 build on CentOS 7.7
-  # gcc 7 installed
-  # sudo yum install -y centos-release-scl
-  # sudo yum install -y devtoolset-7-gcc*
-  # run below command before build
-  # scl enable devtoolset-7 bash
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|aarch64) ;;
+  *)
+    echo "ERROR: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported."
+    exit 1
+    ;;
+esac
 
-  # newer cmake is required than one included in CentOS 7
-  # download from http://www.cmake.org/download
-  # sudo mkdir /opt/cmake
-  # sudo sh cmake-$version.$build-Linux-x86_64.sh --prefix=/opt/cmake
-
-  if [ $(arch) = "x86_64" ]; then
-    CMAKE="/opt/cmake/bin/cmake"
+for cmd in cmake g++ patchelf wget; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: '$cmd' not found. Install it first."
+    exit 1
   fi
+done
 
-# i686 build on Ubuntu 16.04 LTS
-
-# armv7l build on raspbian stretch
-
-# Qt path and flags set in env e.g.:
-# export PATH="/opt/Qt/5.14.0/bin/:$PATH"
-# export CPPFLAGS="-I/opt/Qt/5.14.0/bin/include/"
-# export LDFLAGS="-L/opt/Qt/5.14.0/bin/lib/"
-# export LD_LIBRARY_PATH="/opt/Qt/5.14.0/bin/lib/:$LD_LIBRARY_PATH"
-
-# for x86_64 and i686 platform
-# Qt 5.14.0 uses openssl 1.1 and some older distros still use 1.0
-# we build openssl 1.1.1d from source using following setup:
-# ./config shared --prefix=/opt/openssl-1.1.1/ && make --jobs=`nproc --all` && sudo make install
-# and add to build env
-# export LD_LIBRARY_PATH="/opt/openssl-1.1.1/lib/:$LD_LIBRARY_PATH"
-
-if [ "$1" = "SIGN" ]; then
-  export SIGN="1"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
+VERSION="$(cat "$ROOT/VERSION")"
+COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$COMMIT" ]; then
+  FULLVER="${VERSION}-${COMMIT}"
+else
+  FULLVER="$VERSION"
 fi
 
-# check gcc version on Centos
-if [ $(arch) = "x86_64" ]; then
-  currentver="$(gcc -dumpversion)"
-  if [ "${currentver:0:1}" -lt "7"  ]; then
-    echo "gcc version 7 or newer required"
-    echo "on Cetos 7 run"
-    echo "scl enable devtoolset-7 bash"
-    exit
- fi
-fi
+# linuxdeploy reads $VERSION for the AppImage filename
+export VERSION="$FULLVER"
 
-# building AppImage in temporary directory to keep system clean
-# use RAM disk if possible (as in: not building on CI system like Travis, and RAM disk is available)
-if [ "$CI" == "" ] && [ -d /dev/shm ]; then
+BUILD="$ROOT/build"
+RELEASE="$ROOT/release"
+
+# Use RAM disk if available and not in CI
+if [ -z "${CI:-}" ] && [ -d /dev/shm ]; then
   TEMP_BASE=/dev/shm
 else
-  TEMP_BASE=/tmp
+  TEMP_BASE="${TMPDIR:-/tmp}"
+fi
+APPDIR="$TEMP_BASE/RcloneBrowserNG-AppDir-$$"
+
+# Clean previous build artifacts
+rm -rf "$BUILD" "$APPDIR"
+mkdir -p "$BUILD" "$RELEASE" "$APPDIR"
+
+# Validate desktop and metainfo files
+if command -v desktop-file-validate &>/dev/null; then
+  desktop-file-validate "$ROOT/assets/io.github.sysadmindoc.rclonebrowserng.desktop"
+fi
+if command -v appstreamcli &>/dev/null; then
+  appstreamcli validate --no-net "$ROOT/assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml" || true
 fi
 
-# we run it from our project scripts folder
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
-VERSION=$(cat "$ROOT"/VERSION)-$(git rev-parse --short HEAD)
-# linuxdeploy uses $VERSION env variable for AppImage name
-export VERSION=$VERSION
-BUILD="$ROOT"/build
-TARGET=rclone-browser-$VERSION.AppImage
-
-# clean AppImage temporary folder
-if [ -d "$TEMP_BASE/$TARGET" ]; then
-  rm -rf "$TEMP_BASE/$TARGET"
-fi
-mkdir "$TEMP_BASE/$TARGET"
-
-# clean build folder
-if [ -d "$BUILD" ]; then
-  rm -rf "$BUILD"
-fi
-mkdir "$BUILD"
-
-# create release folder if does not exist
-mkdir -p "$ROOT"/release
-
-# clean current version previous build
-if [ $(arch) = "armv7l" ] && [ -f "$ROOT"/release/rclone-browser-"$VERSION"-armhf.AppImage ]; then
-  rm "$ROOT"/release/rclone-browser-"$VERSION"-raspberrypi-armhf.AppImage
-fi
-
-if [ $(arch) = "i686" ] && [ -f "$ROOT"/release/rclone-browser-"$VERSION"-i386.AppImage ]; then
-  rm "$ROOT"/release/rclone-browser-"$VERSION"-linux-i386.AppImage
-fi
-
-if [ $(arch) = "x86_64" ] && [ -f "$ROOT"/release/rclone-browser-"$VERSION"-x86_64.AppImage ]; then
-  rm "$ROOT"/release/rclone-browser-"$VERSION"-linux-x86_64.AppImage
-fi
-
-# build and install to temporary AppDir folder
+# Build
 cd "$BUILD"
+cmake "$ROOT" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+make --jobs="$(nproc)"
+DESTDIR="$APPDIR/AppDir" make install
 
-if [ $(arch) = "armv7l" ]; then
-  # more threads need swap on 1GB RAM RPi
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-  make -j 2
+# Copy info files
+cp "$ROOT/README.md" "$APPDIR/AppDir/Readme.md"
+cp "$ROOT/CHANGELOG.md" "$APPDIR/AppDir/Changelog.md"
+cp "$ROOT/LICENSE" "$APPDIR/AppDir/License.txt"
+
+# Download linuxdeploy tools (architecture-specific)
+TOOLS_DIR="$APPDIR/tools"
+mkdir -p "$TOOLS_DIR"
+DEPLOY_BASE="https://github.com/linuxdeploy"
+
+wget -q -O "$TOOLS_DIR/linuxdeploy-${ARCH}.AppImage" \
+  "${DEPLOY_BASE}/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
+wget -q -O "$TOOLS_DIR/linuxdeploy-plugin-qt-${ARCH}.AppImage" \
+  "${DEPLOY_BASE}/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${ARCH}.AppImage"
+wget -q -O "$TOOLS_DIR/linuxdeploy-plugin-appimage-${ARCH}.AppImage" \
+  "${DEPLOY_BASE}/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${ARCH}.AppImage"
+chmod +x "$TOOLS_DIR"/*.AppImage
+
+cd "$APPDIR"
+export APPIMAGE_EXTRACT_AND_RUN=1
+export PATH="$TOOLS_DIR:$PATH"
+
+"$TOOLS_DIR/linuxdeploy-${ARCH}.AppImage" \
+  --appdir AppDir \
+  --desktop-file "AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop" \
+  --plugin qt \
+  --output appimage
+
+# Move the resulting AppImage to the release directory
+APPIMAGE="$(find . -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
+if [ -z "$APPIMAGE" ]; then
+  echo "ERROR: No AppImage produced."
+  exit 1
 fi
 
-if [ $(arch) = "x86_64" ]; then
-  "$CMAKE" .. -DCMAKE_INSTALL_PREFIX=/usr
-  make --jobs=$(nproc --all)
-fi
+ARTIFACT_NAME="RcloneBrowserNG-${FULLVER}-linux-${ARCH}.AppImage"
+mv "$APPIMAGE" "$RELEASE/$ARTIFACT_NAME"
 
-if [ $(arch) = "i686" ]; then
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-  make --jobs=$(nproc --all)
-fi
+# Clean up temp directory
+cd "$ROOT"
+rm -rf "$APPDIR"
 
-make install DESTDIR="$TEMP_BASE"/"$TARGET"/AppDir
-
-# prepare AppImage
-cd "$TEMP_BASE/$TARGET"
-
-# metainfo file (installed by `make install` via the CMake rule now)
-
-# copy info files to AppImage
-cp "$ROOT"/README.md "$TEMP_BASE"/"$TARGET"/AppDir/Readme.md
-cp "$ROOT"/CHANGELOG.md "$TEMP_BASE"/"$TARGET"/AppDir/Changelog.md
-cp "$ROOT"/LICENSE "$TEMP_BASE"/"$TARGET"/AppDir/License.txt
-
-# https://github.com/linuxdeploy/linuxdeploy
-# https://github.com/linuxdeploy/linuxdeploy-plugin-qt
-linuxdeploy --appdir AppDir --desktop-file=AppDir/usr/share/applications/rclone-browser.desktop --plugin qt
-#linuxdeploy-plugin-qt --appdir AppDir
-
-if [ $(arch) != "armv7l" ]
-then
-  # we add openssl 1.1.1 libs needed for distros still using openssl 1.0
-  cp /opt/openssl-1.1.1/lib/libssl.so.1.1 ./AppDir/usr/bin/
-  cp /opt/openssl-1.1.1/lib/libcrypto.so.1.1 ./AppDir/usr/bin/
-fi
-
-# https://github.com/linuxdeploy/linuxdeploy-plugin-appimage
-linuxdeploy-plugin-appimage --appdir=AppDir
-
-# raspberry pi build
-if [ $(arch) = "armv7l" ]; then
-  rename 's/armhf/raspberrypi-armhf/' Rclone_Browser*
-  rename 's/Rclone_Browser/rclone-browser/' Rclone_Browser*
-fi
-
-# x86 build
-if [ $(arch) = "i686" ]; then
-  rename 's/i386/linux-i386/' Rclone_Browser*
-  rename 's/Rclone_Browser/rclone-browser/' Rclone_Browser*
-fi
-
-# x86_64 build
-if [ $(arch) = "x86_64" ]; then
-  rename x86_64 linux-x86_64 Rclone_Browser*
-  rename Rclone_Browser rclone-browser Rclone_Browser*
-fi
-
-cp ./*AppImage "$ROOT"/release/
-
-# clean AppImage temporary folder
-cd ..
-rm -rf "$TARGET"
+echo
+echo "Release artifact: $RELEASE/$ARTIFACT_NAME"
