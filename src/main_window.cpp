@@ -1783,6 +1783,8 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
   QStringList args = jo->getOptions();
   QString heartbeatUrl = jo->heartbeatUrl;
   QString postCommand = jo->postCommand;
+  QString webhookUrl = jo->webhookUrl;
+  QString taskName = jo->description;
   QString message =
       QString("%1 %2").arg(jo->operation).arg(jo->source);
 
@@ -1810,7 +1812,8 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
     }
   }
 
-  bool hasHooks = !heartbeatUrl.isEmpty() || !postCommand.isEmpty();
+  bool hasHooks =
+      !heartbeatUrl.isEmpty() || !postCommand.isEmpty() || !webhookUrl.isEmpty();
   if (!args.isEmpty() && hasHooks) {
     if (!mRcEngine) {
       mRcEngine = new RcloneRcEngine(this);
@@ -1837,7 +1840,8 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
             return;
           }
           addTransferViaProcess(message, jo->source, jo->dest, args,
-                                heartbeatUrl, postCommand);
+                                heartbeatUrl, postCommand, webhookUrl,
+                                taskName);
         });
   } else {
     addTransfer(message, jo->source, jo->dest, args);
@@ -1908,6 +1912,10 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
                        sendHeartbeat(heartbeatUrl,
                                      widget->wasSuccessful());
                      }
+                     if (!webhookUrl.isEmpty()) {
+                       sendWebhook(webhookUrl, taskName,
+                                   widget->wasSuccessful());
+                     }
 
                      if (--mJobCount == 0) {
                        ui.tabs->setTabText(1, "Jobs");
@@ -1941,7 +1949,9 @@ void MainWindow::addTransferViaProcess(const QString &message,
                                        const QString &dest,
                                        const QStringList &args,
                                        const QString &heartbeatUrl,
-                                       const QString &postCommand) {
+                                       const QString &postCommand,
+                                       const QString &webhookUrl,
+                                       const QString &taskName) {
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
@@ -1962,6 +1972,9 @@ void MainWindow::addTransferViaProcess(const QString &message,
         }
         if (!heartbeatUrl.isEmpty()) {
           sendHeartbeat(heartbeatUrl, widget->wasSuccessful());
+        }
+        if (!webhookUrl.isEmpty()) {
+          sendWebhook(webhookUrl, taskName, widget->wasSuccessful());
         }
         if (!postCommand.isEmpty()) {
 #ifdef Q_OS_WIN
@@ -2025,6 +2038,43 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
 
   QNetworkRequest req(QUrl(endpoint));
   QNetworkReply *reply = mNetworkManager->get(req);
+  QTimer::singleShot(15000, reply, [reply]() {
+    if (reply->isRunning()) {
+      reply->abort();
+    }
+  });
+  QObject::connect(reply, &QNetworkReply::finished, reply,
+                   &QNetworkReply::deleteLater);
+}
+
+void MainWindow::sendWebhook(const QString &url, const QString &taskName,
+                             bool success, const QString &error) {
+  if (url.isEmpty()) {
+    return;
+  }
+
+  if (!mNetworkManager) {
+    mNetworkManager = new QNetworkAccessManager(this);
+  }
+
+  QJsonObject payload;
+  payload.insert("app", QStringLiteral("Rclone Browser NG"));
+  payload.insert("task", taskName);
+  payload.insert("status", success ? "success" : "failed");
+  if (!error.isEmpty()) {
+    payload.insert("error", error);
+  }
+
+  // Discord webhook compatibility: wrap in "content" for plain text
+  QString summary = success
+      ? QString("Task \"%1\" completed successfully.").arg(taskName)
+      : QString("Task \"%1\" failed: %2").arg(taskName, error);
+  payload.insert("content", summary);
+
+  QNetworkRequest req(QUrl(url));
+  req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+  QNetworkReply *reply = mNetworkManager->post(
+      req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
   QTimer::singleShot(15000, reply, [reply]() {
     if (reply->isRunning()) {
       reply->abort();

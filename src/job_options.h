@@ -63,6 +63,7 @@ public:
   QString nameTransform;
   QString preCommand;
   QString postCommand;
+  QString webhookUrl;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

@@ -71,10 +71,14 @@ private:
   void addTransferViaProcess(const QString &message, const QString &source,
                              const QString &dest, const QStringList &args,
                              const QString &heartbeatUrl = QString(),
-                             const QString &postCommand = QString());
+                             const QString &postCommand = QString(),
+                             const QString &webhookUrl = QString(),
+                             const QString &taskName = QString());
   void addRcJobWidget(RcJobWidget *widget,
                       const QString &heartbeatUrl = QString());
   void sendHeartbeat(const QString &url, bool success);
+  void sendWebhook(const QString &url, const QString &taskName, bool success,
+                   const QString &error = QString());
   void checkRcloneUpdate(const QString &currentVersion);
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;
