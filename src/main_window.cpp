@@ -937,6 +937,54 @@ MainWindow::MainWindow() {
   QObject::connect(historyAction, &QAction::triggered, this,
                    &MainWindow::showJobHistory);
   ui.menuFile->insertAction(ui.quit, historyAction);
+  auto *configMenu = new QMenu("Switch &Config", this);
+  ui.menuFile->insertMenu(ui.quit, configMenu);
+  auto rebuildConfigMenu = [this, configMenu]() {
+    configMenu->clear();
+    auto settings = GetSettings();
+    QStringList configs =
+        settings->value("Settings/configProfiles").toStringList();
+    QString current =
+        settings->value("Settings/rcloneConf").toString();
+    for (const QString &path : configs) {
+      QAction *action = configMenu->addAction(QFileInfo(path).fileName());
+      action->setToolTip(path);
+      action->setCheckable(true);
+      action->setChecked(path == current);
+      QObject::connect(action, &QAction::triggered, this,
+                       [this, path]() {
+                         auto s = GetSettings();
+                         s->setValue("Settings/rcloneConf", path);
+                         SetRcloneConf(path);
+                         rcloneListRemotes();
+                         setStatusMessage("Switched to " +
+                                          QFileInfo(path).fileName());
+                       });
+    }
+    if (!configs.isEmpty()) {
+      configMenu->addSeparator();
+    }
+    auto *addConfig = configMenu->addAction("Add Config File...");
+    QObject::connect(addConfig, &QAction::triggered, this, [this, rebuildConfigMenu = std::function<void()>()]() mutable {
+      QString path = QFileDialog::getOpenFileName(
+          this, "Select rclone config file");
+      if (path.isEmpty())
+        return;
+      auto s = GetSettings();
+      QStringList configs =
+          s->value("Settings/configProfiles").toStringList();
+      if (!configs.contains(path)) {
+        configs.append(path);
+        s->setValue("Settings/configProfiles", configs);
+      }
+      s->setValue("Settings/rcloneConf", path);
+      SetRcloneConf(path);
+      rcloneListRemotes();
+      setStatusMessage("Switched to " + QFileInfo(path).fileName());
+    });
+  };
+  rebuildConfigMenu();
+  QObject::connect(configMenu, &QMenu::aboutToShow, this, rebuildConfigMenu);
   ui.menuFile->insertSeparator(ui.quit);
 
   mStatusMessage = new QLabel();

@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Multiple config file support — File > Switch Config menu lets you add rclone.conf files and switch between them; the active config is checkmarked, and switching reloads the remote list immediately
 -   NEW: File filter in remote browser — Ctrl+F opens a filter bar above the tree view that hides non-matching files by name within the current directory listing
 -   NEW: Dedupe GUI — right-click a folder in the remote browser to run `rclone dedupe` with a mode picker (skip, first, newest, oldest, largest, smallest, rename)
 -   NEW: Google Drive deletes now use trash — delete operations on Google Drive remotes automatically include `--drive-use-trash` so files go to Google Drive's trash instead of being permanently deleted
