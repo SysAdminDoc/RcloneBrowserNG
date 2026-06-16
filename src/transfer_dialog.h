@@ -29,6 +29,8 @@ private:
   QLineEdit *mNameTransform = nullptr;
   QLineEdit *mPreCommand = nullptr;
   QLineEdit *mPostCommand = nullptr;
+  QPlainTextEdit *mPreview = nullptr;
+  QPushButton *mPreviewButton = nullptr;
 
   bool mIsDownload;
   bool mDryRun = false;

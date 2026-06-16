@@ -206,6 +206,79 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     this->close();
   });
 
+  if (!mIsEditMode) {
+    mPreview = new QPlainTextEdit(this);
+    mPreview->setReadOnly(true);
+    mPreview->setVisible(false);
+    mPreview->setMaximumHeight(200);
+    mPreview->setAccessibleName("Dry-run preview output");
+    UiPolish::SetOutputView(mPreview, "Transfer preview");
+    mPreviewButton = new QPushButton("Preview Changes", this);
+    mPreviewButton->setToolTip(
+        "Run with --dry-run to see what would change, without modifying "
+        "any files.");
+    ui.gridLayout->addWidget(mPreviewButton, 13, 0);
+    ui.gridLayout->addWidget(mPreview, 13, 1);
+    QObject::connect(mPreviewButton, &QPushButton::clicked, this, [=]() {
+      if (mIsDownload) {
+        if (ui.textDest->text().trimmed().isEmpty()) {
+          showValidation(ui.textDest,
+                         "Choose a destination before previewing.");
+          return;
+        }
+      } else {
+        if (ui.textSource->text().trimmed().isEmpty()) {
+          showValidation(ui.textSource,
+                         "Choose a source before previewing.");
+          return;
+        }
+      }
+      mPreview->clear();
+      mPreview->setVisible(true);
+      mPreview->setPlainText("Running dry-run preview...");
+      mPreviewButton->setEnabled(false);
+
+      JobOptions *opts = getJobOptions();
+      opts->dryRun = true;
+      QStringList args = GetRcloneConf() + opts->getOptions();
+      opts->dryRun = false;
+
+      auto *proc = new QProcess(this);
+      proc->setProcessChannelMode(QProcess::MergedChannels);
+      UseRclonePassword(proc);
+      proc->start(GetRclone(), args, QIODevice::ReadOnly);
+
+      QObject::connect(
+          proc,
+          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+              &QProcess::finished),
+          this, [=](int code, QProcess::ExitStatus) {
+            proc->deleteLater();
+            mPreviewButton->setEnabled(true);
+            QByteArray raw = proc->readAll();
+            QStringList output;
+            for (const QByteArray &line : raw.split('\n')) {
+              QByteArray trimmed = line.trimmed();
+              if (trimmed.isEmpty())
+                continue;
+              QJsonDocument doc = QJsonDocument::fromJson(trimmed);
+              if (doc.isObject()) {
+                QString msg = doc.object().value("msg").toString();
+                if (!msg.isEmpty())
+                  output << msg;
+              } else {
+                output << QString::fromUtf8(trimmed);
+              }
+            }
+            if (output.isEmpty() && code == 0) {
+              mPreview->setPlainText("No changes detected.");
+            } else {
+              mPreview->setPlainText(output.join('\n'));
+            }
+          });
+    });
+  }
+
   QObject::connect(ui.buttonBox, &QDialogButtonBox::accepted, this,
                    &QDialog::accept);
   QObject::connect(ui.buttonBox, &QDialogButtonBox::rejected, this,
