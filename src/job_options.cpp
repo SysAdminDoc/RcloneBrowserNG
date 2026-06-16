@@ -103,6 +103,8 @@ QStringList JobOptions::getOptions() const {
 
   if (!bandwidth.isEmpty()) {
     list << "--bwlimit" << bandwidth;
+  } else {
+    list << GetGlobalBandwidthLimit();
   }
   if (!minSize.isEmpty()) {
     list << "--min-size" << minSize;

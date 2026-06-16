@@ -125,8 +125,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: mmozeiko #65_
 
 
-- [ ] **Global bandwidth limit control** — UI slider for upload/download speed cap.  
-  _Sources: kapitainsky #116_
 
 
 

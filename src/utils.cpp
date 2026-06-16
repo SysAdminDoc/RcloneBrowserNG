@@ -530,6 +530,16 @@ QStringList GetDefaultExcludeList() {
   return result;
 }
 
+QStringList GetGlobalBandwidthLimit() {
+  auto settings = GetSettings();
+  QString bwlimit =
+      settings->value("Settings/globalBandwidthLimit").toString().trimmed();
+  if (!bwlimit.isEmpty()) {
+    return QStringList() << "--bwlimit" << bwlimit;
+  }
+  return {};
+}
+
 QStringList GetShowHidden() {
   auto settings = GetSettings();
   bool showHidden = settings->value("Settings/showHidden", true).toBool();
