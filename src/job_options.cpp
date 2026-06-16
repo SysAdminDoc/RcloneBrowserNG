@@ -15,9 +15,9 @@ JobOptions::JobOptions()
       syncTiming(UnknownTiming), skipNewer(false), skipExisting(false),
       compare(false), compareOption(), verbose(false), sameFilesystem(false),
       dontUpdateModified(false), maxDepth(0), deleteExcluded(false),
-      isFolder(false) {}
+      isFolder(false), watchFolder(false) {}
 
-const qint32 JobOptions::classVersion = 7;
+const qint32 JobOptions::classVersion = 8;
 
 JobOptions::~JobOptions() {}
 

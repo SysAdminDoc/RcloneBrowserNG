@@ -86,9 +86,21 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.gridLayout->addWidget(postCommandLabel, 12, 0);
   ui.gridLayout->addWidget(mPostCommand, 12, 1);
 
+  mWatchFolder = new QCheckBox("Watch local source and rerun on changes", this);
+  mWatchFolder->setToolTip(
+      "Saved upload tasks can watch the local source folder and rerun after "
+      "filesystem changes settle.");
+  mWatchFolder->setAccessibleName("Watch local source folder");
+  if (mIsDownload) {
+    mWatchFolder->setDisabled(true);
+    mWatchFolder->setToolTip(
+        "Watch-folder mode is available for upload tasks with a local source.");
+  }
+  ui.gridLayout->addWidget(mWatchFolder, 13, 1);
+
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 13, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 14, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -636,6 +648,8 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->preCommand = mPreCommand->text().trimmed();
   mJobOptions->postCommand = mPostCommand->text().trimmed();
   mJobOptions->webhookUrl = mWebhookUrl->text().trimmed();
+  mJobOptions->watchFolder =
+      mWatchFolder->isChecked() && mJobOptions->jobType == JobOptions::Upload;
 
   return mJobOptions;
 }
@@ -705,6 +719,7 @@ void TransferDialog::putJobOptions() {
   mPreCommand->setText(mJobOptions->preCommand);
   mPostCommand->setText(mJobOptions->postCommand);
   mWebhookUrl->setText(mJobOptions->webhookUrl);
+  mWatchFolder->setChecked(mJobOptions->watchFolder);
 }
 
 void TransferDialog::done(int r) {
