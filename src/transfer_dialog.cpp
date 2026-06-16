@@ -252,6 +252,27 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       layout->insertWidget(idx + 1, mRbBisync);
   }
 
+  auto *backupDirLabel = new QLabel("Backup dir:", this);
+  backupDirLabel->setToolTip(
+      "rclone --backup-dir path. Use {date} for auto-dated folders.\n"
+      "Example: remote:backups/{date}");
+  mBackupDir = new QLineEdit(this);
+  mBackupDir->setPlaceholderText("remote:backups/{date} or blank to skip");
+  mBackupDir->setAccessibleName("Backup directory pattern");
+  ui.gridLayout->addWidget(backupDirLabel, 13, 0);
+  ui.gridLayout->addWidget(mBackupDir, 13, 1);
+
+  auto *retainLabel = new QLabel("Retain backups:", this);
+  retainLabel->setToolTip(
+      "Maximum number of backup-dir snapshots to keep. 0 = keep all.");
+  mBackupRetain = new QSpinBox(this);
+  mBackupRetain->setMinimum(0);
+  mBackupRetain->setMaximum(9999);
+  mBackupRetain->setSpecialValueText("Keep all");
+  mBackupRetain->setAccessibleName("Backup retention count");
+  ui.gridLayout->addWidget(retainLabel, 14, 0);
+  ui.gridLayout->addWidget(mBackupRetain, 14, 1);
+
   mWatchFolder = new QCheckBox("Watch local source and rerun on changes", this);
   mWatchFolder->setToolTip(
       "Saved upload tasks can watch the local source folder and rerun after "
@@ -831,6 +852,8 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->webhookUrl = mWebhookUrl->text().trimmed();
   mJobOptions->watchFolder =
       mWatchFolder->isChecked() && mJobOptions->jobType == JobOptions::Upload;
+  mJobOptions->backupDir = mBackupDir->text().trimmed();
+  mJobOptions->backupRetainCount = mBackupRetain->value();
 
   return mJobOptions;
 }
@@ -902,6 +925,8 @@ void TransferDialog::putJobOptions() {
   mPostCommand->setText(mJobOptions->postCommand);
   mWebhookUrl->setText(mJobOptions->webhookUrl);
   mWatchFolder->setChecked(mJobOptions->watchFolder);
+  mBackupDir->setText(mJobOptions->backupDir);
+  mBackupRetain->setValue(mJobOptions->backupRetainCount);
 }
 
 void TransferDialog::done(int r) {

@@ -154,6 +154,15 @@ QStringList JobOptions::getOptions() const {
     list << "--name-transform" << nameTransform;
   }
 
+  if (!backupDir.isEmpty()) {
+    QString dated = backupDir;
+    if (dated.contains("{date}")) {
+      dated.replace("{date}",
+                    QDateTime::currentDateTime().toString("yyyy-MM-dd_HHmmss"));
+    }
+    list << "--backup-dir" << dated;
+  }
+
   list << "--use-json-log";
   list << "--stats" << "1s";
   list << "--stats-file-name-length" << "0";

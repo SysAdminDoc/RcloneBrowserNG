@@ -65,6 +65,8 @@ public:
   QString postCommand;
   QString webhookUrl;
   bool watchFolder;
+  QString backupDir;
+  int backupRetainCount = 0;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;
