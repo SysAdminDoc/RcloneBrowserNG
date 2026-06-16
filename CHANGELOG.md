@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Dry-run diff preview in the transfer dialog — a "Preview Changes" button runs the transfer with --dry-run and shows which files would be added, changed, or deleted inline before committing; JSON log output is parsed into readable messages
 -   NEW: Redacted diagnostics and support bundle — Help > Copy Diagnostics copies environment/capability info to the clipboard; Help > Save Support Bundle writes a full report including recent job/mount output with secrets (passwords, tokens, rc credentials) automatically redacted
 -   NEW: Runtime capability and dependency gates — a `RcloneCapabilities` helper detects rclone version, config path, Qt version, mount backend, and feature support (--name-transform, --list-cutoff, bisync, job/batch); the About dialog shows environment info; Help > Copy Diagnostics copies a full summary to the clipboard for bug reports; the transfer dialog disables --name-transform when rclone < 1.74
 -   NEW: Pre/post job hooks — saved tasks can run a shell command before and/or after the transfer; a failing pre-command prompts to continue or abort; post-commands run detached after job completion
