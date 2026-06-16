@@ -1,6 +1,7 @@
 #include "remote_widget.h"
 #include "export_list_writer.h"
 #include "export_dialog.h"
+#include "folder_compare.h"
 #include "icon_cache.h"
 #include "item_model.h"
 #include "list_of_job_options.h"
@@ -826,9 +827,13 @@ QString root = isLocal ? "/" : QString();
         menu.addAction(ui.link);
 
         QAction *archiveAction = nullptr;
+        QAction *compareAction = nullptr;
         QAction *speedAction = nullptr;
         if (model->isFolder(index)) {
           menu.addSeparator();
+          compareAction = menu.addAction("Compare Folders...");
+          compareAction->setToolTip(
+              "Run rclone check --combined against another folder.");
           archiveAction = menu.addAction("Archive...");
           archiveAction->setToolTip(
               "Move files older than a threshold to a dated archive folder.");
@@ -838,14 +843,31 @@ QString root = isLocal ? "/" : QString();
         }
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
-        if (!chosen || (chosen != archiveAction && chosen != speedAction)) {
+        if (!chosen || (chosen != compareAction && chosen != archiveAction &&
+                        chosen != speedAction)) {
           return;
         }
 
         QString path = model->path(index).path();
         QString target = remote + ":" + path;
 
-        if (chosen == archiveAction) {
+        if (chosen == compareAction) {
+          auto compareSettings = GetSettings();
+          QString lastCompare =
+              compareSettings->value("Settings/lastCompareTarget").toString();
+          FolderCompareDialog dialog(
+              target, lastCompare, getDriveSharedArgs(),
+              [this](const QString &message, const QString &source,
+                     const QString &dest, const QStringList &args) {
+                emit addTransfer(message, source, dest, args);
+              },
+              this);
+          dialog.exec();
+          if (!dialog.destinationPath().isEmpty()) {
+            compareSettings->setValue("Settings/lastCompareTarget",
+                                      dialog.destinationPath());
+          }
+        } else if (chosen == archiveAction) {
           bool ok;
           QString age = QInputDialog::getText(
               this, "Archive", "Move files older than:", QLineEdit::Normal,

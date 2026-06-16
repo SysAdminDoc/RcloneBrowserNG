@@ -356,12 +356,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2 — Differentiator features (supplemental)
 
-- [ ] P2 — Folder comparison view (rclone check --combined)
-  Why: side-by-side diff of two locations with per-row actions is table-stakes in FreeFileSync/WinSCP and paywalled by RcloneView Plus; broader than the existing task-scoped dry-run-preview item.
-  Evidence: rcloneview.com free-vs-plus; freefilesync.org comparison docs; rclone.org/commands/rclone_check (--combined output)
-  Touches: new compare widget, remote_widget.cpp entry point
-  Acceptance: pick two paths (local or remote), see matched/differing/missing files in a filterable list, and enqueue copy/delete actions per selection.
-  Complexity: L
 
 
 - [ ] P2 — Edit-in-place: open remote file, auto re-upload on save
