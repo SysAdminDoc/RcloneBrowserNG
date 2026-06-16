@@ -227,12 +227,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: a running job's panel lets the user change bandwidth limit and transfer concurrency without restarting the job.
   Complexity: M
 
-- [ ] P3 — Bandwidth timetable editor
-  Why: rclone's `--bwlimit` timetable syntax ("08:00,512k 19:00,off") is powerful and undiscoverable; extends the existing bandwidth-limit roadmap item with a week-grid editor.
-  Evidence: rclone.org/docs (--bwlimit timetable); github.com/H4R1B0/rclone-gui
-  Touches: preferences_dialog.cpp or transfer_dialog.cpp
-  Acceptance: a grid editor produces/parses the timetable string; tooltip shows the generated flag.
-  Complexity: M
 
 - [ ] P3 — OS shell integration: Explorer "Send to remote…" / Finder Services
   Why: pushing files without opening the app is the "native feel" differentiator a Qt app can own against webview competitors.

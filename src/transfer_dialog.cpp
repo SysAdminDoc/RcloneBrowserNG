@@ -30,6 +30,115 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textExtra->setPlaceholderText("Additional rclone flags for this transfer");
   ui.textDescription->setPlaceholderText("Name this task if you want to save it");
   ui.textBandwidth->setPlaceholderText("off, 10M, or timetable syntax");
+  auto *bwEditBtn = new QToolButton(this);
+  bwEditBtn->setText("...");
+  bwEditBtn->setToolTip("Open the bandwidth timetable editor.");
+  bwEditBtn->setAccessibleName("Edit bandwidth timetable");
+  bwEditBtn->setMaximumWidth(28);
+  if (auto *form =
+          qobject_cast<QFormLayout *>(ui.textBandwidth->parentWidget()->layout())) {
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(ui.textBandwidth, &row, &role);
+    if (row >= 0) {
+      auto *bwRow = new QHBoxLayout();
+      form->removeWidget(ui.textBandwidth);
+      bwRow->addWidget(ui.textBandwidth, 1);
+      bwRow->addWidget(bwEditBtn);
+      form->setLayout(row, QFormLayout::FieldRole, bwRow);
+    }
+  }
+  QObject::connect(bwEditBtn, &QToolButton::clicked, this, [this]() {
+    QDialog dlg(this);
+    dlg.setWindowTitle("Bandwidth Timetable");
+    dlg.resize(500, 350);
+    auto *layout = new QVBoxLayout(&dlg);
+    layout->setSpacing(8);
+    auto *hint = new QLabel(
+        "Define time-of-day bandwidth limits. Format: HH:MM,speed "
+        "(e.g. 08:00,512k). Use 'off' for unlimited.", &dlg);
+    hint->setWordWrap(true);
+    UiPolish::SetMuted(hint);
+    layout->addWidget(hint);
+
+    auto *table = new QTableWidget(0, 2, &dlg);
+    table->setHorizontalHeaderLabels({"Time (HH:MM)", "Bandwidth"});
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->setAccessibleName("Bandwidth timetable entries");
+    layout->addWidget(table, 1);
+
+    QString current = ui.textBandwidth->text().trimmed();
+    QStringList entries = current.split(' ', Qt::SkipEmptyParts);
+    for (const QString &entry : entries) {
+      int comma = entry.indexOf(',');
+      if (comma > 0) {
+        int row = table->rowCount();
+        table->insertRow(row);
+        table->setItem(row, 0,
+                       new QTableWidgetItem(entry.left(comma)));
+        table->setItem(row, 1,
+                       new QTableWidgetItem(entry.mid(comma + 1)));
+      }
+    }
+
+    auto *btnRow = new QHBoxLayout();
+    auto *addBtn = new QPushButton("Add Row", &dlg);
+    auto *removeBtn = new QPushButton("Remove Row", &dlg);
+    btnRow->addWidget(addBtn);
+    btnRow->addWidget(removeBtn);
+    btnRow->addStretch();
+    layout->addLayout(btnRow);
+
+    QObject::connect(addBtn, &QPushButton::clicked, &dlg, [table]() {
+      int row = table->rowCount();
+      table->insertRow(row);
+      table->setItem(row, 0, new QTableWidgetItem("00:00"));
+      table->setItem(row, 1, new QTableWidgetItem("off"));
+    });
+    QObject::connect(removeBtn, &QPushButton::clicked, &dlg, [table]() {
+      int row = table->currentRow();
+      if (row >= 0)
+        table->removeRow(row);
+    });
+
+    auto *preview = new QLabel(&dlg);
+    UiPolish::SetMuted(preview);
+    layout->addWidget(preview);
+
+    auto updatePreview = [table, preview]() {
+      QStringList parts;
+      for (int i = 0; i < table->rowCount(); ++i) {
+        auto *t = table->item(i, 0);
+        auto *b = table->item(i, 1);
+        if (t && b && !t->text().isEmpty())
+          parts << t->text() + "," + b->text();
+      }
+      preview->setText("Preview: --bwlimit \"" + parts.join(' ') + "\"");
+    };
+    QObject::connect(table, &QTableWidget::cellChanged, &dlg,
+                     [updatePreview](int, int) { updatePreview(); });
+    updatePreview();
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
+                     &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
+                     &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dlg.exec() == QDialog::Accepted) {
+      QStringList parts;
+      for (int i = 0; i < table->rowCount(); ++i) {
+        auto *t = table->item(i, 0);
+        auto *b = table->item(i, 1);
+        if (t && b && !t->text().isEmpty())
+          parts << t->text() + "," + b->text();
+      }
+      ui.textBandwidth->setText(parts.join(' '));
+    }
+  });
+
   ui.textMinSize->setPlaceholderText("100M");
   ui.textMinAge->setPlaceholderText("1d");
   ui.textMaxAge->setPlaceholderText("30d");
