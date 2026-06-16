@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Pre/post job hooks — saved tasks can run a shell command before and/or after the transfer; a failing pre-command prompts to continue or abort; post-commands run detached after job completion
 -   NEW: Multi-file selection in the remote file browser — Shift-click and Ctrl-click select multiple files and folders; batch delete works on all selected items; single-item actions (rename, move, mount, stream, link) are disabled when multiple items are selected
 -   NEW: Transfer dialog exposes rclone's `--name-transform` flag (rclone >= 1.74) for file name transformations such as lowercase conversion or regex replacements
 -   NEW: Heartbeat monitoring integration — saved tasks can have an optional URL (Healthchecks.io, ntfy.sh, or any HTTP endpoint) that is pinged on job completion; success sends GET to the URL, failure sends GET to URL/fail
