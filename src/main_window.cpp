@@ -885,6 +885,12 @@ MainWindow::MainWindow() {
   mStatusMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   ui.statusBar->addWidget(mStatusMessage, 1);
 
+  mStatsLabel = new QLabel();
+  mStatsLabel->setAccessibleName("Cumulative transfer statistics");
+  UiPolish::SetMuted(mStatsLabel);
+  ui.statusBar->addPermanentWidget(mStatsLabel);
+  updateGlobalStats();
+
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
   refreshTaskWatchers();
 
@@ -2332,6 +2338,35 @@ void MainWindow::persistJobHistory(const JobHistoryEntry &entry) {
   if (!JobHistoryStore::Append(entry, &error)) {
     setStatusMessage("Job history could not be saved: " + error);
   }
+  if (entry.success && entry.bytes > 0) {
+    auto settings = GetSettings();
+    qint64 totalBytes =
+        settings->value("Stats/totalBytes", 0).toLongLong() + entry.bytes;
+    int totalFiles =
+        settings->value("Stats/totalFiles", 0).toInt() + entry.files;
+    int totalJobs = settings->value("Stats/totalJobs", 0).toInt() + 1;
+    settings->setValue("Stats/totalBytes", totalBytes);
+    settings->setValue("Stats/totalFiles", totalFiles);
+    settings->setValue("Stats/totalJobs", totalJobs);
+    updateGlobalStats();
+  }
+}
+
+void MainWindow::updateGlobalStats() {
+  auto settings = GetSettings();
+  qint64 totalBytes = settings->value("Stats/totalBytes", 0).toLongLong();
+  int totalFiles = settings->value("Stats/totalFiles", 0).toInt();
+  int totalJobs = settings->value("Stats/totalJobs", 0).toInt();
+  if (totalJobs == 0) {
+    mStatsLabel->clear();
+    return;
+  }
+  mStatsLabel->setText(
+      QString("%1 transferred | %2 files | %3 jobs")
+          .arg(GetNiceSize(static_cast<quint64>(totalBytes)))
+          .arg(totalFiles)
+          .arg(totalJobs));
+  mStatsLabel->setToolTip("Cumulative transfer statistics across all sessions.");
 }
 
 void MainWindow::sendHeartbeat(const QString &url, bool success) {

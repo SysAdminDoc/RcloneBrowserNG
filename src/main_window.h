@@ -45,6 +45,7 @@ private:
   bool mNotifyFinishedTransfers;
 
   QLabel *mStatusMessage;
+  QLabel *mStatsLabel = nullptr;
   QLineEdit *mRemotesFilter = nullptr;
   QListWidgetItem *mRemotesFilterEmptyItem = nullptr;
   QLineEdit *mTasksFilter = nullptr;
@@ -90,6 +91,7 @@ private:
   void noteJobFinished(bool success);
   void updateJobIndicators();
   void persistJobHistory(const JobHistoryEntry &entry);
+  void updateGlobalStats();
   void sendHeartbeat(const QString &url, bool success);
   void sendWebhook(const QString &url, const QString &taskName, bool success,
                    const QString &error = QString());
