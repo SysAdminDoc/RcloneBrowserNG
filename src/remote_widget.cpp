@@ -292,6 +292,17 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.buttonExport->setAccessibleName("Export selected file list");
   ui.buttonLink->setAccessibleName("Create public link");
 
+  mFileFilter = new QLineEdit(this);
+  mFileFilter->setPlaceholderText("Filter files in current folder...");
+  mFileFilter->setClearButtonEnabled(true);
+  mFileFilter->setAccessibleName("Filter files");
+  mFileFilter->setVisible(false);
+  UiPolish::SetPathField(mFileFilter, "Filter files");
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.tree->parentWidget()->layout())) {
+    layout->insertWidget(layout->indexOf(ui.tree), mFileFilter);
+  }
+
   ui.tree->sortByColumn(0, Qt::AscendingOrder);
   ui.tree->header()->setSectionsMovable(false);
   ui.tree->header()->setHighlightSections(false);
@@ -303,6 +314,31 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                    &ItemModel::setDriveShared);
   ui.tree->setModel(model);
   QTimer::singleShot(0, ui.tree, SLOT(setFocus()));
+
+  QObject::connect(mFileFilter, &QLineEdit::textChanged, this,
+                   [this, model](const QString &text) {
+                     QModelIndex root = ui.tree->rootIndex();
+                     int rows = model->rowCount(root);
+                     for (int i = 0; i < rows; ++i) {
+                       QModelIndex idx = model->index(i, 0, root);
+                       bool match =
+                           text.isEmpty() ||
+                           model->data(idx, Qt::DisplayRole)
+                               .toString()
+                               .contains(text, Qt::CaseInsensitive);
+                       ui.tree->setRowHidden(i, root, !match);
+                     }
+                   });
+
+  QAction *filterAction = new QAction(this);
+  filterAction->setShortcut(QKeySequence("Ctrl+F"));
+  filterAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+  addAction(filterAction);
+  QObject::connect(filterAction, &QAction::triggered, this, [this]() {
+    mFileFilter->setVisible(true);
+    mFileFilter->setFocus(Qt::ShortcutFocusReason);
+    mFileFilter->selectAll();
+  });
 
   QAction *editPathAction = new QAction(this);
   editPathAction->setShortcut(QKeySequence("Ctrl+L"));

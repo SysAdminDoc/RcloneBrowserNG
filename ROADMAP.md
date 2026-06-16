@@ -59,8 +59,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #71; mmozeiko #80, #98_
 
 
-- [ ] **Search / filter files** — Search within the current remote/directory.  
-  _Sources: mmozeiko #64_
 
 
 - [ ] **Browse Google Drive trash** — Access the trash folder for recovery.  

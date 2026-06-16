@@ -29,6 +29,7 @@ private:
   Ui::RemoteWidget ui;
   ItemModel *mModel = nullptr;
   QWidget *mBreadcrumbBar = nullptr;
+  QLineEdit *mFileFilter = nullptr;
   QHBoxLayout *mBreadcrumbLayout = nullptr;
   bool mIsLocal = false;
 

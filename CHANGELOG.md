@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: File filter in remote browser — Ctrl+F opens a filter bar above the tree view that hides non-matching files by name within the current directory listing
 -   NEW: Dedupe GUI — right-click a folder in the remote browser to run `rclone dedupe` with a mode picker (skip, first, newest, oldest, largest, smallest, rename)
 -   NEW: Google Drive deletes now use trash — delete operations on Google Drive remotes automatically include `--drive-use-trash` so files go to Google Drive's trash instead of being permanently deleted
 -   NEW: Retry failed jobs — failed transfers show a Retry button that re-runs the same transfer with the original arguments
