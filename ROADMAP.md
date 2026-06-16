@@ -55,8 +55,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 ### Advanced Operations
 
-- [ ] **Remote-to-remote transfers** — Copy/sync directly between two remotes without local intermediary.  
-  _Sources: mmozeiko #27_
 
 - [ ] **Exclude files UI for sync** — Visual exclude/include filter builder in the transfer dialog.  
   _Sources: kapitainsky #252_
@@ -94,8 +92,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Create and save connection profiles** — Named profiles with different rclone configs/options.  
-  _Sources: mmozeiko #102_
 
 ---
 
