@@ -277,12 +277,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: a task can enable dated backup-dirs with a retention rule the app enforces after successful runs.
   Complexity: M
 
-- [ ] P3 — Bookmarks for deep remote paths with per-remote accent colors
-  Why: FTP-client table-stakes (Cyberduck bookmarks, WinSCP session colors) missing from rclone GUIs; colors are a cheap wrong-target-sync safety affordance.
-  Evidence: docs.cyberduck.io/cyberduck/bookmarks/; miroshnikov/filefive; newhinton/Round-Sync#334
-  Touches: remote_widget.cpp, main_window.cpp tabs, settings
-  Acceptance: pin remote:path bookmarks reachable from the main list and tab context menu; each remote can have an accent color shown on its tab.
-  Complexity: S
 
 
 - [ ] P3 — Bisync conflict-resolution dialog
