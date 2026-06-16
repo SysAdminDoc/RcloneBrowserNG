@@ -57,8 +57,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Browse Google Drive trash** — Access the trash folder for recovery.  
-  _Sources: mmozeiko #37_
 
 - [ ] **Tiles/icon view for remotes list** — Alternative to list view when many remotes are configured.  
   _Sources: kapitainsky #76_
