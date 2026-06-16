@@ -3106,12 +3106,35 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
 
             if (compareVersion(latest.toStdString(),
                                currentVersion.toStdString()) == 1) {
-              QMessageBox::information(
-                  this, "rclone update available",
-                  QString(R"(<p>A newer version of rclone is available.</p>)"
-                          R"(<p>Installed: v%1<br />Available: v%2</p>)"
-                          R"(<p>Visit the rclone <a href="https://rclone.org/downloads/">downloads</a> page to upgrade.</p>)")
-                      .arg(currentVersion, latest));
+              QMessageBox box(QMessageBox::Information,
+                              "rclone update available",
+                              QString("A newer version of rclone is available.\n\n"
+                                      "Installed: v%1\nAvailable: v%2")
+                                  .arg(currentVersion, latest),
+                              QMessageBox::NoButton, this);
+              auto *selfUpdate =
+                  box.addButton("Run selfupdate", QMessageBox::AcceptRole);
+              selfUpdate->setToolTip(
+                  "Run rclone selfupdate to upgrade in place.");
+              box.addButton("Later", QMessageBox::RejectRole);
+              box.exec();
+              if (box.clickedButton() == selfUpdate) {
+                QProcess proc;
+                proc.setProcessChannelMode(QProcess::MergedChannels);
+                proc.start(GetRclone(), QStringList() << "selfupdate");
+                proc.waitForFinished(60000);
+                if (proc.exitCode() == 0) {
+                  QMessageBox::information(
+                      this, "rclone updated",
+                      "rclone has been updated to v" + latest +
+                          ".\nRestart the app to use the new version.");
+                } else {
+                  QMessageBox::warning(
+                      this, "selfupdate failed",
+                      "rclone selfupdate failed:\n" +
+                          QString::fromUtf8(proc.readAll()).left(500));
+                }
+              }
             }
           });
 }
@@ -3157,14 +3180,20 @@ void MainWindow::checkBrowserUpdate() {
     QString latest = doc.object().value("tag_name").toString().trimmed();
 
     if (compareVersion(latest.toStdString(), RCLONE_BROWSER_VERSION) == 1) {
-      QMessageBox::information(
-          this, "App update available",
-          QString(
-              R"(<p>A newer version of Rclone Browser NG is available.</p>)"
-              R"(<p>Installed: v)" RCLONE_BROWSER_VERSION
-              R"(<br />Available: v%1</p>)"
-              R"(<p>Visit <a href="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest">releases</a> to download.</p>)")
-              .arg(latest));
+      QMessageBox box(QMessageBox::Information, "App update available",
+                      QString("A newer version of Rclone Browser NG is "
+                              "available.\n\nInstalled: v" RCLONE_BROWSER_VERSION
+                              "\nAvailable: v%1")
+                          .arg(latest),
+                      QMessageBox::NoButton, this);
+      auto *downloadBtn =
+          box.addButton("Open Downloads", QMessageBox::AcceptRole);
+      box.addButton("Later", QMessageBox::RejectRole);
+      box.exec();
+      if (box.clickedButton() == downloadBtn) {
+        QDesktopServices::openUrl(QUrl(
+            "https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest"));
+      }
     }
   });
 }
