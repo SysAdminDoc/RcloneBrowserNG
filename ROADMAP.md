@@ -328,3 +328,37 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: drag a file/folder from one remote tab to the tab header of another remote; the target tab activates; dropping into the tree opens a transfer dialog pre-filled with source and destination paths.
   Complexity: M
 
+### 2026-06-16 Audit Findings (deferred)
+
+- [ ] P2 — Windows schtasks CSV parsing breaks on quoted fields with commas
+  Why: `QString::split(',')` does not respect CSV quoting; non-English locales may embed commas in date fields, producing wrong column offsets in `listSchedules`. Also "Disabled" status check fails on non-English Windows.
+  Where: `src/schedule_manager.cpp` line 243
+
+- [ ] P2 — cryptcheck argument order may be swapped for crypt-vs-plaintext remotes
+  Why: `rclone cryptcheck` expects plaintext-source crypt-destination but the folder compare dialog passes args in the same order as `check`; results may be incorrect when users pick the wrong direction.
+  Where: `src/folder_compare.cpp` line 262
+
+- [ ] P2 — Send-To always uploads to remote root with no subfolder selection
+  Why: `handleSendToFiles` uses `remote + ":"` as the destination with no path picker; files always land at the top level of the remote.
+  Where: `src/main_window.cpp` handleSendToFiles
+
+- [ ] P2 — JSON task store has no schema version check on read
+  Why: `ReadJobOptionsStoreJson` does not check the `version` field; a future schema change could silently lose fields without warning.
+  Where: `src/job_options_store.cpp` ReadJobOptionsStoreJson
+
+- [ ] P3 — File filter (Ctrl+F) does not re-apply after directory navigation
+  Why: the filter text stays visible but newly loaded children are not filtered; user must retype to filter the new view.
+  Where: `src/remote_widget.cpp` mFileFilter textChanged handler
+
+- [ ] P3 — preCommand blocks the UI thread for up to 30 seconds
+  Why: pre-job commands run synchronously with `waitForFinished(30000)` on the main thread.
+  Where: `src/main_window.cpp` runJobOptions
+
+- [ ] P3 — Staging queue has no drag-and-drop reorder support
+  Why: `mStagingList` does not set `DragDropMode(InternalMove)`; users cannot reorder staged transfers.
+  Where: `src/main_window.cpp` staging queue setup
+
+- [ ] P3 — JSON enum casts from untrusted integers are unclamped
+  Why: `jobOptionsFromJson` casts `.toInt()` directly to `Operation`/`JobType`/`SyncTiming` enums; a tampered JSON with out-of-range values produces undefined behavior at switch sites.
+  Where: `src/job_options_store.cpp` jobOptionsFromJson
+
