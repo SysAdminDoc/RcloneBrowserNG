@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Serve management — right-click a folder to start `rclone serve` with protocol selection (HTTP, WebDAV, FTP, DLNA, S3, NFS) and configurable listen address
 -   NEW: SOCKS proxy support — the proxy settings now include a SOCKS proxy field (socks5://host:port) that sets `ALL_PROXY` for rclone, completing the HTTP/HTTPS/SOCKS proxy configuration
 -   NEW: Visual exclude filter builder — the transfer dialog's exclude area now has quick-add buttons for common patterns (temp files, OS junk, Git, Node modules, hidden files) that append to the exclude list
 -   NEW: Extended mount dialog — the mount action now shows a proper dialog with mount point input, VFS cache mode picker (off/minimal/writes/full), and a read-only toggle; settings persist across sessions
