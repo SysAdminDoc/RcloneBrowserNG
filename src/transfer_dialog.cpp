@@ -1,6 +1,7 @@
 #include "transfer_dialog.h"
 #include "list_of_job_options.h"
 #include "interface_polish.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 
 TransferDialog::TransferDialog(bool isDownload, bool isDrop,
@@ -49,6 +50,14 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mNameTransform = new QLineEdit(this);
   mNameTransform->setPlaceholderText("lowercase, s/regex/replacement/, or blank to skip");
   mNameTransform->setAccessibleName("Name transform pattern");
+  {
+    auto caps = RcloneCapabilities::detect();
+    if (!caps.hasNameTransform()) {
+      mNameTransform->setDisabled(true);
+      mNameTransform->setPlaceholderText("Requires rclone >= 1.74");
+      nameTransformLabel->setEnabled(false);
+    }
+  }
   ui.gridLayout->addWidget(nameTransformLabel, 9, 0);
   ui.gridLayout->addWidget(mNameTransform, 9, 1);
   auto *preCommandLabel = new QLabel("Pre-job command:", this);
