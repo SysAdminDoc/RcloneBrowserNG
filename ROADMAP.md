@@ -38,8 +38,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Convert tasks.bin to human-readable format** — Replace binary task storage with JSON/XML.  
-  _Sources: kapitainsky #143_
 
 
 ### File Browser / Navigation

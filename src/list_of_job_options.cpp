@@ -7,7 +7,7 @@
 #include <utils.h>
 
 ListOfJobOptions *ListOfJobOptions::SavedJobOptions = nullptr;
-const QString ListOfJobOptions::persistenceFileName = "tasks.bin";
+const QString ListOfJobOptions::persistenceFileName = "tasks.json";
 
 ListOfJobOptions::ListOfJobOptions() {}
 
@@ -82,24 +82,35 @@ QString ListOfJobOptions::GetPersistenceFilePath() {
 }
 
 bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
-  QString filePath = GetPersistenceFilePath();
-  QFile file(filePath);
-  if (!file.open(QIODevice::ReadOnly))
+  QString jsonPath = GetPersistenceFilePath();
+  QFile jsonFile(jsonPath);
+  if (jsonFile.open(QIODevice::ReadOnly)) {
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&jsonFile);
+    jsonFile.close();
+    if (loaded.error.isEmpty()) {
+      ClearJobOptionsList(&dataIn.tasks);
+      dataIn.tasks = loaded.tasks;
+      return true;
+    }
+  }
+
+  QString binPath = jsonPath;
+  binPath.replace(".json", ".bin");
+  QFile binFile(binPath);
+  if (!binFile.open(QIODevice::ReadOnly))
     return false;
 
-  JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&file);
+  JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&binFile);
+  binFile.close();
   if (!loaded.error.isEmpty()) {
-    file.close();
-
-    // rename the bad file aside so the user doesn't lose it entirely
-    QString corruptPath = filePath + ".corrupt";
+    QString corruptPath = binPath + ".corrupt";
     int n = 1;
     while (QFile::exists(corruptPath +
                          (n > 1 ? QString::number(n) : QString()))) {
       ++n;
     }
     corruptPath += (n > 1 ? QString::number(n) : QString());
-    QFile::rename(filePath, corruptPath);
+    QFile::rename(binPath, corruptPath);
 
     dataIn.mLastLoadError =
         QString("Saved tasks file could not be loaded (%1).\n\n"
@@ -111,9 +122,7 @@ bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
 
   ClearJobOptionsList(&dataIn.tasks);
   dataIn.tasks = loaded.tasks;
-  if (loaded.migratedFromLegacy) {
-    dataIn.PersistToUserData();
-  }
+  dataIn.PersistToUserData();
   return true;
 }
 
@@ -124,7 +133,7 @@ bool ListOfJobOptions::PersistToUserData() {
   if (!file.open(QIODevice::WriteOnly))
     return false;
   QString error;
-  if (!WriteJobOptionsStore(&file, tasks, &error))
+  if (!WriteJobOptionsStoreJson(&file, tasks, &error))
     return false;
 
   if (!file.commit())

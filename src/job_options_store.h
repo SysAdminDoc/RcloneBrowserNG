@@ -12,4 +12,10 @@ struct JobOptionsStoreLoadResult {
 JobOptionsStoreLoadResult ReadJobOptionsStore(QIODevice *device);
 bool WriteJobOptionsStore(QIODevice *device, const QList<JobOptions *> &tasks,
                           QString *error = nullptr);
+
+JobOptionsStoreLoadResult ReadJobOptionsStoreJson(QIODevice *device);
+bool WriteJobOptionsStoreJson(QIODevice *device,
+                              const QList<JobOptions *> &tasks,
+                              QString *error = nullptr);
+
 void ClearJobOptionsList(QList<JobOptions *> *tasks);
