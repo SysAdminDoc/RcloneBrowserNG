@@ -88,7 +88,7 @@ void CrossRemoteSearchDialog::startSearch() {
   int started = 0;
   for (const QString &remote : mRemotes) {
     auto *proc = new QProcess(this);
-    proc->setProcessChannelMode(QProcess::MergedChannels);
+    proc->setProcessChannelMode(QProcess::SeparateChannels);
     UseRclonePassword(proc);
 
     QStringList args;
@@ -157,11 +157,18 @@ void CrossRemoteSearchDialog::cancelSearch() {
   mRunning.clear();
   mSearchButton->setEnabled(true);
   mCancelButton->setEnabled(false);
+  if (mTotalMatches > 0)
+    mStatus->setText(
+        QString("Cancelled. %1 file(s) found before cancellation.")
+            .arg(mTotalMatches));
+  else
+    mStatus->setText("Search cancelled.");
 }
 
 void CrossRemoteSearchDialog::addResult(const QString &remote,
                                          const QString &path, qint64 size,
                                          const QString &modTime) {
+  mResults->setSortingEnabled(false);
   int row = mResults->rowCount();
   mResults->insertRow(row);
   mResults->setItem(row, 0, new QTableWidgetItem(remote));
@@ -178,6 +185,7 @@ void CrossRemoteSearchDialog::addResult(const QString &remote,
     displayTime = dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
   mResults->setItem(row, 3, new QTableWidgetItem(displayTime));
 
+  mResults->setSortingEnabled(true);
   ++mTotalMatches;
   mStatus->setText(
       QString("Searching... %1 found so far (%2 remote(s) pending)")

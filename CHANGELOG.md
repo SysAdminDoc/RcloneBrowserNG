@@ -1,6 +1,21 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   SECURITY: Schedule manager task name sanitizer now allowlists alphanumeric, dash, underscore, dot, and space only — blocks crontab newline injection, XML injection in macOS plists, and shell metachar injection across all platforms
+-   SECURITY: Linux crontab entries now use single-quote shell escaping for task names, preventing command injection through task names containing `$(...)` or backticks
+-   SECURITY: macOS launchd plist generation now XML-escapes `&`, `<`, `>` in task names and paths
+-   SECURITY: Remote URL upload (copyurl) now validates URL scheme — only http:// and https:// are allowed, blocking `file://` local-file-read attacks
+-   FIXED: Google Drive trash listing was broken — `readAllStandardOutput()` returned empty data because `MergedChannels` mixed stderr into the output buffer; switched to `SeparateChannels` and made the call async to stop blocking the GUI for up to 30 seconds
+-   FIXED: File properties dialog switched from `MergedChannels` to `SeparateChannels` so hash/metadata output is parsed correctly
+-   FIXED: Transfer dialog grid row collision — backup-dir, bisync conflict-resolve, watch-folder, validation, and preview widgets were all fighting for rows 13-14; reassigned to distinct rows 14-19 so all fields are visible
+-   FIXED: Cross-remote search results table corruption — sorting was enabled during row insertion, causing Qt to reorder rows before all columns were populated; now disables sorting during each insertion
+-   FIXED: Cross-remote search cancel now shows a proper "Search cancelled" status instead of a stale "Searching..." message
+-   FIXED: Cross-remote search uses `SeparateChannels` so rclone error messages don't interfere with JSON parsing
+-   FIXED: Pause button now hides when a transfer finishes — previously remained visible and clickable (no-op but confusing)
+-   FIXED: Auto-mount on launch now validates that each remote still exists before attempting to mount, and requires a non-empty mount point — previously attempted mounts on deleted remotes with empty paths, entering a futile retry loop
+-   FIXED: Staging queue "Run All" on an empty queue now shows "Staging queue is empty" instead of the misleading "All staged transfers started"
+-   FIXED: Storage usage dialog now shows "N/A" for negative quota values (returned by some backends for unknown quotas) instead of displaying "16 EiB"
+-   FIXED: Send To handler now includes default exclude patterns and uploads to the remote root correctly
 -   NEW: Staleness detection and overdue-job alerting — a background timer checks job history against scheduled tasks every 5 minutes; if a scheduled task hasn't run successfully within its expected interval + margin, a tray notification warns about the overdue task(s)
 -   NEW: Auto-update capability — rclone update dialog now offers a "Run selfupdate" button that upgrades rclone in place; browser update dialog offers an "Open Downloads" button that launches the GitHub releases page directly
 -   NEW: Windows Explorer "Send to remote" integration — Help > Install Explorer Send To creates a shortcut in the Windows SendTo folder; right-click files in Explorer > Send to > Upload to Remote starts an upload to a chosen remote
