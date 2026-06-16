@@ -28,8 +28,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Auto-update capability** — Check for and apply updates to both RcloneBrowserNG and rclone.  
-  _Sources: kapitainsky #249, #195_
 
 ### Task Management
 
