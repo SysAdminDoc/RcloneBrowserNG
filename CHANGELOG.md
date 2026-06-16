@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Path bookmarks — right-click any item in the remote browser to "Bookmark this path"; bookmarks appear in the File > Bookmarks menu for one-click access to deep remote paths
 -   NEW: File properties dialog — right-click a file and choose Properties to see size, modification time, MIME type, all available hashes (including BLAKE3/XXH3/XXH128), and backend metadata via `rclone lsjson --stat --hash -M`
 -   NEW: Transfer staging queue — an "Enqueue" button in the transfer dialog adds operations to a staging list on the Tasks tab for batch review; "Run All" executes all staged transfers at once, "Clear" discards them
 -   NEW: Dual-pane interface — a "Dual Pane" button opens a side-by-side split view with two remote browsers in a QSplitter; pick the left and right remotes (or local filesystem) for Commander-style browsing

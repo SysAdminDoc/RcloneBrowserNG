@@ -1202,6 +1202,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *speedAction = nullptr;
         QAction *copyUrlAction = nullptr;
         QAction *dedupeAction = nullptr;
+        QAction *bookmarkAction = menu.addAction("Bookmark this path");
+        bookmarkAction->setToolTip(
+            "Save this path as a bookmark for quick access.");
         QAction *copyToRemote = nullptr;
         copyToRemote = menu.addAction("Copy to Remote...");
         copyToRemote->setToolTip(
@@ -1248,14 +1251,22 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                         chosen != archiveAction && chosen != speedAction &&
                         chosen != copyUrlAction && chosen != dedupeAction &&
                         chosen != copyToRemote && chosen != serveAction &&
-                        chosen != propsAction)) {
+                        chosen != propsAction && chosen != bookmarkAction)) {
           return;
         }
 
         QString path = model->path(index).path();
         QString target = remote + ":" + path;
 
-        if (chosen == editAction) {
+        if (chosen == bookmarkAction) {
+          auto settings = GetSettings();
+          QStringList bookmarks =
+              settings->value("Settings/bookmarks").toStringList();
+          if (!bookmarks.contains(target)) {
+            bookmarks.append(target);
+            settings->setValue("Settings/bookmarks", bookmarks);
+          }
+        } else if (chosen == editAction) {
           auto *session = new RemoteEditSession(
               target, QFileInfo(path).fileName(), getDriveSharedArgs(), this,
               this);

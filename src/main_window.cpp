@@ -1285,6 +1285,46 @@ MainWindow::MainWindow() {
   };
   rebuildConfigMenu();
   QObject::connect(configMenu, &QMenu::aboutToShow, this, rebuildConfigMenu);
+
+  auto *bookmarkMenu = new QMenu("&Bookmarks", this);
+  ui.menuFile->insertMenu(ui.quit, bookmarkMenu);
+  QObject::connect(bookmarkMenu, &QMenu::aboutToShow, this, [this, bookmarkMenu, makeRemoteWidget]() {
+    bookmarkMenu->clear();
+    auto settings = GetSettings();
+    QStringList bookmarks =
+        settings->value("Settings/bookmarks").toStringList();
+    for (const QString &bm : bookmarks) {
+      QAction *action = bookmarkMenu->addAction(bm);
+      QObject::connect(action, &QAction::triggered, this, [this, bm, makeRemoteWidget]() {
+        int colon = bm.indexOf(':');
+        if (colon <= 0) return;
+        QString remoteName = bm.left(colon);
+        QString remoteType = "unknown";
+        for (int i = 0; i < ui.remotes->count(); ++i) {
+          if (ui.remotes->item(i)->text() == remoteName) {
+            remoteType = ui.remotes->item(i)->data(Qt::UserRole).toString();
+            break;
+          }
+        }
+        auto *remote = makeRemoteWidget(remoteName, remoteType, ui.tabs);
+        int index = ui.tabs->addTab(remote, bm);
+        ui.tabs->setCurrentIndex(index);
+      });
+    }
+    if (!bookmarks.isEmpty()) {
+      bookmarkMenu->addSeparator();
+      auto *clearAll = bookmarkMenu->addAction("Clear All Bookmarks");
+      QObject::connect(clearAll, &QAction::triggered, this, [this]() {
+        auto s = GetSettings();
+        s->remove("Settings/bookmarks");
+        setStatusMessage("Bookmarks cleared.");
+      });
+    } else {
+      auto *empty = bookmarkMenu->addAction("No bookmarks saved");
+      empty->setEnabled(false);
+    }
+  });
+
   ui.menuFile->insertSeparator(ui.quit);
 
   mStatusMessage = new QLabel();
