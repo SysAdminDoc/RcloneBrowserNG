@@ -652,6 +652,14 @@ MainWindow::MainWindow() {
       bundle += "\n\n--- Recent output (secrets redacted) ---\n";
       bundle += Diagnostics::redactSecrets(log);
     }
+    bundle += "\n\n--- Tip ---\n";
+    bundle += "To capture HTTP requests as curl commands, re-run the failing "
+              "transfer with --dump curl added to the Extra flags field. The "
+              "output will appear in the transfer log and can be included in "
+              "bug reports.\n";
+    bundle +=
+        "Example: add --dump curl to Extra in the Transfer dialog, or use "
+        "the global Default rclone options in Preferences.\n";
     QFile file(path);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
       file.write(bundle.toUtf8());
@@ -1351,8 +1359,30 @@ MainWindow::MainWindow() {
     settings->setValue("Settings/globalBandwidthLimit",
                        mBandwidthLimit->text().trimmed());
   });
+  auto *snailBtn = new QToolButton(this);
+  snailBtn->setCheckable(true);
+  snailBtn->setText("Slow");
+  snailBtn->setToolTip(
+      "Snail mode: toggle between full speed and 128K throttle for all "
+      "new transfers. Click again to restore full speed.");
+  snailBtn->setAccessibleName("Snail mode bandwidth throttle");
+  QObject::connect(snailBtn, &QToolButton::toggled, this,
+                   [this, snailBtn](bool checked) {
+                     if (checked) {
+                       mBandwidthLimit->setText("128K");
+                       snailBtn->setText("Slow");
+                     } else {
+                       mBandwidthLimit->clear();
+                       snailBtn->setText("Full");
+                     }
+                     auto settings = GetSettings();
+                     settings->setValue("Settings/globalBandwidthLimit",
+                                        mBandwidthLimit->text().trimmed());
+                   });
+
   ui.statusBar->addPermanentWidget(bwLabel);
   ui.statusBar->addPermanentWidget(mBandwidthLimit);
+  ui.statusBar->addPermanentWidget(snailBtn);
 
   mStatsLabel = new QLabel();
   mStatsLabel->setAccessibleName("Cumulative transfer statistics");
