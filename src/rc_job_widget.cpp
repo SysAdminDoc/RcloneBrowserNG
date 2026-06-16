@@ -1,6 +1,7 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "interface_polish.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 
 
@@ -129,6 +130,7 @@ void RcJobWidget::poll() {
               mPollInFlight = false;
               if (!error.isEmpty()) {
                 ui.output->appendPlainText(error);
+                Diagnostics::appendLog("rc-job", error);
                 return;
               }
               if (status.value("finished").toBool()) {
@@ -136,7 +138,9 @@ void RcJobWidget::poll() {
                 const QString jobError = status.value("error").toString();
                 const QJsonValue output = status.value("output");
                 if (output.isString() && !output.toString().isEmpty()) {
-                  ui.output->appendPlainText(output.toString().trimmed());
+                  QString text = output.toString().trimmed();
+                  ui.output->appendPlainText(text);
+                  Diagnostics::appendLog("rc-job", text);
                 }
                 finish(success, jobError);
               }

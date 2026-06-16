@@ -1,5 +1,6 @@
 #include "mount_widget.h"
 #include "interface_polish.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 #include "vfs_upload_state.h"
 
@@ -101,7 +102,9 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
 
   QObject::connect(mProcess, &QProcess::readyRead, this, [=]() {
     while (mProcess->canReadLine()) {
-      ui.output->appendPlainText(mProcess->readLine().trimmed());
+      QString line = QString::fromUtf8(mProcess->readLine().trimmed());
+      ui.output->appendPlainText(line);
+      Diagnostics::appendLog("mount", line);
     }
   });
 

@@ -1,5 +1,6 @@
 #include "job_widget.h"
 #include "interface_polish.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 
 namespace {
@@ -117,7 +118,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
       QJsonDocument doc = QJsonDocument::fromJson(raw);
       if (!doc.isObject()) {
-        ui.output->appendPlainText(QString::fromUtf8(raw));
+        QString line = QString::fromUtf8(raw);
+        ui.output->appendPlainText(line);
+        Diagnostics::appendLog("job", line);
         continue;
       }
 
@@ -125,8 +128,12 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       QString msg = obj.value("msg").toString();
       QString level = obj.value("level").toString();
 
-      if (!msg.isEmpty())
+      if (!msg.isEmpty()) {
         ui.output->appendPlainText(msg);
+        if (level == "error" || level == "warning") {
+          Diagnostics::appendLog("job", msg);
+        }
+      }
 
       if (!obj.contains("stats"))
         continue;

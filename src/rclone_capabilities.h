@@ -20,3 +20,11 @@ struct RcloneCapabilities {
 
   static RcloneCapabilities detect();
 };
+
+namespace Diagnostics {
+
+QString redactSecrets(const QString &text);
+void appendLog(const QString &source, const QString &line);
+QString recentLog();
+
+} // namespace Diagnostics
