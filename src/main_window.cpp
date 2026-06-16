@@ -8,6 +8,7 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "remote_provider.h"
+#include "cross_remote_search.h"
 #include "schedule_manager.h"
 #include "remote_widget.h"
 #include "stream_widget.h"
@@ -1331,6 +1332,27 @@ MainWindow::MainWindow() {
       auto *empty = bookmarkMenu->addAction("No bookmarks saved");
       empty->setEnabled(false);
     }
+  });
+
+  auto *searchAction = new QAction("Search &Remotes...", this);
+  searchAction->setToolTip(
+      "Search for a filename across all configured remotes.");
+  ui.menuFile->insertAction(ui.quit, searchAction);
+  QObject::connect(searchAction, &QAction::triggered, this, [this]() {
+    QStringList remotes;
+    for (int i = 0; i < ui.remotes->count(); ++i) {
+      auto *item = ui.remotes->item(i);
+      if ((item->flags() & Qt::ItemIsEnabled) && !item->isHidden())
+        remotes << item->text();
+    }
+    if (remotes.isEmpty()) {
+      QMessageBox::information(this, "Search",
+                               "No remotes configured. Add a remote first.");
+      return;
+    }
+    auto *dlg = new CrossRemoteSearchDialog(remotes, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->show();
   });
 
   ui.menuFile->insertSeparator(ui.quit);

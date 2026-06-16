@@ -201,12 +201,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2 — Differentiator features (supplemental)
 
-- [ ] P2 — Cross-remote search
-  Why: searching a filename across all configured remotes is a genuine differentiator only one niche macOS app ships; streaming results keep it responsive.
-  Evidence: github.com/H4R1B0/rclone-gui (BFS streaming search); mmozeiko #64 (single-remote search already listed)
-  Touches: new search dialog, item_model.cpp / lsjson workers
-  Acceptance: a query fans out `lsjson -R --filter` per selected remote, streams matches into one sortable list with open-location actions; cancellable.
-  Complexity: L
 
 ### P2 — CI & supply chain (supplemental)
 

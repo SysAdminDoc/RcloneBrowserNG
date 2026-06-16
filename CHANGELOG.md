@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Cross-remote search — File > Search Remotes fans out `rclone lsjson -R --include` across all configured remotes, streaming matches into a sortable results table with remote, path, size, and modification time; cancellable; double-click a result to open its location
 -   NEW: Quick bandwidth snail toggle — a "Slow/Full" button in the status bar instantly drops all new transfers to 128K or restores full speed with one click
 -   NEW: cryptcheck mode in folder compare — the Compare Folders dialog now has a "Use cryptcheck" checkbox for verifying crypt remotes against their plaintext source
 -   NEW: Support bundle now includes `--dump curl` usage tip for capturing HTTP requests as curl commands in bug reports

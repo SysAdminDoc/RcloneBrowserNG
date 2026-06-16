@@ -71,6 +71,7 @@ set(SOURCE
   job_options_store.cpp
   list_of_job_options.cpp
   schedule_manager.cpp
+  cross_remote_search.cpp
 )
 
 set(OTHER
@@ -101,6 +102,7 @@ set(OTHER
   job_history.h
   list_of_job_options.h
   schedule_manager.h
+  cross_remote_search.h
   item_model.h
 )
 
