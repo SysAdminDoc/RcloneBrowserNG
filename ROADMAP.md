@@ -25,8 +25,6 @@ Bugs that affect core functionality for existing users.
 Features requested across multiple repos, forks, and forum threads. Sorted by community demand.
 
 ### Scheduling & Automation
-- [ ] **Scheduled tasks / cron** — Built-in scheduler for recurring sync/copy/mount jobs. The single most requested feature across the ecosystem.  
-  _Sources: kapitainsky #200, #177, #73; docker #34; rclone forum_
 
 
 
@@ -380,13 +378,6 @@ All items trace back to public GitHub issues/PRs:
 
 #### P2 — Scheduler & automation
 
-- [ ] P2 — Generate native OS scheduled tasks instead of an in-app timer
-  Why: the #1 community request ("Scheduled tasks / cron", P3) needs a reliable implementation. Resticprofile's pattern — one config, four native backends (systemd timer+service, launchd plist, Windows Task Scheduler XML, crontab) — is the gold standard. Vorta's QTimer-only approach is a cautionary tale: if the app isn't running, no backups occur. Native tasks survive reboots, crashes, and logouts without the app running as a tray daemon.
-  Evidence: creativeprojects.github.io/resticprofile/schedules; github.com/borgbase/vorta/issues/294 (users begging for OS-level scheduling); forum.rclone.org scheduler threads
-  Touches: new `ScheduleGenerator` module, saved tasks model, platform-specific generators (systemd .timer/.service, launchd .plist, schtasks.exe XML), `src/main_window.cpp` task panel
-  Acceptance: a saved task can be "installed" as a native OS scheduled task; the app lists installed schedules with status; uninstall removes the OS entry; works when the app is not running.
-  Complexity: L
-  Note: Supersedes the existing P3 "Scheduled tasks / cron" item with a concrete architecture. The three-tier permission model (system/user/user_logged_on from Resticprofile) should be adopted.
 
 
 #### P2 — Monitoring

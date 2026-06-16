@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Native OS task scheduling — the #1 most requested feature. Select a saved task and click Schedule to install a native OS scheduled task (Windows Task Scheduler, crontab on Linux, launchd on macOS) that runs the task via `--run-task` without the app being open. Supports 15m/30m/hourly/daily/weekly intervals with configurable start time. Unschedule removes the OS entry.
 -   NEW: Serve management — right-click a folder to start `rclone serve` with protocol selection (HTTP, WebDAV, FTP, DLNA, S3, NFS) and configurable listen address
 -   NEW: SOCKS proxy support — the proxy settings now include a SOCKS proxy field (socks5://host:port) that sets `ALL_PROXY` for rclone, completing the HTTP/HTTPS/SOCKS proxy configuration
 -   NEW: Visual exclude filter builder — the transfer dialog's exclude area now has quick-add buttons for common patterns (temp files, OS junk, Git, Node modules, hidden files) that append to the exclude list

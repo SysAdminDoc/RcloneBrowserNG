@@ -8,6 +8,7 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "remote_provider.h"
+#include "schedule_manager.h"
 #include "remote_widget.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
@@ -938,6 +939,97 @@ MainWindow::MainWindow() {
   ui.buttonCopyTaskCmd->setAccessibleName("Copy selected task command");
   UiPolish::SetPrimaryButton(ui.buttonRunTask);
   UiPolish::SetDestructiveButton(ui.buttonDeleteTask);
+
+  if (ScheduleManager::isSupported()) {
+    auto *scheduleBtn = new QPushButton("Schedule", this);
+    scheduleBtn->setIcon(style->standardIcon(QStyle::SP_FileDialogDetailedView));
+    scheduleBtn->setToolTip("Install a native OS scheduled task for the selected saved task.");
+    scheduleBtn->setAccessibleName("Schedule selected task");
+    scheduleBtn->setEnabled(false);
+    auto *unscheduleBtn = new QPushButton("Unschedule", this);
+    unscheduleBtn->setIcon(style->standardIcon(QStyle::SP_DialogDiscardButton));
+    unscheduleBtn->setToolTip("Remove the OS scheduled task for the selected saved task.");
+    unscheduleBtn->setAccessibleName("Unschedule selected task");
+    unscheduleBtn->setEnabled(false);
+
+    if (auto *layout = qobject_cast<QHBoxLayout *>(
+            ui.buttonDeleteTask->parentWidget()->layout())) {
+      layout->addWidget(scheduleBtn);
+      layout->addWidget(unscheduleBtn);
+    }
+
+    QObject::connect(ui.tasksListWidget, &QListWidget::itemSelectionChanged,
+                     this, [=]() {
+                       QList<QListWidgetItem *> sel =
+                           ui.tasksListWidget->selectedItems();
+                       bool hasOne = false;
+                       for (auto *item : sel) {
+                         auto *t =
+                             static_cast<JobOptionsListWidgetItem *>(item);
+                         if (t && t->GetData()) {
+                           hasOne = true;
+                           break;
+                         }
+                       }
+                       scheduleBtn->setEnabled(hasOne);
+                       unscheduleBtn->setEnabled(hasOne);
+                     });
+
+    QObject::connect(scheduleBtn, &QPushButton::clicked, this, [this]() {
+      auto *item = static_cast<JobOptionsListWidgetItem *>(
+          ui.tasksListWidget->currentItem());
+      if (!item || !item->GetData())
+        return;
+      QString taskName = item->GetData()->description;
+
+      QStringList intervals;
+      intervals << "15m" << "30m" << "hourly" << "daily" << "weekly";
+      bool ok;
+      QString interval = QInputDialog::getItem(
+          this, "Schedule Task",
+          QString("Run \"%1\" every:").arg(taskName), intervals, 3, false,
+          &ok);
+      if (!ok)
+        return;
+
+      QString time;
+      if (interval == "daily" || interval == "weekly") {
+        time = QInputDialog::getText(
+            this, "Schedule Task", "Start time (HH:MM, 24h format):",
+            QLineEdit::Normal, "02:00", &ok);
+        if (!ok)
+          return;
+      }
+
+      QString error;
+      if (ScheduleManager::installSchedule(taskName, interval, time, &error)) {
+        setStatusMessage(
+            QString("Scheduled \"%1\" every %2").arg(taskName, interval));
+      } else {
+        QMessageBox::warning(this, "Schedule failed",
+                             QString("Could not schedule \"%1\":\n%2")
+                                 .arg(taskName, error));
+      }
+    });
+
+    QObject::connect(unscheduleBtn, &QPushButton::clicked, this, [this]() {
+      auto *item = static_cast<JobOptionsListWidgetItem *>(
+          ui.tasksListWidget->currentItem());
+      if (!item || !item->GetData())
+        return;
+      QString taskName = item->GetData()->description;
+      QString error;
+      if (ScheduleManager::removeSchedule(taskName, &error)) {
+        setStatusMessage(
+            QString("Removed schedule for \"%1\"").arg(taskName));
+      } else {
+        QMessageBox::warning(this, "Unschedule failed",
+                             QString("Could not remove schedule:\n%1")
+                                 .arg(error));
+      }
+    });
+  }
+
   mUploadIcon = style->standardIcon(QStyle::SP_ArrowUp);
   mDownloadIcon = style->standardIcon(QStyle::SP_ArrowDown);
 
