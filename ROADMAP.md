@@ -38,8 +38,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #204, #109; mmozeiko #6, #14_
 
 
-- [ ] **Pause running jobs** — Pause and resume active transfers.  
-  _Sources: mmozeiko #71_
 
 
 

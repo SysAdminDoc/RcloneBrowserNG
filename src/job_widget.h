@@ -33,6 +33,7 @@ public:
 
 public slots:
   void cancel();
+  void togglePause();
 
   QStringList retryArgs() const { return mTransferArgs; }
   QString retrySource() const { return mSource; }
@@ -48,6 +49,7 @@ private:
   Ui::JobWidget ui;
 
   bool mRunning = true;
+  bool mPaused = false;
   bool mSuccess = false;
   QProcess *mProcess;
   QDateTime mStartedAt;
