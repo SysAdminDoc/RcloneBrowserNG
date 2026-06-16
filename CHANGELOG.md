@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Multi-file download auto-generates `--include` filters — selecting multiple files and clicking Download copies the parent folder with `--include` flags for each selected file
 -   NEW: Auto-mount remotes on launch — right-click a remote and enable "Auto-mount on launch"; the remote mounts automatically on startup after the remote list loads
 -   NEW: Start minimized to system tray — a preference and `--minimized`/`--tray` command-line flags let the app launch hidden in the tray; useful with auto-start at login
 -   NEW: Multiple config file support — File > Switch Config menu lets you add rclone.conf files and switch between them; the active config is checkmarked, and switching reloads the remote list immediately
