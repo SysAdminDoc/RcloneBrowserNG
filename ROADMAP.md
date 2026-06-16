@@ -58,8 +58,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 ### Advanced Operations
-- [ ] **Bisync / bidirectional sync** — GUI support for rclone's bisync command.  
-  _Sources: kapitainsky #243; mmozeiko #106_
 
 - [ ] **Remote-to-remote transfers** — Copy/sync directly between two remotes without local intermediary.  
   _Sources: mmozeiko #27_
