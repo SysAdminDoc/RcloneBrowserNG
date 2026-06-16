@@ -284,12 +284,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: pin remote:path bookmarks reachable from the main list and tab context menu; each remote can have an accent color shown on its tab.
   Complexity: S
 
-- [ ] P3 — File properties pane with rclone metadata
-  Why: rclone 1.70+ syncs/exposes real metadata (`-M`, lsjson directory metadata, hashes via operations/hashsum) — a properties dialog showing modtime/hashes/metadata is now possible and aids verification.
-  Evidence: rclone.org/changelog (v1.70 metadata era; operations/hashsum)
-  Touches: remote_widget.cpp context menu, new properties dialog
-  Acceptance: Properties on a file shows size, modtime, available hashes (computed on demand), and backend metadata when supported.
-  Complexity: M
 
 - [ ] P3 — Bisync conflict-resolution dialog
   Why: bisync is stable since rclone 1.71 with `--conflict-resolve/--conflict-loser/--conflict-suffix`; an interactive keep-local/keep-remote/keep-both chooser was archived Celeste's signature feature and de-risks the planned bisync GUI.
@@ -318,12 +312,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: batch-capable operations (multi-delete, multi-move) use job/batch when available; fallback to sequential for older rclone.
   Complexity: M
 
-- [ ] P3 — Show new hash algorithms in file properties (BLAKE3, XXH3, XXH128)
-  Why: rclone v1.71 added BLAKE3, XXH3, XXH128 hashes; the planned file properties dialog should expose all available hash types, not just MD5/SHA1.
-  Evidence: rclone.org/changelog v1.71; existing file properties roadmap item
-  Touches: file properties dialog (depends on existing properties item)
-  Acceptance: properties dialog lists all hash algorithms the backend supports; hash computed on demand; new algorithms displayed when available.
-  Complexity: S
 
 ### 2026-06-13 Research Refresh
 
