@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Streaming now passes the filename to the player window title — mpv gets `--force-media-title` and VLC gets `--meta-title` so the player shows the actual file name instead of `fd://0` or `stdin`
 -   NEW: Saved upload tasks can watch a local source folder and rerun after debounced filesystem changes, with active watches rebuilt on restart and pause/resume controls in the tray menu
 -   NEW: Remote files can be opened for edit from the browser context menu; the app downloads to a temporary session file, watches saves, prompts on remote conflicts, and re-uploads changes
 -   NEW: Remote browser paths now render as clickable breadcrumbs with sibling-folder dropdowns, plus an editable path mode via Ctrl+L, empty-bar click, Enter, and Escape

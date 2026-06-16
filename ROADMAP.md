@@ -47,18 +47,12 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Pause running jobs** — Pause and resume active transfers.  
   _Sources: mmozeiko #71_
 
-- [ ] **Editable saved tasks** — Allow editing source, destination, and options on saved tasks.  
-  _Sources: kapitainsky #87, #143_
-
 - [ ] **Multi-select tasks and batch run** — Select and run multiple saved tasks at once.  
   _Sources: kapitainsky #98, #80_
 
 - [ ] **Task list sorting and search** — Filter and sort the saved tasks list.  
   _Sources: kapitainsky #21_
 
-
-- [ ] **Remember extra options per task** — Task-specific rclone flags aren't persisted.  
-  _Sources: kapitainsky #136_
 
 - [ ] **Convert tasks.bin to human-readable format** — Replace binary task storage with JSON/XML.  
   _Sources: kapitainsky #143_
@@ -67,27 +61,15 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #181_
 
 ### File Browser / Navigation
-- [ ] **Manual path entry / editable address bar** — Type or paste a path directly instead of clicking through folders.  
-  _Sources: kapitainsky #16, #148; mmozeiko #110_
-
 - [ ] **Dual-pane interface** — Side-by-side local/remote or remote/remote browsing.  
   _Sources: kapitainsky #71; mmozeiko #80, #98_
 
-- [ ] **Multi-file/folder selection** — Select multiple items for batch operations.  
-  _Sources: kapitainsky #42, #121; mmozeiko #84_
 
 - [ ] **Search / filter files** — Search within the current remote/directory.  
   _Sources: mmozeiko #64_
 
-- [ ] **Drag & drop to upload** — Drag files from file explorer directly into a remote folder.  
-  _Sources: mmozeiko #108; kapitainsky #28_
-
 - [ ] **Sort by recent / custom sort in Google Drive** — Sort file list by last modified.  
   _Sources: kapitainsky #122_
-
-- [ ] **File preview / double-click to open** — Preview or open files directly from the browser.  
-  _Sources: mmozeiko #101_
-
 
 - [ ] **Browse Google Drive trash** — Access the trash folder for recovery.  
   _Sources: mmozeiko #37_
@@ -108,9 +90,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Multi-file selection auto-generates --include-from** — Selecting multiple files builds a filter file automatically.  
   _Sources: kapitainsky #188_
 
-- [ ] **Support for rclone "check" command** — Verify remote contents match local.  
-  _Sources: mmozeiko #39; kapitainsky #62_
-
 - [ ] **Support for rclone "serve"** — GUI for rclone's serve HTTP/FTP/WebDAV.  
   _Sources: kapitainsky #129_
 
@@ -119,9 +98,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 - [ ] **Remote URL upload (copyurl)** — Download a URL directly to a remote.  
   _Sources: kapitainsky #199_
-
-- [ ] **Public link generation (rclone link)** — Generate shareable public links.  
-  _Sources: mmozeiko #111_
 
 - [ ] **Use trash on delete (Google Drive)** — Move to trash instead of permanent delete.  
   _Sources: mmozeiko #73_
@@ -154,9 +130,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #19_
 
 
-- [ ] **Reopen existing instance instead of error** — Clicking the exe when already running should focus the existing window.  
-  _Sources: kapitainsky #214_
-
 - [ ] **Proxy support in GUI** — HTTP/SOCKS proxy configuration exposed in preferences (partially exists since v1.8.0 but incomplete).  
   _Sources: mmozeiko #88, #41_
 
@@ -171,21 +144,12 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Default exclude list** — Configurable global exclude patterns.  
   _Sources: mmozeiko #75_
 
-- [ ] **Default destination folder** — Remember and pre-fill download destination.  
-  _Sources: mmozeiko #122_
-
-- [ ] **Streaming: show filename in player** — Pass filename metadata to VLC/mpv instead of `fd://0`.  
-  _Sources: mmozeiko #120_
-
 - [ ] **Create and save connection profiles** — Named profiles with different rclone configs/options.  
   _Sources: mmozeiko #102_
 
 ---
 
 ## P4 — Platform & Compatibility
-
-- [ ] **ARM64 Linux builds** — Native aarch64 AppImage/packages.  
-  _Sources: kapitainsky #207; docker #17_
 
 - [ ] **ppc64le build support** — Unmerged PR: kapitainsky#152.  
   _Sources: kapitainsky #152_
@@ -200,7 +164,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 - [ ] **Homebrew formula fix** — Current install script 404s (needs `.sh` suffix). Unmerged PR: kapitainsky#232.  
   _Sources: kapitainsky #232_
-
 
 
 ---
@@ -226,13 +189,18 @@ For context — active alternatives as of June 2026:
 
 | Project | Stars | Stack | Status | Key Differentiator |
 |---------|-------|-------|--------|--------------------|
-| [rclone-ui](https://github.com/rclone-ui/rclone-ui) | 2,065 | TypeScript/Tauri | Active | Modern GUI, cron, dual-panel, `rcd` control, WinGet/Homebrew/Flathub |
-| [rclone-webui-react](https://github.com/rclone/rclone-webui-react) | 1,562 | JavaScript | Low activity | Official rclone web UI, bundled with `rclone rcd` |
-| [RcloneShuttle](https://github.com/pieterdd/RcloneShuttle) | 149 | Rust/GTK4 | Active | Linux-native GTK4, upload-focused |
-| [MinorMole/Portable](https://github.com/MinorMole/RcloneBrowser-Portable) | 97 | VB.NET | Active | Portable Windows launcher wrapping old RcloneBrowser |
-| [romancin/docker](https://github.com/romancin/rclonebrowser-docker) | 86 | Docker/noVNC | Active | Containerized GUI via browser |
+| [rclone-ui](https://github.com/rclone-ui/rclone-ui) | 2,076 | TypeScript/Tauri | Active (v3.6.0) | Cron, dual-panel Commander, Cloudflare tunnel mobile, 7 langs, WinGet/Homebrew/Flathub. **Caution: #218 dry-run may execute real sync** |
+| [RClone Manager](https://github.com/Zarestia-Dev/rclone-manager) | 922 | Angular/Tauri | Active (v0.2.7) | Fastest-growing (0→922 in 14mo). FS watchers, webhook/email/Telegram alerts, Docker headless, Crowdin i18n |
+| [Celeste](https://github.com/hwittenborn/celeste) | 1,616 | Rust/GTK4 | **Archived Nov 2025** | Was Linux-only bisync — lane now open |
+| [rclone-webui-react](https://github.com/rclone/rclone-webui-react) | 1,562 | JavaScript | Stale (5yr no release) | Official rclone web UI, bundled with `rclone rcd` |
+| [rem](https://github.com/liriliri/rem) | 602 | Electron | Dormant (6mo) | "Open source RcloneView" — file preview, two-panel |
+| [rclone-webui-angular](https://github.com/yuudi/rclone-webui-angular) | 359 | Angular | Active | Web alternative to official GUI |
+| [H4R1B0/rclone-gui](https://github.com/H4R1B0/rclone-gui) | 0 | Swift | Active (v1.6.0, 521 tests) | macOS-native. Cloud trash, bookmarks, bulk rename, search. Zero visibility despite quality |
+| [RcloneShuttle](https://github.com/pieterdd/RcloneShuttle) | 149 | Rust/GTK4 | Active | Linux-native GTK4, upload-only, deliberately minimal |
+| [rclone-rc-web-gui](https://github.com/retifrav/rclone-rc-web-gui) | 125 | TypeScript | Active | Lightweight RC web GUI |
+| [Motuz](https://github.com/FredHutch/motuz) | 114 | JavaScript | Active | Enterprise/scientific multi-user TB-scale transfers |
 
-RcloneBrowserNG's niche: **lightweight native Qt desktop app** — faster startup, lower memory, no Electron/Tauri runtime, no browser tab. The value proposition is a well-maintained, modern C++/Qt6 app that "just works" with current rclone on all desktop platforms.
+RcloneBrowserNG's niche: **lightweight native Qt desktop app** — faster startup, lower memory, no Electron/Tauri runtime, no browser tab. The value proposition is a well-maintained, modern C++/Qt6 app that "just works" with current rclone on all desktop platforms. Community signal: strong anti-paywall and anti-AI-vibe-coded sentiment favors a free, well-engineered native GUI.
 
 ---
 
@@ -261,30 +229,10 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2 — Distribution & CI
 
-
-
 ### P2 — Trust / differentiator features
 
-- [ ] P2 — Dry-run diff preview before sync
-  Why: highest-trust feature; RcloneView uses it as a free-tier draw, rclone-ui's dry-run is buggy (#218); `_config:{dry_run:true}` over rc makes it cheap.
-  Evidence: rcloneview.com; rclone-ui #218; rclone.org/rc
-  Touches: transfer_dialog.cpp, engine
-  Acceptance: a "Preview" button shows files that would be added/changed/deleted before the real run.
-  Complexity: M
 
-- [ ] P2 — Notification webhooks (Discord / Gotify / Shoutrrr / Healthchecks)
-  Why: no rclone desktop GUI offers it; Backrest proves homelab demand; complements the existing tray-notification feature.
-  Evidence: github.com/garethgeorge/backrest
-  Touches: preferences_dialog.cpp, job completion handling
-  Acceptance: on job finish/failure the app can POST to a configured webhook in addition to the local toast.
-  Complexity: M
 
-- [ ] P3 — Pre/post job hooks
-  Why: run a script before/after a sync; trivial to add, strong homelab appeal (Backrest pattern).
-  Evidence: github.com/garethgeorge/backrest
-  Touches: job_options.cpp/.h, transfer_dialog.cpp, job execution
-  Acceptance: tasks store optional pre/post commands that run around the transfer; failures logged.
-  Complexity: S
 
 - [ ] P3 — Serve management tab (HTTP/WebDAV/FTP/DLNA/NFS/S3)
   Why: rclone serve now spans 9 protocols; the official GUI and RClone Manager expose it; old GUIs don't.
@@ -302,12 +250,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P3 — Hygiene
 
-- [ ] P3 — Drop Qt5 dual support; floor Qt 6.4, build official binaries on Qt 6.8.3
-  Why: Qt 5.15 OSS EOL was May 2025; KDE dropped Qt5 CI; the ifdef debt is pure maintenance cost. Note: Qt 6.8 LTS patches beyond the initial releases are commercial-only, so official binaries must track the current stable minor (6.9/6.10+), not pin 6.8.x.
-  Evidence: endoflife.date/qt; doc.qt.io/qt-6/qt-releases.html; pch.h:16-23, main.cpp:6-14, preferences_dialog.cpp:15-21
-  Touches: CMakeLists.txt, pch.h, main.cpp, preferences_dialog.cpp, .github/workflows
-  Acceptance: Qt5 paths removed; builds against distro Qt 6.4 and ships on the current stable Qt minor; CI drops the Qt5 matrix leg.
-  Complexity: M
 
 - [ ] P3 — Parsing/serialization regression tests
   Why: the two things that have historically broken (output parsing, tasks.bin round-trip) have zero coverage.
@@ -330,33 +272,12 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: icon-only buttons have accessible names, form fields have buddies, tab order is logical; a screen reader can drive core flows.
   Complexity: M
 
-- [ ] P3 — Single-instance via QLocalServer/SingleApplication with focus-existing
-  Why: clicking the exe when already running should focus the existing window (existing P3 request); current per-user lockfile only blocks, doesn't focus.
-  Evidence: src/main.cpp:203-214; github.com/itay-grudev/SingleApplication
-  Touches: main.cpp
-  Acceptance: launching a second instance raises/focuses the running one instead of erroring; on Wayland the raise uses an xdg-activation token and QGuiApplication::setDesktopFileName matches the installed .desktop ID (KDE Plasma is hard-enforcing focus-stealing prevention).
-  Complexity: S
-
 
 ### P2 — Mount & remote trust (supplemental)
 
-- [ ] P2 — OAuth token-expiry detection with guided reconnect
-  Why: expired Drive/OneDrive tokens are a top recurring rclone forum pain; errors surface as cryptic listing failures; only commercial RcloneView markets a fix. `rclone config reconnect <remote>:` is the underlying mechanism.
-  Evidence: forum.rclone.org gdrive-oauth2 threads; rcloneview.com token-expired blog
-  Touches: item_model.cpp / remote_widget.cpp error paths, main_window.cpp
-  Acceptance: a token-expired/unauthorized error badges the remote and offers a one-click Reconnect that runs `rclone config reconnect` in the existing terminal flow.
-  Complexity: M
 
-- [ ] P2 — Remote wizard: test-connection probe and clone-remote action
-  Why: half-configured remotes fail later with confusing errors; a bounded `lsjson --max-depth 1` probe at save time catches it, and "duplicate this remote" is a cheap common ask.
-  Evidence: newhinton/Round-Sync#243, #32; rcloneview forum thread (users stuck with broken connections)
-  Touches: remote-creation flow in main_window.cpp, remote_widget.cpp
-  Acceptance: after config the wizard verifies the remote lists within a timeout and reports failure with the rclone error; context menu offers "Duplicate remote…" pre-filling a copy.
-  Complexity: M
 
 ### P2 — Differentiator features (supplemental)
-
-
 
 - [ ] P2 — Cross-remote search
   Why: searching a filename across all configured remotes is a genuine differentiator only one niche macOS app ships; streaming results keep it responsive.
@@ -376,19 +297,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P3 — Platform & polish (supplemental)
 
-- [ ] P3 — Windows ARM64 release artifact
-  Why: Qt 6.10 ships prebuilt ARM64 packages and rclone already publishes windows-arm64 — adding the artifact is a CI matrix entry; roadmap has ARM64 Linux but not Windows.
-  Evidence: doc.qt.io/qt-6/whatsnew610.html; qt.io blog Windows-on-ARM; rclone.org/downloads
-  Touches: .github/workflows/build.yml
-  Acceptance: tagged releases include a windows-arm64 zip that runs on a Snapdragon X device (or documented emulation-tested).
-  Complexity: S
-
-- [ ] P3 — Speed test for a remote (rclone test speed)
-  Why: "is my remote slow or is it me" is a constant support question; rclone ≥1.72 ships `test speed`; no GUI exposes it.
-  Evidence: rclone.org/changelog (v1.72 test speed); rclone forum perf threads
-  Touches: remote_widget.cpp context menu, ProgressDialog
-  Acceptance: right-click a remote → Speed test runs upload/download probes and shows MB/s results.
-  Complexity: S
 
 - [ ] P3 — Graceful stop: finish in-flight files, then stop
   Why: the only stop today is kill; finishing current files avoids partial-transfer waste — a heavily-reacted upstream ask a GUI can deliver via rc job semantics.
@@ -474,111 +382,18 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: conflicts detected in a bisync run present a per-file resolution list before re-running with the chosen strategy.
   Complexity: M
 
-- [ ] P3 — REUSE 3.3 licensing compliance
-  Why: machine-verifiable SPDX licensing is increasingly expected by distros (KDE/Fedora) and OpenSSF Scorecard; one-day chore.
-  Evidence: reuse.software/spec-3.3; github.com/fsfe/reuse-tool
-  Touches: REUSE.toml (new), per-file SPDX headers, CI lint step
-  Acceptance: `reuse lint` passes in CI.
-  Complexity: S
 
 ### 2026-06-12 Refresh — P1
 
-- [ ] P1 — Bump minimum safe rclone version warning to v1.74.3
-  Why: CVE-2026-49980 (CVSS 9.8) allows inline remotes to bypass global config restrictions for arbitrary command execution; v1.73.5 only fixed CVE-2026-41176/41179.
-  Evidence: github.com/rclone/rclone/releases/tag/v1.74.3; ccb.belgium.be rclone advisory
-  Touches: `src/main_window.cpp` rclone version check logic
-  Acceptance: startup warning fires for rclone < 1.74.3 (not 1.73.5); advisory link updated.
-  Complexity: S
-
-- [ ] P1 — macOS x86_64 release artifact
-  Why: release.yml builds ARM64 only (macos-14 runner); Intel Mac users cannot use official releases. Universal or separate x86_64 build needed.
-  Evidence: `.github/workflows/release.yml:73-100`; GitHub macos-13 runners provide x86_64
-  Touches: `.github/workflows/release.yml` (add macos-13 matrix leg or universal build)
-  Acceptance: tagged releases include a macOS x86_64 (or universal) DMG + app zip alongside the ARM64 artifacts.
-  Complexity: S
-
-
 ### 2026-06-12 Refresh — P2
 
-- [ ] P2 — Add runtime capability and dependency gates
-  Why: rclone, WinFsp, macFUSE/fuse-t, and Qt features now change quickly; the UI should disable unsupported actions with exact reasons instead of failing at runtime.
-  Evidence: rclone changelog; Qt release table; WinFsp CVE-2026-3006 advisory; `src/main_window.cpp:1271-1289`
-  Touches: new `RcloneCapabilities` helper, `src/main_window.cpp`, preferences/about dialog, mount and feature action enablement
-  Acceptance: About/Preferences show detected rclone version, config path, Qt version, mount backend/version, and key feature support; unsupported actions are disabled or warned with the minimum version/backend required.
-  Complexity: M
 
-- [ ] P2 — Modernize manual release scripts to the supported toolchain
-  Why: Release helper scripts still encode Qt 5.13.2, Visual Studio 2019 32-bit paths, OpenSSL 1.1.1d, and CentOS 7 assumptions that conflict with current CI and dependency security policy.
-  Evidence: `scripts/release_windows.cmd`; `scripts/release_AppImage.sh`; Qt release table; Qt/OpenSSL advisory cadence
-  Touches: `scripts/release_windows.cmd`, `scripts/release_AppImage.sh`, release documentation once scripts are accurate
-  Acceptance: scripts target the same Qt/architecture/version metadata as CI, avoid OpenSSL 1.1.1 references, fail fast on missing dependencies, and produce artifacts matching the planned release workflow.
-  Complexity: M
 
-- [ ] P2 — Add redacted diagnostics and support bundle
-  Why: Competitor issue trackers repeatedly show users lose finished-job errors or cannot report enough context; this app currently keeps most process output inside transient UI widgets.
-  Evidence: RClone Manager finished-job error reports; Round Sync no-error-log reports; `src/job_widget.cpp`; `src/mount_widget.cpp`
-  Touches: new diagnostics collector, Help/About menu, `src/job_widget.cpp`, `src/mount_widget.cpp`, config redaction utilities
-  Acceptance: Help offers Copy Diagnostics and Save Support Bundle with app/Qt/rclone versions, OS, config path, mount backend, recent job/mount stderr, and redacted secrets including config passwords, tokens, rc credentials, and command-line sensitive flags.
-  Complexity: M
 
-- [ ] P2 — Paged directory listing for large remotes (lsjson ListP)
-  Why: item_model.cpp loads entire lsjson output in one QProcess read; rclone v1.72 added paged listing (ListP) across 12 backends. Million-file directories can OOM or hang the UI; streaming pages enables progressive display.
-  Evidence: rclone.org/changelog v1.72 (ListP); `src/item_model.cpp` QProcess readAll pattern
-  Touches: `src/item_model.cpp`, lsjson invocation args
-  Acceptance: listing streams pages into the tree model progressively; UI remains responsive during large directory loads; fallback to single-shot for rclone < 1.72.
-  Complexity: M
 
-- [ ] P2 — Enrich diagnostics with core/version and core/disks RC endpoints
-  Why: rclone v1.74 `core/version` now reports osVersion, osArch, osKernel; v1.73 `core/disks` enumerates attached disks. Both improve support bundle quality and mount destination UX.
-  Evidence: rclone.org/rc core/version, core/disks; existing diagnostics roadmap item
-  Touches: diagnostics collector (depends on diagnostics item), mount dialog disk picker
-  Acceptance: diagnostics bundle includes rclone-reported OS and architecture; mount dialog can offer detected local disks/drives.
-  Complexity: S
 
-- [ ] P2 — Linux ARM64 (aarch64) AppImage release artifact
-  Why: existing roadmap has ARM64 Linux builds but release.yml only has x86_64; Raspberry Pi 5, ARM cloud instances, and Asahi Linux are growing targets.
-  Evidence: `.github/workflows/release.yml`; existing P4 ARM64 Linux item; Ubuntu 24.04 has native aarch64 Qt6 packages
-  Touches: `.github/workflows/release.yml` (add ubuntu-24.04-arm64 or QEMU cross-build matrix leg)
-  Acceptance: tagged releases include a linux-aarch64 AppImage; tested on ARM64 runner or documented QEMU-validated.
-  Complexity: M
-  Note: Implements the existing P4 ARM64 Linux builds item with a concrete CI plan.
 
 ### 2026-06-12 Refresh — P3
-
-- [ ] P3 — Searchable and filterable remotes selector
-  Why: users with 10+ remotes waste time scrolling; rclone-ui added searchable remotes in v3.5.4; cheap typeahead filter on the existing remotes list.
-  Evidence: rcloneui.com/changelog v3.5.4; rclone forum usability thread
-  Touches: `src/main_window.cpp` remotes list, `src/main_window.ui`
-  Acceptance: a filter/search field above or inline with the remotes list narrows displayed remotes as the user types; clears on Escape.
-  Complexity: S
-
-- [ ] P3 — Expose rclone archive command in file browser
-  Why: rclone v1.72 added `archive` for moving old files to a dated archive structure; no GUI exposes it. Natural right-click action on remote folders.
-  Evidence: rclone.org/commands/rclone_archive (v1.72)
-  Touches: `src/remote_widget.cpp` context menu, ProgressDialog
-  Acceptance: right-click a remote folder > Archive runs `rclone archive` with configurable age threshold; gated on rclone >= 1.72.
-  Complexity: S
-
-- [ ] P3 — Consolidate duplicated getNiceSize() utility
-  Why: identical size-formatting function exists in both `item_model.cpp:19-31` and `job_widget.cpp:8-20`; DRY violation and divergence risk.
-  Evidence: `src/item_model.cpp:19-31`; `src/job_widget.cpp:8-20`
-  Touches: `src/utils.h`, `src/utils.cpp`, `src/item_model.cpp`, `src/job_widget.cpp`
-  Acceptance: single `getNiceSize()` in utils; both callers use it; build green.
-  Complexity: S
-
-- [ ] P3 — Detect macFUSE FSKit backend capability
-  Why: macFUSE 5.2.0 (April 2026) ships FSKit backend for fully userspace mounts on macOS 26; fuse-t also supports FSKit. Current mount detection doesn't distinguish FSKit-capable vs kext-only builds.
-  Evidence: macfuse.github.io/2026/04/09/macfuse-5.2.0.html; fuse-t.org; `src/mount_backend.cpp`
-  Touches: `src/mount_backend.cpp`, mount dialog status/help text
-  Acceptance: mount backend detection reports FSKit availability on macOS 26+; mount dialog notes when running in FSKit vs kext mode.
-  Complexity: S
-
-- [ ] P3 — Retire stale roadmap items already implemented
-  Why: ROADMAP lists "Drag & drop to upload" (P3) and "Public link generation" (P3) as open, but both are already implemented (multi-file drag-drop in CHANGELOG Unreleased; public link button exists since v1.4).
-  Evidence: CHANGELOG.md Unreleased section; `src/remote_widget.cpp` link button
-  Touches: ROADMAP.md
-  Acceptance: stale items removed or marked done; no regressions.
-  Complexity: S
 
 - [ ] P3 — Leverage job/batch RC endpoint for multi-command operations
   Why: rclone v1.72 added `job/batch` for concurrent RC command batches; the rcd engine can use this for multi-file operations (delete multiple, move multiple) in a single round-trip instead of sequential spawns.
@@ -592,4 +407,97 @@ All items trace back to public GitHub issues/PRs:
   Evidence: rclone.org/changelog v1.71; existing file properties roadmap item
   Touches: file properties dialog (depends on existing properties item)
   Acceptance: properties dialog lists all hash algorithms the backend supports; hash computed on demand; new algorithms displayed when available.
+  Complexity: S
+
+### 2026-06-13 Research Refresh
+
+> Appended from exhaustive competitive landscape research, community signal mining (Reddit/HN/rclone forum), platform ecosystem scan (Qt 6.9-6.10, rclone v1.74.x, GitHub Actions), and adjacent-domain pattern analysis (FreeFileSync, Vorta, Dolphin, JDownloader, Resticprofile, WinSCP, Cyberduck, Pika Backup). 60+ distinct sources consulted. See RESEARCH.md for full findings.
+>
+> Housekeeping: removed stale items "Drag & drop to upload" (implemented) and "Public link generation" (implemented since v1.4).
+
+#### P2 — Onboarding & UX
+
+#### P2 — Config & trust
+
+#### P2 — Transfer UX
+
+- [ ] P2 — Transfer staging queue with batch review before execution
+  Why: JDownloader's LinkGrabber pattern — operations go to a review queue before executing. Users build up a batch of copy/sync/move operations across multiple remotes, review the set, then commit. Distinct from the "job queue manager" item (which is about concurrency control for running jobs). FreeFileSync and Krusader also use staging.
+  Evidence: jdownloader.org (LinkGrabber); freefilesync.org; krusader.org
+  Touches: new staging model, `src/main_window.cpp` (queue panel), `src/transfer_dialog.cpp`
+  Acceptance: transfers can be enqueued for review instead of immediate execution; staging list shows all pending ops; user can reorder, remove, or batch-execute; cleared after execution.
+  Complexity: M
+
+#### P3 — CI & supply chain
+
+
+#### P3 — Scheduler enhancements
+
+- [ ] P3 — Staleness detection and overdue-job alerting
+  Why: BorgBase's killer feature — continuously watches last-sync timestamps and alerts if a backup is overdue. "Nothing happened" is the hardest failure mode to catch. No rclone GUI does this. Depends on the scheduler item.
+  Evidence: borgbase.com (staleness monitoring); github.com/borgbase/vorta; creativeprojects.github.io/resticprofile (status file)
+  Touches: scheduler (depends on scheduled-tasks item), tray icon, notification system
+  Acceptance: scheduled tasks track last-run timestamp; when a task exceeds its expected interval by a configurable margin, badge the tray icon and show a notification; overdue tasks highlighted in the task list.
+  Complexity: S (once scheduler exists)
+
+- [ ] P3 — Adaptive bandwidth throttling based on user network activity
+  Why: Free Download Manager's "traffic usage modes" auto-throttle downloads when the user is actively browsing and use full speed when idle. Extends the existing bandwidth limit and timetable editor items with an automatic mode.
+  Evidence: freedownloadmanager.org; rclone.org/docs (--bwlimit); existing bandwidth roadmap items
+  Touches: rclone rc `core/bwlimit`, network activity detection (platform-specific)
+  Acceptance: an "Adaptive" bandwidth mode monitors outbound traffic; throttles rclone when other apps are using bandwidth; ramps to full speed during idle; user can configure floor/ceiling speeds.
+  Complexity: L
+
+### 2026-06-15 Research Refresh
+
+> Appended from exhaustive codebase audit + ecosystem research. Verified rclone v1.74.3 (latest stable), Qt 6.10.3, GitHub Actions VS2026 migration, macFUSE 5.3.1 dev preview, Flathub AI ban, competitor updates (rclone-ui 2,100 stars, RClone Manager 928 stars). 40+ sources consulted. See RESEARCH.md.
+>
+> Housekeeping: removed completed items — rclone 1.74.3 version check (implemented), macOS x86_64 release artifact (release.yml has macos-13 matrix), CodeQL v4 (deployed), getNiceSize() consolidation (in utils.cpp), macFUSE FSKit detection (mount_backend.cpp).
+
+#### P2 — Distribution
+
+#### P3 — Cleanup
+
+
+#### P2 — Scheduler & automation
+
+- [ ] P2 — Generate native OS scheduled tasks instead of an in-app timer
+  Why: the #1 community request ("Scheduled tasks / cron", P3) needs a reliable implementation. Resticprofile's pattern — one config, four native backends (systemd timer+service, launchd plist, Windows Task Scheduler XML, crontab) — is the gold standard. Vorta's QTimer-only approach is a cautionary tale: if the app isn't running, no backups occur. Native tasks survive reboots, crashes, and logouts without the app running as a tray daemon.
+  Evidence: creativeprojects.github.io/resticprofile/schedules; github.com/borgbase/vorta/issues/294 (users begging for OS-level scheduling); forum.rclone.org scheduler threads
+  Touches: new `ScheduleGenerator` module, saved tasks model, platform-specific generators (systemd .timer/.service, launchd .plist, schtasks.exe XML), `src/main_window.cpp` task panel
+  Acceptance: a saved task can be "installed" as a native OS scheduled task; the app lists installed schedules with status; uninstall removes the OS entry; works when the app is not running.
+  Complexity: L
+  Note: Supersedes the existing P3 "Scheduled tasks / cron" item with a concrete architecture. The three-tier permission model (system/user/user_logged_on from Resticprofile) should be adopted.
+
+
+#### P2 — Monitoring
+
+
+#### P3 — UX refinements
+
+- [ ] P3 — Non-blocking background error queue
+  Why: WinSCP's two-mode error prompt system — errors from background transfers queue for review instead of popping modal dialogs. Auto-popup when the main connection is idle, or show a visual indicator on the queue row for manual response. Currently RcloneBrowserNG uses modal `QMessageBox` for all error/confirmation paths, which blocks the GUI during multi-job workflows.
+  Evidence: winscp.net/eng/docs/transfer_queue (queue interaction model); `src/job_widget.cpp`; `src/mount_widget.cpp`
+  Touches: new error queue model, `src/job_widget.cpp`, `src/mount_widget.cpp`, status bar indicator
+  Acceptance: errors from running jobs accumulate in a non-modal queue; a badge on the Jobs tab or status bar shows the count; clicking opens the queue for review; no modal dialogs block the GUI during background transfers.
+  Complexity: M
+
+- [ ] P3 — Quick bandwidth snail toggle
+  Why: Free Download Manager's one-click "Snail" icon drops all operations to a crawl without disconnecting — simpler than the existing bandwidth slider and timetable editor items. A single toolbar/tray icon that toggles between full-speed and a configurable floor rate via `core/bwlimit` RC. Solves the "I need my connection back NOW" use case without opening preferences.
+  Evidence: freedownloadmanager.org (Snail mode); rclone.org/rc (core/bwlimit)
+  Touches: `src/main_window.cpp` (toolbar/tray action), `src/rclone_rc_engine.cpp` (core/bwlimit call), preferences (floor speed)
+  Acceptance: a toggle button in the toolbar or tray context menu switches all running rclone jobs between full-speed and a configurable throttle; visual state change (icon/color) confirms the mode; depends on rcd engine for rc-managed jobs.
+  Complexity: S
+
+- [ ] P3 — Drag between remote tabs for cross-remote transfer
+  Why: remote-to-remote copy is an existing P3 feature request. Dragging a file from one open remote tab to another is the most intuitive initiation path. Qt's drag-and-drop framework supports cross-widget drops natively — the tab bar accepts a drop to switch to the target tab, then the tree view accepts the drop to set the destination path.
+  Evidence: existing P3 "Remote-to-remote transfers" item; mmozeiko #27; Qt drag-and-drop docs
+  Touches: `src/remote_widget.cpp` (drag source), `src/main_window.cpp` (tab bar drop target), transfer dialog (pre-fill source and dest from drag)
+  Acceptance: drag a file/folder from one remote tab to the tab header of another remote; the target tab activates; dropping into the tree opens a transfer dialog pre-filled with source and destination paths.
+  Complexity: M
+
+- [ ] P3 — Expose --dump curl in diagnostics support bundle
+  Why: rclone v1.74.0 added `--dump curl` to export HTTP requests as curl commands for debugging. Including a curl-dump capture in the diagnostics/support bundle (existing P2 item) makes bug reports self-contained and reproducible.
+  Evidence: rclone.org/changelog v1.74.0 (--dump curl); existing P2 diagnostics item
+  Touches: diagnostics collector (depends on diagnostics item), optional `--dump curl` flag on jobs
+  Acceptance: the support bundle can optionally include a curl-dump log from the last job; sensitive headers (auth tokens) are redacted.
   Complexity: S
