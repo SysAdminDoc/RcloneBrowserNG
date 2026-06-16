@@ -10,6 +10,7 @@
 class JobWidget;
 class RcJobWidget;
 class RcloneRcEngine;
+class RemoteWidget;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -54,6 +55,7 @@ private:
   QLineEdit *mRemotesFilter = nullptr;
   QListWidgetItem *mRemotesFilterEmptyItem = nullptr;
   QLineEdit *mTasksFilter = nullptr;
+  QListWidgetItem *mTasksFilterEmptyItem = nullptr;
 
   IconCache mIcons;
 
@@ -86,6 +88,9 @@ private:
   bool confirmConfigMutation(const QString &action);
   QDateTime rcloneConfigLastModified() const;
   void noteConfigReloadIfChanged(const QDateTime &before);
+  RemoteWidget *createRemoteWidgetInstance(const QString &name,
+                                           const QString &type,
+                                           QWidget *parent);
   void setStatusMessage(const QString &message);
   QString terminalRcloneConfigCommand(const QStringList &args) const;
   bool startDetachedTerminalCommand(const QStringList &args,

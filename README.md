@@ -29,6 +29,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Custom location and encryption support for `rclone.conf`
 *   Navigate multiple remotes simultaneously in separate tabs
 *   Hierarchical file listing with name, size and modify date
+*   Visible path and filter controls for faster browsing without relying on hidden shortcuts
 *   All rclone commands run asynchronously — no GUI freezing
 *   Lazily cached file hierarchy for fast folder traversal
 *   Upload, download, create folders, rename, move and delete files and folders

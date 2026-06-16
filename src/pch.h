@@ -17,6 +17,7 @@
 #if defined(Q_OS_WIN32)
 #include <qt_windows.h>
 #include <objbase.h>
+#include <shobjidl.h>
 #include <shellapi.h>
 #endif
 

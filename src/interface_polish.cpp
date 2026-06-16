@@ -135,7 +135,7 @@ QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox {
   min-height: 22px;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
-QSpinBox:focus, QListView:focus, QTreeView:focus {
+QSpinBox:focus, QListView:focus, QTreeView:focus, QTableView:focus {
   border: 1px solid %9;
 }
 QLineEdit:read-only {
@@ -325,7 +325,7 @@ QLabel[muted="true"] {
 }
 
 /* ── List and tree views ──────────────────────────────── */
-QListView, QTreeView {
+QListView, QTreeView, QTableView {
   background: %2;
   alternate-background-color: %3;
   border: 1px solid %5;
@@ -333,21 +333,30 @@ QListView, QTreeView {
   show-decoration-selected: 1;
   outline: 0;
 }
-QListView::item, QTreeView::item {
+QListView::item, QTreeView::item, QTableView::item {
   min-height: 28px;
   padding: 4px 8px;
   border-radius: 4px;
 }
-QListView::item:selected, QTreeView::item:selected {
+QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
   background: %11;
   color: %7;
 }
-QListView::item:selected:active, QTreeView::item:selected:active {
+QListView::item:selected:active, QTreeView::item:selected:active,
+QTableView::item:selected:active {
   background: %9;
   color: %18;
 }
-QListView::item:hover, QTreeView::item:hover {
+QListView::item:hover, QTreeView::item:hover, QTableView::item:hover {
   background: %3;
+}
+QTableView {
+  gridline-color: %5;
+}
+QTableCornerButton::section {
+  background: %3;
+  border: 0;
+  border-bottom: 1px solid %5;
 }
 
 /* ── Header view ──────────────────────────────────────── */
@@ -673,6 +682,47 @@ void SetOutputView(QPlainTextEdit *output, const QString &accessibleName) {
   output->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
   output->setAccessibleName(accessibleName.isEmpty() ? "Command output"
                                                      : accessibleName);
+}
+
+void SetTableView(QTableView *view, const QString &accessibleName) {
+  if (!view) {
+    return;
+  }
+  if (!accessibleName.isEmpty()) {
+    view->setAccessibleName(accessibleName);
+  }
+  view->setAlternatingRowColors(true);
+  view->setShowGrid(false);
+  view->setWordWrap(false);
+  view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+  view->setSelectionBehavior(QAbstractItemView::SelectRows);
+  view->setTextElideMode(Qt::ElideMiddle);
+  if (view->verticalHeader()) {
+    view->verticalHeader()->setVisible(false);
+    view->verticalHeader()->setDefaultSectionSize(30);
+  }
+  if (view->horizontalHeader()) {
+    view->horizontalHeader()->setHighlightSections(false);
+    view->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft |
+                                                  Qt::AlignVCenter);
+  }
+  Repolish(view);
+}
+
+void SetDialogButtonBox(QDialogButtonBox *buttons) {
+  if (!buttons) {
+    return;
+  }
+  buttons->setCenterButtons(false);
+  const auto buttonList = buttons->buttons();
+  for (QAbstractButton *button : buttonList) {
+    button->setMinimumHeight(qMax(button->minimumHeight(), 30));
+    button->setFocusPolicy(Qt::StrongFocus);
+    if (button->accessibleName().isEmpty()) {
+      button->setAccessibleName(button->text().remove('&'));
+    }
+  }
 }
 
 void SetWindowDefaults(QWidget *widget, QSize minimumSize) {

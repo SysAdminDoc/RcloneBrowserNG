@@ -19,9 +19,12 @@ private:
   QPushButton *mCancelButton = nullptr;
   QTableWidget *mResults = nullptr;
   QLabel *mStatus = nullptr;
+  QLabel *mEmptyState = nullptr;
   QStringList mRemotes;
   QList<QProcess *> mRunning;
+  QStringList mRemoteErrors;
   int mTotalMatches = 0;
+  int mFailedRemotes = 0;
 
   void startSearch();
   void cancelSearch();

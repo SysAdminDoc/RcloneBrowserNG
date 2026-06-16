@@ -1,5 +1,6 @@
 #include "folder_compare.h"
 
+#include "interface_polish.h"
 #include "utils.h"
 
 namespace {
@@ -123,6 +124,7 @@ FolderCompareDialog::FolderCompareDialog(
       mEnqueueTransfer(enqueueTransfer) {
   setWindowTitle("Compare Folders");
   resize(1000, 620);
+  UiPolish::SetWindowDefaults(this, QSize(860, 520));
 
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(12, 12, 12, 12);
@@ -133,6 +135,8 @@ FolderCompareDialog::FolderCompareDialog(
   mDestinationEdit = new QLineEdit(destinationPath, this);
   mSourceEdit->setPlaceholderText("source:path or local path");
   mDestinationEdit->setPlaceholderText("destination:path or local path");
+  UiPolish::SetPathField(mSourceEdit, "Compare source path");
+  UiPolish::SetPathField(mDestinationEdit, "Compare destination path");
   paths->addRow("Source", mSourceEdit);
   paths->addRow("Destination", mDestinationEdit);
   layout->addLayout(paths);
@@ -145,7 +149,10 @@ FolderCompareDialog::FolderCompareDialog(
 
   auto *filters = new QHBoxLayout();
   mCompareButton = new QPushButton("Compare", this);
+  UiPolish::SetPrimaryButton(mCompareButton);
+  mCompareButton->setAccessibleName("Run folder comparison");
   mStatusFilter = new QComboBox(this);
+  mStatusFilter->setAccessibleName("Compare status filter");
   mStatusFilter->addItem("All statuses", -1);
   mStatusFilter->addItem("Matches", static_cast<int>(FolderCompareStatus::Match));
   mStatusFilter->addItem(
@@ -160,6 +167,8 @@ FolderCompareDialog::FolderCompareDialog(
                          static_cast<int>(FolderCompareStatus::Error));
   mTextFilter = new QLineEdit(this);
   mTextFilter->setPlaceholderText("Filter paths");
+  mTextFilter->setClearButtonEnabled(true);
+  UiPolish::SetPathField(mTextFilter, "Filter compare paths");
   filters->addWidget(mCompareButton);
   filters->addWidget(mStatusFilter);
   filters->addWidget(mTextFilter, 1);
@@ -167,17 +176,23 @@ FolderCompareDialog::FolderCompareDialog(
 
   mSummary = new QLabel("No comparison has been run.", this);
   mSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  UiPolish::SetMuted(mSummary);
   layout->addWidget(mSummary);
+
+  mEmptyState = new QLabel(this);
+  UiPolish::SetEmptyState(
+      mEmptyState, "No comparison yet",
+      "Run Compare to review matches, differences, and repair actions.");
+  layout->addWidget(mEmptyState);
 
   mTable = new QTableWidget(this);
   mTable->setColumnCount(3);
   mTable->setHorizontalHeaderLabels(QStringList() << "State"
                                                   << "Path"
                                                   << "Marker");
+  UiPolish::SetTableView(mTable, "Folder comparison results");
   mTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  mTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   mTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
-  mTable->verticalHeader()->setVisible(false);
   mTable->horizontalHeader()->setSectionResizeMode(0,
                                                    QHeaderView::ResizeToContents);
   mTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -185,23 +200,39 @@ FolderCompareDialog::FolderCompareDialog(
                                                    QHeaderView::ResizeToContents);
   layout->addWidget(mTable, 1);
 
-  auto *actions = new QHBoxLayout();
+  auto *actionBar = new QWidget(this);
+  UiPolish::SetActionBar(actionBar);
+  auto *actions = new QHBoxLayout(actionBar);
+  actions->setContentsMargins(4, 4, 4, 4);
+  actions->setSpacing(4);
   mCopyToDestinationButton = new QPushButton("Copy to Destination", this);
   mCopyToSourceButton = new QPushButton("Copy to Source", this);
   mDeleteFromDestinationButton =
       new QPushButton("Delete from Destination", this);
   mDeleteFromSourceButton = new QPushButton("Delete from Source", this);
   auto *closeButton = new QPushButton("Close", this);
+  UiPolish::SetDestructiveButton(mDeleteFromDestinationButton);
+  UiPolish::SetDestructiveButton(mDeleteFromSourceButton);
+  mCopyToDestinationButton->setAccessibleName("Queue copy to destination repair");
+  mCopyToSourceButton->setAccessibleName("Queue copy to source repair");
+  mDeleteFromDestinationButton->setAccessibleName(
+      "Queue delete from destination repair");
+  mDeleteFromSourceButton->setAccessibleName("Queue delete from source repair");
   actions->addWidget(mCopyToDestinationButton);
   actions->addWidget(mCopyToSourceButton);
   actions->addWidget(mDeleteFromDestinationButton);
   actions->addWidget(mDeleteFromSourceButton);
   actions->addStretch(1);
   actions->addWidget(closeButton);
-  layout->addLayout(actions);
+  layout->addWidget(actionBar);
 
   QObject::connect(mCompareButton, &QPushButton::clicked, this,
                    [this]() { runCompare(); });
+  QObject::connect(mSourceEdit, &QLineEdit::textChanged, this,
+                   [this]() { UiPolish::SetFieldState(mSourceEdit, QString()); });
+  QObject::connect(mDestinationEdit, &QLineEdit::textChanged, this, [this]() {
+    UiPolish::SetFieldState(mDestinationEdit, QString());
+  });
   QObject::connect(mStatusFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
                    this, [this]() { refreshTable(); });
   QObject::connect(mTextFilter, &QLineEdit::textChanged, this,
@@ -242,8 +273,10 @@ void FolderCompareDialog::runCompare() {
   const QString source = sourcePath();
   const QString destination = destinationPath();
   if (source.isEmpty() || destination.isEmpty()) {
-    QMessageBox::warning(this, "Compare Folders",
-                         "Enter both a source and destination path.");
+    UiPolish::SetFieldState(mSourceEdit, source.isEmpty() ? "error" : QString());
+    UiPolish::SetFieldState(mDestinationEdit,
+                            destination.isEmpty() ? "error" : QString());
+    mSummary->setText("Enter both a source and destination path.");
     return;
   }
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
@@ -254,6 +287,9 @@ void FolderCompareDialog::runCompare() {
   mEntries.clear();
   refreshTable();
   mSummary->setText("Running rclone check...");
+  mEmptyState->setVisible(true);
+  UiPolish::SetEmptyState(mEmptyState, "Comparing folders",
+                          "Results will appear as soon as rclone finishes.");
   mCompareButton->setEnabled(false);
 
   mProcess = new QProcess(this);
@@ -285,6 +321,11 @@ void FolderCompareDialog::runCompare() {
               QString("rclone check failed with status %1.\n\n%2")
                   .arg(code)
                   .arg(QString::fromUtf8(mOutput).left(1200)));
+        } else if (mEntries.isEmpty()) {
+          mSummary->setText("No differences reported.");
+          UiPolish::SetEmptyState(
+              mEmptyState, "Folders match",
+              "rclone did not report any paths that need attention.");
         }
         mProcess->deleteLater();
         mProcess = nullptr;
@@ -309,6 +350,7 @@ void FolderCompareDialog::refreshTable() {
   }
 
   mTable->setRowCount(mVisibleEntryIndexes.size());
+  mEmptyState->setVisible(mVisibleEntryIndexes.isEmpty());
   int matches = 0;
   int missingOnSource = 0;
   int missingOnDestination = 0;
@@ -352,6 +394,9 @@ void FolderCompareDialog::refreshTable() {
 
   if (mEntries.isEmpty()) {
     mSummary->setText("No comparison has been run.");
+    UiPolish::SetEmptyState(
+        mEmptyState, "No comparison yet",
+        "Run Compare to review matches, differences, and repair actions.");
   } else {
     mSummary->setText(
         QString("%1 shown of %2 paths. %3 match, %4 missing on source, "
@@ -363,6 +408,11 @@ void FolderCompareDialog::refreshTable() {
             .arg(missingOnDestination)
             .arg(different)
             .arg(errors));
+    if (mVisibleEntryIndexes.isEmpty()) {
+      UiPolish::SetEmptyState(
+          mEmptyState, "No rows match the current filters",
+          "Change the status or path filter to see more results.");
+    }
   }
 
   updateRepairButtons();
@@ -387,6 +437,22 @@ void FolderCompareDialog::updateRepairButtons() {
   mCopyToSourceButton->setEnabled(copyToSource);
   mDeleteFromDestinationButton->setEnabled(deleteFromDestination);
   mDeleteFromSourceButton->setEnabled(deleteFromSource);
+  mCopyToDestinationButton->setToolTip(
+      copyToDestination
+          ? "Queue selected missing/different rows to copy to the destination."
+          : "Select rows that are missing or different on the destination.");
+  mCopyToSourceButton->setToolTip(
+      copyToSource
+          ? "Queue selected missing/different rows to copy to the source."
+          : "Select rows that are missing or different on the source.");
+  mDeleteFromDestinationButton->setToolTip(
+      deleteFromDestination
+          ? "Queue deletes for selected rows that only exist on the destination."
+          : "Select rows that are missing on the source.");
+  mDeleteFromSourceButton->setToolTip(
+      deleteFromSource
+          ? "Queue deletes for selected rows that only exist on the source."
+          : "Select rows that are missing on the destination.");
 }
 
 void FolderCompareDialog::enqueueRepair(RepairAction action) {

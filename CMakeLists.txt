@@ -98,6 +98,7 @@ if(BUILD_TESTING)
   add_executable(folder_compare_test
     tests/folder_compare_test.cpp
     src/folder_compare.cpp
+    src/interface_polish.cpp
     src/utils.cpp
   )
   target_include_directories(folder_compare_test PRIVATE src)

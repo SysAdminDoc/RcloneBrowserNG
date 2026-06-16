@@ -21,6 +21,7 @@ public:
   QStringList getOptions();
 
   JobOptions *getJobOptions();
+  bool wasEnqueued() const { return mEnqueued; }
 
 private:
   Ui::TransferDialog ui;
@@ -51,8 +52,6 @@ private:
   void showValidation(QWidget *field, const QString &message);
 
   void done(int r) override;
-
-  bool wasEnqueued() const { return mEnqueued; }
 
 signals:
   void tasksListChanged();

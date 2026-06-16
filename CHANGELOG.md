@@ -146,6 +146,7 @@
 -   FIXED: Version string read from VERSION file is trimmed (stray newline no longer corrupts the About box / update check)
 
 ### UX
+-   CHANGED: Extended the native polish system to data tables and dialog button bars; cross-remote search, folder compare, job history, bandwidth schedules, and saved-task filtering now have clearer empty states, disabled states, row selection, focus styling, and calmer inline feedback
 -   CHANGED: The New Remote flow now uses a guided dialog with explanatory helper text, inline validation, focus/error styling, clearer provider descriptions, clearable fields, and provider matching by exact rclone prefix as well as display name
 -   CHANGED: Transfer and export dialogs now keep required-field feedback inline with highlighted fields instead of interrupting users with modal warning boxes
 -   CHANGED: Progress dialogs now show explicit Running/Finished/Failed states and recover cleanly when rclone cannot start

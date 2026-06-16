@@ -33,6 +33,9 @@ void SetReadOnlyValue(QLineEdit *lineEdit,
                       const QString &accessibleName = QString());
 void SetOutputView(QPlainTextEdit *output,
                    const QString &accessibleName = QString());
+void SetTableView(QTableView *view,
+                  const QString &accessibleName = QString());
+void SetDialogButtonBox(QDialogButtonBox *buttons);
 void SetWindowDefaults(QWidget *widget, QSize minimumSize = QSize());
 
 } // namespace UiPolish
