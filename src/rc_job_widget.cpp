@@ -9,7 +9,8 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
                          const QStringList &displayArgs, const QString &source,
                          const QString &dest, QWidget *parent)
     : QWidget(parent), mEngine(engine), mJobId(jobId), mGroup("job/" + QString::number(jobId)),
-      mDisplayArgs(displayArgs) {
+      mDisplayArgs(displayArgs), mInfo(info), mSource(source), mDest(dest) {
+  mStartedAt = QDateTime::currentDateTimeUtc();
   ui.setupUi(this);
   ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
   ui.verticalLayout->setSpacing(0);
@@ -154,14 +155,17 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
   const double speed = stats.value("speed").toDouble();
   const int pct =
       totalBytes > 0 ? static_cast<int>(bytes / totalBytes * 100) : 0;
+  mBytes = static_cast<qint64>(bytes);
   ui.size->setText(QString("%1, %2%")
                        .arg(GetNiceSize(static_cast<quint64>(bytes)))
                        .arg(pct));
   ui.totalsize->setText(GetNiceSize(static_cast<quint64>(totalBytes)));
   ui.bandwidth->setText(GetNiceSize(static_cast<quint64>(speed)) + "/s");
-  ui.errors->setText(QString::number(stats.value("errors").toInt()));
+  mErrors = stats.value("errors").toInt();
+  ui.errors->setText(QString::number(mErrors));
   ui.checks->setText(QString::number(stats.value("checks").toInt()));
-  ui.transferred->setText(QString::number(stats.value("transfers").toInt()));
+  mFiles = stats.value("transfers").toInt();
+  ui.transferred->setText(QString::number(mFiles));
 
   const double elapsed = stats.value("elapsedTime").toDouble();
   if (elapsed > 0) {
@@ -174,6 +178,8 @@ void RcJobWidget::finish(bool success, const QString &error) {
   mPollTimer.stop();
   mRunning = false;
   mSuccess = success;
+  mFinishedAt = QDateTime::currentDateTimeUtc();
+  mExitCode = success ? 0 : 1;
   if (success) {
     UiPolish::SetStatus(ui.showDetails, "success", "Finished");
   } else if (error == "Cancelled.") {
@@ -188,6 +194,22 @@ void RcJobWidget::finish(bool success, const QString &error) {
   }
   ui.cancel->setToolTip("Close");
   emit finished(ui.info->text());
+}
+
+JobHistoryEntry RcJobWidget::historyEntry() const {
+  JobHistoryEntry entry;
+  entry.startedAt = mStartedAt;
+  entry.finishedAt =
+      mFinishedAt.isValid() ? mFinishedAt : QDateTime::currentDateTimeUtc();
+  entry.name = mInfo;
+  entry.source = mSource;
+  entry.dest = mDest;
+  entry.success = mSuccess;
+  entry.bytes = mBytes;
+  entry.files = mFiles;
+  entry.errors = mErrors;
+  entry.exitCode = mExitCode;
+  return entry;
 }
 
 void RcJobWidget::cancel() {

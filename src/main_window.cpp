@@ -12,6 +12,7 @@
 #include "stream_widget.h"
 #include "transfer_dialog.h"
 #include "interface_polish.h"
+#include "job_history.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
 #ifdef Q_OS_MACOS
@@ -335,6 +336,7 @@ MainWindow::MainWindow() {
   UiPolish::SetPrimaryButton(ui.open);
 
   mSystemTray.setIcon(qApp->windowIcon());
+  updateJobIndicators();
   {
     auto settings = GetSettings();
     if (settings->contains("MainWindow/geometry")) {
@@ -811,9 +813,18 @@ MainWindow::MainWindow() {
         osxShowDockIcon();
 #endif
       });
+  QAction *trayHistory = trayMenu->addAction("Job &History");
+  QObject::connect(trayHistory, &QAction::triggered, this,
+                   &MainWindow::showJobHistory);
   QObject::connect(trayMenu->addAction("&Quit"), &QAction::triggered, this,
                    &QWidget::close);
   mSystemTray.setContextMenu(trayMenu);
+
+  QAction *historyAction = new QAction("Job &History", this);
+  QObject::connect(historyAction, &QAction::triggered, this,
+                   &MainWindow::showJobHistory);
+  ui.menuFile->insertAction(ui.quit, historyAction);
+  ui.menuFile->insertSeparator(ui.quit);
 
   mStatusMessage = new QLabel();
   mStatusMessage->setMinimumWidth(0);
@@ -1805,7 +1816,7 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
             auto *widget = new RcJobWidget(
                 mRcEngine, jobId, message,
                 mRcEngine->rcCommandForDisplay(args), jo->source, jo->dest);
-            addRcJobWidget(widget, heartbeatUrl);
+            addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName);
             if (!postCommand.isEmpty()) {
               QObject::connect(
                   widget, &RcJobWidget::finished, this, [=]() {
@@ -1877,7 +1888,9 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
 }
 
 void MainWindow::addRcJobWidget(RcJobWidget *widget,
-                                const QString &heartbeatUrl) {
+                                const QString &heartbeatUrl,
+                                const QString &webhookUrl,
+                                const QString &taskName) {
   auto *line = new QFrame();
   line->setFrameShape(QFrame::HLine);
   line->setFrameShadow(QFrame::Sunken);
@@ -1898,12 +1911,8 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
                                    widget->wasSuccessful());
                      }
 
-                     if (--mJobCount == 0) {
-                       ui.tabs->setTabText(1, "Jobs");
-                     } else {
-                       ui.tabs->setTabText(
-                           1, QString("Jobs (%1)").arg(mJobCount));
-                     }
+                     persistJobHistory(widget->historyEntry());
+                     noteJobFinished(widget->wasSuccessful());
                    });
 
   QObject::connect(widget, &RcJobWidget::closed, this, [=]() {
@@ -1922,7 +1931,7 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
 
   ui.jobs->insertWidget(0, widget);
   ui.jobs->insertWidget(1, line);
-  ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
+  noteJobStarted();
 }
 
 void MainWindow::addTransferViaProcess(const QString &message,
@@ -1967,11 +1976,8 @@ void MainWindow::addTransferViaProcess(const QString &message,
 #endif
         }
 
-        if (--mJobCount == 0) {
-          ui.tabs->setTabText(1, "Jobs");
-        } else {
-          ui.tabs->setTabText(1, QString("Jobs (%1)").arg(mJobCount));
-        }
+        persistJobHistory(widget->historyEntry());
+        noteJobFinished(widget->wasSuccessful());
       });
 
   QObject::connect(widget, &JobWidget::closed, this, [=]() {
@@ -1993,10 +1999,122 @@ void MainWindow::addTransferViaProcess(const QString &message,
 
   ui.jobs->insertWidget(0, widget);
   ui.jobs->insertWidget(1, line);
-  ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
+  noteJobStarted();
 
   UseRclonePassword(transfer);
   transfer->start(GetRclone(), processArgs, QIODevice::ReadOnly);
+}
+
+void MainWindow::showJobHistory() {
+  QString error;
+  QVector<JobHistoryEntry> entries = JobHistoryStore::Load(&error);
+  if (!error.isEmpty()) {
+    QMessageBox::warning(this, "Job History", error);
+    return;
+  }
+
+  QDialog dialog(this);
+  dialog.setWindowTitle("Job History");
+  dialog.resize(980, 420);
+  QVBoxLayout *layout = new QVBoxLayout(&dialog);
+  QTableWidget *table = new QTableWidget(&dialog);
+  table->setColumnCount(9);
+  table->setHorizontalHeaderLabels(QStringList()
+                                   << "Finished"
+                                   << "Status"
+                                   << "Task"
+                                   << "Source"
+                                   << "Destination"
+                                   << "Bytes"
+                                   << "Files"
+                                   << "Errors"
+                                   << "Exit");
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setSelectionMode(QAbstractItemView::SingleSelection);
+  table->verticalHeader()->setVisible(false);
+  table->horizontalHeader()->setStretchLastSection(false);
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+  table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+  table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+
+  table->setRowCount(entries.size());
+  for (int row = 0; row < entries.size(); ++row) {
+    const JobHistoryEntry &entry = entries.at(entries.size() - row - 1);
+    const QString status = entry.success ? "Success" : "Failed";
+    QString finished = entry.finishedAt.toLocalTime().toString("yyyy-MM-dd hh:mm:ss");
+    const QStringList values = QStringList()
+                               << finished
+                               << status
+                               << entry.name
+                               << entry.source
+                               << entry.dest
+                               << GetNiceSize(static_cast<quint64>(qMax<qint64>(0, entry.bytes)))
+                               << QString::number(entry.files)
+                               << QString::number(entry.errors)
+                               << QString::number(entry.exitCode);
+    for (int col = 0; col < values.size(); ++col) {
+      auto *item = new QTableWidgetItem(values.at(col));
+      item->setToolTip(values.at(col));
+      table->setItem(row, col, item);
+    }
+  }
+
+  layout->addWidget(table);
+  if (entries.isEmpty()) {
+    QLabel *empty = new QLabel("No completed jobs have been recorded yet.", &dialog);
+    UiPolish::SetMuted(empty);
+    layout->addWidget(empty);
+  }
+  QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  layout->addWidget(buttons);
+  dialog.exec();
+}
+
+void MainWindow::noteJobStarted() {
+  if (mJobCount == 0) {
+    mLastJobFailed = false;
+  }
+  ++mJobCount;
+  updateJobIndicators();
+}
+
+void MainWindow::noteJobFinished(bool success) {
+  if (mJobCount > 0) {
+    --mJobCount;
+  }
+  if (!success) {
+    mLastJobFailed = true;
+  }
+  updateJobIndicators();
+}
+
+void MainWindow::updateJobIndicators() {
+  if (mJobCount == 0) {
+    ui.tabs->setTabText(1, "Jobs");
+  } else {
+    ui.tabs->setTabText(1, QString("Jobs (%1)").arg(mJobCount));
+  }
+
+  if (mJobCount > 0) {
+    mSystemTray.setIcon(QApplication::style()->standardIcon(QStyle::SP_BrowserReload));
+    mSystemTray.setToolTip(QString("Rclone Browser NG - %1 transfer(s) running").arg(mJobCount));
+  } else if (mLastJobFailed) {
+    mSystemTray.setIcon(QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning));
+    mSystemTray.setToolTip("Rclone Browser NG - last transfer needs attention");
+  } else {
+    mSystemTray.setIcon(qApp->windowIcon());
+    mSystemTray.setToolTip("Rclone Browser NG");
+  }
+}
+
+void MainWindow::persistJobHistory(const JobHistoryEntry &entry) {
+  QString error;
+  if (!JobHistoryStore::Append(entry, &error)) {
+    setStatusMessage("Job history could not be saved: " + error);
+  }
 }
 
 void MainWindow::sendHeartbeat(const QString &url, bool success) {
@@ -2017,7 +2135,7 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
     }
   }
 
-  QNetworkRequest req(QUrl(endpoint));
+  QNetworkRequest req{QUrl(endpoint)};
   QNetworkReply *reply = mNetworkManager->get(req);
   QTimer::singleShot(15000, reply, [reply]() {
     if (reply->isRunning()) {
@@ -2052,7 +2170,7 @@ void MainWindow::sendWebhook(const QString &url, const QString &taskName,
       : QString("Task \"%1\" failed: %2").arg(taskName, error);
   payload.insert("content", summary);
 
-  QNetworkRequest req(QUrl(url));
+  QNetworkRequest req{QUrl(url)};
   req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
   QNetworkReply *reply = mNetworkManager->post(
       req, QJsonDocument(payload).toJson(QJsonDocument::Compact));

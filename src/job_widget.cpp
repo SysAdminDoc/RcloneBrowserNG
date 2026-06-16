@@ -10,7 +10,9 @@ constexpr int kMaxVisibleFileProgress = 12;
 JobWidget::JobWidget(QProcess *process, const QString &info,
                      const QStringList &args, const QString &source,
                      const QString &dest, QWidget *parent)
-    : QWidget(parent), mProcess(process) {
+    : QWidget(parent), mProcess(process),
+      mStartedAt(QDateTime::currentDateTimeUtc()), mInfo(info),
+      mSource(source), mDest(dest) {
   ui.setupUi(this);
   ui.verticalLayout->setContentsMargins(0, 0, 0, 0);
   ui.verticalLayout->setSpacing(0);
@@ -144,6 +146,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       double bytes = stats.value("bytes").toDouble();
       double totalBytes = stats.value("totalBytes").toDouble();
       double speed = stats.value("speed").toDouble();
+      mBytes = static_cast<qint64>(bytes);
       int pct = totalBytes > 0
                     ? static_cast<int>(bytes / totalBytes * 100)
                     : 0;
@@ -172,6 +175,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       }
 
       int errors = stats.value("errors").toInt();
+      mErrors = errors;
       ui.errors->setText(QString::number(errors));
 
       int checks = stats.value("checks").toInt();
@@ -184,6 +188,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
       int transfers = stats.value("transfers").toInt();
       int totalTransfers = stats.value("totalTransfers").toInt();
+      mFiles = qMax(transfers, totalTransfers);
       if (totalTransfers > 0)
         ui.transferred->setText(
             QString("%1 / %2").arg(transfers).arg(totalTransfers));
@@ -280,6 +285,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      clearFileProgress();
 
                      mRunning = false;
+                     mFinishedAt = QDateTime::currentDateTimeUtc();
+                     mExitCode = status;
                      mSuccess = (status == 0);
                      if (status == 0) {
                        // no explicit colour - inherit the palette so the
@@ -305,6 +312,22 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 JobWidget::~JobWidget() {}
 
 void JobWidget::showDetails() { ui.showDetails->setChecked(true); }
+
+JobHistoryEntry JobWidget::historyEntry() const {
+  JobHistoryEntry entry;
+  entry.startedAt = mStartedAt;
+  entry.finishedAt =
+      mFinishedAt.isValid() ? mFinishedAt : QDateTime::currentDateTimeUtc();
+  entry.name = mInfo;
+  entry.source = mSource;
+  entry.dest = mDest;
+  entry.success = mSuccess;
+  entry.bytes = mBytes;
+  entry.files = mFiles;
+  entry.errors = mErrors;
+  entry.exitCode = mExitCode;
+  return entry;
+}
 
 void JobWidget::setProgressOverflow(int hiddenCount) {
   if (hiddenCount <= 0) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "job_history.h"
 #include "ui_job_widget.h"
 
 class RcloneRcEngine;
@@ -16,6 +17,7 @@ public:
 
   void showDetails();
   bool wasSuccessful() const { return mSuccess; }
+  JobHistoryEntry historyEntry() const;
 
 public slots:
   void cancel();
@@ -32,8 +34,17 @@ private:
   bool mRunning = true;
   bool mPollInFlight = false;
   bool mSuccess = false;
+  QDateTime mStartedAt;
+  QDateTime mFinishedAt;
   QString mGroup;
   QStringList mDisplayArgs;
+  QString mInfo;
+  QString mSource;
+  QString mDest;
+  qint64 mBytes = 0;
+  int mFiles = 0;
+  int mErrors = 0;
+  int mExitCode = 0;
   QTimer mPollTimer;
 
   void poll();

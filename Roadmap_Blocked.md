@@ -19,6 +19,14 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
 
 ## P2 — Distribution
 
+- [ ] P2 — Publish to winget, Scoop, and a -ng AUR package
+  Blocked: Requires external package-registry submissions and maintainer/registry approval outside the repo before acceptance can be completed.
+  Why: inherited Repology entries point at the dead upstream; peers (Syncthing Tray, Cyberduck) ship these channels.
+  Evidence: repology.org/project/rclone-browser/packages; microsoft/winget-pkgs
+  Touches: packaging manifests, CI (wingetcreate)
+  Acceptance: winget/scoop/AUR all install the current NG release; version bumps automated in CI.
+  Complexity: M
+
 - [ ] P2 — Prepare SignPath Foundation application materials
   Blocked: Requires external SignPath application submission and maintainer-controlled policy decisions before implementation can be accepted as complete.
   Why: SignPath Foundation approval takes 2-4 weeks. Requires CODE_OF_CONDUCT, a published code signing policy, and a public CI workflow. These prerequisites must be in place before the signing infrastructure can be integrated. Blocks the existing P1 code signing deadline item.

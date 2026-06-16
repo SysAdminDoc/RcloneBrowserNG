@@ -30,9 +30,10 @@ JobOptions *makeTask() {
 }
 
 void writeLegacyTask(QIODevice *device, const JobOptions &jo) {
+  constexpr qint32 legacyVersionWithUniqueId = 3;
   QDataStream stream(device);
   stream.setVersion(QDataStream::Qt_5_2);
-  stream << jo.myName() << JobOptions::classVersion << jo.description
+  stream << jo.myName() << legacyVersionWithUniqueId << jo.description
          << static_cast<quint32>(jo.jobType)
          << static_cast<quint32>(jo.operation) << jo.sync
          << static_cast<quint32>(jo.syncTiming) << jo.skipNewer
