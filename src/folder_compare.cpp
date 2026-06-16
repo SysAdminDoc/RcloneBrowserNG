@@ -137,6 +137,12 @@ FolderCompareDialog::FolderCompareDialog(
   paths->addRow("Destination", mDestinationEdit);
   layout->addLayout(paths);
 
+  mCryptCheck = new QCheckBox("Use cryptcheck (for crypt remotes)", this);
+  mCryptCheck->setToolTip(
+      "Verify a crypt remote against its plaintext source using rclone "
+      "cryptcheck instead of check.");
+  layout->addWidget(mCryptCheck);
+
   auto *filters = new QHBoxLayout();
   mCompareButton = new QPushButton("Compare", this);
   mStatusFilter = new QComboBox(this);
@@ -253,8 +259,9 @@ void FolderCompareDialog::runCompare() {
   mProcess = new QProcess(this);
   UseRclonePassword(mProcess);
   mProcess->setProgram(GetRclone());
+  QString command = mCryptCheck->isChecked() ? "cryptcheck" : "check";
   mProcess->setArguments(QStringList()
-                         << "check" << GetRcloneConf() << mDriveSharedArgs
+                         << command << GetRcloneConf() << mDriveSharedArgs
                          << GetDefaultRcloneOptionsList() << source
                          << destination << "--combined" << "-");
   mProcess->setProcessChannelMode(QProcess::MergedChannels);

@@ -1,6 +1,9 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Quick bandwidth snail toggle — a "Slow/Full" button in the status bar instantly drops all new transfers to 128K or restores full speed with one click
+-   NEW: cryptcheck mode in folder compare — the Compare Folders dialog now has a "Use cryptcheck" checkbox for verifying crypt remotes against their plaintext source
+-   NEW: Support bundle now includes `--dump curl` usage tip for capturing HTTP requests as curl commands in bug reports
 -   NEW: Path bookmarks — right-click any item in the remote browser to "Bookmark this path"; bookmarks appear in the File > Bookmarks menu for one-click access to deep remote paths
 -   NEW: File properties dialog — right-click a file and choose Properties to see size, modification time, MIME type, all available hashes (including BLAKE3/XXH3/XXH128), and backend metadata via `rclone lsjson --stat --hash -M`
 -   NEW: Transfer staging queue — an "Enqueue" button in the transfer dialog adds operations to a staging list on the Tasks tab for batch review; "Run All" executes all staged transfers at once, "Clear" discards them

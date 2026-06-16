@@ -56,6 +56,7 @@ private:
   QPushButton *mCopyToSourceButton = nullptr;
   QPushButton *mDeleteFromDestinationButton = nullptr;
   QPushButton *mDeleteFromSourceButton = nullptr;
+  QCheckBox *mCryptCheck = nullptr;
   QProcess *mProcess = nullptr;
   QByteArray mOutput;
   QVector<FolderCompareEntry> mEntries;

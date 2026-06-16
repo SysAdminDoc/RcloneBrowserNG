@@ -263,12 +263,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: a local-source task can opt into "snapshot locked files"; requires elevation; gracefully explains when unavailable.
   Complexity: L
 
-- [ ] P3 — cryptcheck mode in the check UI
-  Why: crypt users cannot verify integrity via plain check; one extra mode on the planned check feature.
-  Evidence: Zarestia-Dev/rclone-manager#218; rclone.org/commands/rclone_cryptcheck
-  Touches: check feature (depends on existing rclone-check item)
-  Acceptance: when the target is a crypt remote, the check dialog offers cryptcheck against the plaintext source.
-  Complexity: S
 
 - [ ] P3 — Backup-dir retention policy UI
   Why: `--backup-dir` with dated folders + retention (keep N / prune older than X) is the script-land standard (rclone_jobber/dfb) no GUI offers; pairs with the version-browser item.
@@ -366,12 +360,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: errors from running jobs accumulate in a non-modal queue; a badge on the Jobs tab or status bar shows the count; clicking opens the queue for review; no modal dialogs block the GUI during background transfers.
   Complexity: M
 
-- [ ] P3 — Quick bandwidth snail toggle
-  Why: Free Download Manager's one-click "Snail" icon drops all operations to a crawl without disconnecting — simpler than the existing bandwidth slider and timetable editor items. A single toolbar/tray icon that toggles between full-speed and a configurable floor rate via `core/bwlimit` RC. Solves the "I need my connection back NOW" use case without opening preferences.
-  Evidence: freedownloadmanager.org (Snail mode); rclone.org/rc (core/bwlimit)
-  Touches: `src/main_window.cpp` (toolbar/tray action), `src/rclone_rc_engine.cpp` (core/bwlimit call), preferences (floor speed)
-  Acceptance: a toggle button in the toolbar or tray context menu switches all running rclone jobs between full-speed and a configurable throttle; visual state change (icon/color) confirms the mode; depends on rcd engine for rc-managed jobs.
-  Complexity: S
 
 - [ ] P3 — Drag between remote tabs for cross-remote transfer
   Why: remote-to-remote copy is an existing P3 feature request. Dragging a file from one open remote tab to another is the most intuitive initiation path. Qt's drag-and-drop framework supports cross-widget drops natively — the tab bar accepts a drop to switch to the target tab, then the tree view accepts the drop to set the destination path.
@@ -380,9 +368,3 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: drag a file/folder from one remote tab to the tab header of another remote; the target tab activates; dropping into the tree opens a transfer dialog pre-filled with source and destination paths.
   Complexity: M
 
-- [ ] P3 — Expose --dump curl in diagnostics support bundle
-  Why: rclone v1.74.0 added `--dump curl` to export HTTP requests as curl commands for debugging. Including a curl-dump capture in the diagnostics/support bundle (existing P2 item) makes bug reports self-contained and reproducible.
-  Evidence: rclone.org/changelog v1.74.0 (--dump curl); existing P2 diagnostics item
-  Touches: diagnostics collector (depends on diagnostics item), optional `--dump curl` flag on jobs
-  Acceptance: the support bundle can optionally include a curl-dump log from the last job; sensitive headers (auth tokens) are redacted.
-  Complexity: S
