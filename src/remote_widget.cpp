@@ -219,9 +219,69 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       settings->value("Settings/rowColors", false).toBool());
   ui.checkBoxShared->setChecked(false);
   ui.checkBoxShared->setDisabled(!isGoogle);
-  // hide checkBoxShared for non Google remotes
   if (!isGoogle) {
     ui.checkBoxShared->hide();
+  }
+  if (isGoogle) {
+    auto *trashButton = new QPushButton("Trash", this);
+    trashButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
+    trashButton->setToolTip("List trashed files in this Google Drive remote.");
+    trashButton->setAccessibleName("Browse Google Drive trash");
+    trashButton->setMaximumHeight(28);
+    if (auto *layout =
+            qobject_cast<QHBoxLayout *>(ui.checkBoxShared->parentWidget()->layout())) {
+      layout->addWidget(trashButton);
+    }
+    QObject::connect(trashButton, &QPushButton::clicked, this, [this, remote]() {
+      QProcess proc;
+      UseRclonePassword(&proc);
+      proc.setProgram(GetRclone());
+      proc.setArguments(QStringList()
+                        << "lsjson" << GetRcloneConf() << "--drive-trashed-only"
+                        << getDriveSharedArgs() << "-R" << "--no-mimetype"
+                        << remote + ":");
+      proc.setProcessChannelMode(QProcess::MergedChannels);
+      proc.start();
+      if (!proc.waitForFinished(30000)) {
+        proc.kill();
+        QMessageBox::warning(this, "Trash", "Timed out listing trashed files.");
+        return;
+      }
+      if (proc.exitCode() != 0) {
+        QMessageBox::warning(this, "Trash",
+                             "Could not list trashed files:\n" +
+                                 QString::fromUtf8(proc.readAll()).left(500));
+        return;
+      }
+      QJsonDocument doc = QJsonDocument::fromJson(proc.readAllStandardOutput());
+      QJsonArray arr = doc.array();
+      if (arr.isEmpty()) {
+        QMessageBox::information(this, "Trash", "No trashed files found.");
+        return;
+      }
+      QStringList items;
+      for (const QJsonValue &val : arr) {
+        QJsonObject obj = val.toObject();
+        QString path = obj.value("Path").toString();
+        qint64 size = obj.value("Size").toVariant().toLongLong();
+        items << QString("%1  (%2)").arg(path, GetNiceSize(static_cast<quint64>(size)));
+      }
+      QDialog dlg(this);
+      dlg.setWindowTitle(QString("Trashed files in %1").arg(remote));
+      dlg.resize(600, 400);
+      auto *layout = new QVBoxLayout(&dlg);
+      auto *list = new QListWidget(&dlg);
+      list->addItems(items);
+      layout->addWidget(list);
+      auto *hint = new QLabel(
+          QString("%1 trashed file(s). Use the Google Drive web interface to restore.").arg(arr.size()), &dlg);
+      UiPolish::SetMuted(hint);
+      layout->addWidget(hint);
+      auto *close = new QPushButton("Close", &dlg);
+      QObject::connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
+      layout->addWidget(close);
+      dlg.exec();
+    });
   }
 
   QStyle *style = QApplication::style();
