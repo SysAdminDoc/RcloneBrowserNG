@@ -37,6 +37,7 @@ private:
 
   bool mIsDownload;
   bool mDryRun = false;
+  bool mEnqueued = false;
   bool mIsFolder;
   bool mIsEditMode;
 
@@ -47,6 +48,8 @@ private:
   void showValidation(QWidget *field, const QString &message);
 
   void done(int r) override;
+
+  bool wasEnqueued() const { return mEnqueued; }
 
 signals:
   void tasksListChanged();
