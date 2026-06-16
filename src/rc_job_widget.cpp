@@ -169,6 +169,7 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
 void RcJobWidget::finish(bool success, const QString &error) {
   mPollTimer.stop();
   mRunning = false;
+  mSuccess = success;
   if (success) {
     UiPolish::SetStatus(ui.showDetails, "success", "Finished");
   } else if (error == "Cancelled.") {

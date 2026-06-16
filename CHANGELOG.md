@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Heartbeat monitoring integration — saved tasks can have an optional URL (Healthchecks.io, ntfy.sh, or any HTTP endpoint) that is pinged on job completion; success sends GET to the URL, failure sends GET to URL/fail
 -   CHANGED: Directory listings now use streaming JSON parsing — each `lsjson` object is parsed incrementally as data arrives instead of accumulating the entire response and parsing it as one block; this eliminates peak memory duplication on directories with hundreds of thousands of entries
 -   CHANGED: RcloneRcEngine runtime requests (job status, stats, stop) now use async `QNetworkReply` signal/slot completion instead of blocking nested `QEventLoop` — eliminates GUI freezes and reentrancy risks during concurrent RC-based transfers; synchronous event loop retained only for the one-time rcd startup ping
 -   CHANGED: Saved tasks now use a versioned task-store header with task count; legacy headerless `tasks.bin` files are loaded, migrated forward, and rewritten automatically while corrupt/newer schemas still fail safely

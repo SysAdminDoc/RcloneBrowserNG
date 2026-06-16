@@ -69,8 +69,11 @@ private:
 
   void addEmptyJobsMessage();
   void addTransferViaProcess(const QString &message, const QString &source,
-                             const QString &dest, const QStringList &args);
-  void addRcJobWidget(RcJobWidget *widget);
+                             const QString &dest, const QStringList &args,
+                             const QString &heartbeatUrl = QString());
+  void addRcJobWidget(RcJobWidget *widget,
+                      const QString &heartbeatUrl = QString());
+  void sendHeartbeat(const QString &url, bool success);
   void checkRcloneUpdate(const QString &currentVersion);
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;

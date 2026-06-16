@@ -273,6 +273,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      clearFileProgress();
 
                      mRunning = false;
+                     mSuccess = (status == 0);
                      if (status == 0) {
                        // no explicit colour - inherit the palette so the
                        // label stays readable in light and dark mode

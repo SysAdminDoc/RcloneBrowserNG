@@ -13,6 +13,7 @@ public:
   ~JobWidget();
 
   void showDetails();
+  bool wasSuccessful() const { return mSuccess; }
 
 public slots:
   void cancel();
@@ -25,6 +26,7 @@ private:
   Ui::JobWidget ui;
 
   bool mRunning = true;
+  bool mSuccess = false;
   QProcess *mProcess;
 
   QStringList mArgs;

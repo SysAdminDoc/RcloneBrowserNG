@@ -17,7 +17,7 @@ JobOptions::JobOptions()
       dontUpdateModified(false), maxDepth(0), deleteExcluded(false),
       isFolder(false) {}
 
-const qint32 JobOptions::classVersion = 3;
+const qint32 JobOptions::classVersion = 4;
 
 JobOptions::~JobOptions() {}
 
