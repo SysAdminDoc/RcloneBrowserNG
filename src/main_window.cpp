@@ -2657,6 +2657,19 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
   if (streamParts.isEmpty()) {
     streamParts << stream;
   }
+
+  QString fileName =
+      QFileInfo(remote.mid(remote.indexOf(':') + 1)).fileName();
+  if (!fileName.isEmpty()) {
+    QString playerBase =
+        QFileInfo(streamParts.first()).baseName().toLower();
+    if (playerBase.contains("mpv")) {
+      streamParts.insert(1, "--force-media-title=" + fileName);
+    } else if (playerBase.contains("vlc")) {
+      streamParts.insert(1, "--meta-title=" + fileName);
+    }
+  }
+
   player->start(streamParts.first(), streamParts.mid(1), QProcess::ReadOnly);
   UseRclonePassword(rclone);
   rclone->start(GetRclone(),
