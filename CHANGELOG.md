@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Multi-file selection in the remote file browser — Shift-click and Ctrl-click select multiple files and folders; batch delete works on all selected items; single-item actions (rename, move, mount, stream, link) are disabled when multiple items are selected
 -   NEW: Transfer dialog exposes rclone's `--name-transform` flag (rclone >= 1.74) for file name transformations such as lowercase conversion or regex replacements
 -   NEW: Heartbeat monitoring integration — saved tasks can have an optional URL (Healthchecks.io, ntfy.sh, or any HTTP endpoint) that is pinged on job completion; success sends GET to the URL, failure sends GET to URL/fail
 -   CHANGED: Directory listings now use streaming JSON parsing — each `lsjson` object is parsed incrementally as data arrives instead of accumulating the entire response and parsing it as one block; this eliminates peak memory duplication on directories with hundreds of thousands of entries

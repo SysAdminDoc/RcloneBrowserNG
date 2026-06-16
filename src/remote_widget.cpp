@@ -33,6 +33,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   UiPolish::SetNavigationView(ui.tree, "Remote file browser");
   ui.tree->setRootIsDecorated(true);
   ui.tree->setIndentation(18);
+  ui.tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
 QString root = isLocal ? "/" : QString();
 
@@ -189,20 +190,32 @@ QString root = isLocal ? "/" : QString();
 
   QObject::connect(
       ui.tree->selectionModel(), &QItemSelectionModel::selectionChanged, this,
-      [=](const QItemSelection &selection) {
+      [=]() {
+        auto rows = ui.tree->selectionModel()->selectedRows();
+        int count = rows.size();
+
         for (auto child : findChildren<QAction *>()) {
-          child->setDisabled(selection.isEmpty());
+          child->setDisabled(count == 0);
         }
 
-        if (selection.isEmpty()) {
+        if (count == 0) {
           ui.path->clear();
           return;
         }
 
-        QModelIndex index = selection.indexes().front();
+        bool multiSelect = (count > 1);
+        QModelIndex index = rows.front();
 
         bool topLevel = model->isTopLevel(index);
         bool isFolder = model->isFolder(index);
+
+        ui.rename->setDisabled(multiSelect || topLevel);
+        ui.move->setDisabled(multiSelect || topLevel);
+        ui.mount->setDisabled(multiSelect || !isFolder);
+        ui.stream->setDisabled(multiSelect || isFolder);
+        ui.link->setDisabled(multiSelect);
+        ui.getTree->setDisabled(multiSelect || !isFolder);
+        ui.export_->setDisabled(multiSelect || !isFolder);
 
         QDir path;
         if (model->isLoading(index)) {
@@ -223,39 +236,49 @@ QString root = isLocal ? "/" : QString();
           ui.refresh->setDisabled(false);
           bool driveShared = ui.checkBoxShared->checkState();
           ui.mkdir->setDisabled(driveShared);
-          ui.rename->setDisabled(topLevel || driveShared);
-          ui.move->setDisabled(topLevel || driveShared);
+          if (!multiSelect) {
+            ui.rename->setDisabled(topLevel || driveShared);
+            ui.move->setDisabled(topLevel || driveShared);
+          }
           ui.purge->setDisabled(topLevel || driveShared);
           ui.upload->setDisabled(driveShared);
 
 #if defined(Q_OS_WIN32)
-          // check if required version
           unsigned int result =
               compareVersion(rcloneVersion.toStdString(), "1.50");
           if (result == 2) {
             ui.mount->setDisabled(true);
-          } else {
+          } else if (!multiSelect) {
             ui.mount->setDisabled(!isFolder);
-          };
+          }
 #else
-// mount is not supported by rclone on these systems
 #if defined(Q_OS_OPENBSD) || defined(Q_OS_NETBSD)
           ui.mount->setDisabled(true);
 #else
-          ui.mount->setDisabled(!isFolder);
+          if (!multiSelect) {
+            ui.mount->setDisabled(!isFolder);
+          }
 #endif
 #endif
 
-          ui.stream->setDisabled(isFolder);
+          if (!multiSelect) {
+            ui.stream->setDisabled(isFolder);
+          }
           ui.checkBoxShared->setDisabled(!isGoogle);
           path = model->path(index);
-          ui.path->setText(isLocal ? QDir::toNativeSeparators(path.path())
-                                   : path.path());
+          if (multiSelect) {
+            ui.path->setText(QString("%1 items selected").arg(count));
+          } else {
+            ui.path->setText(isLocal ? QDir::toNativeSeparators(path.path())
+                                     : path.path());
+          }
         }
 
-        ui.getSize->setDisabled(!isFolder);
-        ui.getTree->setDisabled(!isFolder);
-        ui.export_->setDisabled(!isFolder);
+        if (!multiSelect) {
+          ui.getSize->setDisabled(!isFolder);
+          ui.getTree->setDisabled(!isFolder);
+          ui.export_->setDisabled(!isFolder);
+        }
       });
 
   QObject::connect(ui.refresh, &QAction::triggered, this, [=]() {
@@ -387,43 +410,65 @@ QString root = isLocal ? "/" : QString();
   QObject::connect(ui.purge, &QAction::triggered, this, [=]() {
     auto settings = GetSettings();
 
-
-    QModelIndex index = selectedIndex();
-    if (!index.isValid()) {
-      return;
-    }
-    if (!confirmUnambiguousDestructiveAction(index, "Delete")) {
+    auto rows = ui.tree->selectionModel()->selectedRows();
+    if (rows.isEmpty()) {
       return;
     }
 
-    QString path = model->path(index).path();
-    QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
+    for (const auto &idx : rows) {
+      if (!confirmUnambiguousDestructiveAction(idx, "Delete")) {
+        return;
+      }
+    }
+
+    QString confirmMsg;
+    if (rows.size() == 1) {
+      QString path = model->path(rows.front()).path();
+      QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
+      confirmMsg = QString("Delete %1?").arg(pathMsg);
+    } else {
+      confirmMsg = QString("Delete %1 items?").arg(rows.size());
+    }
 
     int button = QMessageBox::question(
         this, "Delete",
-        QString("Delete %1?\n\nThis starts a rclone delete job. Recovery "
-                "depends on the remote backend's trash or versioning support.")
-            .arg(pathMsg),
+        confirmMsg +
+            "\n\nThis starts rclone delete jobs. Recovery "
+            "depends on the remote backend's trash or versioning support.",
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (button == QMessageBox::Yes) {
-      QStringList args;
-      args << (model->isFolder(index) ? "purge" : "delete");
-      args << getDriveSharedArgs();
-      args << GetDefaultRcloneOptionsList();
-      args << "--verbose";
-      args << "--use-json-log";
-      args << "--stats" << "1s";
-      args << remote + ":" + path;
+      QList<QPersistentModelIndex> persistentRows;
+      for (const auto &idx : rows) {
+        persistentRows.append(QPersistentModelIndex(idx));
+      }
 
-      QModelIndex parent = index.parent();
-      QModelIndex next = parent.model()->index(index.row() + 1, 0);
-      ui.tree->selectionModel()->select(next.isValid() ? next : parent,
-                                        QItemSelectionModel::SelectCurrent);
-      model->removeRow(index.row(), parent);
+      for (const auto &pidx : persistentRows) {
+        if (!pidx.isValid()) {
+          continue;
+        }
+        QModelIndex idx = QModelIndex(pidx);
+        QString path = model->path(idx).path();
+        QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
-      emit addTransfer(
-          QString("Delete %1").arg(pathMsg),
-          remote + ":" + path, QString(), args);
+        QStringList args;
+        args << (model->isFolder(idx) ? "purge" : "delete");
+        args << getDriveSharedArgs();
+        args << GetDefaultRcloneOptionsList();
+        args << "--verbose";
+        args << "--use-json-log";
+        args << "--stats" << "1s";
+        args << remote + ":" + path;
+
+        emit addTransfer(QString("Delete %1").arg(pathMsg),
+                         remote + ":" + path, QString(), args);
+      }
+
+      for (int i = persistentRows.size() - 1; i >= 0; i--) {
+        if (persistentRows[i].isValid()) {
+          QModelIndex idx = QModelIndex(persistentRows[i]);
+          model->removeRow(idx.row(), idx.parent());
+        }
+      }
     }
   });
 
