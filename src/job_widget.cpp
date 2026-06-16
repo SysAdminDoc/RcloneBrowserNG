@@ -152,14 +152,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
 
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
-      int button = QMessageBox::question(
-          this, "Transfer",
-          QString("Cancel this transfer?\n\n"
-                  "Rclone will stop as soon as the process can be terminated."),
-          QMessageBox::Yes | QMessageBox::No);
-      if (button == QMessageBox::Yes) {
-        cancel();
-      }
+      cancel();
     } else {
       emit closed();
     }
@@ -370,7 +363,15 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                        }
                      }
 
-                     if (status == 0) {
+                     ui.cancel->setEnabled(true);
+                     UiPolish::SetCompactToolButton(
+                         ui.cancel, "Close transfer card",
+                         "Remove this transfer from the jobs list.");
+
+                     if (mUserCancelled) {
+                       UiPolish::SetStatus(ui.showDetails, "warning",
+                                           "Cancelled");
+                     } else if (status == 0) {
                        UiPolish::SetStatus(ui.showDetails, "success",
                                            "Finished");
                      } else {
@@ -391,8 +392,6 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                        QObject::connect(retry, &QToolButton::clicked, this,
                                         [this]() { emit retryRequested(); });
                      }
-
-                     ui.cancel->setToolTip("Close");
 
                      emit finished(ui.info->text());
                    });
@@ -491,12 +490,25 @@ void JobWidget::cancel() {
   if (!mRunning) {
     return;
   }
-
-  mProcess->terminate();
-  if (!mProcess->waitForFinished(5000)) {
-    mProcess->kill();
-    mProcess->waitForFinished();
+  if (mStopping) {
+    return;
   }
 
-  emit closed();
+  mStopping = true;
+  mUserCancelled = true;
+  if (mPaused) {
+    togglePause();
+  }
+  UiPolish::SetStatus(ui.showDetails, "warning", "Stopping");
+  ui.cancel->setEnabled(false);
+  ui.cancel->setToolTip("Stopping transfer...");
+  ui.output->appendPlainText("Cancel requested; stopping rclone...");
+
+  mProcess->terminate();
+  QPointer<QProcess> processGuard(mProcess);
+  QTimer::singleShot(5000, this, [processGuard]() {
+    if (processGuard && processGuard->state() != QProcess::NotRunning) {
+      processGuard->kill();
+    }
+  });
 }

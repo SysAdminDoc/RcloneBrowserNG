@@ -32,6 +32,8 @@ private:
   RcloneRcEngine *mEngine;
   int mJobId;
   bool mRunning = true;
+  bool mStopping = false;
+  bool mUserCancelled = false;
   bool mPollInFlight = false;
   bool mSuccess = false;
   QDateTime mStartedAt;

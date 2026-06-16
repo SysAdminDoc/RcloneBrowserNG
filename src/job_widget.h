@@ -49,6 +49,8 @@ private:
   Ui::JobWidget ui;
 
   bool mRunning = true;
+  bool mStopping = false;
+  bool mUserCancelled = false;
   bool mPaused = false;
   bool mSuccess = false;
   QProcess *mProcess;

@@ -72,14 +72,7 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
                                  "Cancel this running transfer.");
   QObject::connect(ui.cancel, &QToolButton::clicked, this, [=]() {
     if (mRunning) {
-      int button = QMessageBox::question(
-          this, "Transfer",
-          QString("Cancel this transfer?\n\n"
-                  "The rclone rc job will be stopped and marked cancelled."),
-          QMessageBox::Yes | QMessageBox::No);
-      if (button == QMessageBox::Yes) {
-        cancel();
-      }
+      cancel();
     } else {
       emit closed();
     }
@@ -180,7 +173,12 @@ void RcJobWidget::finish(bool success, const QString &error) {
   mSuccess = success;
   mFinishedAt = QDateTime::currentDateTimeUtc();
   mExitCode = success ? 0 : 1;
-  if (success) {
+  ui.cancel->setEnabled(true);
+  UiPolish::SetCompactToolButton(ui.cancel, "Close transfer card",
+                                 "Remove this transfer from the jobs list.");
+  if (mUserCancelled) {
+    UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
+  } else if (success) {
     UiPolish::SetStatus(ui.showDetails, "success", "Finished");
   } else if (error == "Cancelled.") {
     UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
@@ -192,7 +190,6 @@ void RcJobWidget::finish(bool success, const QString &error) {
     ui.showDetails->setChecked(true);
     ui.showOutput->setChecked(true);
   }
-  ui.cancel->setToolTip("Close");
   emit finished(ui.info->text());
 }
 
@@ -216,12 +213,35 @@ void RcJobWidget::cancel() {
   if (!mRunning) {
     return;
   }
+  if (mStopping) {
+    return;
+  }
+  mStopping = true;
+  mUserCancelled = true;
+  UiPolish::SetStatus(ui.showDetails, "warning", "Stopping");
+  ui.cancel->setEnabled(false);
+  ui.cancel->setToolTip("Stopping rclone rc job...");
+  ui.output->appendPlainText(
+      QString("Cancel requested for rclone rc job %1.").arg(mJobId));
   mEngine->stopJob(mJobId, this,
                    [this](bool, const QString &error) {
                      if (!error.isEmpty()) {
                        ui.output->appendPlainText(error);
+                       Diagnostics::appendLog("rc-job", error);
+                       mStopping = false;
+                       mUserCancelled = false;
+                       ui.cancel->setEnabled(true);
+                       UiPolish::SetStatus(ui.showDetails, "error",
+                                           "Stop failed");
+                       ui.showDetails->setChecked(true);
+                       ui.showOutput->setChecked(true);
                      }
                    });
-  finish(false, "Cancelled.");
-  emit closed();
+  QTimer::singleShot(5000, this, [this]() {
+    if (mRunning && mStopping) {
+      ui.output->appendPlainText(
+          "Stop request accepted; marking this rc job cancelled locally.");
+      finish(false, "Cancelled.");
+    }
+  });
 }

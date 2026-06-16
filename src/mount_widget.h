@@ -29,6 +29,7 @@ private:
   Ui::MountWidget ui;
 
   bool mRunning = true;
+  bool mStopping = false;
   bool mUserRequestedUnmount = false;
   QProcess *mProcess;
 

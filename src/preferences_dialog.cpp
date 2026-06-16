@@ -22,6 +22,16 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
                                  "Browse for default download folder");
   UiPolish::SetCompactToolButton(ui.defaultUploadDirBrowse,
                                  "Browse for default upload folder");
+  QStyle *style = qApp->style();
+  ui.rcloneBrowse->setText("Browse");
+  ui.rcloneBrowse->setIcon(style->standardIcon(QStyle::SP_DialogOpenButton));
+  ui.rcloneConfBrowse->setText("Browse");
+  ui.rcloneConfBrowse->setIcon(
+      style->standardIcon(QStyle::SP_DialogOpenButton));
+  ui.defaultDownloadDirBrowse->setText("Browse");
+  ui.defaultDownloadDirBrowse->setIcon(style->standardIcon(QStyle::SP_DirIcon));
+  ui.defaultUploadDirBrowse->setText("Browse");
+  ui.defaultUploadDirBrowse->setIcon(style->standardIcon(QStyle::SP_DirIcon));
   UiPolish::SetMuted(ui.info);
   UiPolish::SetMuted(ui.darkMode_info);
   UiPolish::SetMuted(ui.info_4);
@@ -203,6 +213,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.mount->setText(
       settings->value("Settings/mount", "--vfs-cache-mode writes").toString());
 #endif
+#if defined(Q_OS_OPENBSD) || defined(Q_OS_NETBSD)
+  ui.mount->setToolTip("Mount is not supported by rclone on this system.");
+#endif
 
   ui.defaultDownloadDir->setText(QDir::toNativeSeparators(
       settings->value("Settings/defaultDownloadDir").toString()));
@@ -245,14 +258,20 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     mStartMinimized->setChecked(
         settings->value("Settings/startMinimized", false).toBool());
   } else {
+    const QString trayUnavailable =
+        "System tray controls are unavailable in this desktop session.";
     ui.alwaysShowInTray->setChecked(false);
     ui.alwaysShowInTray->setDisabled(true);
+    ui.alwaysShowInTray->setToolTip(trayUnavailable);
     ui.closeToTray->setChecked(false);
     ui.closeToTray->setDisabled(true);
+    ui.closeToTray->setToolTip(trayUnavailable);
     ui.notifyFinishedTransfers->setChecked(false);
     ui.notifyFinishedTransfers->setDisabled(true);
+    ui.notifyFinishedTransfers->setToolTip(trayUnavailable);
     mStartMinimized->setChecked(false);
     mStartMinimized->setDisabled(true);
+    mStartMinimized->setToolTip(trayUnavailable);
   }
 
   ui.showFolderIcons->setChecked(

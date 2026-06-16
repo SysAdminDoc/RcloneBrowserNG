@@ -18,6 +18,9 @@ ExportDialog::ExportDialog(const QString &remote, const QDir &path,
   UiPolish::SetOutputView(ui.textExclude, "Exclude patterns");
   UiPolish::SetCompactToolButton(ui.fileBrowse, "Choose export file",
                                  "Choose where to save the exported file list.");
+  ui.fileBrowse->setText("Browse");
+  ui.fileBrowse->setIcon(
+      qApp->style()->standardIcon(QStyle::SP_DialogSaveButton));
   UiPolish::SetDialogButtonBox(ui.buttonBox);
   if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
     UiPolish::SetPrimaryButton(ok);
