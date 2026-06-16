@@ -20,8 +20,14 @@ public:
 public slots:
   void cancel();
 
+  QStringList retryArgs() const { return mTransferArgs; }
+  QString retrySource() const { return mSource; }
+  QString retryDest() const { return mDest; }
+  QString retryInfo() const { return mInfo; }
+
 signals:
   void finished(const QString &info);
+  void retryRequested();
   void closed();
 
 private:
@@ -34,6 +40,7 @@ private:
   QDateTime mFinishedAt;
 
   QStringList mArgs;
+  QStringList mTransferArgs;
   QString mInfo;
   QString mSource;
   QString mDest;

@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Retry failed jobs — failed transfers show a Retry button that re-runs the same transfer with the original arguments
 -   NEW: Storage usage per remote — right-click a remote in the list to see total/used/free/trash space via `rclone about --json`
 -   NEW: Remote URL upload (`copyurl`) — right-click a folder in the remote browser to download a file from any URL directly to that remote path via `rclone copyurl`
 -   NEW: Global bandwidth limit control — an editable field in the status bar sets a persistent `--bwlimit` that applies to all new transfers when the per-job bandwidth is empty
