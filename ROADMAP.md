@@ -202,8 +202,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #232_
 
 
-- [ ] **Code signing for releases** — Sign binaries and provide checksums.  
-  _Sources: rclone forum_
 
 ---
 
@@ -263,12 +261,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2 — Distribution & CI
 
-- [ ] P2 — Code signing (SignPath Foundation Windows + Apple notarization)
-  Why: SmartScreen/Gatekeeper warnings deter installs; Homebrew purges unsigned casks Sept 2026, killing the inherited cask without notarization.
-  Evidence: signpath.org/terms; developer.apple.com/developer-id; github.com/Homebrew/brew/issues/20755
-  Touches: .github/workflows, code-signing policy, README
-  Acceptance: Windows binaries Authenticode-signed via SignPath; macOS dmg notarized (blocked on maintainer identity + $99 Apple fee — see RESEARCH Open Questions).
-  Complexity: M
 
 - [ ] P2 — Publish to winget, Scoop, and a -ng AUR package
   Why: inherited Repology entries point at the dead upstream; peers (Syncthing Tray, Cyberduck) ship these channels.
@@ -537,13 +529,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: tagged releases include a macOS x86_64 (or universal) DMG + app zip alongside the ARM64 artifacts.
   Complexity: S
 
-- [ ] P1 — Code signing before Homebrew September 2026 deadline
-  Why: Homebrew will remove unsigned casks after September 1, 2026; missing this deadline kills the Homebrew distribution channel. SignPath Foundation provides free OV code signing for OSS (private key on HSM, CI-integrated). Apple notarization requires $99/yr developer account.
-  Evidence: workbrew.com/blog/homebrew-5-0-0; signpath.io/solutions/open-source-community; Homebrew discussion #6482
-  Touches: .github/workflows/release.yml, code-signing policy, README
-  Acceptance: Windows binaries Authenticode-signed via SignPath; macOS DMG notarized and stapled; Homebrew cask installable after September 2026.
-  Complexity: L
-  Note: Supersedes/elevates the existing P2 code-signing item with a hard deadline.
 
 ### 2026-06-12 Refresh — P2
 
