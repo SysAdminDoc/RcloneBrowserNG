@@ -56,8 +56,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 ### Advanced Operations
 
 
-- [ ] **Exclude files UI for sync** — Visual exclude/include filter builder in the transfer dialog.  
-  _Sources: kapitainsky #252_
 
 
 - [ ] **Support for rclone "serve"** — GUI for rclone's serve HTTP/FTP/WebDAV.  
