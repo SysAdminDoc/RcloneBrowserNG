@@ -243,6 +243,89 @@ MainWindow::MainWindow() {
   ui.remotes->setSpacing(4);
   ui.remotes->setUniformItemSizes(true);
   ui.remotes->setTextElideMode(Qt::ElideMiddle);
+  ui.remotes->setContextMenuPolicy(Qt::CustomContextMenu);
+  QObject::connect(
+      ui.remotes, &QWidget::customContextMenuRequested, this,
+      [this](const QPoint &pos) {
+        auto *item = ui.remotes->itemAt(pos);
+        if (!item || !(item->flags() & Qt::ItemIsEnabled)) {
+          return;
+        }
+        QString remoteName = item->text();
+        QMenu menu(this);
+        auto *testConn = menu.addAction("Test Connection");
+        auto *duplicate = menu.addAction("Duplicate Remote...");
+        auto *chosen = menu.exec(ui.remotes->viewport()->mapToGlobal(pos));
+        if (chosen == testConn) {
+          setStatusMessage(QString("Testing %1...").arg(remoteName));
+          auto *proc = new QProcess(this);
+          proc->setProcessChannelMode(QProcess::MergedChannels);
+          UseRclonePassword(proc);
+          QStringList args;
+          args << "lsjson" << GetRcloneConf() << "--max-depth" << "1"
+               << remoteName + ":";
+          proc->start(GetRclone(), args, QIODevice::ReadOnly);
+          QTimer::singleShot(15000, proc, [proc]() {
+            if (proc->state() != QProcess::NotRunning) {
+              proc->kill();
+            }
+          });
+          QObject::connect(
+              proc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [=](int code, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (code == 0) {
+                  setStatusMessage(
+                      QString("%1: connection OK").arg(remoteName));
+                } else {
+                  QString err =
+                      QString::fromUtf8(proc->readAll()).trimmed();
+                  QMessageBox::warning(
+                      this, "Connection test failed",
+                      QString("Could not list \"%1:\".\n\n%2")
+                          .arg(remoteName, err.left(500)));
+                  setStatusMessage(
+                      QString("%1: connection failed").arg(remoteName));
+                }
+              });
+        } else if (chosen == duplicate) {
+          QString newName = QInputDialog::getText(
+              this, "Duplicate Remote",
+              QString("New name for the copy of \"%1\":").arg(remoteName));
+          if (newName.isEmpty()) {
+            return;
+          }
+          auto *proc = new QProcess(this);
+          proc->setProcessChannelMode(QProcess::MergedChannels);
+          UseRclonePassword(proc);
+          QStringList args;
+          args << "config" << "copy" << remoteName << newName
+               << GetRcloneConf();
+          proc->start(GetRclone(), args, QIODevice::ReadOnly);
+          QObject::connect(
+              proc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [=](int code, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (code == 0) {
+                  rcloneListRemotes();
+                  setStatusMessage(
+                      QString("Duplicated %1 as %2")
+                          .arg(remoteName, newName));
+                } else {
+                  QString err =
+                      QString::fromUtf8(proc->readAll()).trimmed();
+                  QMessageBox::warning(
+                      this, "Duplicate failed",
+                      QString("Could not duplicate \"%1\".\n\n%2")
+                          .arg(remoteName, err.left(500)));
+                }
+              });
+        }
+      });
   UiPolish::SetNavigationView(ui.tasksListWidget, "Saved tasks");
   ui.tasksListWidget->setSpacing(4);
   ui.tasksListWidget->setUniformItemSizes(true);
