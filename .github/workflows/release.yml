@@ -10,7 +10,16 @@ permissions:
 
 jobs:
   linux-appimage:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            linuxdeploy_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            linuxdeploy_arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install dependencies
@@ -32,6 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          arch="${{ matrix.linuxdeploy_arch }}"
 
           desktop-file-validate assets/io.github.sysadmindoc.rclonebrowserng.desktop
           appstreamcli validate --no-net assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml
@@ -45,18 +55,18 @@ jobs:
           cp LICENSE AppDir/License.txt
 
           mkdir -p tools release
-          wget -q -O tools/linuxdeploy-x86_64.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q -O tools/linuxdeploy-plugin-qt-x86_64.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          wget -q -O tools/linuxdeploy-plugin-appimage-x86_64.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          wget -q -O "tools/linuxdeploy-${arch}.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${arch}.AppImage"
+          wget -q -O "tools/linuxdeploy-plugin-qt-${arch}.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${arch}.AppImage"
+          wget -q -O "tools/linuxdeploy-plugin-appimage-${arch}.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${arch}.AppImage"
           chmod +x tools/*.AppImage
 
           export APPIMAGE_EXTRACT_AND_RUN=1
           export PATH="$PWD/tools:$PATH"
           export VERSION="$version"
-          tools/linuxdeploy-x86_64.AppImage \
+          "tools/linuxdeploy-${arch}.AppImage" \
             --appdir AppDir \
             --desktop-file AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop \
             --plugin qt \
@@ -64,10 +74,10 @@ jobs:
 
           appimage="$(find . -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
           test -n "$appimage"
-          mv "$appimage" "release/RcloneBrowserNG-${version}-linux-x86_64.AppImage"
+          mv "$appimage" "release/RcloneBrowserNG-${version}-linux-${{ matrix.arch }}.AppImage"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-linux-appimage
+          name: release-linux-${{ matrix.arch }}
           path: release/*
 
   macos-dmg:

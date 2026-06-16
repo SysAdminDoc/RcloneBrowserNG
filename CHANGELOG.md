@@ -51,6 +51,7 @@
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
+-   NEW: Linux ARM64 (aarch64) AppImage release artifact — tagged releases now include a native aarch64 AppImage built on GitHub's ARM64 Ubuntu runner
 -   CHANGED: Manual release scripts modernized — Windows targets VS 2022+/Qt 6/x64-only with fail-fast dependency checks; Linux drops CentOS 7/OpenSSL 1.1/i686/armhf assumptions and supports x86_64 and aarch64 with distro Qt 6; macOS supports Apple Silicon Homebrew paths and uses `macdeployqt -dmg`
 -   CHANGED: Desktop file, metainfo, and installed icons now use the reverse-DNS app ID (`io.github.sysadmindoc.rclonebrowserng`) required by Flatpak/Flathub; `setDesktopFileName` updated for Wayland focus-stealing compliance
 -   CHANGED: macOS CI and release workflows now build both ARM64 (macos-14) and x86_64 (macos-13) artifacts
