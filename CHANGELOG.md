@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   CHANGED: Directory listings now use streaming JSON parsing — each `lsjson` object is parsed incrementally as data arrives instead of accumulating the entire response and parsing it as one block; this eliminates peak memory duplication on directories with hundreds of thousands of entries
 -   CHANGED: RcloneRcEngine runtime requests (job status, stats, stop) now use async `QNetworkReply` signal/slot completion instead of blocking nested `QEventLoop` — eliminates GUI freezes and reentrancy risks during concurrent RC-based transfers; synchronous event loop retained only for the one-time rcd startup ping
 -   CHANGED: Saved tasks now use a versioned task-store header with task count; legacy headerless `tasks.bin` files are loaded, migrated forward, and rewritten automatically while corrupt/newer schemas still fail safely
 -   NEW: Added an optional Windows Credential Manager mode for encrypted `rclone.conf` passwords; rclone now receives the password through `--password-command` and a console helper instead of inherited `RCLONE_CONFIG_PASS`

@@ -390,7 +390,84 @@ Item *ItemModel::get(const QModelIndex &index) const {
 
 void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   auto proc = new QProcess(this);
-  auto buffer = new QByteArray();
+
+  struct StreamParser {
+    QByteArray buf;
+    int braceDepth = 0;
+    int objStart = -1;
+    bool inString = false;
+    bool hadData = false;
+    QVector<Item *> items;
+
+    void feed(const QByteArray &data, Item *p) {
+      const int prevSize = buf.size();
+      buf.append(data);
+      hadData = true;
+
+      for (int i = prevSize; i < buf.size(); i++) {
+        const char c = buf.at(i);
+
+        if (inString) {
+          if (c == '\\') {
+            i++;
+          } else if (c == '"') {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (c == '"') {
+          inString = true;
+          continue;
+        }
+        if (c == '{') {
+          if (braceDepth == 0) {
+            objStart = i;
+          }
+          braceDepth++;
+        } else if (c == '}') {
+          braceDepth--;
+          if (braceDepth == 0 && objStart >= 0) {
+            QByteArray objBytes = buf.mid(objStart, i - objStart + 1);
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(objBytes, &err);
+            if (doc.isObject()) {
+              parseItem(doc.object(), p);
+            }
+            objStart = -1;
+          }
+        }
+      }
+
+      if (objStart > 0) {
+        buf = buf.mid(objStart);
+        objStart = 0;
+      } else if (objStart < 0) {
+        buf.clear();
+      }
+    }
+
+    void parseItem(const QJsonObject &obj, Item *p) {
+      Item *child = new Item();
+      child->parent = p;
+      child->isFolder = obj.value("IsDir").toBool();
+      child->name = obj.value("Name").toString();
+      child->path.setPath(ChildRemotePathFromLsjson(p->path.path(), obj));
+      if (!child->isFolder)
+        child->size = static_cast<quint64>(obj.value("Size").toDouble());
+
+      QString modTime = obj.value("ModTime").toString();
+      QDateTime dt = QDateTime::fromString(modTime, Qt::ISODateWithMs);
+      if (dt.isValid())
+        child->modified = dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
+      else if (modTime.length() >= 19)
+        child->modified = modTime.left(19).replace('T', ' ');
+
+      items.append(child);
+    }
+  };
+
+  auto *parser = new StreamParser();
 
   Item *loading = new Item();
   loading->state = Item::Special;
@@ -406,7 +483,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   });
 
   QObject::connect(proc, &QProcess::readyReadStandardOutput, this, [=]() {
-    buffer->append(proc->readAllStandardOutput());
+    parser->feed(proc->readAllStandardOutput(), parent);
   });
 
   QObject::connect(
@@ -425,37 +502,11 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
                                 : error);
         }
 
-        QVector<Item *> cache;
-        QJsonParseError parseError;
-        bool hadData = !buffer->isEmpty();
-        QJsonDocument doc = QJsonDocument::fromJson(*buffer, &parseError);
-        delete buffer;
-
-        if (doc.isArray()) {
-          for (const QJsonValue &val : doc.array()) {
-            QJsonObject obj = val.toObject();
-            Item *child = new Item();
-            child->parent = parent;
-            child->isFolder = obj.value("IsDir").toBool();
-            child->name = obj.value("Name").toString();
-            child->path.setPath(
-                ChildRemotePathFromLsjson(parent->path.path(), obj));
-            if (!child->isFolder)
-              child->size = static_cast<quint64>(obj.value("Size").toDouble());
-
-            QString modTime = obj.value("ModTime").toString();
-            QDateTime dt = QDateTime::fromString(modTime, Qt::ISODateWithMs);
-            if (dt.isValid())
-              child->modified = dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
-            else if (modTime.length() >= 19)
-              child->modified = modTime.left(19).replace('T', ' ');
-
-            cache.append(child);
-          }
-        } else if (code == 0 && hadData) {
-          loadErrors.append("Failed to parse listing: " +
-                            parseError.errorString());
+        if (parser->items.isEmpty() && code == 0 && parser->hadData) {
+          loadErrors.append("Failed to parse listing");
         }
+
+        QVector<Item *> &cache = parser->items;
 
         parent->state = Item::Ready;
 
@@ -468,6 +519,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
 
         if (parent->isDeleted) {
           qDeleteAll(cache);
+          delete parser;
           delete parent;
           return;
         }
@@ -511,6 +563,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
         }
 
         qDeleteAll(cache);
+        delete parser;
 
         for (int i = 0; i < parent->childs.count(); i++) {
           if (parent->childs[i] == loading ||
