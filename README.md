@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/SysAdminDoc/RcloneBrowserNG.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20BSD-lightgrey.svg)](#build-instructions)
 [![Build](https://github.com/SysAdminDoc/RcloneBrowserNG/actions/workflows/build.yml/badge.svg)](https://github.com/SysAdminDoc/RcloneBrowserNG/actions/workflows/build.yml)
-[![Qt](https://img.shields.io/badge/Qt-5.15%20%2F%206.x-green.svg)](https://www.qt.io/)
+[![Qt](https://img.shields.io/badge/Qt-6.4%2B-green.svg)](https://www.qt.io/)
 
 Simple cross-platform GUI for the [rclone](https://rclone.org/) command line tool.
 
@@ -15,7 +15,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 ## What NG fixes over the abandoned upstream
 
 *   Works with modern rclone (v1.56+) — transfer progress, size, bandwidth and ETA parse correctly again
-*   Builds with Qt 6 (and still Qt 5.15) — required for Wayland and current Linux distributions
+*   Builds with Qt 6 (minimum 6.4) — required for Wayland and current Linux distributions
 *   `rclone config` works with modern terminal emulators (gnome-terminal 3.38+, kitty, alacritty, wezterm, foot, tilix, …)
 *   Delete runs as a background job instead of freezing the GUI
 *   Multiple simultaneous mounts work on Windows (RC port collision fixed)
@@ -54,7 +54,7 @@ Download binaries for Windows, macOS and Linux from the [releases](https://githu
 ### Linux
 
 1.  Install dependencies:
-    *   **Debian/Ubuntu**: `sudo apt update && sudo apt -y install git g++ cmake make qt6-base-dev libgl1-mesa-dev` (Qt 5: `qtbase5-dev`)
+    *   **Debian/Ubuntu**: `sudo apt update && sudo apt -y install git g++ cmake make qt6-base-dev libgl1-mesa-dev`
     *   **Fedora**: `sudo dnf -y install git g++ cmake make qt6-qtbase-devel`
     *   **Arch/Manjaro**: `sudo pacman -Sy --noconfirm --needed git gcc cmake make qt6-base`
 2.  `git clone https://github.com/SysAdminDoc/RcloneBrowserNG.git && cd RcloneBrowserNG`
@@ -65,7 +65,7 @@ Download binaries for Windows, macOS and Linux from the [releases](https://githu
 
 ### FreeBSD
 
-1.  `sudo pkg install git cmake qt6-base` (or the qt5 packages)
+1.  `sudo pkg install git cmake qt6-base`
 2.  Then follow the Linux steps from step 2.
 
 *Note: for rclone mounts to work you may need `sudo sysctl vfs.usermount=1` — see this rclone forum [thread](https://forum.rclone.org/t/failed-to-mount-fuse-fs-freebsd/7723/9).*
