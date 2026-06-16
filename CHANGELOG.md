@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Tiles/icon view for remotes list — a toggle button switches between list and tile/icon grid layout; the preference persists across sessions
 -   NEW: Browse Google Drive trash — a Trash button on Google Drive tabs lists trashed files with sizes via `--drive-trashed-only`
 -   NEW: Multi-file download auto-generates `--include` filters — selecting multiple files and clicking Download copies the parent folder with `--include` flags for each selected file
 -   NEW: Auto-mount remotes on launch — right-click a remote and enable "Auto-mount on launch"; the remote mounts automatically on startup after the remote list loads

@@ -58,8 +58,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Tiles/icon view for remotes list** — Alternative to list view when many remotes are configured.  
-  _Sources: kapitainsky #76_
 
 ### Advanced Operations
 - [ ] **Bisync / bidirectional sync** — GUI support for rclone's bisync command.  

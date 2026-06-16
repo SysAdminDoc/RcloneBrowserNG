@@ -239,6 +239,40 @@ MainWindow::MainWindow() {
                    });
   UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
+  {
+    auto *viewToggle = new QToolButton(this);
+    viewToggle->setIcon(
+        QApplication::style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    viewToggle->setCheckable(true);
+    viewToggle->setToolTip("Toggle between list and tile view for remotes.");
+    viewToggle->setAccessibleName("Toggle remotes view mode");
+    UiPolish::SetCompactToolButton(viewToggle, "View mode",
+                                   "Switch between list and tile layout.");
+    if (auto *layout = ui.remotes->parentWidget()->layout()) {
+      static_cast<QVBoxLayout *>(layout)->insertWidget(1, viewToggle);
+    }
+    auto settings = GetSettings();
+    bool tileMode = settings->value("Settings/remotesTileView", false).toBool();
+    viewToggle->setChecked(tileMode);
+    if (tileMode) {
+      ui.remotes->setViewMode(QListView::IconMode);
+      ui.remotes->setResizeMode(QListView::Adjust);
+      ui.remotes->setWordWrap(true);
+    }
+    QObject::connect(viewToggle, &QToolButton::toggled, this, [this](bool checked) {
+      auto s = GetSettings();
+      s->setValue("Settings/remotesTileView", checked);
+      if (checked) {
+        ui.remotes->setViewMode(QListView::IconMode);
+        ui.remotes->setResizeMode(QListView::Adjust);
+        ui.remotes->setWordWrap(true);
+      } else {
+        ui.remotes->setViewMode(QListView::ListMode);
+        ui.remotes->setResizeMode(QListView::Fixed);
+        ui.remotes->setWordWrap(false);
+      }
+    });
+  }
   ui.remotes->setUniformItemSizes(true);
   ui.remotes->setTextElideMode(Qt::ElideMiddle);
   ui.remotes->setContextMenuPolicy(Qt::CustomContextMenu);
