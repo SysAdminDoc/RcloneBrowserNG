@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Start minimized to system tray — a preference and `--minimized`/`--tray` command-line flags let the app launch hidden in the tray; useful with auto-start at login
 -   NEW: Multiple config file support — File > Switch Config menu lets you add rclone.conf files and switch between them; the active config is checkmarked, and switching reloads the remote list immediately
 -   NEW: File filter in remote browser — Ctrl+F opens a filter bar above the tree view that hides non-matching files by name within the current directory listing
 -   NEW: Dedupe GUI — right-click a folder in the remote browser to run `rclone dedupe` with a mode picker (skip, first, newest, oldest, largest, smallest, rename)

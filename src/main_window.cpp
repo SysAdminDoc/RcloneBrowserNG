@@ -490,6 +490,8 @@ MainWindow::MainWindow() {
       settings->setValue("Settings/closeToTray", dialog.getCloseToTray());
       settings->setValue("Settings/notifyFinishedTransfers",
                          dialog.getNotifyFinishedTransfers());
+      settings->setValue("Settings/startMinimized",
+                         dialog.getStartMinimized());
 
       settings->setValue("Settings/showFolderIcons",
                          dialog.getShowFolderIcons());

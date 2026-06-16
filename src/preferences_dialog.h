@@ -26,6 +26,7 @@ public:
   bool getAlwaysShowInTray() const;
   bool getCloseToTray() const;
   bool getNotifyFinishedTransfers() const;
+  bool getStartMinimized() const;
 
   bool getShowFolderIcons() const;
   bool getShowFileIcons() const;
@@ -44,4 +45,5 @@ public:
 private:
   Ui::PreferencesDialog ui;
   QPlainTextEdit *mDefaultExclude = nullptr;
+  QCheckBox *mStartMinimized = nullptr;
 };

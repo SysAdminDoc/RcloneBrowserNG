@@ -31,8 +31,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Auto-mount remotes on launch** — Option to automatically mount configured remotes when the app starts.  
   _Sources: kapitainsky #146, #250, #60_
 
-- [ ] **Start minimized to system tray** — Launch silently to tray with auto-mount, no visible window.  
-  _Sources: kapitainsky #208, #60_
 
 - [ ] **Auto-update capability** — Check for and apply updates to both RcloneBrowserNG and rclone.  
   _Sources: kapitainsky #249, #195_
