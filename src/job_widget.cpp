@@ -3,6 +3,60 @@
 #include "rclone_capabilities.h"
 #include "utils.h"
 
+SparklineWidget::SparklineWidget(QWidget *parent) : QWidget(parent) {
+  setFixedHeight(28);
+  setMinimumWidth(120);
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  setToolTip("Transfer speed over time");
+  setAccessibleName("Speed sparkline");
+}
+
+void SparklineWidget::addSample(double value) {
+  mSamples.append(value);
+  if (mSamples.size() > kMaxSamples)
+    mSamples.removeFirst();
+  update();
+}
+
+void SparklineWidget::paintEvent(QPaintEvent *) {
+  if (mSamples.size() < 2)
+    return;
+  QPainter p(this);
+  p.setRenderHint(QPainter::Antialiasing);
+
+  double maxVal = *std::max_element(mSamples.begin(), mSamples.end());
+  if (maxVal <= 0)
+    maxVal = 1;
+
+  const int w = width();
+  const int h = height();
+  const double stepX =
+      static_cast<double>(w) / (kMaxSamples - 1);
+
+  QPainterPath path;
+  for (int i = 0; i < mSamples.size(); ++i) {
+    double x = (kMaxSamples - mSamples.size() + i) * stepX;
+    double y = h - (mSamples[i] / maxVal) * (h - 2) - 1;
+    if (i == 0)
+      path.moveTo(x, y);
+    else
+      path.lineTo(x, y);
+  }
+
+  QColor accent = palette().color(QPalette::Highlight);
+  p.setPen(QPen(accent, 1.5));
+  p.drawPath(path);
+
+  QLinearGradient grad(0, 0, 0, h);
+  grad.setColorAt(0, QColor(accent.red(), accent.green(), accent.blue(), 40));
+  grad.setColorAt(1, QColor(accent.red(), accent.green(), accent.blue(), 5));
+  QPainterPath fill = path;
+  fill.lineTo(path.currentPosition().x(), h);
+  fill.lineTo((kMaxSamples - mSamples.size()) * stepX, h);
+  fill.closeSubpath();
+  p.fillPath(fill, grad);
+}
+
 namespace {
 constexpr int kMaxVisibleFileProgress = 12;
 } // namespace
@@ -56,6 +110,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   ui.info->setAccessibleName("Transfer summary");
 
   ui.details->setVisible(false);
+
+  mSparkline = new SparklineWidget(this);
+  ui.gridLayout_2->addWidget(mSparkline, ui.gridLayout_2->rowCount(), 0, 1, 2);
 
   UiPolish::SetOutputView(ui.output);
   ui.output->setVisible(false);
@@ -158,6 +215,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
           GetNiceSize(static_cast<quint64>(totalBytes)));
       ui.bandwidth->setText(
           GetNiceSize(static_cast<quint64>(speed)) + "/s");
+      mSparkline->addSample(speed);
 
       double eta = stats.value("eta").toDouble();
       if (eta > 0) {

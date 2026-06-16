@@ -259,12 +259,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: jobs offer Stop (immediate) and Finish current files; the latter completes active transfers and skips queued ones.
   Complexity: M
 
-- [ ] P3 — Live throughput sparkline per job
-  Why: speed-over-time beats an instantaneous number for diagnosing throttling; common in download managers, absent in rclone GUIs; cheap off sampled core/stats or json-log stats events.
-  Evidence: github.com/rclone/rclone/issues/2899
-  Touches: job_widget.cpp
-  Acceptance: each running job renders a small speed-history graph alongside the existing numbers.
-  Complexity: S
 
 - [ ] P3 — Live tuning of running jobs (bwlimit / transfers / checkers)
   Why: rc exposes `core/bwlimit` and option tuning on running daemons; no GUI surfaces it; natural once the rcd engine lands.
