@@ -23,8 +23,11 @@ struct RcloneCapabilities {
 
 namespace Diagnostics {
 
+using LogCallback = std::function<void(const QString &source, const QString &line)>;
+
 QString redactSecrets(const QString &text);
 void appendLog(const QString &source, const QString &line);
 QString recentLog();
+void setLogCallback(LogCallback cb);
 
 } // namespace Diagnostics

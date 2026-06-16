@@ -46,6 +46,8 @@ private:
 
   QLabel *mStatusMessage;
   QLabel *mStatsLabel = nullptr;
+  QPlainTextEdit *mErrorLog = nullptr;
+  QToolButton *mErrorLogToggle = nullptr;
   QLineEdit *mRemotesFilter = nullptr;
   QListWidgetItem *mRemotesFilterEmptyItem = nullptr;
   QLineEdit *mTasksFilter = nullptr;

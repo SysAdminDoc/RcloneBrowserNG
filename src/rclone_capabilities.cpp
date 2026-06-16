@@ -94,12 +94,21 @@ QString redactSecrets(const QString &text) {
   return out;
 }
 
+static LogCallback &logCallback() {
+  static LogCallback cb;
+  return cb;
+}
+
+void setLogCallback(LogCallback cb) { logCallback() = std::move(cb); }
+
 void appendLog(const QString &source, const QString &line) {
   auto &buf = logBuffer();
   if (buf.size() >= kMaxLogEntries) {
     buf.removeFirst();
   }
   buf.append({source, line});
+  if (logCallback())
+    logCallback()(source, line);
 }
 
 QString recentLog() {

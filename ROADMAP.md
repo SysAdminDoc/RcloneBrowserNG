@@ -64,8 +64,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Search / filter files** — Search within the current remote/directory.  
   _Sources: mmozeiko #64_
 
-- [ ] **Sort by recent / custom sort in Google Drive** — Sort file list by last modified.  
-  _Sources: kapitainsky #122_
 
 - [ ] **Browse Google Drive trash** — Access the trash folder for recovery.  
   _Sources: mmozeiko #37_
@@ -108,8 +106,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #52_
 
 ### Monitoring & Logging
-- [ ] **Real-time error log** — Live error log panel during transfers.  
-  _Sources: kapitainsky #233, #134_
 
 
 
