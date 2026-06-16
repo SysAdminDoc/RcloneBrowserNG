@@ -514,6 +514,22 @@ QStringList GetDefaultRcloneOptionsList() {
   return defaultRcloneOptionsList;
 }
 
+QStringList GetDefaultExcludeList() {
+  auto settings = GetSettings();
+  QString patterns =
+      settings->value("Settings/defaultExclude").toString();
+  QStringList result;
+  if (!patterns.isEmpty()) {
+    for (const auto &line : patterns.split('\n')) {
+      QString trimmed = line.trimmed();
+      if (!trimmed.isEmpty()) {
+        result << "--exclude" << trimmed;
+      }
+    }
+  }
+  return result;
+}
+
 QStringList GetShowHidden() {
   auto settings = GetSettings();
   bool showHidden = settings->value("Settings/showHidden", true).toBool();

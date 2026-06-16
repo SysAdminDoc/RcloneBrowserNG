@@ -55,6 +55,26 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.defaultDownloadOptions->setPlaceholderText("Extra flags for downloads");
   ui.defaultUploadOptions->setPlaceholderText("Extra flags for uploads");
   ui.defaultRcloneOptions->setPlaceholderText("--fast-list");
+
+  auto *excludeLabel = new QLabel("Default exclude patterns:", this);
+  excludeLabel->setToolTip(
+      "One --exclude pattern per line. Applied to all transfers globally.");
+  mDefaultExclude = new QPlainTextEdit(this);
+  mDefaultExclude->setMaximumHeight(80);
+  mDefaultExclude->setPlaceholderText(
+      "*.tmp\n.DS_Store\nThumbs.db\n*.partial");
+  mDefaultExclude->setAccessibleName("Default exclude patterns");
+  UiPolish::SetOutputView(mDefaultExclude, "Default exclude patterns");
+  if (auto *form = qobject_cast<QFormLayout *>(
+          ui.defaultRcloneOptions->parentWidget()->layout())) {
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
+    if (row >= 0) {
+      form->insertRow(row + 1, excludeLabel, mDefaultExclude);
+    }
+  }
+
   ui.http_proxy->setPlaceholderText("http://127.0.0.1:1087");
   ui.https_proxy->setPlaceholderText("https://127.0.0.1:1087");
   ui.no_proxy->setPlaceholderText("localhost,127.0.0.0/8");
@@ -156,6 +176,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       settings->value("Settings/defaultUploadOptions").toString());
   ui.defaultRcloneOptions->setText(
       settings->value("Settings/defaultRcloneOptions").toString());
+  mDefaultExclude->setPlainText(
+      settings->value("Settings/defaultExclude").toString());
 
   ui.checkRcloneBrowserUpdates->setChecked(
       settings->value("Settings/checkRcloneBrowserUpdates", true).toBool());
@@ -269,6 +291,10 @@ QString PreferencesDialog::getDefaultUploadOptions() const {
 
 QString PreferencesDialog::getDefaultRcloneOptions() const {
   return ui.defaultRcloneOptions->text();
+}
+
+QString PreferencesDialog::getDefaultExclude() const {
+  return mDefaultExclude->toPlainText().trimmed();
 }
 
 bool PreferencesDialog::getCheckRcloneBrowserUpdates() const {
