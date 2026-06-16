@@ -41,8 +41,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Job queue manager** — Sequential job execution instead of all-concurrent. Configurable concurrency limit.  
   _Sources: kapitainsky #204, #109; mmozeiko #6, #14_
 
-- [ ] **Restart / retry failed jobs** — Manual or automatic retry of failed transfers.  
-  _Sources: kapitainsky #118; mmozeiko #44_
 
 - [ ] **Pause running jobs** — Pause and resume active transfers.  
   _Sources: mmozeiko #71_

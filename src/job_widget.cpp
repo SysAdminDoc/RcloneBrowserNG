@@ -43,6 +43,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   mArgs.append(QDir::toNativeSeparators(GetRclone()));
   mArgs.append(GetRcloneConf());
   mArgs.append(args);
+  mTransferArgs = args;
 
   ui.source->setText(source);
   ui.source->setToolTip(source);
@@ -289,16 +290,25 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      mExitCode = status;
                      mSuccess = (status == 0);
                      if (status == 0) {
-                       // no explicit colour - inherit the palette so the
-                       // label stays readable in light and dark mode
                        UiPolish::SetStatus(ui.showDetails, "success",
                                            "Finished");
                      } else {
                        UiPolish::SetStatus(ui.showDetails, "error",
                                            "Needs attention");
-                       // surface the rclone output so the user can see why
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
+
+                       auto *retry = new QToolButton(this);
+                       retry->setIcon(QApplication::style()->standardIcon(
+                           QStyle::SP_BrowserReload));
+                       retry->setToolTip("Retry this transfer");
+                       retry->setAccessibleName("Retry transfer");
+                       UiPolish::SetCompactToolButton(retry, "Retry transfer",
+                           "Re-run this transfer with the same arguments.");
+                       ui.horizontalLayout->insertWidget(
+                           ui.horizontalLayout->indexOf(ui.cancel), retry);
+                       QObject::connect(retry, &QToolButton::clicked, this,
+                                        [this]() { emit retryRequested(); });
                      }
 
                      ui.cancel->setToolTip("Close");

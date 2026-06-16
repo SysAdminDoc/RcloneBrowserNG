@@ -2317,6 +2317,12 @@ void MainWindow::addTransferViaProcess(const QString &message,
         noteJobFinished(widget->wasSuccessful());
       });
 
+  QObject::connect(widget, &JobWidget::retryRequested, this, [=]() {
+    QStringList args = widget->retryArgs();
+    addTransfer(widget->retryInfo(), widget->retrySource(),
+                widget->retryDest(), args);
+  });
+
   QObject::connect(widget, &JobWidget::closed, this, [=]() {
     if (widget == mLastFinished) {
       mLastFinished = nullptr;
