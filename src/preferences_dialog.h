@@ -40,6 +40,7 @@ public:
   QString getHttpProxy() const;
   QString getHttpsProxy() const;
   QString getNoProxy() const;
+  QString getSocksProxy() const;
   bool getUsePasswordCommand() const;
   QString getDefaultExclude() const;
 
@@ -48,4 +49,5 @@ private:
   QPlainTextEdit *mDefaultExclude = nullptr;
   QCheckBox *mStartMinimized = nullptr;
   QSpinBox *mMaxConcurrent = nullptr;
+  QLineEdit *mSocksProxy = nullptr;
 };

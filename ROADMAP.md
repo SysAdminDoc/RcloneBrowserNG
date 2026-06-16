@@ -80,8 +80,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 
 
 
-- [ ] **Proxy support in GUI** — HTTP/SOCKS proxy configuration exposed in preferences (partially exists since v1.8.0 but incomplete).  
-  _Sources: mmozeiko #88, #41_
 
 
 
