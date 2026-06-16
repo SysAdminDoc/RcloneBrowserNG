@@ -27,6 +27,8 @@ private:
   QLabel *mValidation = nullptr;
   QLineEdit *mHeartbeatUrl = nullptr;
   QLineEdit *mNameTransform = nullptr;
+  QLineEdit *mPreCommand = nullptr;
+  QLineEdit *mPostCommand = nullptr;
 
   bool mIsDownload;
   bool mDryRun = false;

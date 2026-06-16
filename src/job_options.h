@@ -61,6 +61,8 @@ public:
   bool DriveSharedWithMe;
   QString heartbeatUrl;
   QString nameTransform;
+  QString preCommand;
+  QString postCommand;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

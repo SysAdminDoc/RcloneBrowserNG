@@ -51,9 +51,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mNameTransform->setAccessibleName("Name transform pattern");
   ui.gridLayout->addWidget(nameTransformLabel, 9, 0);
   ui.gridLayout->addWidget(mNameTransform, 9, 1);
+  auto *preCommandLabel = new QLabel("Pre-job command:", this);
+  preCommandLabel->setToolTip("Shell command to run before the transfer starts.");
+  mPreCommand = new QLineEdit(this);
+  mPreCommand->setPlaceholderText("Command to run before the transfer");
+  mPreCommand->setAccessibleName("Pre-job command");
+  ui.gridLayout->addWidget(preCommandLabel, 10, 0);
+  ui.gridLayout->addWidget(mPreCommand, 10, 1);
+
+  auto *postCommandLabel = new QLabel("Post-job command:", this);
+  postCommandLabel->setToolTip("Shell command to run after the transfer finishes.");
+  mPostCommand = new QLineEdit(this);
+  mPostCommand->setPlaceholderText("Command to run after the transfer");
+  mPostCommand->setAccessibleName("Post-job command");
+  ui.gridLayout->addWidget(postCommandLabel, 11, 0);
+  ui.gridLayout->addWidget(mPostCommand, 11, 1);
+
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 10, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 12, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -525,6 +541,8 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->DriveSharedWithMe = ui.checkisDriveSharedWithMe->isChecked();
   mJobOptions->heartbeatUrl = mHeartbeatUrl->text().trimmed();
   mJobOptions->nameTransform = mNameTransform->text().trimmed();
+  mJobOptions->preCommand = mPreCommand->text().trimmed();
+  mJobOptions->postCommand = mPostCommand->text().trimmed();
 
   return mJobOptions;
 }
@@ -591,6 +609,8 @@ void TransferDialog::putJobOptions() {
   ui.checkisDriveSharedWithMe->setChecked(mJobOptions->DriveSharedWithMe);
   mHeartbeatUrl->setText(mJobOptions->heartbeatUrl);
   mNameTransform->setText(mJobOptions->nameTransform);
+  mPreCommand->setText(mJobOptions->preCommand);
+  mPostCommand->setText(mJobOptions->postCommand);
 }
 
 void TransferDialog::done(int r) {

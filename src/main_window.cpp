@@ -1631,10 +1631,36 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
   jo->dryRun = dryrun;
   QStringList args = jo->getOptions();
   QString heartbeatUrl = jo->heartbeatUrl;
+  QString postCommand = jo->postCommand;
   QString message =
       QString("%1 %2").arg(jo->operation).arg(jo->source);
 
-  if (!args.isEmpty() && !heartbeatUrl.isEmpty()) {
+  if (!jo->preCommand.isEmpty()) {
+    QProcess pre;
+    pre.setProcessChannelMode(QProcess::MergedChannels);
+#ifdef Q_OS_WIN
+    pre.start("cmd.exe", QStringList() << "/c" << jo->preCommand);
+#else
+    pre.start("/bin/sh", QStringList() << "-c" << jo->preCommand);
+#endif
+    pre.waitForFinished(30000);
+    if (pre.exitCode() != 0) {
+      QString output = QString::fromUtf8(pre.readAll()).trimmed();
+      int button = QMessageBox::warning(
+          this, "Pre-job command failed",
+          QString("The pre-job command exited with status %1.\n\n%2\n\n"
+                  "Run the transfer anyway?")
+              .arg(pre.exitCode())
+              .arg(output.left(500)),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      if (button != QMessageBox::Yes) {
+        return;
+      }
+    }
+  }
+
+  bool hasHooks = !heartbeatUrl.isEmpty() || !postCommand.isEmpty();
+  if (!args.isEmpty() && hasHooks) {
     if (!mRcEngine) {
       mRcEngine = new RcloneRcEngine(this);
     }
@@ -1645,10 +1671,22 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
                 mRcEngine, jobId, message,
                 mRcEngine->rcCommandForDisplay(args), jo->source, jo->dest);
             addRcJobWidget(widget, heartbeatUrl);
+            if (!postCommand.isEmpty()) {
+              QObject::connect(
+                  widget, &RcJobWidget::finished, this, [=]() {
+#ifdef Q_OS_WIN
+                    QProcess::startDetached("cmd.exe",
+                                            QStringList() << "/c" << postCommand);
+#else
+                    QProcess::startDetached("/bin/sh",
+                                            QStringList() << "-c" << postCommand);
+#endif
+                  });
+            }
             return;
           }
           addTransferViaProcess(message, jo->source, jo->dest, args,
-                                heartbeatUrl);
+                                heartbeatUrl, postCommand);
         });
   } else {
     addTransfer(message, jo->source, jo->dest, args);
@@ -1751,7 +1789,8 @@ void MainWindow::addTransferViaProcess(const QString &message,
                                        const QString &source,
                                        const QString &dest,
                                        const QStringList &args,
-                                       const QString &heartbeatUrl) {
+                                       const QString &heartbeatUrl,
+                                       const QString &postCommand) {
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
@@ -1772,6 +1811,15 @@ void MainWindow::addTransferViaProcess(const QString &message,
         }
         if (!heartbeatUrl.isEmpty()) {
           sendHeartbeat(heartbeatUrl, widget->wasSuccessful());
+        }
+        if (!postCommand.isEmpty()) {
+#ifdef Q_OS_WIN
+          QProcess::startDetached("cmd.exe",
+                                  QStringList() << "/c" << postCommand);
+#else
+          QProcess::startDetached("/bin/sh",
+                                  QStringList() << "-c" << postCommand);
+#endif
         }
 
         if (--mJobCount == 0) {
