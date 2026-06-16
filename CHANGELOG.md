@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Live throughput sparkline per job — each running transfer shows a 60-sample speed-over-time graph in the details pane, drawn with the accent color and gradient fill
 -   NEW: Bisync (bidirectional sync) GUI — a Bisync radio button in the transfer dialog runs `rclone bisync` between source and destination; disabled when rclone < 1.58
 -   NEW: CLI interface to run saved tasks — `--run-task "My Task"` runs a saved task headlessly without opening the GUI and exits with rclone's exit code; `--list-tasks` prints all saved task names
 -   NEW: Tiles/icon view for remotes list — a toggle button switches between list and tile/icon grid layout; the preference persists across sessions

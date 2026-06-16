@@ -4,6 +4,20 @@
 #include "job_history.h"
 #include "ui_job_widget.h"
 
+class SparklineWidget : public QWidget {
+  Q_OBJECT
+public:
+  explicit SparklineWidget(QWidget *parent = nullptr);
+  void addSample(double value);
+
+protected:
+  void paintEvent(QPaintEvent *event) override;
+
+private:
+  QVector<double> mSamples;
+  static constexpr int kMaxSamples = 60;
+};
+
 class JobWidget : public QWidget {
   Q_OBJECT
 
@@ -50,6 +64,7 @@ private:
   int mExitCode = 0;
   QHash<QString, QLabel *> mActive;
   QLabel *mOverflowLabel = nullptr;
+  SparklineWidget *mSparkline = nullptr;
 
   void setProgressOverflow(int hiddenCount);
   void clearFileProgress();
