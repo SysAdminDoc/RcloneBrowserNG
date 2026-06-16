@@ -358,13 +358,6 @@ All items trace back to public GitHub issues/PRs:
 
 
 
-- [ ] P2 — Edit-in-place: open remote file, auto re-upload on save
-  Why: table-stakes in WinSCP/Cyberduck, absent from every rclone GUI; pairs with the existing file-preview item.
-  Evidence: docs.cyberduck.io (Edit); winscp.net docs; miroshnikov/filefive
-  Touches: remote_widget.cpp, new temp-file watcher (QFileSystemWatcher + `rclone copyto`)
-  Acceptance: "Open/Edit" downloads to a temp dir, opens the OS default app, and re-uploads on save with a toast; conflicts (remote changed meanwhile) prompt.
-  Complexity: M
-
 - [ ] P2 — Watch-folder live sync (keep remote up to date)
   Why: WinSCP's "keep up to date" / FreeFileSync RealTimeSync equivalent is the most requested missing workflow in rclone GUI land (RClone Manager #204) and fits a resident tray app perfectly.
   Evidence: winscp.net/eng/docs/task_keep_up_to_date; Zarestia-Dev/rclone-manager#204

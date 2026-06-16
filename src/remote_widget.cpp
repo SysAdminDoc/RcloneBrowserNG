@@ -19,6 +19,161 @@ QStringList RemoteWidget::getDriveSharedArgs() const {
   return QStringList();
 }
 
+namespace {
+QString fingerprintFromLsjson(const QByteArray &data) {
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+  if (parseError.error != QJsonParseError::NoError) {
+    return QString();
+  }
+
+  QJsonObject obj;
+  if (doc.isArray() && !doc.array().isEmpty() && doc.array().first().isObject()) {
+    obj = doc.array().first().toObject();
+  } else if (doc.isObject()) {
+    obj = doc.object();
+  }
+  if (obj.isEmpty()) {
+    return QString();
+  }
+
+  return obj.value("ModTime").toString() + "|" +
+         QString::number(obj.value("Size").toVariant().toLongLong());
+}
+
+class RemoteEditSession : public QObject {
+public:
+  RemoteEditSession(const QString &remoteFile, const QString &fileName,
+                    const QStringList &driveSharedArgs, QWidget *dialogParent,
+                    QObject *parent)
+      : QObject(parent), mRemoteFile(remoteFile),
+        mDriveSharedArgs(driveSharedArgs), mDialogParent(dialogParent) {
+    mTempDir.setAutoRemove(true);
+    mLocalFile = QDir(mTempDir.path()).filePath(fileName);
+    mUploadTimer.setSingleShot(true);
+    mUploadTimer.setInterval(1200);
+
+    QObject::connect(&mWatcher, &QFileSystemWatcher::fileChanged, this,
+                     [this](const QString &path) {
+                       if (QFileInfo::exists(path) &&
+                           !mWatcher.files().contains(path)) {
+                         mWatcher.addPath(path);
+                       }
+                       mUploadTimer.start();
+                     });
+    QObject::connect(&mUploadTimer, &QTimer::timeout, this,
+                     [this]() { uploadNow(); });
+  }
+
+  bool downloadAndOpen() {
+    if (!mTempDir.isValid()) {
+      QMessageBox::warning(mDialogParent, "Open/Edit",
+                           "Could not create a temporary edit folder.");
+      return false;
+    }
+
+    QProcess process;
+    UseRclonePassword(&process);
+    process.setProgram(GetRclone());
+    process.setArguments(QStringList()
+                         << "copyto" << GetRcloneConf() << mDriveSharedArgs
+                         << GetDefaultRcloneOptionsList() << mRemoteFile
+                         << mLocalFile);
+    process.setProcessChannelMode(QProcess::MergedChannels);
+
+    ProgressDialog progress("Open/Edit", "Downloading...", mRemoteFile,
+                            &process, mDialogParent);
+    if (progress.exec() != QDialog::Accepted ||
+        process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0) {
+      return false;
+    }
+
+    mRemoteFingerprint = remoteFingerprint();
+    mWatcher.addPath(mLocalFile);
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(mLocalFile))) {
+      QMessageBox::warning(mDialogParent, "Open/Edit",
+                           "Could not open the downloaded file.");
+      return false;
+    }
+    return true;
+  }
+
+private:
+  QTemporaryDir mTempDir;
+  QFileSystemWatcher mWatcher;
+  QTimer mUploadTimer;
+  QString mRemoteFile;
+  QString mLocalFile;
+  QString mRemoteFingerprint;
+  QStringList mDriveSharedArgs;
+  QWidget *mDialogParent = nullptr;
+
+  QString remoteFingerprint() const {
+    QProcess process;
+    UseRclonePassword(&process);
+    process.setProgram(GetRclone());
+    process.setArguments(QStringList()
+                         << "lsjson" << GetRcloneConf() << mDriveSharedArgs
+                         << GetDefaultRcloneOptionsList() << mRemoteFile);
+    process.start(QIODevice::ReadOnly);
+    if (!process.waitForFinished(30000) ||
+        process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0) {
+      return QString();
+    }
+    return fingerprintFromLsjson(process.readAllStandardOutput());
+  }
+
+  void uploadNow() {
+    if (!QFileInfo::exists(mLocalFile)) {
+      return;
+    }
+    if (!mWatcher.files().contains(mLocalFile)) {
+      mWatcher.addPath(mLocalFile);
+    }
+
+    const QString currentFingerprint = remoteFingerprint();
+    if (!mRemoteFingerprint.isEmpty() && !currentFingerprint.isEmpty() &&
+        currentFingerprint != mRemoteFingerprint) {
+      QMessageBox box(mDialogParent);
+      box.setIcon(QMessageBox::Warning);
+      box.setWindowTitle("Remote file changed");
+      box.setText("The remote file changed after it was opened.");
+      box.setInformativeText(
+          "Overwrite the remote file with your local edit?");
+      QPushButton *overwrite =
+          box.addButton("Overwrite Remote", QMessageBox::AcceptRole);
+      box.addButton(QMessageBox::Cancel);
+      box.exec();
+      if (box.clickedButton() != overwrite) {
+        return;
+      }
+    }
+
+    QProcess process;
+    UseRclonePassword(&process);
+    process.setProgram(GetRclone());
+    process.setArguments(QStringList()
+                         << "copyto" << GetRcloneConf() << mDriveSharedArgs
+                         << GetDefaultRcloneOptionsList() << "--verbose"
+                         << "--use-json-log"
+                         << "--stats" << "1s"
+                         << "--stats-file-name-length" << "0" << mLocalFile
+                         << mRemoteFile);
+    process.setProcessChannelMode(QProcess::MergedChannels);
+
+    ProgressDialog progress("Open/Edit", "Uploading saved changes...",
+                            mRemoteFile, &process, mDialogParent);
+    if (progress.exec() == QDialog::Accepted &&
+        process.exitStatus() == QProcess::NormalExit &&
+        process.exitCode() == 0) {
+      mRemoteFingerprint = remoteFingerprint();
+    }
+  }
+};
+} // namespace
+
 RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                            bool isLocal, bool isGoogle, bool isGooglePhotos,
                            QWidget *parent)
@@ -859,6 +1014,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         menu.addAction(ui.download);
         menu.addAction(ui.link);
 
+        QAction *editAction = nullptr;
         QAction *archiveAction = nullptr;
         QAction *compareAction = nullptr;
         QAction *speedAction = nullptr;
@@ -873,18 +1029,30 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           speedAction = menu.addAction("Speed Test...");
           speedAction->setToolTip(
               "Run upload/download speed probes against this remote.");
+        } else {
+          menu.addSeparator();
+          editAction = menu.addAction("Open/Edit...");
+          editAction->setToolTip(
+              "Download, open with the default app, and re-upload on save.");
         }
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
-        if (!chosen || (chosen != compareAction && chosen != archiveAction &&
-                        chosen != speedAction)) {
+        if (!chosen || (chosen != editAction && chosen != compareAction &&
+                        chosen != archiveAction && chosen != speedAction)) {
           return;
         }
 
         QString path = model->path(index).path();
         QString target = remote + ":" + path;
 
-        if (chosen == compareAction) {
+        if (chosen == editAction) {
+          auto *session = new RemoteEditSession(
+              target, QFileInfo(path).fileName(), getDriveSharedArgs(), this,
+              this);
+          if (!session->downloadAndOpen()) {
+            session->deleteLater();
+          }
+        } else if (chosen == compareAction) {
           auto compareSettings = GetSettings();
           QString lastCompare =
               compareSettings->value("Settings/lastCompareTarget").toString();
