@@ -21,6 +21,8 @@ public:
 signals:
   void addTransfer(const QString &message, const QString &source,
                    const QString &remote, const QStringList &args);
+  void enqueueTransfer(const QString &message, const QString &source,
+                       const QString &dest, const QStringList &args);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
   void requestReconnect(const QString &remote);

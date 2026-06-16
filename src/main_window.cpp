@@ -692,6 +692,21 @@ MainWindow::MainWindow() {
                      &MainWindow::addStream);
     QObject::connect(remote, &RemoteWidget::addTransfer, this,
                      &MainWindow::addTransfer);
+    QObject::connect(
+        remote, &RemoteWidget::enqueueTransfer, this,
+        [this](const QString &msg, const QString &src, const QString &dst,
+               const QStringList &args) {
+          auto *item = new QListWidgetItem(msg, mStagingList);
+          item->setData(Qt::UserRole, msg);
+          item->setData(Qt::UserRole + 1, src);
+          item->setData(Qt::UserRole + 2, dst);
+          item->setData(Qt::UserRole + 3, args);
+          item->setToolTip(QString("%1 -> %2").arg(src, dst));
+          setStatusMessage(
+              QString("Enqueued: %1 (%2 staged)")
+                  .arg(msg)
+                  .arg(mStagingList->count()));
+        });
     QObject::connect(remote, &RemoteWidget::requestReconnect, this,
                      [this](const QString &remoteName) {
                        const QDateTime configBefore = rcloneConfigLastModified();
@@ -780,6 +795,66 @@ MainWindow::MainWindow() {
 
   QObject::connect(ui.tabs, &QTabWidget::tabCloseRequested, ui.tabs,
                    &QTabWidget::removeTab);
+
+  auto *stagingLabel = new QToolButton(this);
+  stagingLabel->setCheckable(true);
+  stagingLabel->setChecked(false);
+  stagingLabel->setArrowType(Qt::RightArrow);
+  stagingLabel->setText("Staging Queue");
+  stagingLabel->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  stagingLabel->setAutoRaise(true);
+  UiPolish::SetDisclosureButton(stagingLabel, "Toggle staging queue");
+  mStagingList = new QListWidget(this);
+  mStagingList->setVisible(false);
+  mStagingList->setMaximumHeight(120);
+  mStagingList->setAccessibleName("Staged transfers awaiting review");
+  mStagingList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  auto *stagingBar = new QWidget(this);
+  auto *stagingBarLayout = new QHBoxLayout(stagingBar);
+  stagingBarLayout->setContentsMargins(0, 0, 0, 0);
+  stagingBarLayout->setSpacing(4);
+  auto *runStaged = new QPushButton("Run All", stagingBar);
+  runStaged->setToolTip("Execute all staged transfers now.");
+  runStaged->setAccessibleName("Run all staged transfers");
+  UiPolish::SetPrimaryButton(runStaged);
+  auto *clearStaged = new QPushButton("Clear", stagingBar);
+  clearStaged->setToolTip("Remove all staged transfers without running them.");
+  clearStaged->setAccessibleName("Clear staging queue");
+  stagingBarLayout->addWidget(runStaged);
+  stagingBarLayout->addWidget(clearStaged);
+  stagingBarLayout->addStretch();
+  stagingBar->setVisible(false);
+
+  QObject::connect(stagingLabel, &QToolButton::toggled, this,
+                   [=](bool checked) {
+                     mStagingList->setVisible(checked);
+                     stagingBar->setVisible(checked);
+                     stagingLabel->setArrowType(
+                         checked ? Qt::DownArrow : Qt::RightArrow);
+                   });
+  QObject::connect(runStaged, &QPushButton::clicked, this, [this]() {
+    while (mStagingList->count() > 0) {
+      auto *item = mStagingList->item(0);
+      QString msg = item->data(Qt::UserRole).toString();
+      QString src = item->data(Qt::UserRole + 1).toString();
+      QString dst = item->data(Qt::UserRole + 2).toString();
+      QStringList args = item->data(Qt::UserRole + 3).toStringList();
+      addTransfer(msg, src, dst, args);
+      delete mStagingList->takeItem(0);
+    }
+    setStatusMessage("All staged transfers started.");
+  });
+  QObject::connect(clearStaged, &QPushButton::clicked, this, [this]() {
+    mStagingList->clear();
+    setStatusMessage("Staging queue cleared.");
+  });
+
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.tasksListWidget->parentWidget()->layout())) {
+    layout->insertWidget(0, stagingLabel);
+    layout->insertWidget(1, mStagingList);
+    layout->insertWidget(2, stagingBar);
+  }
 
   mTasksFilter = new QLineEdit(this);
   mTasksFilter->setPlaceholderText("Filter saved tasks...");
@@ -2064,29 +2139,7 @@ void MainWindow::rcloneListRemotes() {
                 if (item->text() == tabName &&
                     (item->flags() & Qt::ItemIsEnabled)) {
                   QString type = item->data(Qt::UserRole).toString();
-                  bool isLocal = type == "local";
-                  bool isGoogle = type == "drive";
-                  bool isGooglePhotos =
-                      type.compare("google photos", Qt::CaseInsensitive) == 0;
-                  auto *remote = new RemoteWidget(
-                      &mIcons, tabName, isLocal, isGoogle, isGooglePhotos,
-                      ui.tabs);
-                  QObject::connect(remote, &RemoteWidget::addMount, this,
-                                   &MainWindow::addMount);
-                  QObject::connect(remote, &RemoteWidget::addStream, this,
-                                   &MainWindow::addStream);
-                  QObject::connect(remote, &RemoteWidget::addTransfer, this,
-                                   &MainWindow::addTransfer);
-                  QObject::connect(
-                      remote, &RemoteWidget::requestReconnect, this,
-                      [this](const QString &remoteName) {
-                        const QDateTime configBefore =
-                            rcloneConfigLastModified();
-                        startDetachedTerminalCommand(
-                            QStringList() << "config" << "reconnect"
-                                          << remoteName + ":",
-                            configBefore, "Reconnect remote");
-                      });
+                  auto *remote = makeRemoteWidget(tabName, type, ui.tabs);
                   ui.tabs->addTab(remote, tabName);
                   break;
                 }

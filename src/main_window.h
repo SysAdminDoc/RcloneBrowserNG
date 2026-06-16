@@ -73,6 +73,7 @@ private:
     QString taskName;
   };
   QQueue<QueuedTransfer> mTransferQueue;
+  QListWidget *mStagingList = nullptr;
   QHash<QUuid, QFileSystemWatcher *> mWatchers;
   QHash<QUuid, QTimer *> mWatchTimers;
   QSet<QUuid> mPausedWatchTasks;

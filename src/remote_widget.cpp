@@ -970,10 +970,13 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     if (t.exec() == QDialog::Accepted) {
       QString src = t.getSource();
       QString dst = t.getDest();
-
       QStringList args = t.getOptions();
-      emit addTransfer(QString("%1 from %2").arg(t.getMode()).arg(src), src,
-                       dst, args);
+      QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
+      if (t.wasEnqueued()) {
+        emit enqueueTransfer(msg, src, dst, args);
+      } else {
+        emit addTransfer(msg, src, dst, args);
+      }
     }
   });
 
@@ -1006,9 +1009,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         }
         QString src = t.getSource();
         QString dst = t.getDest();
-        emit addTransfer(
-            QString("%1 %2 (%3 items)").arg(t.getMode(), src).arg(rows.size()),
-            src, dst, args);
+        QString msg = QString("%1 %2 (%3 items)").arg(t.getMode(), src).arg(rows.size());
+        if (t.wasEnqueued()) {
+          emit enqueueTransfer(msg, src, dst, args);
+        } else {
+          emit addTransfer(msg, src, dst, args);
+        }
       }
     } else {
       QModelIndex index = rows.front();
@@ -1018,7 +1024,11 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QString src = t.getSource();
         QString dst = t.getDest();
         QStringList args = t.getOptions();
-        emit addTransfer(QString("%1 %2").arg(t.getMode()).arg(src), src, dst,
+        QString msg = QString("%1 %2").arg(t.getMode()).arg(src);
+        if (t.wasEnqueued()) {
+          emit enqueueTransfer(msg, src, dst, args);
+        } else {
+          emit addTransfer(msg, src, dst,
                          args);
       }
     }

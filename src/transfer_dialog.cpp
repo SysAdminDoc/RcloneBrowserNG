@@ -204,6 +204,16 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                      [=]() { mDryRun = false; });
   }
 
+  if (!mIsEditMode) {
+    QPushButton *enqueue =
+        ui.buttonBox->addButton("Enqueue", QDialogButtonBox::AcceptRole);
+    enqueue->setToolTip(
+        "Add to the staging queue for batch review instead of running now.");
+    enqueue->setAccessibleName("Enqueue transfer for later");
+    QObject::connect(enqueue, &QPushButton::clicked, this,
+                     [this]() { mEnqueued = true; });
+  }
+
   QPushButton *saveTask = ui.buttonBox->addButton(
       "Save Task", QDialogButtonBox::ButtonRole::ActionRole);
   saveTask->setToolTip("Save these settings as a reusable task.");

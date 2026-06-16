@@ -337,12 +337,6 @@ All items trace back to public GitHub issues/PRs:
 
 #### P2 — Transfer UX
 
-- [ ] P2 — Transfer staging queue with batch review before execution
-  Why: JDownloader's LinkGrabber pattern — operations go to a review queue before executing. Users build up a batch of copy/sync/move operations across multiple remotes, review the set, then commit. Distinct from the "job queue manager" item (which is about concurrency control for running jobs). FreeFileSync and Krusader also use staging.
-  Evidence: jdownloader.org (LinkGrabber); freefilesync.org; krusader.org
-  Touches: new staging model, `src/main_window.cpp` (queue panel), `src/transfer_dialog.cpp`
-  Acceptance: transfers can be enqueued for review instead of immediate execution; staging list shows all pending ops; user can reorder, remove, or batch-execute; cleared after execution.
-  Complexity: M
 
 #### P3 — CI & supply chain
 
