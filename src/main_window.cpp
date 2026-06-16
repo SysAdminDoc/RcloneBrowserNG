@@ -252,6 +252,9 @@ MainWindow::MainWindow() {
         QString remoteName = item->text();
         QMenu menu(this);
         auto *testConn = menu.addAction("Test Connection");
+        auto *storageUsage = menu.addAction("Storage Usage");
+        storageUsage->setToolTip(
+            "Show storage consumption for this remote.");
         auto *duplicate = menu.addAction("Duplicate Remote...");
         auto *chosen = menu.exec(ui.remotes->viewport()->mapToGlobal(pos));
         if (chosen == testConn) {
@@ -287,6 +290,60 @@ MainWindow::MainWindow() {
                   setStatusMessage(
                       QString("%1: connection failed").arg(remoteName));
                 }
+              });
+        } else if (chosen == storageUsage) {
+          setStatusMessage(
+              QString("Querying storage for %1...").arg(remoteName));
+          auto *proc = new QProcess(this);
+          proc->setProcessChannelMode(QProcess::MergedChannels);
+          UseRclonePassword(proc);
+          QStringList args;
+          args << "about" << GetRcloneConf() << "--json"
+               << remoteName + ":";
+          proc->start(GetRclone(), args, QIODevice::ReadOnly);
+          QTimer::singleShot(30000, proc, [proc]() {
+            if (proc->state() != QProcess::NotRunning) {
+              proc->kill();
+            }
+          });
+          QObject::connect(
+              proc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [=](int code, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (code != 0) {
+                  QString err =
+                      QString::fromUtf8(proc->readAll()).trimmed();
+                  QMessageBox::information(
+                      this, "Storage Usage",
+                      QString("Storage info not available for \"%1\".\n\n%2")
+                          .arg(remoteName, err.left(500)));
+                  setStatusMessage(QString());
+                  return;
+                }
+                QJsonDocument doc =
+                    QJsonDocument::fromJson(proc->readAll());
+                QJsonObject obj = doc.object();
+                QStringList lines;
+                lines << QString("<b>%1</b>").arg(remoteName);
+                auto fmt = [](qint64 bytes) -> QString {
+                  return GetNiceSize(static_cast<quint64>(bytes));
+                };
+                if (obj.contains("total"))
+                  lines << "Total: " + fmt(obj.value("total").toVariant().toLongLong());
+                if (obj.contains("used"))
+                  lines << "Used: " + fmt(obj.value("used").toVariant().toLongLong());
+                if (obj.contains("free"))
+                  lines << "Free: " + fmt(obj.value("free").toVariant().toLongLong());
+                if (obj.contains("trashed"))
+                  lines << "Trash: " + fmt(obj.value("trashed").toVariant().toLongLong());
+                if (obj.contains("other"))
+                  lines << "Other: " + fmt(obj.value("other").toVariant().toLongLong());
+                QMessageBox::information(
+                    this, "Storage Usage",
+                    lines.join("<br>"));
+                setStatusMessage(QString());
               });
         } else if (chosen == duplicate) {
           QString newName = QInputDialog::getText(
