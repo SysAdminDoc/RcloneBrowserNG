@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Remote URL upload (`copyurl`) — right-click a folder in the remote browser to download a file from any URL directly to that remote path via `rclone copyurl`
 -   NEW: Global bandwidth limit control — an editable field in the status bar sets a persistent `--bwlimit` that applies to all new transfers when the per-job bandwidth is empty
 -   NEW: Real-time error log panel — a collapsible "Error Log" pane on the Jobs tab streams errors and warnings from all running transfers, mounts, and streams as they happen
 -   NEW: Default exclude patterns — a multi-line field in Preferences lets you set global exclude patterns (e.g. `*.tmp`, `.DS_Store`) that apply to all transfers automatically

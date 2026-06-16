@@ -1018,6 +1018,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QAction *archiveAction = nullptr;
         QAction *compareAction = nullptr;
         QAction *speedAction = nullptr;
+        QAction *copyUrlAction = nullptr;
         if (model->isFolder(index)) {
           menu.addSeparator();
           compareAction = menu.addAction("Compare Folders...");
@@ -1029,6 +1030,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           speedAction = menu.addAction("Speed Test...");
           speedAction->setToolTip(
               "Run upload/download speed probes against this remote.");
+          copyUrlAction = menu.addAction("Download URL here...");
+          copyUrlAction->setToolTip(
+              "Download a file from a URL directly to this remote folder.");
         } else {
           menu.addSeparator();
           editAction = menu.addAction("Open/Edit...");
@@ -1038,7 +1042,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
         if (!chosen || (chosen != editAction && chosen != compareAction &&
-                        chosen != archiveAction && chosen != speedAction)) {
+                        chosen != archiveAction && chosen != speedAction &&
+                        chosen != copyUrlAction)) {
           return;
         }
 
@@ -1102,6 +1107,31 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           progress.expand();
           progress.allowToClose();
           progress.exec();
+        } else if (chosen == copyUrlAction) {
+          bool ok;
+          QString url = QInputDialog::getText(
+              this, "Download URL", "URL to download to this remote folder:",
+              QLineEdit::Normal, QString(), &ok);
+          if (!ok || url.trimmed().isEmpty()) {
+            return;
+          }
+          QProcess process;
+          UseRclonePassword(&process);
+          process.setProgram(GetRclone());
+          process.setArguments(QStringList()
+                               << "copyurl" << GetRcloneConf()
+                               << url.trimmed() << target
+                               << GetDefaultRcloneOptionsList());
+          process.setProcessChannelMode(QProcess::MergedChannels);
+          ProgressDialog progress("Download URL", "Downloading...",
+                                  url.trimmed() + " -> " + target, &process,
+                                  this, false);
+          progress.expand();
+          progress.allowToClose();
+          progress.exec();
+          if (process.exitCode() == 0) {
+            refreshCurrentDir();
+          }
         }
       });
 
