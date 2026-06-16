@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: CLI interface to run saved tasks — `--run-task "My Task"` runs a saved task headlessly without opening the GUI and exits with rclone's exit code; `--list-tasks` prints all saved task names
 -   NEW: Tiles/icon view for remotes list — a toggle button switches between list and tile/icon grid layout; the preference persists across sessions
 -   NEW: Browse Google Drive trash — a Trash button on Google Drive tabs lists trashed files with sizes via `--drive-trashed-only`
 -   NEW: Multi-file download auto-generates `--include` filters — selecting multiple files and clicking Download copies the parent folder with `--include` flags for each selected file

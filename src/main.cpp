@@ -1,3 +1,4 @@
+#include "list_of_job_options.h"
 #include "main_window.h"
 #include "utils.h"
 
@@ -265,6 +266,46 @@ int main(int argc, char *argv[]) {
   if (!lockFile.tryLock(100)) {
     lockFile.removeStaleLockFile();
     lockFile.tryLock(100);
+  }
+
+  int runTaskIdx = app.arguments().indexOf("--run-task");
+  if (runTaskIdx >= 0 && runTaskIdx + 1 < app.arguments().size()) {
+    QString taskName = app.arguments().at(runTaskIdx + 1);
+    auto *store = ListOfJobOptions::getInstance();
+    JobOptions *found = nullptr;
+    for (auto *jo : store->getTasks()) {
+      if (jo->description == taskName) {
+        found = jo;
+        break;
+      }
+    }
+    if (!found) {
+      qCritical().noquote()
+          << "Task not found:" << taskName;
+      QStringList available;
+      for (auto *jo : store->getTasks()) {
+        available << "  " + jo->description;
+      }
+      if (!available.isEmpty()) {
+        qCritical().noquote() << "Available tasks:\n" + available.join("\n");
+      }
+      return 1;
+    }
+    QStringList args = GetRcloneConf() + found->getOptions();
+    QProcess proc;
+    proc.setProcessChannelMode(QProcess::ForwardedChannels);
+    UseRclonePassword(&proc);
+    proc.start(GetRclone(), args);
+    proc.waitForFinished(-1);
+    return proc.exitCode();
+  }
+
+  if (app.arguments().contains("--list-tasks")) {
+    auto *store = ListOfJobOptions::getInstance();
+    for (auto *jo : store->getTasks()) {
+      QTextStream(stdout) << jo->description << "\n";
+    }
+    return 0;
   }
 
   MainWindow w;
