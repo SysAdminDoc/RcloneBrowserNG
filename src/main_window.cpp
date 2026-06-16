@@ -1630,8 +1630,29 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
 
   jo->dryRun = dryrun;
   QStringList args = jo->getOptions();
-  addTransfer(QString("%1 %2").arg(jo->operation).arg(jo->source), jo->source,
-              jo->dest, args);
+  QString heartbeatUrl = jo->heartbeatUrl;
+  QString message =
+      QString("%1 %2").arg(jo->operation).arg(jo->source);
+
+  if (!args.isEmpty() && !heartbeatUrl.isEmpty()) {
+    if (!mRcEngine) {
+      mRcEngine = new RcloneRcEngine(this);
+    }
+    mRcEngine->runCommand(
+        args, this, [=](int jobId, const QString &) {
+          if (jobId >= 0) {
+            auto *widget = new RcJobWidget(
+                mRcEngine, jobId, message,
+                mRcEngine->rcCommandForDisplay(args), jo->source, jo->dest);
+            addRcJobWidget(widget, heartbeatUrl);
+            return;
+          }
+          addTransferViaProcess(message, jo->source, jo->dest, args,
+                                heartbeatUrl);
+        });
+  } else {
+    addTransfer(message, jo->source, jo->dest, args);
+  }
 }
 
 void MainWindow::editSelectedTask() {
@@ -1681,7 +1702,8 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
   addTransferViaProcess(message, source, dest, args);
 }
 
-void MainWindow::addRcJobWidget(RcJobWidget *widget) {
+void MainWindow::addRcJobWidget(RcJobWidget *widget,
+                                const QString &heartbeatUrl) {
   auto *line = new QFrame();
   line->setFrameShape(QFrame::HLine);
   line->setFrameShadow(QFrame::Sunken);
@@ -1692,6 +1714,10 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget) {
                        qApp->alert(this);
                        QApplication::beep();
                        mSystemTray.showMessage("Transfer finished", info);
+                     }
+                     if (!heartbeatUrl.isEmpty()) {
+                       sendHeartbeat(heartbeatUrl,
+                                     widget->wasSuccessful());
                      }
 
                      if (--mJobCount == 0) {
@@ -1724,7 +1750,8 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget) {
 void MainWindow::addTransferViaProcess(const QString &message,
                                        const QString &source,
                                        const QString &dest,
-                                       const QStringList &args) {
+                                       const QStringList &args,
+                                       const QString &heartbeatUrl) {
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
@@ -1742,6 +1769,9 @@ void MainWindow::addTransferViaProcess(const QString &message,
           QApplication::beep();
           mLastFinished = widget;
           mSystemTray.showMessage("Transfer finished", info);
+        }
+        if (!heartbeatUrl.isEmpty()) {
+          sendHeartbeat(heartbeatUrl, widget->wasSuccessful());
         }
 
         if (--mJobCount == 0) {
@@ -1774,6 +1804,35 @@ void MainWindow::addTransferViaProcess(const QString &message,
 
   UseRclonePassword(transfer);
   transfer->start(GetRclone(), processArgs, QIODevice::ReadOnly);
+}
+
+void MainWindow::sendHeartbeat(const QString &url, bool success) {
+  if (url.isEmpty()) {
+    return;
+  }
+
+  if (!mNetworkManager) {
+    mNetworkManager = new QNetworkAccessManager(this);
+  }
+
+  QString endpoint = url;
+  if (!success) {
+    if (endpoint.endsWith('/')) {
+      endpoint += "fail";
+    } else {
+      endpoint += "/fail";
+    }
+  }
+
+  QNetworkRequest req(QUrl(endpoint));
+  QNetworkReply *reply = mNetworkManager->get(req);
+  QTimer::singleShot(15000, reply, [reply]() {
+    if (reply->isRunning()) {
+      reply->abort();
+    }
+  });
+  QObject::connect(reply, &QNetworkReply::finished, reply,
+                   &QNetworkReply::deleteLater);
 }
 
 void MainWindow::checkRcloneUpdate(const QString &currentVersion) {

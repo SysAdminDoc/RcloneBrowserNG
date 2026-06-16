@@ -33,9 +33,18 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textMinAge->setPlaceholderText("1d");
   ui.textMaxAge->setPlaceholderText("30d");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
+  auto *heartbeatLabel = new QLabel("Heartbeat URL:", this);
+  heartbeatLabel->setToolTip(
+      "Healthchecks.io, ntfy.sh, or any URL to ping on job completion.\n"
+      "On success the app sends GET to this URL; on failure it appends /fail.");
+  mHeartbeatUrl = new QLineEdit(this);
+  mHeartbeatUrl->setPlaceholderText("https://hc-ping.com/your-uuid or https://ntfy.sh/your-topic");
+  mHeartbeatUrl->setAccessibleName("Heartbeat URL for monitoring");
+  ui.gridLayout->addWidget(heartbeatLabel, 8, 0);
+  ui.gridLayout->addWidget(mHeartbeatUrl, 8, 1);
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 8, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 9, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -505,6 +514,7 @@ JobOptions *TransferDialog::getJobOptions() {
   //   false).toBool();
 
   mJobOptions->DriveSharedWithMe = ui.checkisDriveSharedWithMe->isChecked();
+  mJobOptions->heartbeatUrl = mHeartbeatUrl->text().trimmed();
 
   return mJobOptions;
 }
@@ -569,6 +579,7 @@ void TransferDialog::putJobOptions() {
   ui.textDescription->setText(mJobOptions->description);
   // DDBB
   ui.checkisDriveSharedWithMe->setChecked(mJobOptions->DriveSharedWithMe);
+  mHeartbeatUrl->setText(mJobOptions->heartbeatUrl);
 }
 
 void TransferDialog::done(int r) {

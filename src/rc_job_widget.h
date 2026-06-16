@@ -15,6 +15,7 @@ public:
   ~RcJobWidget();
 
   void showDetails();
+  bool wasSuccessful() const { return mSuccess; }
 
 public slots:
   void cancel();
@@ -30,6 +31,7 @@ private:
   int mJobId;
   bool mRunning = true;
   bool mPollInFlight = false;
+  bool mSuccess = false;
   QString mGroup;
   QStringList mDisplayArgs;
   QTimer mPollTimer;

@@ -59,6 +59,7 @@ public:
   bool isFolder;
   QUuid uniqueId;
   bool DriveSharedWithMe;
+  QString heartbeatUrl;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;
