@@ -375,6 +375,8 @@ MainWindow::MainWindow() {
                 QStringList lines;
                 lines << QString("<b>%1</b>").arg(remoteName);
                 auto fmt = [](qint64 bytes) -> QString {
+                  if (bytes < 0)
+                    return "N/A";
                   return GetNiceSize(static_cast<quint64>(bytes));
                 };
                 if (obj.contains("total"))
@@ -889,6 +891,11 @@ MainWindow::MainWindow() {
                          checked ? Qt::DownArrow : Qt::RightArrow);
                    });
   QObject::connect(runStaged, &QPushButton::clicked, this, [this]() {
+    if (mStagingList->count() == 0) {
+      setStatusMessage("Staging queue is empty.");
+      return;
+    }
+    int count = mStagingList->count();
     while (mStagingList->count() > 0) {
       auto *item = mStagingList->item(0);
       QString msg = item->data(Qt::UserRole).toString();
@@ -898,7 +905,8 @@ MainWindow::MainWindow() {
       addTransfer(msg, src, dst, args);
       delete mStagingList->takeItem(0);
     }
-    setStatusMessage("All staged transfers started.");
+    setStatusMessage(
+        QString("%1 staged transfer(s) started.").arg(count));
   });
   QObject::connect(clearStaged, &QPushButton::clicked, this, [this]() {
     mStagingList->clear();
@@ -2296,8 +2304,22 @@ void MainWindow::rcloneListRemotes() {
             QStringList autoMounts =
                 autoSettings->value("Settings/autoMountRemotes")
                     .toStringList();
+            QString defaultMount =
+                autoSettings->value("Settings/lastMountPoint").toString();
             for (const QString &name : autoMounts) {
-              addMount(name + ":", QString());
+              bool found = false;
+              for (int ri = 0; ri < ui.remotes->count(); ++ri) {
+                if (ui.remotes->item(ri)->text() == name &&
+                    (ui.remotes->item(ri)->flags() & Qt::ItemIsEnabled)) {
+                  found = true;
+                  break;
+                }
+              }
+              if (!found)
+                continue;
+              if (defaultMount.isEmpty())
+                continue;
+              addMount(name + ":", defaultMount);
             }
           }
         } else {
@@ -3551,15 +3573,14 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
 
   for (const QString &file : files) {
     QFileInfo fi(file);
-    QDir parentDir = fi.absoluteDir();
-    bool isFolder = fi.isDir();
 
     QStringList args;
     args << "copy" << "--verbose" << "--use-json-log" << "--stats" << "1s"
          << "--stats-file-name-length" << "0"
+         << GetDefaultExcludeList()
          << GetDefaultRcloneOptionsList()
          << QDir::toNativeSeparators(fi.absoluteFilePath())
-         << remote + ":" + fi.fileName();
+         << remote + ":";
 
     addTransfer(
         QString("Upload %1 to %2").arg(fi.fileName(), remote),

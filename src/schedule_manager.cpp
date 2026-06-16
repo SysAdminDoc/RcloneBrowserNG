@@ -9,8 +9,15 @@ QString ScheduleManager::appPath() {
 }
 
 QString ScheduleManager::scheduleTaskName(const QString &taskName) {
-  QString safe = taskName;
-  safe.replace('\\', '_').replace('/', '_').replace('"', '_');
+  QString safe;
+  safe.reserve(taskName.size());
+  for (const QChar &ch : taskName) {
+    if (ch.isLetterOrNumber() || ch == '-' || ch == '_' || ch == '.' ||
+        ch == ' ')
+      safe.append(ch);
+    else
+      safe.append('_');
+  }
   return kPrefix + safe;
 }
 
@@ -101,8 +108,10 @@ bool ScheduleManager::installSchedule(const QString &taskName,
     cronExpr = QString("0 %1 * * *").arg(time.isEmpty() ? "0" : time.left(2));
   }
 
-  filtered << QString("%1 \"%2\" --run-task \"%3\" %4")
-                  .arg(cronExpr, app, taskName, marker);
+  QString safeTaskName = taskName;
+  safeTaskName.replace('\'', "'\\''");
+  filtered << QString("%1 '%2' --run-task '%3' %4")
+                  .arg(cronExpr, app, safeTaskName, marker);
 
   QProcess install;
   install.start("crontab", QStringList() << "-");
@@ -132,6 +141,14 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   else if (interval.endsWith("h"))
     intervalSec = interval.left(interval.length() - 1).toInt() * 3600;
 
+  auto xmlEscape = [](const QString &s) -> QString {
+    QString out = s;
+    out.replace('&', "&amp;");
+    out.replace('<', "&lt;");
+    out.replace('>', "&gt;");
+    return out;
+  };
+
   QString plist = QString(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
       "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
@@ -146,7 +163,8 @@ bool ScheduleManager::installSchedule(const QString &taskName,
       "  <key>StartInterval</key><integer>%4</integer>\n"
       "  <key>RunAtLoad</key><false/>\n"
       "</dict>\n</plist>\n")
-          .arg(sysName, app, taskName)
+          .arg(xmlEscape(sysName), xmlEscape(app),
+               xmlEscape(taskName))
           .arg(intervalSec);
 
   QFile file(plistPath);

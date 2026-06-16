@@ -267,8 +267,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mConflictResolve->setAccessibleName("Bisync conflict resolution strategy");
   conflictLabel->setVisible(false);
   mConflictResolve->setVisible(false);
-  ui.gridLayout->addWidget(conflictLabel, 13, 0);
-  ui.gridLayout->addWidget(mConflictResolve, 13, 1);
+  ui.gridLayout->addWidget(conflictLabel, 14, 0);
+  ui.gridLayout->addWidget(mConflictResolve, 14, 1);
   QObject::connect(mRbBisync, &QRadioButton::toggled, this,
                    [conflictLabel, this](bool checked) {
                      conflictLabel->setVisible(checked);
@@ -282,8 +282,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mBackupDir = new QLineEdit(this);
   mBackupDir->setPlaceholderText("remote:backups/{date} or blank to skip");
   mBackupDir->setAccessibleName("Backup directory pattern");
-  ui.gridLayout->addWidget(backupDirLabel, 13, 0);
-  ui.gridLayout->addWidget(mBackupDir, 13, 1);
+  ui.gridLayout->addWidget(backupDirLabel, 15, 0);
+  ui.gridLayout->addWidget(mBackupDir, 15, 1);
 
   auto *retainLabel = new QLabel("Retain backups:", this);
   retainLabel->setToolTip(
@@ -293,8 +293,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mBackupRetain->setMaximum(9999);
   mBackupRetain->setSpecialValueText("Keep all");
   mBackupRetain->setAccessibleName("Backup retention count");
-  ui.gridLayout->addWidget(retainLabel, 14, 0);
-  ui.gridLayout->addWidget(mBackupRetain, 14, 1);
+  ui.gridLayout->addWidget(retainLabel, 16, 0);
+  ui.gridLayout->addWidget(mBackupRetain, 16, 1);
 
   mWatchFolder = new QCheckBox("Watch local source and rerun on changes", this);
   mWatchFolder->setToolTip(
@@ -306,11 +306,11 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     mWatchFolder->setToolTip(
         "Watch-folder mode is available for upload tasks with a local source.");
   }
-  ui.gridLayout->addWidget(mWatchFolder, 13, 1);
+  ui.gridLayout->addWidget(mWatchFolder, 17, 1);
 
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 14, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 18, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -459,8 +459,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     mPreviewButton->setToolTip(
         "Run with --dry-run to see what would change, without modifying "
         "any files.");
-    ui.gridLayout->addWidget(mPreviewButton, 14, 0);
-    ui.gridLayout->addWidget(mPreview, 14, 1);
+    ui.gridLayout->addWidget(mPreviewButton, 19, 0);
+    ui.gridLayout->addWidget(mPreview, 19, 1);
     QObject::connect(mPreviewButton, &QPushButton::clicked, this, [=]() {
       if (mIsDownload) {
         if (ui.textDest->text().trimmed().isEmpty()) {

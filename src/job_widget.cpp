@@ -360,6 +360,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      mFinishedAt = QDateTime::currentDateTimeUtc();
                      mExitCode = status;
                      mSuccess = (status == 0);
+
+                     for (int i = 0; i < ui.horizontalLayout->count(); ++i) {
+                       auto *w = ui.horizontalLayout->itemAt(i)->widget();
+                       if (auto *btn = qobject_cast<QToolButton *>(w)) {
+                         if (btn != ui.showDetails && btn != ui.showOutput &&
+                             btn != ui.cancel && btn != ui.copy)
+                           btn->setVisible(false);
+                       }
+                     }
+
                      if (status == 0) {
                        UiPolish::SetStatus(ui.showDetails, "success",
                                            "Finished");
