@@ -34,8 +34,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
   _Sources: kapitainsky #249, #195_
 
 ### Task Management
-- [ ] **Job queue manager** — Sequential job execution instead of all-concurrent. Configurable concurrency limit.  
-  _Sources: kapitainsky #204, #109; mmozeiko #6, #14_
 
 
 
