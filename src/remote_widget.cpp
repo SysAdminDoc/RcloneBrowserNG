@@ -11,6 +11,8 @@
 #include "interface_polish.h"
 #include "utils.h"
 
+#include <functional>
+
 QStringList RemoteWidget::getDriveSharedArgs() const {
   if (ui.checkBoxShared->isChecked())
     return QStringList() << "--drive-shared-with-me";
@@ -31,16 +33,30 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   UiPolish::SetToolbarSurface(ui.buttons);
   UiPolish::SetPathField(ui.path, "Current remote path");
   ui.path->setPlaceholderText("Select a folder or file");
+  mBreadcrumbBar = new QWidget(this);
+  mBreadcrumbBar->setObjectName("breadcrumbBar");
+  mBreadcrumbBar->installEventFilter(this);
+  mBreadcrumbLayout = new QHBoxLayout(mBreadcrumbBar);
+  mBreadcrumbLayout->setContentsMargins(0, 0, 0, 0);
+  mBreadcrumbLayout->setSpacing(4);
+  if (auto *pathLayout =
+          qobject_cast<QBoxLayout *>(ui.path->parentWidget()->layout())) {
+    const int pathIndex = pathLayout->indexOf(ui.path);
+    pathLayout->insertWidget(pathIndex, mBreadcrumbBar);
+  }
+  ui.path->installEventFilter(this);
+  ui.path->hide();
   UiPolish::SetNavigationView(ui.tree, "Remote file browser");
   ui.tree->setRootIsDecorated(true);
   ui.tree->setIndentation(18);
   ui.tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
-QString root = isLocal ? "/" : QString();
+  QString root = isLocal ? "/" : QString();
 
 #ifndef Q_OS_WIN
   isLocal = false;
 #endif
+  mIsLocal = isLocal;
 
   auto settings = GetSettings();
   QString rcloneVersion = settings->value("Settings/rcloneVersion").toString();
@@ -127,10 +143,30 @@ QString root = isLocal ? "/" : QString();
   ui.tree->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
   ItemModel *model = new ItemModel(iconCache, remote, isGooglePhotos, this);
+  mModel = model;
   QObject::connect(ui.checkBoxShared, &QCheckBox::toggled, model,
                    &ItemModel::setDriveShared);
   ui.tree->setModel(model);
   QTimer::singleShot(0, ui.tree, SLOT(setFocus()));
+
+  QAction *editPathAction = new QAction(this);
+  editPathAction->setShortcut(QKeySequence("Ctrl+L"));
+  editPathAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+  addAction(editPathAction);
+  QObject::connect(editPathAction, &QAction::triggered, this,
+                   [this]() { showPathEditor(); });
+  QObject::connect(ui.path, &QLineEdit::returnPressed, this, [this]() {
+    const QModelIndex index = findLoadedPath(ui.path->text());
+    if (index.isValid()) {
+      selectIndex(index);
+      hidePathEditor();
+    } else {
+      QMessageBox::information(
+          this, "Path not loaded",
+          "That path is not loaded in this tab yet. Use the browser tree to "
+          "open it first.");
+    }
+  });
 
   // selection helper - actions can fire while nothing is selected, so never
   // call .front() on an empty list
@@ -234,7 +270,7 @@ QString root = isLocal ? "/" : QString();
         }
 
         if (count == 0) {
-          ui.path->clear();
+          showPathMessage(QString());
           return;
         }
 
@@ -264,9 +300,7 @@ QString root = isLocal ? "/" : QString();
           ui.download->setDisabled(true);
           ui.checkBoxShared->setDisabled(true);
           path = model->path(model->parent(index));
-          ui.path->setText("Loading " +
-                           (isLocal ? QDir::toNativeSeparators(path.path())
-                                    : path.path()));
+          showPathMessage("Loading " + displayPath(path.path()));
         } else {
           ui.refresh->setDisabled(false);
           bool driveShared = ui.checkBoxShared->checkState();
@@ -302,10 +336,9 @@ QString root = isLocal ? "/" : QString();
           ui.checkBoxShared->setDisabled(!isGoogle);
           path = model->path(index);
           if (multiSelect) {
-            ui.path->setText(QString("%1 items selected").arg(count));
+            showPathMessage(QString("%1 items selected").arg(count));
           } else {
-            ui.path->setText(isLocal ? QDir::toNativeSeparators(path.path())
-                                     : path.path());
+            showBreadcrumbForIndex(index);
           }
         }
 
@@ -956,9 +989,191 @@ QString root = isLocal ? "/" : QString();
 
 void RemoteWidget::refreshCurrentDir() { ui.refresh->trigger(); }
 
-void RemoteWidget::focusPathBar() {
-  ui.path->setFocus();
+void RemoteWidget::focusPathBar() { showPathEditor(); }
+
+bool RemoteWidget::eventFilter(QObject *obj, QEvent *event) {
+  if (obj == mBreadcrumbBar && event->type() == QEvent::MouseButtonPress) {
+    showPathEditor();
+    return true;
+  }
+
+  if (obj == ui.path && event->type() == QEvent::KeyPress) {
+    auto *key = static_cast<QKeyEvent *>(event);
+    if (key->key() == Qt::Key_Escape) {
+      hidePathEditor();
+      return true;
+    }
+  }
+
+  return QWidget::eventFilter(obj, event);
+}
+
+void RemoteWidget::showBreadcrumbForIndex(const QModelIndex &index) {
+  if (!index.isValid() || !mModel || !mBreadcrumbLayout) {
+    showPathMessage(QString());
+    return;
+  }
+
+  while (QLayoutItem *item = mBreadcrumbLayout->takeAt(0)) {
+    if (QWidget *widget = item->widget()) {
+      widget->deleteLater();
+    }
+    delete item;
+  }
+
+  QVector<QPersistentModelIndex> chain;
+  QModelIndex current = index;
+  while (current.isValid()) {
+    chain.prepend(QPersistentModelIndex(current));
+    current = mModel->parent(current);
+  }
+
+  for (int i = 0; i < chain.size(); ++i) {
+    if (i > 0) {
+      auto *separator = new QLabel("/", mBreadcrumbBar);
+      separator->setAlignment(Qt::AlignCenter);
+      mBreadcrumbLayout->addWidget(separator);
+    }
+
+    QPersistentModelIndex persistent = chain.at(i);
+    auto *button = new QToolButton(mBreadcrumbBar);
+    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    button->setAutoRaise(true);
+    QString text = mModel->data(persistent, Qt::DisplayRole).toString();
+    if (text.isEmpty()) {
+      text = "/";
+    }
+    button->setText(text);
+    button->setToolTip(displayPath(mModel->path(persistent).path()));
+
+    auto *menu = new QMenu(button);
+    QModelIndex parentIndex = mModel->parent(persistent);
+    const int rows = mModel->rowCount(parentIndex);
+    for (int row = 0; row < rows; ++row) {
+      QModelIndex sibling = mModel->index(row, 0, parentIndex);
+      if (!sibling.isValid() || !mModel->isFolder(sibling)) {
+        continue;
+      }
+      QPersistentModelIndex siblingIndex(sibling);
+      QAction *action =
+          menu->addAction(mModel->data(sibling, Qt::DisplayRole).toString());
+      QObject::connect(action, &QAction::triggered, this,
+                       [this, siblingIndex]() {
+                         selectIndex(QModelIndex(siblingIndex));
+                       });
+    }
+    if (!menu->isEmpty()) {
+      button->setMenu(menu);
+      button->setPopupMode(QToolButton::MenuButtonPopup);
+    }
+
+    QObject::connect(button, &QToolButton::clicked, this,
+                     [this, persistent]() {
+                       selectIndex(QModelIndex(persistent));
+                     });
+    mBreadcrumbLayout->addWidget(button);
+  }
+  mBreadcrumbLayout->addStretch(1);
+
+  ui.path->setReadOnly(true);
+  ui.path->hide();
+  mBreadcrumbBar->show();
+}
+
+void RemoteWidget::showPathMessage(const QString &message) {
+  if (mBreadcrumbBar) {
+    mBreadcrumbBar->hide();
+  }
+  ui.path->setReadOnly(true);
+  ui.path->setText(message);
+  ui.path->show();
+}
+
+void RemoteWidget::showPathEditor(const QString &text) {
+  QString value = text;
+  if (value.isEmpty() && mModel) {
+    const QModelIndexList rows = ui.tree->selectionModel()->selectedRows();
+    if (!rows.isEmpty()) {
+      value = displayPath(mModel->path(rows.front()).path());
+    } else {
+      value = ui.path->text();
+    }
+  }
+
+  if (mBreadcrumbBar) {
+    mBreadcrumbBar->hide();
+  }
+  ui.path->setReadOnly(false);
+  ui.path->setText(value);
+  ui.path->show();
+  ui.path->setFocus(Qt::ShortcutFocusReason);
   ui.path->selectAll();
+}
+
+void RemoteWidget::hidePathEditor() {
+  ui.path->setReadOnly(true);
+  const QModelIndexList rows = ui.tree->selectionModel()->selectedRows();
+  if (rows.size() == 1) {
+    showBreadcrumbForIndex(rows.front());
+  } else if (rows.size() > 1) {
+    showPathMessage(QString("%1 items selected").arg(rows.size()));
+  } else {
+    showPathMessage(QString());
+  }
+}
+
+void RemoteWidget::selectIndex(const QModelIndex &index) {
+  if (!index.isValid()) {
+    return;
+  }
+  ui.tree->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect |
+                                               QItemSelectionModel::Rows);
+  ui.tree->setCurrentIndex(index);
+  ui.tree->scrollTo(index);
+  if (mModel && mModel->isFolder(index)) {
+    ui.tree->expand(index);
+  }
+}
+
+QModelIndex RemoteWidget::findLoadedPath(const QString &path) const {
+  if (!mModel) {
+    return QModelIndex();
+  }
+
+  QString target = QDir::fromNativeSeparators(path.trimmed());
+  if (!mIsLocal && target == "/") {
+    target.clear();
+  }
+
+  std::function<QModelIndex(const QModelIndex &)> search =
+      [&](const QModelIndex &parent) -> QModelIndex {
+    const int rows = mModel->rowCount(parent);
+    for (int row = 0; row < rows; ++row) {
+      QModelIndex child = mModel->index(row, 0, parent);
+      if (!child.isValid()) {
+        continue;
+      }
+      if (QDir::fromNativeSeparators(mModel->path(child).path()) == target) {
+        return child;
+      }
+      if (mModel->isFolder(child)) {
+        QModelIndex found = search(child);
+        if (found.isValid()) {
+          return found;
+        }
+      }
+    }
+    return QModelIndex();
+  };
+
+  return search(QModelIndex());
+}
+
+QString RemoteWidget::displayPath(const QString &path) const {
+  if (mIsLocal) {
+    return QDir::toNativeSeparators(path);
+  }
+  return path.isEmpty() ? "/" : path;
 }
 
 RemoteWidget::~RemoteWidget() {}

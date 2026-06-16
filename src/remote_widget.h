@@ -4,6 +4,7 @@
 #include "ui_remote_widget.h"
 
 class IconCache;
+class ItemModel;
 
 class RemoteWidget : public QWidget {
   Q_OBJECT
@@ -26,4 +27,17 @@ signals:
 
 private:
   Ui::RemoteWidget ui;
+  ItemModel *mModel = nullptr;
+  QWidget *mBreadcrumbBar = nullptr;
+  QHBoxLayout *mBreadcrumbLayout = nullptr;
+  bool mIsLocal = false;
+
+  bool eventFilter(QObject *obj, QEvent *event) override;
+  void showBreadcrumbForIndex(const QModelIndex &index);
+  void showPathMessage(const QString &message);
+  void showPathEditor(const QString &text = QString());
+  void hidePathEditor();
+  void selectIndex(const QModelIndex &index);
+  QModelIndex findLoadedPath(const QString &path) const;
+  QString displayPath(const QString &path) const;
 };

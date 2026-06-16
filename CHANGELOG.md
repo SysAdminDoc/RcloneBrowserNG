@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Remote browser paths now render as clickable breadcrumbs with sibling-folder dropdowns, plus an editable path mode via Ctrl+L, empty-bar click, Enter, and Escape
 -   NEW: Folder comparison view runs `rclone check --combined`, filters matched/different/missing/error rows, and queues selected copy/delete repair jobs from the results
 -   NEW: Job history now records completed transfer runs with timing, bytes, files, errors, and exit status; File and tray menus expose the history, and the tray icon distinguishes idle, active, and failed states
 -   CHANGED: Dropped Qt 5 dual support — Qt 6.4 is now the minimum; all Qt5 ifdefs, QtWinExtras/QtMacExtras imports, High-DPI scaling workarounds, and the CI Qt5 matrix leg are removed
