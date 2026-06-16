@@ -4,6 +4,7 @@
 #include "job_history.h"
 #include "job_options.h"
 #include "pch.h"
+#include <QQueue>
 #include "ui_main_window.h"
 
 class JobWidget;
@@ -58,7 +59,20 @@ private:
   bool mFirstTime = true;
   bool mTabsRestored = false;
   int mJobCount = 0;
+  int mRunningTransfers = 0;
   bool mLastJobFailed = false;
+
+  struct QueuedTransfer {
+    QString message;
+    QString source;
+    QString dest;
+    QStringList args;
+    QString heartbeatUrl;
+    QString postCommand;
+    QString webhookUrl;
+    QString taskName;
+  };
+  QQueue<QueuedTransfer> mTransferQueue;
   QHash<QUuid, QFileSystemWatcher *> mWatchers;
   QHash<QUuid, QTimer *> mWatchTimers;
   QSet<QUuid> mPausedWatchTasks;
@@ -95,6 +109,7 @@ private:
   void updateJobIndicators();
   void persistJobHistory(const JobHistoryEntry &entry);
   void updateGlobalStats();
+  void drainTransferQueue();
   void sendHeartbeat(const QString &url, bool success);
   void sendWebhook(const QString &url, const QString &taskName, bool success,
                    const QString &error = QString());

@@ -553,6 +553,8 @@ MainWindow::MainWindow() {
                          dialog.getNotifyFinishedTransfers());
       settings->setValue("Settings/startMinimized",
                          dialog.getStartMinimized());
+      settings->setValue("Settings/maxConcurrentTransfers",
+                         dialog.getMaxConcurrentTransfers());
 
       settings->setValue("Settings/showFolderIcons",
                          dialog.getShowFolderIcons());
@@ -2398,6 +2400,21 @@ void MainWindow::addTransferViaProcess(const QString &message,
                                        const QString &postCommand,
                                        const QString &webhookUrl,
                                        const QString &taskName) {
+  auto settings = GetSettings();
+  int maxConcurrent =
+      settings->value("Settings/maxConcurrentTransfers", 0).toInt();
+  if (maxConcurrent > 0 && mRunningTransfers >= maxConcurrent) {
+    mTransferQueue.enqueue(
+        {message, source, dest, args, heartbeatUrl, postCommand, webhookUrl,
+         taskName});
+    setStatusMessage(
+        QString("Queued: %1 (%2 in queue)")
+            .arg(message)
+            .arg(mTransferQueue.size()));
+    return;
+  }
+  ++mRunningTransfers;
+
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
@@ -2547,10 +2564,28 @@ void MainWindow::noteJobFinished(bool success) {
   if (mJobCount > 0) {
     --mJobCount;
   }
+  if (mRunningTransfers > 0) {
+    --mRunningTransfers;
+  }
   if (!success) {
     mLastJobFailed = true;
   }
   updateJobIndicators();
+  drainTransferQueue();
+}
+
+void MainWindow::drainTransferQueue() {
+  auto settings = GetSettings();
+  int maxConcurrent =
+      settings->value("Settings/maxConcurrentTransfers", 0).toInt();
+  while (!mTransferQueue.isEmpty() &&
+         (maxConcurrent <= 0 || mRunningTransfers < maxConcurrent)) {
+    auto queued = mTransferQueue.dequeue();
+    addTransferViaProcess(queued.message, queued.source, queued.dest,
+                          queued.args, queued.heartbeatUrl,
+                          queued.postCommand, queued.webhookUrl,
+                          queued.taskName);
+  }
 }
 
 void MainWindow::updateJobIndicators() {

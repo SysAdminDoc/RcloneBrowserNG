@@ -56,6 +56,27 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.defaultUploadOptions->setPlaceholderText("Extra flags for uploads");
   ui.defaultRcloneOptions->setPlaceholderText("--fast-list");
 
+  auto *concurrentLabel = new QLabel("Max concurrent transfers:", this);
+  concurrentLabel->setToolTip(
+      "Maximum number of transfers that run simultaneously. "
+      "0 = unlimited (all run at once). "
+      "Excess jobs are queued and start when a slot frees up.");
+  mMaxConcurrent = new QSpinBox(this);
+  mMaxConcurrent->setMinimum(0);
+  mMaxConcurrent->setMaximum(99);
+  mMaxConcurrent->setSpecialValueText("Unlimited");
+  mMaxConcurrent->setToolTip(concurrentLabel->toolTip());
+  mMaxConcurrent->setAccessibleName("Max concurrent transfers");
+  if (auto *form = qobject_cast<QFormLayout *>(
+          ui.defaultRcloneOptions->parentWidget()->layout())) {
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
+    if (row >= 0) {
+      form->insertRow(row + 1, concurrentLabel, mMaxConcurrent);
+    }
+  }
+
   auto *excludeLabel = new QLabel("Default exclude patterns:", this);
   excludeLabel->setToolTip(
       "One --exclude pattern per line. Applied to all transfers globally.");
@@ -178,6 +199,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       settings->value("Settings/defaultRcloneOptions").toString());
   mDefaultExclude->setPlainText(
       settings->value("Settings/defaultExclude").toString());
+  mMaxConcurrent->setValue(
+      settings->value("Settings/maxConcurrentTransfers", 0).toInt());
 
   ui.checkRcloneBrowserUpdates->setChecked(
       settings->value("Settings/checkRcloneBrowserUpdates", true).toBool());
@@ -314,6 +337,10 @@ QString PreferencesDialog::getDefaultExclude() const {
 
 bool PreferencesDialog::getStartMinimized() const {
   return mStartMinimized->isChecked();
+}
+
+int PreferencesDialog::getMaxConcurrentTransfers() const {
+  return mMaxConcurrent->value();
 }
 
 bool PreferencesDialog::getCheckRcloneBrowserUpdates() const {

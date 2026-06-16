@@ -35,6 +35,7 @@ public:
   bool getDarkMode() const;
   QString getIconSize() const;
 
+  int getMaxConcurrentTransfers() const;
   bool getUseProxy() const;
   QString getHttpProxy() const;
   QString getHttpsProxy() const;
@@ -46,4 +47,5 @@ private:
   Ui::PreferencesDialog ui;
   QPlainTextEdit *mDefaultExclude = nullptr;
   QCheckBox *mStartMinimized = nullptr;
+  QSpinBox *mMaxConcurrent = nullptr;
 };
