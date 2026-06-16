@@ -70,6 +70,7 @@ set(SOURCE
   job_options.cpp
   job_options_store.cpp
   list_of_job_options.cpp
+  schedule_manager.cpp
 )
 
 set(OTHER
@@ -99,6 +100,7 @@ set(OTHER
   icon_cache.h
   job_history.h
   list_of_job_options.h
+  schedule_manager.h
   item_model.h
 )
 
