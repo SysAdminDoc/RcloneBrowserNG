@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Visual exclude filter builder — the transfer dialog's exclude area now has quick-add buttons for common patterns (temp files, OS junk, Git, Node modules, hidden files) that append to the exclude list
 -   NEW: Extended mount dialog — the mount action now shows a proper dialog with mount point input, VFS cache mode picker (off/minimal/writes/full), and a read-only toggle; settings persist across sessions
 -   NEW: Remote-to-remote transfers — right-click any file or folder and choose "Copy to Remote..." to copy directly between two remotes without downloading locally
 -   NEW: Job queue manager — a configurable "Max concurrent transfers" setting in Preferences (default: unlimited) queues excess transfers and starts them as slots free up

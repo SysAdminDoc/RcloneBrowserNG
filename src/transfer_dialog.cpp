@@ -34,6 +34,46 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textMinAge->setPlaceholderText("1d");
   ui.textMaxAge->setPlaceholderText("30d");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
+
+  auto *excludeQuickBar = new QWidget(this);
+  auto *quickLayout = new QHBoxLayout(excludeQuickBar);
+  quickLayout->setContentsMargins(0, 0, 0, 0);
+  quickLayout->setSpacing(4);
+  auto *quickLabel = new QLabel("Quick add:", excludeQuickBar);
+  UiPolish::SetMuted(quickLabel);
+  quickLayout->addWidget(quickLabel);
+  struct QuickPattern {
+    const char *label;
+    const char *pattern;
+  };
+  const QuickPattern quickPatterns[] = {
+      {"Temp files", "*.tmp\n~*\n*.bak"},
+      {"OS junk", ".DS_Store\nThumbs.db\ndesktop.ini\n.Spotlight-V100/**"},
+      {"Git", ".git/**"},
+      {"Node", "node_modules/**"},
+      {"Hidden", ".*"},
+  };
+  for (const auto &qp : quickPatterns) {
+    auto *btn = new QPushButton(qp.label, excludeQuickBar);
+    btn->setMaximumHeight(24);
+    btn->setToolTip(QString("Add: %1").arg(QString(qp.pattern).replace('\n', ", ")));
+    const QString pattern = qp.pattern;
+    QObject::connect(btn, &QPushButton::clicked, this, [this, pattern]() {
+      QString existing = ui.textExclude->toPlainText().trimmed();
+      if (!existing.isEmpty() && !existing.endsWith('\n'))
+        existing += '\n';
+      ui.textExclude->setPlainText(existing + pattern);
+    });
+    quickLayout->addWidget(btn);
+  }
+  quickLayout->addStretch();
+  if (auto *parentLayout =
+          qobject_cast<QVBoxLayout *>(ui.textExclude->parentWidget()->layout())) {
+    int idx = parentLayout->indexOf(ui.textExclude);
+    if (idx >= 0)
+      parentLayout->insertWidget(idx + 1, excludeQuickBar);
+  }
+
   auto *heartbeatLabel = new QLabel("Heartbeat URL:", this);
   heartbeatLabel->setToolTip(
       "Healthchecks.io, ntfy.sh, or any URL to ping on job completion.\n"
