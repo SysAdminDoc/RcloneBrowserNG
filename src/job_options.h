@@ -67,6 +67,7 @@ public:
   bool watchFolder;
   QString backupDir;
   int backupRetainCount = 0;
+  QString conflictResolve;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

@@ -252,6 +252,29 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       layout->insertWidget(idx + 1, mRbBisync);
   }
 
+  auto *conflictLabel = new QLabel("Conflict resolution:", this);
+  conflictLabel->setToolTip(
+      "How bisync should resolve conflicts when the same file changed "
+      "on both sides.");
+  mConflictResolve = new QComboBox(this);
+  mConflictResolve->addItem("none (report only)", "none");
+  mConflictResolve->addItem("newer wins", "newer");
+  mConflictResolve->addItem("older wins", "older");
+  mConflictResolve->addItem("larger wins", "larger");
+  mConflictResolve->addItem("smaller wins", "smaller");
+  mConflictResolve->addItem("path1 wins", "path1");
+  mConflictResolve->addItem("path2 wins", "path2");
+  mConflictResolve->setAccessibleName("Bisync conflict resolution strategy");
+  conflictLabel->setVisible(false);
+  mConflictResolve->setVisible(false);
+  ui.gridLayout->addWidget(conflictLabel, 13, 0);
+  ui.gridLayout->addWidget(mConflictResolve, 13, 1);
+  QObject::connect(mRbBisync, &QRadioButton::toggled, this,
+                   [conflictLabel, this](bool checked) {
+                     conflictLabel->setVisible(checked);
+                     mConflictResolve->setVisible(checked);
+                   });
+
   auto *backupDirLabel = new QLabel("Backup dir:", this);
   backupDirLabel->setToolTip(
       "rclone --backup-dir path. Use {date} for auto-dated folders.\n"
@@ -854,6 +877,8 @@ JobOptions *TransferDialog::getJobOptions() {
       mWatchFolder->isChecked() && mJobOptions->jobType == JobOptions::Upload;
   mJobOptions->backupDir = mBackupDir->text().trimmed();
   mJobOptions->backupRetainCount = mBackupRetain->value();
+  mJobOptions->conflictResolve =
+      mConflictResolve->currentData().toString();
 
   return mJobOptions;
 }
@@ -927,6 +952,10 @@ void TransferDialog::putJobOptions() {
   mWatchFolder->setChecked(mJobOptions->watchFolder);
   mBackupDir->setText(mJobOptions->backupDir);
   mBackupRetain->setValue(mJobOptions->backupRetainCount);
+  int conflictIdx =
+      mConflictResolve->findData(mJobOptions->conflictResolve);
+  if (conflictIdx >= 0)
+    mConflictResolve->setCurrentIndex(conflictIdx);
 }
 
 void TransferDialog::done(int r) {
