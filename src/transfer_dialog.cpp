@@ -43,6 +43,16 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mHeartbeatUrl->setAccessibleName("Heartbeat URL for monitoring");
   ui.gridLayout->addWidget(heartbeatLabel, 8, 0);
   ui.gridLayout->addWidget(mHeartbeatUrl, 8, 1);
+  auto *webhookLabel = new QLabel("Webhook URL:", this);
+  webhookLabel->setToolTip(
+      "Discord, Gotify, Shoutrrr, or any URL to POST a JSON status on "
+      "job completion.\nPayload includes task name, status, duration, "
+      "bytes transferred, and error message (if any).");
+  mWebhookUrl = new QLineEdit(this);
+  mWebhookUrl->setPlaceholderText("https://discord.com/api/webhooks/... or https://gotify.example.com/message");
+  mWebhookUrl->setAccessibleName("Webhook URL for notifications");
+  ui.gridLayout->addWidget(webhookLabel, 9, 0);
+  ui.gridLayout->addWidget(mWebhookUrl, 9, 1);
   auto *nameTransformLabel = new QLabel("Name transform:", this);
   nameTransformLabel->setToolTip(
       "rclone --name-transform pattern (requires rclone >= 1.74).\n"
@@ -58,27 +68,27 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       nameTransformLabel->setEnabled(false);
     }
   }
-  ui.gridLayout->addWidget(nameTransformLabel, 9, 0);
-  ui.gridLayout->addWidget(mNameTransform, 9, 1);
+  ui.gridLayout->addWidget(nameTransformLabel, 10, 0);
+  ui.gridLayout->addWidget(mNameTransform, 10, 1);
   auto *preCommandLabel = new QLabel("Pre-job command:", this);
   preCommandLabel->setToolTip("Shell command to run before the transfer starts.");
   mPreCommand = new QLineEdit(this);
   mPreCommand->setPlaceholderText("Command to run before the transfer");
   mPreCommand->setAccessibleName("Pre-job command");
-  ui.gridLayout->addWidget(preCommandLabel, 10, 0);
-  ui.gridLayout->addWidget(mPreCommand, 10, 1);
+  ui.gridLayout->addWidget(preCommandLabel, 11, 0);
+  ui.gridLayout->addWidget(mPreCommand, 11, 1);
 
   auto *postCommandLabel = new QLabel("Post-job command:", this);
   postCommandLabel->setToolTip("Shell command to run after the transfer finishes.");
   mPostCommand = new QLineEdit(this);
   mPostCommand->setPlaceholderText("Command to run after the transfer");
   mPostCommand->setAccessibleName("Post-job command");
-  ui.gridLayout->addWidget(postCommandLabel, 11, 0);
-  ui.gridLayout->addWidget(mPostCommand, 11, 1);
+  ui.gridLayout->addWidget(postCommandLabel, 12, 0);
+  ui.gridLayout->addWidget(mPostCommand, 12, 1);
 
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 12, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 13, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -217,8 +227,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     mPreviewButton->setToolTip(
         "Run with --dry-run to see what would change, without modifying "
         "any files.");
-    ui.gridLayout->addWidget(mPreviewButton, 13, 0);
-    ui.gridLayout->addWidget(mPreview, 13, 1);
+    ui.gridLayout->addWidget(mPreviewButton, 14, 0);
+    ui.gridLayout->addWidget(mPreview, 14, 1);
     QObject::connect(mPreviewButton, &QPushButton::clicked, this, [=]() {
       if (mIsDownload) {
         if (ui.textDest->text().trimmed().isEmpty()) {
@@ -625,6 +635,7 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->nameTransform = mNameTransform->text().trimmed();
   mJobOptions->preCommand = mPreCommand->text().trimmed();
   mJobOptions->postCommand = mPostCommand->text().trimmed();
+  mJobOptions->webhookUrl = mWebhookUrl->text().trimmed();
 
   return mJobOptions;
 }
@@ -693,6 +704,7 @@ void TransferDialog::putJobOptions() {
   mNameTransform->setText(mJobOptions->nameTransform);
   mPreCommand->setText(mJobOptions->preCommand);
   mPostCommand->setText(mJobOptions->postCommand);
+  mWebhookUrl->setText(mJobOptions->webhookUrl);
 }
 
 void TransferDialog::done(int r) {

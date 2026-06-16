@@ -29,6 +29,7 @@ private:
   QLineEdit *mNameTransform = nullptr;
   QLineEdit *mPreCommand = nullptr;
   QLineEdit *mPostCommand = nullptr;
+  QLineEdit *mWebhookUrl = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
 

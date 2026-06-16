@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Notification webhooks — saved tasks can POST a JSON status payload (task name, status, error) to Discord, Gotify, or any webhook URL on job completion; includes a Discord-compatible `content` field
 -   NEW: Remote context menu with "Test Connection" (bounded lsjson probe) and "Duplicate Remote" (rclone config copy); right-click a remote in the list to access both
 -   NEW: OAuth token-expiry detection — when a remote listing fails with a token-expired or unauthorized error, the app offers a one-click "Reconnect" button that runs `rclone config reconnect` in a terminal to re-authenticate
 -   NEW: Dry-run diff preview in the transfer dialog — a "Preview Changes" button runs the transfer with --dry-run and shows which files would be added, changed, or deleted inline before committing; JSON log output is parsed into readable messages
