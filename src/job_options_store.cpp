@@ -43,7 +43,7 @@ QDataStream &operator<<(QDataStream &stream, const JobOptions &jo) {
          << jo.idleTimeout << jo.retries << jo.lowLevelRetries
          << jo.deleteExcluded << jo.excluded << jo.extra
          << jo.DriveSharedWithMe << jo.source << jo.dest << jo.isFolder
-         << jo.uniqueId << jo.heartbeatUrl;
+         << jo.uniqueId << jo.heartbeatUrl << jo.nameTransform;
 
   return stream;
 }
@@ -79,6 +79,9 @@ void readJobOptions(QDataStream &stream, JobOptions &jo,
       stream >> jo.uniqueId;
       if (actualVersion >= 4) {
         stream >> jo.heartbeatUrl;
+        if (actualVersion >= 5) {
+          stream >> jo.nameTransform;
+        }
       }
     }
   }

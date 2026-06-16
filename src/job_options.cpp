@@ -17,7 +17,7 @@ JobOptions::JobOptions()
       dontUpdateModified(false), maxDepth(0), deleteExcluded(false),
       isFolder(false) {}
 
-const qint32 JobOptions::classVersion = 4;
+const qint32 JobOptions::classVersion = 5;
 
 JobOptions::~JobOptions() {}
 
@@ -144,6 +144,10 @@ QStringList JobOptions::getOptions() const {
 
   if (DriveSharedWithMe) {
     list << "--drive-shared-with-me";
+  }
+
+  if (!nameTransform.isEmpty()) {
+    list << "--name-transform" << nameTransform;
   }
 
   list << "--use-json-log";

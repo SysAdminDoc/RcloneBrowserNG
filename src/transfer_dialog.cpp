@@ -42,9 +42,18 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mHeartbeatUrl->setAccessibleName("Heartbeat URL for monitoring");
   ui.gridLayout->addWidget(heartbeatLabel, 8, 0);
   ui.gridLayout->addWidget(mHeartbeatUrl, 8, 1);
+  auto *nameTransformLabel = new QLabel("Name transform:", this);
+  nameTransformLabel->setToolTip(
+      "rclone --name-transform pattern (requires rclone >= 1.74).\n"
+      "Example: lowercase or s/regex/replacement/");
+  mNameTransform = new QLineEdit(this);
+  mNameTransform->setPlaceholderText("lowercase, s/regex/replacement/, or blank to skip");
+  mNameTransform->setAccessibleName("Name transform pattern");
+  ui.gridLayout->addWidget(nameTransformLabel, 9, 0);
+  ui.gridLayout->addWidget(mNameTransform, 9, 1);
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 9, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 10, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -515,6 +524,7 @@ JobOptions *TransferDialog::getJobOptions() {
 
   mJobOptions->DriveSharedWithMe = ui.checkisDriveSharedWithMe->isChecked();
   mJobOptions->heartbeatUrl = mHeartbeatUrl->text().trimmed();
+  mJobOptions->nameTransform = mNameTransform->text().trimmed();
 
   return mJobOptions;
 }
@@ -580,6 +590,7 @@ void TransferDialog::putJobOptions() {
   // DDBB
   ui.checkisDriveSharedWithMe->setChecked(mJobOptions->DriveSharedWithMe);
   mHeartbeatUrl->setText(mJobOptions->heartbeatUrl);
+  mNameTransform->setText(mJobOptions->nameTransform);
 }
 
 void TransferDialog::done(int r) {

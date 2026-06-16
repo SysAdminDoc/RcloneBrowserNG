@@ -60,6 +60,7 @@ public:
   QUuid uniqueId;
   bool DriveSharedWithMe;
   QString heartbeatUrl;
+  QString nameTransform;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;
