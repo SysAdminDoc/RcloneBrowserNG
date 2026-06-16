@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   CHANGED: Dropped Qt 5 dual support — Qt 6.4 is now the minimum; all Qt5 ifdefs, QtWinExtras/QtMacExtras imports, High-DPI scaling workarounds, and the CI Qt5 matrix leg are removed
 -   NEW: Notification webhooks — saved tasks can POST a JSON status payload (task name, status, error) to Discord, Gotify, or any webhook URL on job completion; includes a Discord-compatible `content` field
 -   NEW: Remote context menu with "Test Connection" (bounded lsjson probe) and "Duplicate Remote" (rclone config copy); right-click a remote in the list to access both
 -   NEW: OAuth token-expiry detection — when a remote listing fails with a token-expired or unauthorized error, the app offers a one-click "Reconnect" button that runs `rclone config reconnect` in a terminal to re-authenticate

@@ -35,11 +35,7 @@ void IconCache::getIcon(Item *item, const QPersistentModelIndex &parent) {
                        FILE_ATTRIBUTE_NORMAL, &info, sizeof(info),
                        SHGFI_ICON | SHGFI_USEFILEATTRIBUTES) &&
         info.hIcon) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
       icon = QIcon(QPixmap::fromImage(QImage::fromHICON(info.hIcon)));
-#else
-      icon = QtWin::fromHICON(info.hIcon);
-#endif
       DestroyIcon(info.hIcon);
     }
 #elif defined(Q_OS_MACOS)

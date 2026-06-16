@@ -131,9 +131,7 @@ static void applyDarkTheme() {
   darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
   darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
   darkPalette.setColor(QPalette::HighlightedText, Qt::black);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
   darkPalette.setColor(QPalette::PlaceholderText, QColor(160, 160, 160));
-#endif
 
   const QColor disabledText(128, 128, 128);
   darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
@@ -157,10 +155,6 @@ MainWindow::MainWindow() {
   } else {
     this->setWindowTitle("Rclone Browser NG");
   }
-
-#if defined(Q_OS_WIN) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-  QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
-#endif
 
   {
     auto settings = GetSettings();
@@ -920,11 +914,7 @@ void MainWindow::rcloneGetVersion() {
           };
 #endif
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
           QStringList lines = version.split("\n", Qt::SkipEmptyParts);
-#else
-          QStringList lines = version.split("\n", QString::SkipEmptyParts);
-#endif
           QString rclone_info2;
           QString rclone_info3;
 
@@ -1270,10 +1260,6 @@ bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
                                               const QString &errorTitle) {
   const QStringList fullArgs = GetRcloneConf() + args;
 
-#if defined(Q_OS_WIN32) && (QT_VERSION < QT_VERSION_CHECK(5, 7, 0))
-  return QProcess::startDetached(GetRclone(), fullArgs);
-#else
-
   QProcess *p = new QProcess(this);
 
   QObject::connect(p,
@@ -1288,7 +1274,6 @@ bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
                    });
 
 #if defined(Q_OS_WIN32)
-#if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
   p->setCreateProcessArgumentsModifier(
       [](QProcess::CreateProcessArguments *args) {
         args->flags |= CREATE_NEW_CONSOLE;
@@ -1296,7 +1281,6 @@ bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
       });
   p->setProgram(GetRclone());
   p->setArguments(fullArgs);
-#endif
 
 #elif defined(Q_OS_MACOS)
   // use a unique file in the per-user temp dir rather than a fixed
@@ -1368,12 +1352,9 @@ bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
   p->setProgram(terminal);
 #endif
 
-#if !defined(Q_OS_WIN32) || (QT_VERSION >= QT_VERSION_CHECK(5, 7, 0))
   UseRclonePassword(p);
   p->start(QIODevice::NotOpen);
-#endif
   return true;
-#endif
 }
 
 bool MainWindow::confirmConfigMutation(const QString &action) {
@@ -2440,15 +2421,11 @@ void MainWindow::addStream(const QString &remote, const QString &stream) {
   ui.jobs->insertWidget(1, line);
   ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
   auto streamParts = QProcess::splitCommand(stream);
   if (streamParts.isEmpty()) {
     streamParts << stream;
   }
   player->start(streamParts.first(), streamParts.mid(1), QProcess::ReadOnly);
-#else
-  player->start(stream, QProcess::ReadOnly);
-#endif
   UseRclonePassword(rclone);
   rclone->start(GetRclone(),
                 QStringList() << "cat" << GetRcloneConf() << remote,

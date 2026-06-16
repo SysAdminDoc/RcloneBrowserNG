@@ -892,7 +892,7 @@ QString root = isLocal ? "/" : QString();
       drives.insert(path, index);
     }
 
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)) && !(defined Q_OS_WIN)
+#if !(defined Q_OS_WIN)
     QThread *thread = new QThread(this);
     thread->start();
 
