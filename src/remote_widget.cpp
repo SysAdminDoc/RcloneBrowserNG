@@ -1232,18 +1232,23 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
               "Serve this folder over HTTP, WebDAV, FTP, or other protocols.");
         }
 
+        QAction *propsAction = nullptr;
         if (!model->isFolder(index)) {
           menu.addSeparator();
           editAction = menu.addAction("Open/Edit...");
           editAction->setToolTip(
               "Download, open with the default app, and re-upload on save.");
+          propsAction = menu.addAction("Properties...");
+          propsAction->setToolTip(
+              "Show file size, modification time, and available hashes.");
         }
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
         if (!chosen || (chosen != editAction && chosen != compareAction &&
                         chosen != archiveAction && chosen != speedAction &&
                         chosen != copyUrlAction && chosen != dedupeAction &&
-                        chosen != copyToRemote && chosen != serveAction)) {
+                        chosen != copyToRemote && chosen != serveAction &&
+                        chosen != propsAction)) {
           return;
         }
 
@@ -1384,6 +1389,66 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           emit addTransfer(
               QString("Copy %1 -> %2").arg(target, dest.trimmed()),
               target, dest.trimmed(), args);
+        } else if (chosen == propsAction) {
+          QProcess proc;
+          UseRclonePassword(&proc);
+          proc.setProgram(GetRclone());
+          proc.setArguments(QStringList()
+                            << "lsjson" << GetRcloneConf() << "--stat"
+                            << "--hash" << getDriveSharedArgs() << "-M"
+                            << target);
+          proc.setProcessChannelMode(QProcess::MergedChannels);
+          proc.start();
+          proc.waitForFinished(15000);
+
+          QStringList lines;
+          lines << QString("<b>%1</b>").arg(QFileInfo(path).fileName());
+
+          if (proc.exitCode() == 0) {
+            QJsonDocument doc =
+                QJsonDocument::fromJson(proc.readAllStandardOutput());
+            QJsonArray arr = doc.array();
+            if (!arr.isEmpty()) {
+              QJsonObject obj = arr.first().toObject();
+              qint64 size = obj.value("Size").toVariant().toLongLong();
+              lines << "Size: " +
+                        GetNiceSize(static_cast<quint64>(size)) +
+                        QString(" (%L1 bytes)").arg(size);
+              QString modTime = obj.value("ModTime").toString();
+              if (!modTime.isEmpty()) {
+                QDateTime dt =
+                    QDateTime::fromString(modTime, Qt::ISODateWithMs);
+                if (dt.isValid())
+                  lines << "Modified: " +
+                              dt.toLocalTime().toString(
+                                  "yyyy-MM-dd HH:mm:ss");
+                else
+                  lines << "Modified: " + modTime;
+              }
+              QString mimeType = obj.value("MimeType").toString();
+              if (!mimeType.isEmpty())
+                lines << "Type: " + mimeType;
+              QJsonObject hashes = obj.value("Hashes").toObject();
+              for (auto it = hashes.begin(); it != hashes.end(); ++it) {
+                lines << it.key() + ": " + it.value().toString();
+              }
+              QJsonObject meta = obj.value("Metadata").toObject();
+              if (!meta.isEmpty()) {
+                lines << "<br><b>Metadata</b>";
+                for (auto it = meta.begin(); it != meta.end(); ++it) {
+                  lines << it.key() + ": " + it.value().toString();
+                }
+              }
+            }
+          } else {
+            lines << "Could not retrieve properties.";
+            QString err =
+                QString::fromUtf8(proc.readAll()).trimmed();
+            if (!err.isEmpty())
+              lines << err.left(300);
+          }
+
+          QMessageBox::information(this, "Properties", lines.join("<br>"));
         } else if (chosen == serveAction) {
           QStringList protocols;
           protocols << "http" << "webdav" << "ftp" << "dlna" << "s3" << "nfs";

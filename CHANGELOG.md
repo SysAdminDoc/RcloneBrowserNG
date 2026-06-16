@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: File properties dialog — right-click a file and choose Properties to see size, modification time, MIME type, all available hashes (including BLAKE3/XXH3/XXH128), and backend metadata via `rclone lsjson --stat --hash -M`
 -   NEW: Transfer staging queue — an "Enqueue" button in the transfer dialog adds operations to a staging list on the Tasks tab for batch review; "Run All" executes all staged transfers at once, "Clear" discards them
 -   NEW: Dual-pane interface — a "Dual Pane" button opens a side-by-side split view with two remote browsers in a QSplitter; pick the left and right remotes (or local filesystem) for Commander-style browsing
 -   NEW: Native OS task scheduling — the #1 most requested feature. Select a saved task and click Schedule to install a native OS scheduled task (Windows Task Scheduler, crontab on Linux, launchd on macOS) that runs the task via `--run-task` without the app being open. Supports 15m/30m/hourly/daily/weekly intervals with configurable start time. Unschedule removes the OS entry.
