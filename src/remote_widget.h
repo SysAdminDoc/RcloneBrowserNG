@@ -22,6 +22,7 @@ signals:
                    const QString &remote, const QStringList &args);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
+  void requestReconnect(const QString &remote);
 
 private:
   Ui::RemoteWidget ui;

@@ -490,6 +490,14 @@ MainWindow::MainWindow() {
                      &MainWindow::addStream);
     QObject::connect(remote, &RemoteWidget::addTransfer, this,
                      &MainWindow::addTransfer);
+    QObject::connect(remote, &RemoteWidget::requestReconnect, this,
+                     [this](const QString &remoteName) {
+                       const QDateTime configBefore = rcloneConfigLastModified();
+                       startDetachedTerminalCommand(
+                           QStringList() << "config" << "reconnect"
+                                         << remoteName + ":",
+                           configBefore, "Reconnect remote");
+                     });
 
     int index = ui.tabs->addTab(remote, name);
     ui.tabs->setCurrentIndex(index);
@@ -1498,6 +1506,16 @@ void MainWindow::rcloneListRemotes() {
                                    &MainWindow::addStream);
                   QObject::connect(remote, &RemoteWidget::addTransfer, this,
                                    &MainWindow::addTransfer);
+                  QObject::connect(
+                      remote, &RemoteWidget::requestReconnect, this,
+                      [this](const QString &remoteName) {
+                        const QDateTime configBefore =
+                            rcloneConfigLastModified();
+                        startDetachedTerminalCommand(
+                            QStringList() << "config" << "reconnect"
+                                          << remoteName + ":",
+                            configBefore, "Reconnect remote");
+                      });
                   ui.tabs->addTab(remote, tabName);
                   break;
                 }

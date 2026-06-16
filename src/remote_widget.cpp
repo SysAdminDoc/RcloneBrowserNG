@@ -174,10 +174,44 @@ QString root = isLocal ? "/" : QString();
           return;
         }
         *errorShowing = true;
-        QMessageBox::warning(
-            this, "Listing failed",
-            QString("rclone could not list \"%1:%2\".\n\n%3")
-                .arg(remote, path, error.left(600)));
+
+        bool tokenExpired = false;
+        static const QStringList tokenPatterns = {
+            "token expired", "oauth2: cannot fetch token",
+            "invalid_grant", "authError", "unauthorized",
+            "403 Forbidden", "401 Unauthorized",
+            "token has been revoked", "token has been expired"};
+        for (const auto &p : tokenPatterns) {
+          if (error.contains(p, Qt::CaseInsensitive)) {
+            tokenExpired = true;
+            break;
+          }
+        }
+
+        if (tokenExpired) {
+          QMessageBox box(this);
+          box.setIcon(QMessageBox::Warning);
+          box.setWindowTitle("Authentication expired");
+          box.setText(
+              QString("The token for \"%1\" appears to have expired.")
+                  .arg(remote));
+          box.setInformativeText(
+              "Reconnect opens a terminal to re-authenticate this remote "
+              "with rclone.\n\n" +
+              error.left(400));
+          auto *reconnect =
+              box.addButton("Reconnect", QMessageBox::AcceptRole);
+          box.addButton(QMessageBox::Cancel);
+          box.exec();
+          if (box.clickedButton() == reconnect) {
+            emit requestReconnect(remote);
+          }
+        } else {
+          QMessageBox::warning(
+              this, "Listing failed",
+              QString("rclone could not list \"%1:%2\".\n\n%3")
+                  .arg(remote, path, error.left(600)));
+        }
         *errorShowing = false;
       },
       Qt::QueuedConnection);
