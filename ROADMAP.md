@@ -119,8 +119,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **i18n / multi-language support** — Internationalization framework with translations.  
   _Sources: kapitainsky #138, #47; rclone forum (Portuguese, others)_
 
-- [ ] **Hide/group encrypted remotes** — Hide the underlying unencrypted remote when a crypt remote exists.  
-  _Sources: kapitainsky #206, #178_
 
 - [ ] **Multiple config file support** — Switch between different rclone.conf files.  
   _Sources: kapitainsky #19_

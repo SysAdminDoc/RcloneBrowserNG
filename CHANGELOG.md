@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Auto-hide encrypted remote backends — when a crypt remote exists, the underlying unencrypted remote is automatically hidden from the remotes list via `rclone config dump` parsing
 -   NEW: Multi-select and batch run for saved tasks — Shift/Ctrl-click to select multiple tasks, then Run or Dry Run all at once; batch delete also supported
 -   NEW: Saved tasks list now has a search/filter field that matches task name, source, and destination paths
 -   NEW: Streaming now passes the filename to the player window title — mpv gets `--force-media-title` and VLC gets `--meta-title` so the player shows the actual file name instead of `fd://0` or `stdin`
