@@ -68,6 +68,9 @@ private:
                   bool keepMounted, int restartAttempt);
 
   void addEmptyJobsMessage();
+  void addTransferViaProcess(const QString &message, const QString &source,
+                             const QString &dest, const QStringList &args);
+  void addRcJobWidget(RcJobWidget *widget);
   void checkRcloneUpdate(const QString &currentVersion);
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;

@@ -15,7 +15,7 @@ RcloneRcEngine::RcloneRcEngine(QObject *parent) : QObject(parent) {}
 RcloneRcEngine::~RcloneRcEngine() {
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
     QString ignored;
-    post("core/quit", QJsonObject(), &ignored);
+    postSync("core/quit", QJsonObject(), &ignored);
     if (!mProcess->waitForFinished(3000)) {
       mProcess->kill();
       mProcess->waitForFinished();
@@ -26,7 +26,7 @@ RcloneRcEngine::~RcloneRcEngine() {
 bool RcloneRcEngine::ensureStarted(QString *error) {
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
     QString pingError;
-    post("rc/noopauth", QJsonObject(), &pingError);
+    postSync("rc/noopauth", QJsonObject(), &pingError);
     if (pingError.isEmpty()) {
       return true;
     }
@@ -62,7 +62,7 @@ bool RcloneRcEngine::ensureStarted(QString *error) {
   timer.start();
   while (timer.elapsed() < kRcStartTimeoutMs) {
     QString pingError;
-    post("rc/noopauth", QJsonObject(), &pingError);
+    postSync("rc/noopauth", QJsonObject(), &pingError);
     if (pingError.isEmpty()) {
       return true;
     }
@@ -77,16 +77,22 @@ bool RcloneRcEngine::ensureStarted(QString *error) {
   return false;
 }
 
-int RcloneRcEngine::runCommandAsync(const QStringList &args, QString *error) {
+void RcloneRcEngine::runCommand(
+    const QStringList &args, QObject *context,
+    std::function<void(int jobId, const QString &error)> callback) {
   if (args.isEmpty()) {
-    if (error) {
-      *error = "empty rclone command";
+    if (callback) {
+      callback(-1, QStringLiteral("empty rclone command"));
     }
-    return -1;
+    return;
   }
 
-  if (!ensureStarted(error)) {
-    return -1;
+  QString startError;
+  if (!ensureStarted(&startError)) {
+    if (callback) {
+      callback(-1, startError);
+    }
+    return;
   }
 
   QJsonArray commandArgs;
@@ -100,35 +106,54 @@ int RcloneRcEngine::runCommandAsync(const QStringList &args, QString *error) {
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 
-  const QJsonObject response = post("core/command", payload, error);
-  if (response.contains("jobid")) {
-    return response.value("jobid").toInt(-1);
-  }
-  if (error && error->isEmpty()) {
-    *error = "rclone rc did not return a job id";
-  }
-  return -1;
+  postAsync("core/command", payload, context,
+            [callback](const QJsonObject &response, const QString &error) {
+              if (!error.isEmpty()) {
+                if (callback) {
+                  callback(-1, error);
+                }
+                return;
+              }
+              if (response.contains("jobid")) {
+                if (callback) {
+                  callback(response.value("jobid").toInt(-1), QString());
+                }
+                return;
+              }
+              if (callback) {
+                callback(-1,
+                         QStringLiteral("rclone rc did not return a job id"));
+              }
+            });
 }
 
-QJsonObject RcloneRcEngine::jobStatus(int jobId, QString *error) {
+void RcloneRcEngine::jobStatus(int jobId, QObject *context,
+                               RcCallback callback) {
   QJsonObject payload;
   payload.insert("jobid", jobId);
-  return post("job/status", payload, error);
+  postAsync("job/status", payload, context, std::move(callback));
 }
 
-QJsonObject RcloneRcEngine::coreStats(const QString &group, QString *error) {
+void RcloneRcEngine::coreStats(const QString &group, QObject *context,
+                               RcCallback callback) {
   QJsonObject payload;
   if (!group.isEmpty()) {
     payload.insert("group", group);
   }
-  return post("core/stats", payload, error);
+  postAsync("core/stats", payload, context, std::move(callback));
 }
 
-bool RcloneRcEngine::stopJob(int jobId, QString *error) {
+void RcloneRcEngine::stopJob(
+    int jobId, QObject *context,
+    std::function<void(bool ok, const QString &error)> callback) {
   QJsonObject payload;
   payload.insert("jobid", jobId);
-  post("job/stop", payload, error);
-  return !error || error->isEmpty();
+  postAsync("job/stop", payload, context,
+            [callback](const QJsonObject &, const QString &error) {
+              if (callback) {
+                callback(error.isEmpty(), error);
+              }
+            });
 }
 
 QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
@@ -153,8 +178,66 @@ QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
                        << "core/command";
 }
 
-QJsonObject RcloneRcEngine::post(const QString &path, const QJsonObject &payload,
-                                 QString *error) {
+void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
+                               QObject *context, RcCallback callback) {
+  QNetworkRequest req = request(path);
+  QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+  QNetworkReply *reply = mNetwork.post(req, body);
+
+  auto *timer = new QTimer(reply);
+  timer->setSingleShot(true);
+  QObject::connect(timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+  timer->start(kRcRequestTimeoutMs);
+
+  QObject::connect(context, &QObject::destroyed, reply,
+                   &QNetworkReply::deleteLater);
+
+  QObject::connect(
+      reply, &QNetworkReply::finished, context, [reply, callback]() {
+        reply->deleteLater();
+
+        const QByteArray raw = reply->readAll();
+        const auto networkError = reply->error();
+        const QString networkErrorText = reply->errorString();
+
+        if (networkError == QNetworkReply::OperationCanceledError) {
+          if (callback) {
+            callback(QJsonObject(),
+                     QStringLiteral("rclone rc request timed out"));
+          }
+          return;
+        }
+
+        QJsonParseError parseError;
+        const QJsonDocument doc = QJsonDocument::fromJson(raw, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+          if (callback) {
+            callback(QJsonObject(),
+                     raw.isEmpty() ? networkErrorText
+                                   : QString::fromUtf8(raw));
+          }
+          return;
+        }
+
+        const QJsonObject object = doc.object();
+        if (networkError != QNetworkReply::NoError ||
+            object.contains("error")) {
+          if (callback) {
+            callback(object,
+                     object.value("error").toString(networkErrorText));
+          }
+          return;
+        }
+
+        if (callback) {
+          callback(object, QString());
+        }
+      });
+}
+
+QJsonObject RcloneRcEngine::postSync(const QString &path,
+                                     const QJsonObject &payload,
+                                     QString *error) {
   if (error) {
     error->clear();
   }

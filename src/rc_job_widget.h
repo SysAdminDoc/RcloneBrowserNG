@@ -29,6 +29,7 @@ private:
   RcloneRcEngine *mEngine;
   int mJobId;
   bool mRunning = true;
+  bool mPollInFlight = false;
   QString mGroup;
   QStringList mDisplayArgs;
   QTimer mPollTimer;
