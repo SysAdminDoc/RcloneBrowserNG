@@ -1664,61 +1664,74 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
       mRcEngine = new RcloneRcEngine(this);
     }
 
-    QString rcError;
-    const int jobId = mRcEngine->runCommandAsync(args, &rcError);
-    if (jobId >= 0) {
-      auto widget =
-          new RcJobWidget(mRcEngine, jobId, message,
-                          mRcEngine->rcCommandForDisplay(args), source, dest);
-
-      auto line = new QFrame();
-      line->setFrameShape(QFrame::HLine);
-      line->setFrameShadow(QFrame::Sunken);
-
-      QObject::connect(widget, &RcJobWidget::finished, this,
-                       [=](const QString &info) {
-                         if (mNotifyFinishedTransfers) {
-                           qApp->alert(this);
-                           QApplication::beep();
-                           mSystemTray.showMessage("Transfer finished", info);
-                         }
-
-                         if (--mJobCount == 0) {
-                           ui.tabs->setTabText(1, "Jobs");
-                         } else {
-                           ui.tabs->setTabText(
-                               1, QString("Jobs (%1)").arg(mJobCount));
-                         }
-                       });
-
-      QObject::connect(widget, &RcJobWidget::closed, this, [=]() {
-        ui.jobs->removeWidget(widget);
-        ui.jobs->removeWidget(line);
-        widget->deleteLater();
-        delete line;
-        if (ui.jobs->count() == 2) {
-          ui.noJobsAvailable->show();
-        }
-      });
-
-      if (ui.jobs->count() == 2) {
-        ui.noJobsAvailable->hide();
-      }
-
-      ui.jobs->insertWidget(0, widget);
-      ui.jobs->insertWidget(1, line);
-      ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
-      return;
-    }
+    mRcEngine->runCommand(
+        args, this, [=](int jobId, const QString &) {
+          if (jobId >= 0) {
+            auto *widget = new RcJobWidget(
+                mRcEngine, jobId, message,
+                mRcEngine->rcCommandForDisplay(args), source, dest);
+            addRcJobWidget(widget);
+            return;
+          }
+          addTransferViaProcess(message, source, dest, args);
+        });
+    return;
   }
 
+  addTransferViaProcess(message, source, dest, args);
+}
+
+void MainWindow::addRcJobWidget(RcJobWidget *widget) {
+  auto *line = new QFrame();
+  line->setFrameShape(QFrame::HLine);
+  line->setFrameShadow(QFrame::Sunken);
+
+  QObject::connect(widget, &RcJobWidget::finished, this,
+                   [=](const QString &info) {
+                     if (mNotifyFinishedTransfers) {
+                       qApp->alert(this);
+                       QApplication::beep();
+                       mSystemTray.showMessage("Transfer finished", info);
+                     }
+
+                     if (--mJobCount == 0) {
+                       ui.tabs->setTabText(1, "Jobs");
+                     } else {
+                       ui.tabs->setTabText(
+                           1, QString("Jobs (%1)").arg(mJobCount));
+                     }
+                   });
+
+  QObject::connect(widget, &RcJobWidget::closed, this, [=]() {
+    ui.jobs->removeWidget(widget);
+    ui.jobs->removeWidget(line);
+    widget->deleteLater();
+    delete line;
+    if (ui.jobs->count() == 2) {
+      ui.noJobsAvailable->show();
+    }
+  });
+
+  if (ui.jobs->count() == 2) {
+    ui.noJobsAvailable->hide();
+  }
+
+  ui.jobs->insertWidget(0, widget);
+  ui.jobs->insertWidget(1, line);
+  ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
+}
+
+void MainWindow::addTransferViaProcess(const QString &message,
+                                       const QString &source,
+                                       const QString &dest,
+                                       const QStringList &args) {
   QProcess *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
 
-  auto widget = new JobWidget(transfer, message, args, source, dest);
+  auto *widget = new JobWidget(transfer, message, args, source, dest);
 
-  auto line = new QFrame();
+  auto *line = new QFrame();
   line->setFrameShape(QFrame::HLine);
   line->setFrameShadow(QFrame::Sunken);
 

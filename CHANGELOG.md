@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   CHANGED: RcloneRcEngine runtime requests (job status, stats, stop) now use async `QNetworkReply` signal/slot completion instead of blocking nested `QEventLoop` — eliminates GUI freezes and reentrancy risks during concurrent RC-based transfers; synchronous event loop retained only for the one-time rcd startup ping
 -   CHANGED: Saved tasks now use a versioned task-store header with task count; legacy headerless `tasks.bin` files are loaded, migrated forward, and rewritten automatically while corrupt/newer schemas still fail safely
 -   NEW: Added an optional Windows Credential Manager mode for encrypted `rclone.conf` passwords; rclone now receives the password through `--password-command` and a console helper instead of inherited `RCLONE_CONFIG_PASS`
 -   NEW: Added a generated New Remote picker backed by `rclone rc --loopback config/providers`, so the creation flow lists the backend types supported by the installed rclone instead of relying on a stale hardcoded list

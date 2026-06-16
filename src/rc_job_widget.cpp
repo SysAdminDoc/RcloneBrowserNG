@@ -111,26 +111,37 @@ RcJobWidget::~RcJobWidget() {}
 void RcJobWidget::showDetails() { ui.showDetails->setChecked(true); }
 
 void RcJobWidget::poll() {
-  QString error;
-  const QJsonObject stats = mEngine->coreStats(mGroup, &error);
-  if (error.isEmpty()) {
-    applyStats(stats);
-  }
-
-  const QJsonObject status = mEngine->jobStatus(mJobId, &error);
-  if (!error.isEmpty()) {
-    ui.output->appendPlainText(error);
+  if (mPollInFlight || !mRunning) {
     return;
   }
-  if (status.value("finished").toBool()) {
-    const bool success = status.value("success").toBool();
-    const QString jobError = status.value("error").toString();
-    const QJsonValue output = status.value("output");
-    if (output.isString() && !output.toString().isEmpty()) {
-      ui.output->appendPlainText(output.toString().trimmed());
-    }
-    finish(success, jobError);
-  }
+  mPollInFlight = true;
+
+  mEngine->coreStats(
+      mGroup, this,
+      [this](const QJsonObject &stats, const QString &statsError) {
+        if (statsError.isEmpty()) {
+          applyStats(stats);
+        }
+
+        mEngine->jobStatus(
+            mJobId, this,
+            [this](const QJsonObject &status, const QString &error) {
+              mPollInFlight = false;
+              if (!error.isEmpty()) {
+                ui.output->appendPlainText(error);
+                return;
+              }
+              if (status.value("finished").toBool()) {
+                const bool success = status.value("success").toBool();
+                const QString jobError = status.value("error").toString();
+                const QJsonValue output = status.value("output");
+                if (output.isString() && !output.toString().isEmpty()) {
+                  ui.output->appendPlainText(output.toString().trimmed());
+                }
+                finish(success, jobError);
+              }
+            });
+      });
 }
 
 void RcJobWidget::applyStats(const QJsonObject &stats) {
@@ -178,11 +189,12 @@ void RcJobWidget::cancel() {
   if (!mRunning) {
     return;
   }
-  QString error;
-  mEngine->stopJob(mJobId, &error);
-  if (!error.isEmpty()) {
-    ui.output->appendPlainText(error);
-  }
+  mEngine->stopJob(mJobId, this,
+                   [this](bool, const QString &error) {
+                     if (!error.isEmpty()) {
+                       ui.output->appendPlainText(error);
+                     }
+                   });
   finish(false, "Cancelled.");
   emit closed();
 }
