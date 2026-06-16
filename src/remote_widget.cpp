@@ -797,33 +797,81 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   QObject::connect(ui.mount, &QAction::triggered, this, [=]() {
     auto settings = GetSettings();
 
-
     QModelIndex index = selectedIndex();
     if (!index.isValid()) {
       return;
     }
 
     QString path = model->path(index).path();
-    QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
+    QDialog dlg(this);
+    dlg.setWindowTitle(QString("Mount %1").arg(remote));
+    auto *layout = new QFormLayout(&dlg);
+    layout->setSpacing(10);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    auto *mountPoint = new QLineEdit(&dlg);
 #if defined(Q_OS_WIN32)
-    QString lastMount = settings->value("Settings/lastMountPoint", "Z:").toString();
-    QString folder =
-        QInputDialog::getText(this, "Mount",
-                              QString("Drive letter or mount point for %1")
-                                  .arg(remote),
-                              QLineEdit::Normal, lastMount);
+    mountPoint->setText(
+        settings->value("Settings/lastMountPoint", "Z:").toString());
+    mountPoint->setPlaceholderText("Drive letter (Z:) or folder path");
 #else
-    QString lastMount = settings->value("Settings/lastMountPoint").toString();
-    QString folder = QFileDialog::getExistingDirectory(
-        this, QString("Mount %1").arg(remote), lastMount);
+    mountPoint->setText(
+        settings->value("Settings/lastMountPoint").toString());
+    mountPoint->setPlaceholderText("/mnt/remote");
+#endif
+    mountPoint->setAccessibleName("Mount point");
+    layout->addRow("Mount point:", mountPoint);
+
+#if !defined(Q_OS_WIN32)
+    auto *browseBtn = new QPushButton("Browse...", &dlg);
+    QObject::connect(browseBtn, &QPushButton::clicked, &dlg, [&]() {
+      QString dir = QFileDialog::getExistingDirectory(
+          &dlg, "Select mount point", mountPoint->text());
+      if (!dir.isEmpty())
+        mountPoint->setText(dir);
+    });
+    layout->addRow("", browseBtn);
 #endif
 
-    if (!folder.isEmpty()) {
-      settings->setValue("Settings/lastMountPoint", folder);
-      settings->setValue("Settings/driveShared", ui.checkBoxShared->isChecked());
-      emit addMount(remote + ":" + path, folder);
-    }
+    auto *cacheMode = new QComboBox(&dlg);
+    cacheMode->addItems({"off", "minimal", "writes", "full"});
+    cacheMode->setCurrentText(
+        settings->value("Settings/mountCacheMode", "writes").toString());
+    cacheMode->setToolTip("--vfs-cache-mode setting for the mount.");
+    cacheMode->setAccessibleName("VFS cache mode");
+    layout->addRow("Cache mode:", cacheMode);
+
+    auto *readOnly = new QCheckBox("Read-only mount", &dlg);
+    readOnly->setChecked(
+        settings->value("Settings/mountReadOnly", false).toBool());
+    readOnly->setAccessibleName("Read-only mount");
+    layout->addRow("", readOnly);
+
+    auto *buttons =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                             &dlg);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
+                     &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
+                     &QDialog::reject);
+    layout->addRow(buttons);
+
+    if (dlg.exec() != QDialog::Accepted || mountPoint->text().isEmpty())
+      return;
+
+    QString folder = mountPoint->text();
+    settings->setValue("Settings/lastMountPoint", folder);
+    settings->setValue("Settings/mountCacheMode", cacheMode->currentText());
+    settings->setValue("Settings/mountReadOnly", readOnly->isChecked());
+    settings->setValue("Settings/driveShared", ui.checkBoxShared->isChecked());
+
+    QString mountOpts = "--vfs-cache-mode " + cacheMode->currentText();
+    if (readOnly->isChecked())
+      mountOpts += " --read-only";
+    settings->setValue("Settings/mount", mountOpts);
+
+    emit addMount(remote + ":" + path, folder);
   });
 
   QObject::connect(ui.stream, &QAction::triggered, this, [=]() {
