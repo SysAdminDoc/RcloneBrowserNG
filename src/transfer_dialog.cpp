@@ -86,6 +86,23 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.gridLayout->addWidget(postCommandLabel, 12, 0);
   ui.gridLayout->addWidget(mPostCommand, 12, 1);
 
+  mRbBisync = new QRadioButton("Bisync", this);
+  mRbBisync->setToolTip("Bidirectional sync between source and destination.");
+  mRbBisync->setAccessibleName("Bisync operation");
+  {
+    auto caps = RcloneCapabilities::detect();
+    if (!caps.hasBisync()) {
+      mRbBisync->setDisabled(true);
+      mRbBisync->setToolTip("Requires rclone >= 1.58 with bisync support.");
+    }
+  }
+  if (auto *layout =
+          qobject_cast<QHBoxLayout *>(ui.rbSync->parentWidget()->layout())) {
+    int idx = layout->indexOf(ui.rbSync);
+    if (idx >= 0)
+      layout->insertWidget(idx + 1, mRbBisync);
+  }
+
   mWatchFolder = new QCheckBox("Watch local source and rerun on changes", this);
   mWatchFolder->setToolTip(
       "Saved upload tasks can watch the local source folder and rerun after "
@@ -518,6 +535,8 @@ QString TransferDialog::getMode() const {
     return "Move";
   } else if (ui.rbSync->isChecked()) {
     return "Sync";
+  } else if (mRbBisync->isChecked()) {
+    return "Bisync";
   }
 
   return QString();
@@ -567,6 +586,9 @@ JobOptions *TransferDialog::getJobOptions() {
     mJobOptions->sync = false;
   } else if (ui.rbSync->isChecked()) {
     mJobOptions->operation = JobOptions::Sync;
+  } else if (mRbBisync->isChecked()) {
+    mJobOptions->operation = JobOptions::Bisync;
+    mJobOptions->sync = false;
   }
 
   mJobOptions->dryRun = mDryRun;
@@ -666,6 +688,7 @@ void TransferDialog::putJobOptions() {
   ui.rbCopy->setChecked(mJobOptions->operation == JobOptions::Copy);
   ui.rbMove->setChecked(mJobOptions->operation == JobOptions::Move);
   ui.rbSync->setChecked(mJobOptions->operation == JobOptions::Sync);
+  mRbBisync->setChecked(mJobOptions->operation == JobOptions::Bisync);
 
   mDryRun = mJobOptions->dryRun;
   ui.rbSync->setChecked(mJobOptions->sync);
