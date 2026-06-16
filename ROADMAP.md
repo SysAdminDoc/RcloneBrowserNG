@@ -50,8 +50,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **Multi-select tasks and batch run** — Select and run multiple saved tasks at once.  
   _Sources: kapitainsky #98, #80_
 
-- [ ] **Task list sorting and search** — Filter and sort the saved tasks list.  
-  _Sources: kapitainsky #21_
 
 
 - [ ] **Convert tasks.bin to human-readable format** — Replace binary task storage with JSON/XML.  

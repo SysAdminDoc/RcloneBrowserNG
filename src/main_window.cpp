@@ -585,6 +585,36 @@ MainWindow::MainWindow() {
   QObject::connect(ui.tabs, &QTabWidget::tabCloseRequested, ui.tabs,
                    &QTabWidget::removeTab);
 
+  mTasksFilter = new QLineEdit(this);
+  mTasksFilter->setPlaceholderText("Filter saved tasks...");
+  mTasksFilter->setClearButtonEnabled(true);
+  mTasksFilter->setAccessibleName("Filter saved tasks");
+  UiPolish::SetPathField(mTasksFilter, "Filter saved tasks");
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.tasksListWidget->parentWidget()->layout())) {
+    layout->insertWidget(0, mTasksFilter);
+  }
+  QObject::connect(mTasksFilter, &QLineEdit::textChanged, this,
+                   [this](const QString &text) {
+                     for (int i = 0; i < ui.tasksListWidget->count(); ++i) {
+                       auto *item = ui.tasksListWidget->item(i);
+                       auto *task =
+                           static_cast<JobOptionsListWidgetItem *>(item);
+                       if (!task->GetData()) {
+                         item->setHidden(!text.isEmpty());
+                         continue;
+                       }
+                       item->setHidden(
+                           !text.isEmpty() &&
+                           !task->GetData()->description.contains(
+                               text, Qt::CaseInsensitive) &&
+                           !task->GetData()->source.contains(
+                               text, Qt::CaseInsensitive) &&
+                           !task->GetData()->dest.contains(
+                               text, Qt::CaseInsensitive));
+                     }
+                   });
+
   QObject::connect(ui.tasksListWidget, &QListWidget::currentItemChanged, this,
                    [=](QListWidgetItem *current) {
                      auto task =
@@ -1721,6 +1751,11 @@ void MainWindow::closeEvent(QCloseEvent *ev) {
 }
 
 void MainWindow::listTasks() {
+  if (mTasksFilter) {
+    const bool wasBlocked = mTasksFilter->blockSignals(true);
+    mTasksFilter->clear();
+    mTasksFilter->blockSignals(wasBlocked);
+  }
   ui.tasksListWidget->clear();
 
   ListOfJobOptions *ljo = ListOfJobOptions::getInstance();

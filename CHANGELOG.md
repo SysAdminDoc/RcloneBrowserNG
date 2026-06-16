@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   NEW: Saved tasks list now has a search/filter field that matches task name, source, and destination paths
 -   NEW: Streaming now passes the filename to the player window title — mpv gets `--force-media-title` and VLC gets `--meta-title` so the player shows the actual file name instead of `fd://0` or `stdin`
 -   NEW: Saved upload tasks can watch a local source folder and rerun after debounced filesystem changes, with active watches rebuilt on restart and pause/resume controls in the tray menu
 -   NEW: Remote files can be opened for edit from the browser context menu; the app downloads to a temporary session file, watches saves, prompts on remote conflicts, and re-uploads changes
