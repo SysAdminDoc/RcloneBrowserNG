@@ -893,6 +893,39 @@ MainWindow::MainWindow() {
   ui.statusBar->addPermanentWidget(mStatsLabel);
   updateGlobalStats();
 
+  mErrorLog = new QPlainTextEdit(this);
+  mErrorLog->setReadOnly(true);
+  mErrorLog->setMaximumHeight(140);
+  mErrorLog->setMaximumBlockCount(500);
+  mErrorLog->setVisible(false);
+  mErrorLog->setAccessibleName("Real-time error log");
+  UiPolish::SetOutputView(mErrorLog, "Error log");
+  mErrorLogToggle = new QToolButton(this);
+  mErrorLogToggle->setCheckable(true);
+  mErrorLogToggle->setChecked(false);
+  mErrorLogToggle->setArrowType(Qt::RightArrow);
+  mErrorLogToggle->setText("Error Log");
+  mErrorLogToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  mErrorLogToggle->setAutoRaise(true);
+  mErrorLogToggle->setAccessibleName("Toggle error log panel");
+  UiPolish::SetDisclosureButton(mErrorLogToggle, "Toggle error log");
+  QObject::connect(mErrorLogToggle, &QToolButton::toggled, this,
+                   [this](bool checked) {
+                     mErrorLog->setVisible(checked);
+                     mErrorLogToggle->setArrowType(
+                         checked ? Qt::DownArrow : Qt::RightArrow);
+                   });
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.jobsArea->parentWidget()->layout())) {
+    layout->addWidget(mErrorLogToggle);
+    layout->addWidget(mErrorLog);
+  }
+  Diagnostics::setLogCallback(
+      [this](const QString &source, const QString &line) {
+        mErrorLog->appendPlainText(
+            QString("[%1] %2").arg(source, line));
+      });
+
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
   refreshTaskWatchers();
 
