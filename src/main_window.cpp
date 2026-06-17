@@ -633,7 +633,12 @@ MainWindow::MainWindow() {
   saveSupportBundle->setToolTip(
       "Save a detailed support bundle with environment info and recent job "
       "output (secrets redacted) for bug reports.");
+  auto *remoteHealth = new QAction("Remote Health...", this);
+  remoteHealth->setToolTip(
+      "Check rclone version, remote connectivity, quota, and mount "
+      "readiness for all configured remotes.");
   ui.menuHelp->addSeparator();
+  ui.menuHelp->addAction(remoteHealth);
   ui.menuHelp->addAction(copyDiagnostics);
   ui.menuHelp->addAction(saveSupportBundle);
 
@@ -717,6 +722,157 @@ MainWindow::MainWindow() {
       ui.statusBar->showMessage(
           "Support bundle saved to " + QFileInfo(path).fileName(), 4000);
     }
+  });
+
+  QObject::connect(remoteHealth, &QAction::triggered, this, [this]() {
+    auto caps = RcloneCapabilities::detect();
+    QDialog dialog(this);
+    dialog.setWindowTitle("Remote Health");
+    dialog.resize(700, 500);
+    UiPolish::SetWindowDefaults(&dialog, QSize(560, 400));
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+
+    auto *envLabel = new QLabel(&dialog);
+    envLabel->setText(
+        QString("<b>rclone:</b> %1 &nbsp; <b>Qt:</b> %2 &nbsp; <b>Mount:</b> %3")
+            .arg(caps.rcloneVersion.isEmpty() ? "not detected"
+                                              : "v" + caps.rcloneVersion,
+                 qVersion(), caps.mountBackend));
+    layout->addWidget(envLabel);
+
+    auto *table = new QTableWidget(&dialog);
+    table->setColumnCount(4);
+    table->setHorizontalHeaderLabels(
+        QStringList() << "Remote" << "Type" << "Status" << "Quota");
+    UiPolish::SetTableView(table, "Remote health");
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    layout->addWidget(table);
+
+    auto *refreshBtn = new QPushButton("Check All", &dialog);
+    refreshBtn->setToolTip("Test connectivity for all configured remotes.");
+
+    auto runChecks = [this, table, refreshBtn]() {
+      refreshBtn->setEnabled(false);
+      refreshBtn->setText("Checking...");
+
+      auto *proc = new QProcess();
+      UseRclonePassword(proc);
+      proc->setProgram(GetRclone());
+      proc->setArguments(QStringList() << "listremotes" << "--long"
+                                       << GetRcloneConf());
+      proc->setProcessChannelMode(QProcess::SeparateChannels);
+      QObject::connect(
+          proc,
+          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+              &QProcess::finished),
+          this, [proc, table, refreshBtn](int code, QProcess::ExitStatus) {
+            proc->deleteLater();
+            refreshBtn->setEnabled(true);
+            refreshBtn->setText("Check All");
+            if (code != 0) return;
+
+            QString output = QString::fromUtf8(proc->readAllStandardOutput());
+            QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+            table->setRowCount(lines.size());
+            for (int i = 0; i < lines.size(); ++i) {
+              QString line = lines[i].trimmed();
+              int colonIdx = line.indexOf(':');
+              QString name = colonIdx > 0 ? line.left(colonIdx).trimmed()
+                                          : line;
+              QString type = colonIdx > 0
+                                 ? line.mid(colonIdx + 1).trimmed()
+                                 : "";
+              table->setItem(i, 0, new QTableWidgetItem(name));
+              table->setItem(i, 1, new QTableWidgetItem(type));
+              table->setItem(i, 2, new QTableWidgetItem("Checking..."));
+              table->setItem(i, 3, new QTableWidgetItem("-"));
+
+              auto *check = new QProcess();
+              UseRclonePassword(check);
+              check->setProgram(GetRclone());
+              check->setArguments(QStringList()
+                                  << "about" << GetRcloneConf()
+                                  << "--json" << name + ":");
+              check->setProcessChannelMode(QProcess::SeparateChannels);
+              QObject::connect(
+                  check,
+                  static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                      &QProcess::finished),
+                  [check, table, i](int rc, QProcess::ExitStatus) {
+                    check->deleteLater();
+                    if (i >= table->rowCount()) return;
+                    if (rc == 0) {
+                      table->item(i, 2)->setText("OK");
+                      QJsonDocument doc = QJsonDocument::fromJson(
+                          check->readAllStandardOutput());
+                      QJsonObject obj = doc.object();
+                      qint64 total = obj.value("total").toVariant().toLongLong();
+                      qint64 used = obj.value("used").toVariant().toLongLong();
+                      if (total > 0) {
+                        table->item(i, 3)->setText(
+                            QString("%1 / %2")
+                                .arg(GetNiceSize(static_cast<quint64>(used)),
+                                     GetNiceSize(static_cast<quint64>(total))));
+                      } else {
+                        table->item(i, 3)->setText("N/A");
+                      }
+                    } else {
+                      QString err = QString::fromUtf8(
+                          check->readAllStandardError()).trimmed();
+                      if (err.contains("not supported"))
+                        table->item(i, 2)->setText("OK (quota N/A)");
+                      else
+                        table->item(i, 2)->setText("Error: " + err.left(80));
+                    }
+                  });
+              QTimer::singleShot(15000, check, [check]() {
+                if (check->state() != QProcess::NotRunning)
+                  check->kill();
+              });
+              check->start();
+            }
+          });
+      QTimer::singleShot(10000, proc, [proc]() {
+        if (proc->state() != QProcess::NotRunning)
+          proc->kill();
+      });
+      proc->start();
+    };
+
+    QObject::connect(refreshBtn, &QPushButton::clicked, &dialog, runChecks);
+
+    auto *btnRow = new QHBoxLayout();
+    btnRow->addWidget(refreshBtn);
+
+    auto *copyBtn = new QPushButton("Copy Report", &dialog);
+    QObject::connect(copyBtn, &QPushButton::clicked, &dialog, [table, &caps]() {
+      QStringList lines;
+      lines << caps.summary() << "" << "Remote Health:";
+      for (int r = 0; r < table->rowCount(); ++r) {
+        lines << QString("  %1 (%2): %3  Quota: %4")
+                     .arg(table->item(r, 0)->text(), table->item(r, 1)->text(),
+                          table->item(r, 2)->text(),
+                          table->item(r, 3)->text());
+      }
+      QGuiApplication::clipboard()->setText(
+          Diagnostics::redactSecrets(lines.join('\n')));
+    });
+    btnRow->addWidget(copyBtn);
+    btnRow->addStretch();
+    layout->addLayout(btnRow);
+
+    auto *close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    UiPolish::SetDialogButtonBox(close);
+    QObject::connect(close, &QDialogButtonBox::rejected, &dialog,
+                     &QDialog::reject);
+    layout->addWidget(close);
+
+    runChecks();
+    dialog.exec();
   });
 
   QObject::connect(ui.aboutQt, &QAction::triggered, qApp,
