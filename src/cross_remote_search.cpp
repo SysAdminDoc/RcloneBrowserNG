@@ -12,11 +12,28 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   layout->setContentsMargins(12, 12, 12, 12);
   layout->setSpacing(8);
 
+  auto *remoteRow = new QHBoxLayout();
+  remoteRow->addWidget(new QLabel("Remotes:", this));
+  for (const QString &r : remoteNames) {
+    auto *cb = new QCheckBox(r, this);
+    cb->setChecked(true);
+    mRemoteChecks.insert(r, cb);
+    remoteRow->addWidget(cb);
+  }
+  remoteRow->addStretch();
+  layout->addLayout(remoteRow);
+
   auto *queryRow = new QHBoxLayout();
-  mQueryEdit = new QLineEdit(this);
-  mQueryEdit->setPlaceholderText("Filename pattern (e.g. *.jpg, report*)");
-  mQueryEdit->setAccessibleName("Search query");
-  UiPolish::SetPathField(mQueryEdit, "Search query");
+  mHistoryCombo = new QComboBox(this);
+  mHistoryCombo->setEditable(true);
+  mHistoryCombo->setInsertPolicy(QComboBox::NoInsert);
+  mHistoryCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  mHistoryCombo->lineEdit()->setPlaceholderText(
+      "Filename pattern (e.g. *.jpg, report*)");
+  mHistoryCombo->setAccessibleName("Search query with history");
+  mQueryEdit = mHistoryCombo->lineEdit();
+  loadHistory();
+
   mCaseSensitive = new QCheckBox("Case-sensitive", this);
   mCaseSensitive->setToolTip("Match uppercase and lowercase exactly.");
   mSearchButton = new QPushButton("Search", this);
@@ -26,11 +43,35 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   mCancelButton = new QPushButton("Cancel", this);
   mCancelButton->setEnabled(false);
   mCancelButton->setAccessibleName("Cancel search");
-  queryRow->addWidget(mQueryEdit, 1);
+  queryRow->addWidget(mHistoryCombo, 1);
   queryRow->addWidget(mCaseSensitive);
   queryRow->addWidget(mSearchButton);
   queryRow->addWidget(mCancelButton);
   layout->addLayout(queryRow);
+
+  auto *filterRow = new QHBoxLayout();
+  filterRow->addWidget(new QLabel("Type:", this));
+  mTypeFilter = new QComboBox(this);
+  mTypeFilter->addItems(QStringList() << "All files" << "Images (*.jpg *.png *.gif *.bmp *.webp)"
+                                      << "Documents (*.pdf *.doc* *.xls* *.ppt*)"
+                                      << "Videos (*.mp4 *.mkv *.avi *.mov)"
+                                      << "Audio (*.mp3 *.flac *.wav *.aac)");
+  mTypeFilter->setAccessibleName("File type filter");
+  filterRow->addWidget(mTypeFilter);
+  filterRow->addWidget(new QLabel("Min size (KB):", this));
+  mMinSize = new QSpinBox(this);
+  mMinSize->setRange(0, 999999999);
+  mMinSize->setSpecialValueText("Any");
+  mMinSize->setAccessibleName("Minimum file size");
+  filterRow->addWidget(mMinSize);
+  filterRow->addWidget(new QLabel("Max size (MB):", this));
+  mMaxSize = new QSpinBox(this);
+  mMaxSize->setRange(0, 999999);
+  mMaxSize->setSpecialValueText("Any");
+  mMaxSize->setAccessibleName("Maximum file size");
+  filterRow->addWidget(mMaxSize);
+  filterRow->addStretch();
+  layout->addLayout(filterRow);
 
   mStatus = new QLabel("Enter a pattern to search every configured remote.", this);
   UiPolish::SetMuted(mStatus);
@@ -113,8 +154,27 @@ void CrossRemoteSearchDialog::startSearch() {
   UiPolish::SetEmptyState(mEmptyState, "Searching remotes",
                           "Matches will appear here as rclone returns them.");
 
+  saveHistory(query);
+
+  QStringList typeIncludes;
+  int typeIdx = mTypeFilter->currentIndex();
+  if (typeIdx == 1)
+    typeIncludes << "*.jpg" << "*.jpeg" << "*.png" << "*.gif" << "*.bmp" << "*.webp";
+  else if (typeIdx == 2)
+    typeIncludes << "*.pdf" << "*.doc" << "*.docx" << "*.xls" << "*.xlsx" << "*.ppt" << "*.pptx";
+  else if (typeIdx == 3)
+    typeIncludes << "*.mp4" << "*.mkv" << "*.avi" << "*.mov" << "*.webm";
+  else if (typeIdx == 4)
+    typeIncludes << "*.mp3" << "*.flac" << "*.wav" << "*.aac" << "*.ogg";
+
+  qint64 minBytes = static_cast<qint64>(mMinSize->value()) * 1024;
+  qint64 maxBytes = mMaxSize->value() > 0
+                        ? static_cast<qint64>(mMaxSize->value()) * 1024 * 1024
+                        : 0;
+
+  QStringList activeRemotes = selectedRemotes();
   int started = 0;
-  for (const QString &remote : mRemotes) {
+  for (const QString &remote : activeRemotes) {
     auto *proc = new QProcess(this);
     proc->setProcessChannelMode(QProcess::SeparateChannels);
     UseRclonePassword(proc);
@@ -122,6 +182,15 @@ void CrossRemoteSearchDialog::startSearch() {
     QStringList args;
     args << "lsjson" << GetRcloneConf() << "-R" << "--no-mimetype"
          << "--include" << query;
+    for (const QString &inc : typeIncludes) {
+      args << "--include" << inc;
+    }
+    if (minBytes > 0) {
+      args << "--min-size" << QString::number(minBytes);
+    }
+    if (maxBytes > 0) {
+      args << "--max-size" << QString::number(maxBytes);
+    }
     if (!mCaseSensitive->isChecked()) {
       args << "--ignore-case";
     }
@@ -175,7 +244,7 @@ void CrossRemoteSearchDialog::startSearch() {
             QString status =
                 QString("Done. %1 file(s) found across %2 remote(s).")
                     .arg(mTotalMatches)
-                    .arg(mRemotes.size());
+                    .arg(selectedRemotes().size());
             if (mFailedRemotes > 0) {
               status += QString(" %1 remote(s) need attention.")
                             .arg(mFailedRemotes);
@@ -227,6 +296,38 @@ void CrossRemoteSearchDialog::cancelSearch() {
         mEmptyState, "Search cancelled",
         "Start another search when you are ready.");
   }
+}
+
+QStringList CrossRemoteSearchDialog::selectedRemotes() const {
+  QStringList result;
+  for (const QString &r : mRemotes) {
+    auto it = mRemoteChecks.find(r);
+    if (it != mRemoteChecks.end() && it.value()->isChecked())
+      result << r;
+  }
+  return result.isEmpty() ? mRemotes : result;
+}
+
+void CrossRemoteSearchDialog::loadHistory() {
+  auto settings = GetSettings();
+  QStringList history =
+      settings->value("Search/history").toStringList();
+  mHistoryCombo->clear();
+  for (const QString &q : history) {
+    mHistoryCombo->addItem(q);
+  }
+  mHistoryCombo->setCurrentText(QString());
+}
+
+void CrossRemoteSearchDialog::saveHistory(const QString &query) {
+  auto settings = GetSettings();
+  QStringList history =
+      settings->value("Search/history").toStringList();
+  history.removeAll(query);
+  history.prepend(query);
+  while (history.size() > 20)
+    history.removeLast();
+  settings->setValue("Search/history", history);
 }
 
 void CrossRemoteSearchDialog::addResult(const QString &remote,
