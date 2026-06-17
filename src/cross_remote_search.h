@@ -20,7 +20,12 @@ private:
   QTableWidget *mResults = nullptr;
   QLabel *mStatus = nullptr;
   QLabel *mEmptyState = nullptr;
+  QComboBox *mHistoryCombo = nullptr;
+  QComboBox *mTypeFilter = nullptr;
+  QSpinBox *mMinSize = nullptr;
+  QSpinBox *mMaxSize = nullptr;
   QStringList mRemotes;
+  QHash<QString, QCheckBox *> mRemoteChecks;
   QList<QProcess *> mRunning;
   QStringList mRemoteErrors;
   int mTotalMatches = 0;
@@ -30,4 +35,7 @@ private:
   void cancelSearch();
   void addResult(const QString &remote, const QString &path, qint64 size,
                  const QString &modTime);
+  void loadHistory();
+  void saveHistory(const QString &query);
+  QStringList selectedRemotes() const;
 };
