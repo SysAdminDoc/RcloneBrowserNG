@@ -15,6 +15,10 @@
 -   FIXED: Drag-and-drop of multiple files between remote tabs now creates individual transfers instead of silently dropping all but the first
 -   FIXED: Transfer detail capture no longer requires colon in message — any rclone log entry with an `object` field is captured
 
+-   FIXED: High-contrast status badge colors now choose palette-contrasting success/warning/error tones instead of fixed colors
+-   FIXED: Cron next-run previews now iterate by local civil minutes so repeated DST hours are not duplicated
+-   FIXED: Backup-dir `{date}` placeholders now include milliseconds, process id, and a per-command sequence to avoid same-second collisions
+
 ### Reliability & Data Safety
 -   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types
 -   NEW: Backend capability registry — opening a remote asynchronously queries `rclone backend features` to cache per-remote capabilities (PublicLink, Move, About, etc.) and gates UI actions accordingly

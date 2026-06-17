@@ -5,6 +5,21 @@
 #ifdef _WIN32
 #pragma warning(disable : 4505)
 #endif
+
+namespace {
+QString backupDateToken() {
+  static QAtomicInteger<quint64> sequence = 0;
+  const quint64 seq = sequence.fetchAndAddRelaxed(1);
+  const QString pid =
+      QString::number(static_cast<quint64>(QCoreApplication::applicationPid()),
+                      36);
+  const QString seqPart = QString::number(seq, 36).rightJustified(4, '0');
+  return QString("%1_%2_%3")
+      .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_HHmmss_zzz"),
+           pid, seqPart);
+}
+} // namespace
+
 JobOptions::JobOptions(bool isDownload) : JobOptions() {
   setJobType(isDownload);
   uniqueId = QUuid::createUuid();
@@ -160,8 +175,7 @@ QStringList JobOptions::getOptions() const {
   if (!backupDir.isEmpty()) {
     QString dated = backupDir;
     if (dated.contains("{date}")) {
-      dated.replace("{date}",
-                    QDateTime::currentDateTime().toString("yyyy-MM-dd_HHmmss"));
+      dated.replace("{date}", backupDateToken());
     }
     list << "--backup-dir" << dated;
   }

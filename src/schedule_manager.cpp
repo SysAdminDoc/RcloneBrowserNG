@@ -616,6 +616,29 @@ QSet<int> parseCronField(const QString &field, int minVal, int maxVal) {
   }
   return values;
 }
+
+void advanceCivilMinute(QDate *date, QTime *time) {
+  const QTime next = time->addSecs(60);
+  if (next < *time) {
+    *date = date->addDays(1);
+  }
+  *time = next;
+}
+
+QDateTime makeDateTimeLike(const QDate &date, const QTime &time,
+                           const QDateTime &reference) {
+  switch (reference.timeSpec()) {
+  case Qt::UTC:
+    return QDateTime(date, time, Qt::UTC);
+  case Qt::OffsetFromUTC:
+    return QDateTime(date, time, Qt::OffsetFromUTC, reference.offsetFromUtc());
+  case Qt::TimeZone:
+    return QDateTime(date, time, reference.timeZone());
+  case Qt::LocalTime:
+  default:
+    return QDateTime(date, time, Qt::LocalTime);
+  }
+}
 } // namespace
 
 bool ScheduleManager::isValidCronExpr(const QString &cronExpr) {
@@ -651,20 +674,27 @@ QList<QDateTime> ScheduleManager::nextCronRuns(const QString &cronExpr,
 
   if (!from.isValid())
     from = QDateTime::currentDateTime();
-  QDateTime t = from.addSecs(60);
-  t = QDateTime(t.date(), QTime(t.time().hour(), t.time().minute(), 0));
+  QDate civilDate = from.date();
+  QTime civilTime(from.time().hour(), from.time().minute(), 0);
+  advanceCivilMinute(&civilDate, &civilTime);
 
   int maxIter = 525960; // ~1 year of minutes
   while (runs.size() < count && maxIter > 0) {
     --maxIter;
-    if (months.contains(t.date().month()) &&
-        doms.contains(t.date().day()) &&
-        dows.contains(t.date().dayOfWeek() % 7) &&
-        hours.contains(t.time().hour()) &&
-        minutes.contains(t.time().minute())) {
-      runs.append(t);
+    if (months.contains(civilDate.month()) &&
+        doms.contains(civilDate.day()) &&
+        dows.contains(civilDate.dayOfWeek() % 7) &&
+        hours.contains(civilTime.hour()) &&
+        minutes.contains(civilTime.minute())) {
+      const QDateTime candidate =
+          makeDateTimeLike(civilDate, civilTime, from);
+      if (candidate.isValid() && candidate.date() == civilDate &&
+          candidate.time().hour() == civilTime.hour() &&
+          candidate.time().minute() == civilTime.minute()) {
+        runs.append(candidate);
+      }
     }
-    t = t.addSecs(60);
+    advanceCivilMinute(&civilDate, &civilTime);
   }
   return runs;
 }

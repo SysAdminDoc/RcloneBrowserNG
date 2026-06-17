@@ -41,5 +41,7 @@ void SetWindowDefaults(QWidget *widget, QSize minimumSize = QSize());
 void SetAccessibleFormField(QWidget *widget, const QString &name,
                             const QString &description = QString());
 bool IsHighContrastActive();
+QColor BestContrastingColor(const QColor &background,
+                            const QList<QColor> &candidates);
 
 } // namespace UiPolish

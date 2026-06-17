@@ -226,6 +226,25 @@ int main() {
                 .arg(runs.size()));
   }
 
+  // Cron next runs: repeated DST hours are shown once in local civil time
+  {
+    const QTimeZone zone("America/New_York");
+    require(zone.isValid(), "America/New_York timezone data is required");
+    const QDateTime from(QDate(2026, 11, 1), QTime(0, 58), zone);
+    auto runs = ScheduleManager::nextCronRuns("30 1 * * *", 2, from);
+    require(runs.size() == 2,
+            QString("DST cron should return 2 runs, got %1")
+                .arg(runs.size()));
+    require(runs.at(0).date() == QDate(2026, 11, 1) &&
+                runs.at(0).time().hour() == 1 &&
+                runs.at(0).time().minute() == 30,
+            "fall-back day 01:30 run missing");
+    require(runs.at(1).date() == QDate(2026, 11, 2) &&
+                runs.at(1).time().hour() == 1 &&
+                runs.at(1).time().minute() == 30,
+            "fall-back 01:30 was duplicated instead of advancing one day");
+  }
+
   // Cron next runs: invalid expression returns empty
   {
     auto runs = ScheduleManager::nextCronRuns("60 * * * *", 5);
