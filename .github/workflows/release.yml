@@ -86,8 +86,9 @@ jobs:
         include:
           - runner: macos-14
             arch: arm64
-          - runner: macos-13
+          - runner: macos-15
             arch: x86_64
+            cmake_extra: -DCMAKE_OSX_ARCHITECTURES=x86_64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -100,7 +101,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           qt_prefix="$(brew --prefix qt@6)"
 
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$qt_prefix"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$qt_prefix" ${{ matrix.cmake_extra }}
           cmake --build build --parallel
 
           app="build/build/rclone-browser.app"
@@ -171,6 +172,45 @@ jobs:
             release/*.zip
             release/*.exe
 
+  windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: '6.8.*'
+          arch: win64_msvc2022_arm64
+      - name: Build Windows ARM64 packages
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME
+          if ($version.StartsWith('v')) {
+            $version = $version.Substring(1)
+          }
+          $name = "RcloneBrowserNG-$version-windows-arm64"
+          $dist = Join-Path $PWD "release\$name"
+
+          cmake -S . -B build -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:Qt6_DIR"
+          cmake --build build --config Release
+
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item README.md "$dist\Readme.md"
+          Copy-Item CHANGELOG.md "$dist\Changelog.md"
+          Copy-Item LICENSE "$dist\License.txt"
+          Copy-Item build\build\Release\RcloneBrowser.exe $dist
+          Copy-Item build\build\Release\RcloneBrowserPassword.exe $dist
+
+          windeployqt --no-translations "$dist\RcloneBrowser.exe"
+
+          $zip = Join-Path $PWD "release\$name.zip"
+          Compress-Archive -Path $dist -DestinationPath $zip -Force
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-windows-arm64
+          path: release/*.zip
+
   publish:
     runs-on: ubuntu-24.04
     permissions:
@@ -182,6 +222,7 @@ jobs:
       - linux-appimage
       - macos-dmg
       - windows-x64
+      - windows-arm64
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
