@@ -125,6 +125,17 @@ private:
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;
 
+  struct BackgroundError {
+    QDateTime timestamp;
+    QString jobName;
+    QString message;
+    bool reviewed = false;
+  };
+  QList<BackgroundError> mErrorQueue;
+  QToolButton *mErrorBadge = nullptr;
+  void appendBackgroundError(const QString &jobName, const QString &message);
+  void showErrorQueue();
+
   void runItem(JobOptionsListWidgetItem *item, bool dryrun = false);
   void runJobOptions(JobOptions *jo, bool dryrun = false,
                      bool confirmSync = true);
