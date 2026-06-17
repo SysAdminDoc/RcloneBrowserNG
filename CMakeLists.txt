@@ -109,6 +109,19 @@ if(BUILD_TESTING)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
 
+  add_executable(backend_features_test
+    tests/backend_features_test.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  target_include_directories(backend_features_test PRIVATE src)
+  target_compile_definitions(backend_features_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(backend_features_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(backend_features_test advapi32)
+  endif()
+  add_test(NAME backend_features_test COMMAND backend_features_test)
+
   add_executable(dryrun_contract_test
     tests/dryrun_contract_test.cpp
     src/job_options.cpp
