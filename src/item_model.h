@@ -109,7 +109,9 @@ private:
   bool mDriveShared = false;
   bool mGooglePhotos = false;
 
+public:
   Item *get(const QModelIndex &index) const;
+private:
   void load(const QPersistentModelIndex &parentIndex, Item *parent);
 
   void sortRecursive(Item *item, const ItemSorter &sorter);
