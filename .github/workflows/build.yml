@@ -53,6 +53,9 @@ jobs:
           mkdir build && cd build
           cmake .. -DCMAKE_PREFIX_PATH=$(brew --prefix qt@6) ${{ matrix.cmake_extra }}
           cmake --build . --parallel
+      - name: Test
+        if: matrix.arch == 'arm64'
+        run: ctest --test-dir build --output-on-failure
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-${{ matrix.arch }}
@@ -105,6 +108,10 @@ jobs:
           rem VS version breaks every time the windows-latest image updates
           cmake -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="%Qt6_DIR%" ..
           cmake --build . --config Release
+      - name: Test
+        if: matrix.artifact == 'windows-x64'
+        shell: cmd
+        run: ctest --test-dir build -C Release --output-on-failure
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}
