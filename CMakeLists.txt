@@ -111,6 +111,13 @@ if(BUILD_TESTING)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
 
+  add_executable(parsing_regression_test
+    tests/parsing_regression_test.cpp
+  )
+  target_include_directories(parsing_regression_test PRIVATE src)
+  target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME parsing_regression_test COMMAND parsing_regression_test)
+
   add_executable(schedule_golden_test
     tests/schedule_golden_test.cpp
     src/schedule_manager.cpp
