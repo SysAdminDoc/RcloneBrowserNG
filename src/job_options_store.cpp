@@ -254,19 +254,26 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   return obj;
 }
 
+template <typename E>
+static E clampEnum(int v, int maxVal) {
+  if (v < 0 || v > maxVal)
+    return static_cast<E>(0);
+  return static_cast<E>(v);
+}
+
 JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   auto *jo = new JobOptions();
   jo->description = obj["description"].toString();
-  jo->jobType = static_cast<JobOptions::JobType>(obj["jobType"].toInt());
-  jo->operation = static_cast<JobOptions::Operation>(obj["operation"].toInt());
+  jo->jobType = clampEnum<JobOptions::JobType>(obj["jobType"].toInt(), JobOptions::Download);
+  jo->operation = clampEnum<JobOptions::Operation>(obj["operation"].toInt(), JobOptions::Bisync);
   jo->sync = obj["sync"].toBool();
   jo->syncTiming =
-      static_cast<JobOptions::SyncTiming>(obj["syncTiming"].toInt());
+      clampEnum<JobOptions::SyncTiming>(obj["syncTiming"].toInt(), JobOptions::UnknownTiming);
   jo->skipNewer = obj["skipNewer"].toBool();
   jo->skipExisting = obj["skipExisting"].toBool();
   jo->compare = obj["compare"].toBool();
   jo->compareOption =
-      static_cast<JobOptions::CompareOption>(obj["compareOption"].toInt());
+      clampEnum<JobOptions::CompareOption>(obj["compareOption"].toInt(), JobOptions::ChecksumIgnoreSize);
   jo->verbose = obj["verbose"].toBool();
   jo->sameFilesystem = obj["sameFilesystem"].toBool();
   jo->dontUpdateModified = obj["dontUpdateModified"].toBool();
@@ -313,6 +320,13 @@ JobOptionsStoreLoadResult ReadJobOptionsStoreJson(QIODevice *device) {
     return result;
   }
   QJsonObject root = doc.object();
+  int version = root["version"].toInt(0);
+  if (version > 1) {
+    result.error = QString("JSON task store schema version %1 is newer than "
+                           "supported (1); upgrade Rclone Browser NG")
+                       .arg(version);
+    return result;
+  }
   QJsonArray arr = root["tasks"].toArray();
   for (const QJsonValue &val : arr) {
     if (!val.isObject())

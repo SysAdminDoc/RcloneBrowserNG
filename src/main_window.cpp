@@ -3234,21 +3234,30 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
               box.addButton("Later", QMessageBox::RejectRole);
               box.exec();
               if (box.clickedButton() == selfUpdate) {
-                QProcess proc;
-                proc.setProcessChannelMode(QProcess::MergedChannels);
-                proc.start(GetRclone(), QStringList() << "selfupdate");
-                proc.waitForFinished(60000);
-                if (proc.exitCode() == 0) {
-                  QMessageBox::information(
-                      this, "rclone updated",
-                      "rclone has been updated to v" + latest +
-                          ".\nRestart the app to use the new version.");
-                } else {
-                  QMessageBox::warning(
-                      this, "selfupdate failed",
-                      "rclone selfupdate failed:\n" +
-                          QString::fromUtf8(proc.readAll()).left(500));
-                }
+                setStatusMessage("Updating rclone…");
+                auto *proc = new QProcess(this);
+                proc->setProcessChannelMode(QProcess::MergedChannels);
+                connect(
+                    proc,
+                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                        &QProcess::finished),
+                    this, [this, proc, latest](int code, QProcess::ExitStatus) {
+                      proc->deleteLater();
+                      if (code == 0) {
+                        setStatusMessage("rclone updated to v" + latest);
+                        QMessageBox::information(
+                            this, "rclone updated",
+                            "rclone has been updated to v" + latest +
+                                ".\nRestart the app to use the new version.");
+                      } else {
+                        setStatusMessage("rclone selfupdate failed");
+                        QMessageBox::warning(
+                            this, "selfupdate failed",
+                            "rclone selfupdate failed:\n" +
+                                QString::fromUtf8(proc->readAll()).left(500));
+                      }
+                    });
+                proc->start(GetRclone(), QStringList() << "selfupdate");
               }
             }
           });

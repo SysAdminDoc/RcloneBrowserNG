@@ -1,4 +1,7 @@
 #include "schedule_manager.h"
+#if defined(Q_OS_MACOS) || defined(Q_OS_LINUX)
+#include <unistd.h>
+#endif
 
 namespace {
 const QString kPrefix = "RcloneBrowserNG_";
@@ -133,14 +136,6 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   QDir().mkpath(plistDir);
   QString plistPath = plistDir + "/" + sysName + ".plist";
 
-  int intervalSec = 86400;
-  if (interval == "hourly") intervalSec = 3600;
-  else if (interval == "weekly") intervalSec = 604800;
-  else if (interval.endsWith("m"))
-    intervalSec = interval.left(interval.length() - 1).toInt() * 60;
-  else if (interval.endsWith("h"))
-    intervalSec = interval.left(interval.length() - 1).toInt() * 3600;
-
   auto xmlEscape = [](const QString &s) -> QString {
     QString out = s;
     out.replace('&', "&amp;");
@@ -148,6 +143,37 @@ bool ScheduleManager::installSchedule(const QString &taskName,
     out.replace('>', "&gt;");
     return out;
   };
+
+  int hour = 0;
+  if (!time.isEmpty() && time.contains(':'))
+    hour = time.left(time.indexOf(':')).toInt();
+
+  QString scheduleKey;
+  if (interval == "daily") {
+    scheduleKey = QString(
+        "  <key>StartCalendarInterval</key>\n"
+        "  <dict>\n"
+        "    <key>Hour</key><integer>%1</integer>\n"
+        "    <key>Minute</key><integer>0</integer>\n"
+        "  </dict>\n").arg(hour);
+  } else if (interval == "weekly") {
+    scheduleKey = QString(
+        "  <key>StartCalendarInterval</key>\n"
+        "  <dict>\n"
+        "    <key>Weekday</key><integer>0</integer>\n"
+        "    <key>Hour</key><integer>%1</integer>\n"
+        "    <key>Minute</key><integer>0</integer>\n"
+        "  </dict>\n").arg(hour);
+  } else {
+    int intervalSec = 86400;
+    if (interval == "hourly") intervalSec = 3600;
+    else if (interval.endsWith("m"))
+      intervalSec = interval.left(interval.length() - 1).toInt() * 60;
+    else if (interval.endsWith("h"))
+      intervalSec = interval.left(interval.length() - 1).toInt() * 3600;
+    scheduleKey = QString(
+        "  <key>StartInterval</key><integer>%1</integer>\n").arg(intervalSec);
+  }
 
   QString plist = QString(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -160,12 +186,11 @@ bool ScheduleManager::installSchedule(const QString &taskName,
       "    <string>--run-task</string>\n"
       "    <string>%3</string>\n"
       "  </array>\n"
-      "  <key>StartInterval</key><integer>%4</integer>\n"
+      "%4"
       "  <key>RunAtLoad</key><false/>\n"
       "</dict>\n</plist>\n")
           .arg(xmlEscape(sysName), xmlEscape(app),
-               xmlEscape(taskName))
-          .arg(intervalSec);
+               xmlEscape(taskName), scheduleKey);
 
   QFile file(plistPath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -175,12 +200,20 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   file.write(plist.toUtf8());
   file.close();
 
+  QString uid = QString::number(getuid());
+  QString domain = "gui/" + uid;
   QProcess load;
-  load.start("launchctl", QStringList() << "load" << plistPath);
+  load.start("launchctl",
+             QStringList() << "bootstrap" << domain << plistPath);
   load.waitForFinished(5000);
   if (load.exitCode() != 0) {
-    if (error) *error = QString::fromUtf8(load.readAllStandardError()).trimmed();
-    return false;
+    QProcess fallback;
+    fallback.start("launchctl", QStringList() << "load" << plistPath);
+    fallback.waitForFinished(5000);
+    if (fallback.exitCode() != 0) {
+      if (error) *error = QString::fromUtf8(fallback.readAllStandardError()).trimmed();
+      return false;
+    }
   }
   return true;
 
@@ -229,9 +262,17 @@ bool ScheduleManager::removeSchedule(const QString &taskName, QString *error) {
 #elif defined(Q_OS_MACOS)
   QString plistPath =
       QDir::homePath() + "/Library/LaunchAgents/" + sysName + ".plist";
+  QString uid = QString::number(getuid());
+  QString serviceTarget = "gui/" + uid + "/" + sysName;
   QProcess unload;
-  unload.start("launchctl", QStringList() << "unload" << plistPath);
+  unload.start("launchctl",
+               QStringList() << "bootout" << serviceTarget);
   unload.waitForFinished(5000);
+  if (unload.exitCode() != 0) {
+    QProcess fallback;
+    fallback.start("launchctl", QStringList() << "unload" << plistPath);
+    fallback.waitForFinished(5000);
+  }
   QFile::remove(plistPath);
   return true;
 
@@ -254,15 +295,44 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
       *error = QString::fromLocal8Bit(proc.readAllStandardError()).trimmed();
     return result;
   }
+  auto parseCsvLine = [](const QString &line) -> QStringList {
+    QStringList fields;
+    QString field;
+    bool inQuote = false;
+    for (int i = 0; i < line.size(); ++i) {
+      QChar c = line[i];
+      if (inQuote) {
+        if (c == '"') {
+          if (i + 1 < line.size() && line[i + 1] == '"') {
+            field += '"';
+            ++i;
+          } else {
+            inQuote = false;
+          }
+        } else {
+          field += c;
+        }
+      } else if (c == '"') {
+        inQuote = true;
+      } else if (c == ',') {
+        fields << field.trimmed();
+        field.clear();
+      } else {
+        field += c;
+      }
+    }
+    fields << field.trimmed();
+    return fields;
+  };
+
   QString output = QString::fromLocal8Bit(proc.readAllStandardOutput());
   for (const QString &line : output.split('\n')) {
     if (!line.contains(kPrefix))
       continue;
-    QStringList cols = line.split(',');
+    QStringList cols = parseCsvLine(line);
     if (cols.isEmpty())
       continue;
-    QString name = cols[0].trimmed();
-    name.remove('"');
+    QString name = cols[0];
     if (name.startsWith('\\'))
       name = name.mid(1);
     if (!name.startsWith(kPrefix))
@@ -270,10 +340,11 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
     ScheduleEntry entry;
     entry.taskName = name.mid(kPrefix.length());
     if (cols.size() > 2) {
-      entry.time = cols[1].trimmed().remove('"');
-      entry.interval = cols[2].trimmed().remove('"');
+      entry.time = cols[1];
+      entry.interval = cols[2];
     }
-    entry.enabled = !line.contains("Disabled");
+    if (cols.size() > 3)
+      entry.enabled = (cols[3] != "Disabled");
     result.append(entry);
   }
 
