@@ -124,8 +124,25 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
         with:
-          version: '6.7.*'
+          version: '6.8.*'
           arch: win64_msvc2019_64
+      - name: Validate Qt version
+        shell: pwsh
+        run: |
+          $qmake = Join-Path $env:Qt6_DIR "bin" "qmake6.exe"
+          if (-not (Test-Path $qmake)) { $qmake = Join-Path $env:Qt6_DIR "bin" "qmake.exe" }
+          $ver = & $qmake -query QT_VERSION
+          Write-Host "Qt version: $ver"
+          $parts = $ver -split '\.'
+          $major = [int]$parts[0]; $minor = [int]$parts[1]; $patch = [int]$parts[2]
+          $safe = ($major -gt 6) -or
+                  ($major -eq 6 -and $minor -eq 8 -and $patch -ge 8) -or
+                  ($major -eq 6 -and $minor -eq 11 -and $patch -ge 1) -or
+                  ($major -eq 6 -and $minor -gt 11)
+          if (-not $safe) {
+            Write-Error "Qt $ver is in the CVE-2026-6210 vulnerable range. Require >= 6.8.8 or >= 6.11.1."
+            exit 1
+          }
       - name: Install Inno Setup
         shell: powershell
         run: choco install innosetup --no-progress --yes
