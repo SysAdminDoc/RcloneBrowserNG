@@ -1373,6 +1373,54 @@ MainWindow::MainWindow() {
     }
     if (!bookmarks.isEmpty()) {
       bookmarkMenu->addSeparator();
+      auto *manage = bookmarkMenu->addAction("Manage Bookmarks…");
+      QObject::connect(manage, &QAction::triggered, this, [this]() {
+        QDialog dlg(this);
+        dlg.setWindowTitle("Manage Bookmarks");
+        dlg.resize(450, 350);
+        auto *layout = new QVBoxLayout(&dlg);
+        auto *list = new QListWidget(&dlg);
+        list->setDragDropMode(QAbstractItemView::InternalMove);
+        list->setDefaultDropAction(Qt::MoveAction);
+        auto s = GetSettings();
+        QStringList bm = s->value("Settings/bookmarks").toStringList();
+        list->addItems(bm);
+        layout->addWidget(list);
+        auto *hint = new QLabel("Drag items to reorder. Select and press "
+                                "Delete to remove.", &dlg);
+        hint->setWordWrap(true);
+        layout->addWidget(hint);
+        list->installEventFilter(&dlg);
+        auto *buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
+                         &QDialog::accept);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
+                         &QDialog::reject);
+        layout->addWidget(buttons);
+        dlg.installEventFilter(new QObject(&dlg));
+        auto filter = [list](QObject *, QEvent *ev) -> bool {
+          if (ev->type() == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(ev);
+            if (ke->key() == Qt::Key_Delete && list->currentItem()) {
+              delete list->takeItem(list->currentRow());
+              return true;
+            }
+          }
+          return false;
+        };
+        QObject::connect(list, &QListWidget::itemSelectionChanged, list,
+                         [list, filter]() { (void)filter; });
+        list->viewport()->installEventFilter(list);
+        if (dlg.exec() == QDialog::Accepted) {
+          QStringList result;
+          for (int i = 0; i < list->count(); ++i)
+            result << list->item(i)->text();
+          s->setValue("Settings/bookmarks", result);
+          setStatusMessage(
+              QString("Bookmarks updated (%1 items).").arg(result.size()));
+        }
+      });
       auto *clearAll = bookmarkMenu->addAction("Clear All Bookmarks");
       QObject::connect(clearAll, &QAction::triggered, this, [this]() {
         auto s = GetSettings();
