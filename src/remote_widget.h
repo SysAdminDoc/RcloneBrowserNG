@@ -35,12 +35,23 @@ private:
   QHBoxLayout *mBreadcrumbLayout = nullptr;
   bool mIsLocal = false;
 
+  QList<QPersistentModelIndex> mNavHistory;
+  int mNavPos = -1;
+  bool mNavInProgress = false;
+  QToolButton *mBackButton = nullptr;
+  QToolButton *mForwardButton = nullptr;
+
   bool eventFilter(QObject *obj, QEvent *event) override;
   void showBreadcrumbForIndex(const QModelIndex &index);
   void showPathMessage(const QString &message);
   void showPathEditor(const QString &text = QString());
   void hidePathEditor();
   void selectIndex(const QModelIndex &index);
+  void navigateTo(const QModelIndex &index);
+  void goBack();
+  void goForward();
+  void pushNavHistory(const QModelIndex &index);
+  void updateNavButtons();
   QModelIndex findLoadedPath(const QString &path) const;
   QString displayPath(const QString &path) const;
 };

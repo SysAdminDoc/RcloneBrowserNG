@@ -189,6 +189,27 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   UiPolish::SetToolbarSurface(ui.buttons);
   UiPolish::SetPathField(ui.path, "Current remote path");
   ui.path->setPlaceholderText("Select a folder or file");
+  mBackButton = new QToolButton(this);
+  mBackButton->setIcon(qApp->style()->standardIcon(QStyle::SP_ArrowBack));
+  mBackButton->setToolTip("Go back (Alt+Left)");
+  mBackButton->setAccessibleName("Navigate back");
+  mBackButton->setAutoRaise(true);
+  mBackButton->setEnabled(false);
+  mBackButton->setFocusPolicy(Qt::NoFocus);
+  QObject::connect(mBackButton, &QToolButton::clicked, this,
+                   &RemoteWidget::goBack);
+
+  mForwardButton = new QToolButton(this);
+  mForwardButton->setIcon(
+      qApp->style()->standardIcon(QStyle::SP_ArrowForward));
+  mForwardButton->setToolTip("Go forward (Alt+Right)");
+  mForwardButton->setAccessibleName("Navigate forward");
+  mForwardButton->setAutoRaise(true);
+  mForwardButton->setEnabled(false);
+  mForwardButton->setFocusPolicy(Qt::NoFocus);
+  QObject::connect(mForwardButton, &QToolButton::clicked, this,
+                   &RemoteWidget::goForward);
+
   mBreadcrumbBar = new QWidget(this);
   mBreadcrumbBar->setObjectName("breadcrumbBar");
   mBreadcrumbBar->installEventFilter(this);
@@ -199,9 +220,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           qobject_cast<QBoxLayout *>(ui.path->parentWidget()->layout())) {
     const int pathIndex = pathLayout->indexOf(ui.path);
     pathLayout->insertWidget(pathIndex, mBreadcrumbBar);
+    pathLayout->insertWidget(pathIndex, mForwardButton);
+    pathLayout->insertWidget(pathIndex, mBackButton);
   }
   ui.path->installEventFilter(this);
   ui.path->hide();
+  ui.tree->installEventFilter(this);
   UiPolish::SetNavigationView(ui.tree, "Remote file browser");
   ui.tree->setRootIsDecorated(true);
   ui.tree->setIndentation(18);
@@ -1723,6 +1747,20 @@ bool RemoteWidget::eventFilter(QObject *obj, QEvent *event) {
     }
   }
 
+  if (event->type() == QEvent::KeyPress) {
+    auto *key = static_cast<QKeyEvent *>(event);
+    if (key->modifiers() == Qt::AltModifier) {
+      if (key->key() == Qt::Key_Left) {
+        goBack();
+        return true;
+      }
+      if (key->key() == Qt::Key_Right) {
+        goForward();
+        return true;
+      }
+    }
+  }
+
   return QWidget::eventFilter(obj, event);
 }
 
@@ -1851,6 +1889,55 @@ void RemoteWidget::selectIndex(const QModelIndex &index) {
   if (mModel && mModel->isFolder(index)) {
     ui.tree->expand(index);
   }
+  if (!mNavInProgress) {
+    pushNavHistory(index);
+  }
+}
+
+void RemoteWidget::navigateTo(const QModelIndex &index) {
+  mNavInProgress = true;
+  selectIndex(index);
+  mNavInProgress = false;
+}
+
+void RemoteWidget::pushNavHistory(const QModelIndex &index) {
+  if (!index.isValid())
+    return;
+  if (mNavPos >= 0 && mNavPos < mNavHistory.size() &&
+      mNavHistory[mNavPos] == index)
+    return;
+  while (mNavHistory.size() > mNavPos + 1)
+    mNavHistory.removeLast();
+  mNavHistory.append(QPersistentModelIndex(index));
+  mNavPos = mNavHistory.size() - 1;
+  updateNavButtons();
+}
+
+void RemoteWidget::goBack() {
+  if (mNavPos <= 0)
+    return;
+  --mNavPos;
+  if (mNavHistory[mNavPos].isValid()) {
+    navigateTo(QModelIndex(mNavHistory[mNavPos]));
+  }
+  updateNavButtons();
+}
+
+void RemoteWidget::goForward() {
+  if (mNavPos >= mNavHistory.size() - 1)
+    return;
+  ++mNavPos;
+  if (mNavHistory[mNavPos].isValid()) {
+    navigateTo(QModelIndex(mNavHistory[mNavPos]));
+  }
+  updateNavButtons();
+}
+
+void RemoteWidget::updateNavButtons() {
+  if (mBackButton)
+    mBackButton->setEnabled(mNavPos > 0);
+  if (mForwardButton)
+    mForwardButton->setEnabled(mNavPos < mNavHistory.size() - 1);
 }
 
 QModelIndex RemoteWidget::findLoadedPath(const QString &path) const {
