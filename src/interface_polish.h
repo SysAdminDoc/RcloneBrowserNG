@@ -38,4 +38,8 @@ void SetTableView(QTableView *view,
 void SetDialogButtonBox(QDialogButtonBox *buttons);
 void SetWindowDefaults(QWidget *widget, QSize minimumSize = QSize());
 
+void SetAccessibleFormField(QWidget *widget, const QString &name,
+                            const QString &description = QString());
+bool IsHighContrastActive();
+
 } // namespace UiPolish

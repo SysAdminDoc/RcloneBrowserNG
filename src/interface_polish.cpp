@@ -23,7 +23,39 @@ struct Tone {
   const char *selectionText;
 };
 
+bool isHighContrast() {
+  QPalette pal = QApplication::palette();
+  QColor bg = pal.color(QPalette::Window);
+  QColor fg = pal.color(QPalette::WindowText);
+  int bgLum = qGray(bg.rgb());
+  int fgLum = qGray(fg.rgb());
+  double contrast = (qMax(bgLum, fgLum) + 0.05) /
+                    (qMin(bgLum, fgLum) + 0.05);
+  return contrast > 12.0;
+}
+
 Tone tones(bool dark) {
+  if (isHighContrast()) {
+    QPalette pal = QApplication::palette();
+    static QByteArray windowBuf, surfaceBuf, fieldBuf, borderBuf,
+        textBuf, mutedBuf, accentBuf, selBuf;
+    windowBuf = pal.color(QPalette::Window).name().toLatin1();
+    surfaceBuf = pal.color(QPalette::Base).name().toLatin1();
+    fieldBuf = pal.color(QPalette::Base).name().toLatin1();
+    borderBuf = pal.color(QPalette::Mid).name().toLatin1();
+    textBuf = pal.color(QPalette::WindowText).name().toLatin1();
+    mutedBuf = pal.color(QPalette::Disabled, QPalette::WindowText).name().toLatin1();
+    accentBuf = pal.color(QPalette::Highlight).name().toLatin1();
+    selBuf = pal.color(QPalette::HighlightedText).name().toLatin1();
+    return {windowBuf.constData(), surfaceBuf.constData(),
+            surfaceBuf.constData(), fieldBuf.constData(),
+            borderBuf.constData(), borderBuf.constData(),
+            textBuf.constData(), mutedBuf.constData(),
+            accentBuf.constData(), accentBuf.constData(),
+            accentBuf.constData(),
+            "#008000", "#e0ffe0", "#b8860b", "#fff8e0",
+            "#cc0000", "#ffe0e0", selBuf.constData()};
+  }
   if (dark) {
     return {"#1e2228", "#24292f", "#2b3139", "#191d23", "#384150",
             "#536070", "#f0f3f7", "#9aa5b4", "#7fb4ff", "#99c4ff",
@@ -735,6 +767,26 @@ void SetWindowDefaults(QWidget *widget, QSize minimumSize) {
   if (minimumSize.isValid()) {
     widget->setMinimumSize(minimumSize);
   }
+}
+
+void SetAccessibleFormField(QWidget *widget, const QString &name,
+                            const QString &description) {
+  if (!widget)
+    return;
+  widget->setAccessibleName(name);
+  if (!description.isEmpty())
+    widget->setAccessibleDescription(description);
+}
+
+bool IsHighContrastActive() {
+  QPalette pal = QApplication::palette();
+  QColor bg = pal.color(QPalette::Window);
+  QColor fg = pal.color(QPalette::WindowText);
+  int bgLum = qGray(bg.rgb());
+  int fgLum = qGray(fg.rgb());
+  double contrast = (qMax(bgLum, fgLum) + 0.05) /
+                    (qMin(bgLum, fgLum) + 0.05);
+  return contrast > 12.0;
 }
 
 } // namespace UiPolish
