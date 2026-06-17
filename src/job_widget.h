@@ -43,6 +43,7 @@ public slots:
 signals:
   void finished(const QString &info);
   void retryRequested();
+  void resyncRequested();
   void closed();
 
 private:

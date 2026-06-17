@@ -2887,6 +2887,14 @@ void MainWindow::addTransferViaProcess(const QString &message,
                 widget->retryDest(), args);
   });
 
+  QObject::connect(widget, &JobWidget::resyncRequested, this, [=]() {
+    QStringList args = widget->retryArgs();
+    if (!args.contains("--resync"))
+      args.append("--resync");
+    addTransfer("Resync " + widget->retryInfo(), widget->retrySource(),
+                widget->retryDest(), args);
+  });
+
   QObject::connect(widget, &JobWidget::closed, this, [=]() {
     if (widget == mLastFinished) {
       mLastFinished = nullptr;

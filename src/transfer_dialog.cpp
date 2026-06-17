@@ -148,6 +148,55 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     }
   });
 
+  auto *presetCombo = new QComboBox(this);
+  presetCombo->addItem("Custom");
+  presetCombo->addItem("Default (4 transfers, 8 checkers)");
+  presetCombo->addItem("Large files (2 transfers, 4 checkers, 256M buffer)");
+  presetCombo->addItem("Many small files (16 transfers, 32 checkers)");
+  presetCombo->addItem("Low bandwidth (2 transfers, 4 checkers, 1M limit)");
+  presetCombo->setToolTip("Apply a performance preset to auto-fill transfers, "
+                          "checkers, and bandwidth settings.");
+  presetCombo->setAccessibleName("Performance preset");
+  if (auto *form =
+          qobject_cast<QFormLayout *>(ui.spinTransfers->parentWidget()->layout())) {
+    int row = -1;
+    QFormLayout::ItemRole role;
+    form->getWidgetPosition(ui.spinTransfers, &row, &role);
+    if (row >= 0) {
+      form->insertRow(row, "Preset", presetCombo);
+    }
+  }
+  QObject::connect(presetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                   this, [this, presetCombo](int idx) {
+    if (idx == 0) return;
+    switch (idx) {
+    case 1: // Default
+      ui.spinTransfers->setValue(4);
+      ui.spinCheckers->setValue(8);
+      ui.textBandwidth->clear();
+      break;
+    case 2: // Large files
+      ui.spinTransfers->setValue(2);
+      ui.spinCheckers->setValue(4);
+      ui.textBandwidth->clear();
+      ui.textExtra->setText(
+          (ui.textExtra->text().trimmed().isEmpty() ? "" :
+           ui.textExtra->text().trimmed() + " ") + "--buffer-size 256M");
+      break;
+    case 3: // Many small files
+      ui.spinTransfers->setValue(16);
+      ui.spinCheckers->setValue(32);
+      ui.textBandwidth->clear();
+      break;
+    case 4: // Low bandwidth
+      ui.spinTransfers->setValue(2);
+      ui.spinCheckers->setValue(4);
+      ui.textBandwidth->setText("1M");
+      break;
+    }
+    presetCombo->setCurrentIndex(0);
+  });
+
   ui.textMinSize->setPlaceholderText("100M");
   ui.textMinAge->setPlaceholderText("1d");
   ui.textMaxAge->setPlaceholderText("30d");
