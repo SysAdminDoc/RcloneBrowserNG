@@ -5,6 +5,7 @@
 
 class IconCache;
 class ItemModel;
+struct BackendFeatures;
 
 class RemoteWidget : public QWidget {
   Q_OBJECT
@@ -17,6 +18,7 @@ public:
   QStringList getDriveSharedArgs() const;
   void refreshCurrentDir();
   void focusPathBar();
+  void applyBackendFeatures(const BackendFeatures &features);
 
 signals:
   void addTransfer(const QString &message, const QString &source,

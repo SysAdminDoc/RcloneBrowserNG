@@ -6,6 +6,7 @@
 #include "item_model.h"
 #include "list_of_job_options.h"
 #include "progress_dialog.h"
+#include "rclone_capabilities.h"
 #include "remote_path.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
@@ -1982,3 +1983,20 @@ QString RemoteWidget::displayPath(const QString &path) const {
 }
 
 RemoteWidget::~RemoteWidget() {}
+
+void RemoteWidget::applyBackendFeatures(const BackendFeatures &features) {
+  if (!features.queried) {
+    return;
+  }
+
+  if (!features.publicLink) {
+    ui.link->setEnabled(false);
+    ui.link->setToolTip("This backend does not support public links.");
+    ui.link->setStatusTip(ui.link->toolTip());
+  }
+  if (!features.about) {
+    ui.getSize->setToolTip(
+        ui.getSize->toolTip() +
+        " (Quota unavailable for this backend.)");
+  }
+}

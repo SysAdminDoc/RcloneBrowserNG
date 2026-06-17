@@ -8,7 +8,151 @@ bool versionAtLeast(const QString &ver, const char *min) {
   }
   return compareVersion(ver.toStdString(), min) != 2;
 }
+
+bool jsonBool(const QJsonObject &obj, const char *key, bool fallback) {
+  if (obj.contains(QLatin1String(key))) {
+    return obj.value(QLatin1String(key)).toBool(fallback);
+  }
+  return fallback;
+}
 } // namespace
+
+BackendFeatures BackendFeatures::fromJson(const QByteArray &json) {
+  BackendFeatures f;
+  QJsonParseError err;
+  QJsonDocument doc = QJsonDocument::fromJson(json, &err);
+  if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+    return f;
+  }
+
+  QJsonObject root = doc.object();
+  QJsonObject features;
+  if (root.contains("Features")) {
+    features = root.value("Features").toObject();
+  } else {
+    features = root;
+  }
+
+  f.queried = true;
+  f.copy = jsonBool(features, "Copy", true);
+  f.move = jsonBool(features, "Move", true);
+  f.dirMove = jsonBool(features, "DirMove", true);
+  f.purge = jsonBool(features, "Purge", true);
+  f.publicLink = jsonBool(features, "PublicLink", false);
+  f.about = jsonBool(features, "About", false);
+  f.cleanUp = jsonBool(features, "CleanUp", false);
+  f.serverSideAcrossConfigs =
+      jsonBool(features, "ServerSideAcrossConfigs", false);
+  f.canHaveEmptyDirectories =
+      jsonBool(features, "CanHaveEmptyDirectories", true);
+
+  return f;
+}
+
+BackendFeatures BackendFeatures::defaultForType(const QString &remoteType) {
+  BackendFeatures f;
+  f.queried = false;
+
+  if (remoteType == "drive") {
+    f.publicLink = true;
+    f.about = true;
+    f.cleanUp = true;
+    f.trashSupported = true;
+    f.trashFlag = "--drive-use-trash";
+  } else if (remoteType == "onedrive") {
+    f.about = true;
+    f.cleanUp = true;
+    f.trashSupported = true;
+    f.trashFlag = "--onedrive-no-trash=false"; // inverted flag
+  } else if (remoteType == "dropbox") {
+    f.about = true;
+    f.trashSupported = true;
+  } else if (remoteType == "s3" || remoteType == "b2") {
+    f.publicLink = true;
+    f.about = true;
+  } else if (remoteType == "sftp" || remoteType == "ftp") {
+    f.move = true;
+    f.dirMove = true;
+    f.publicLink = false;
+    f.about = true;
+  } else if (remoteType == "local") {
+    f.move = true;
+    f.dirMove = true;
+    f.about = true;
+    f.canHaveEmptyDirectories = true;
+  }
+
+  return f;
+}
+
+BackendFeatureCache &BackendFeatureCache::instance() {
+  static BackendFeatureCache cache;
+  return cache;
+}
+
+BackendFeatures BackendFeatureCache::get(const QString &remote) const {
+  QMutexLocker lock(&mMutex);
+  return mCache.value(remote, BackendFeatures());
+}
+
+void BackendFeatureCache::put(const QString &remote,
+                              const BackendFeatures &features) {
+  QMutexLocker lock(&mMutex);
+  mCache.insert(remote, features);
+}
+
+bool BackendFeatureCache::has(const QString &remote) const {
+  QMutexLocker lock(&mMutex);
+  return mCache.contains(remote);
+}
+
+void BackendFeatureCache::queryAsync(
+    const QString &remote,
+    std::function<void(const BackendFeatures &)> callback) {
+  auto &cache = instance();
+  if (cache.has(remote)) {
+    if (callback)
+      callback(cache.get(remote));
+    return;
+  }
+
+  auto *proc = new QProcess();
+  UseRclonePassword(proc);
+  proc->setProgram(GetRclone());
+  proc->setArguments(QStringList() << "backend" << "features"
+                                   << GetRcloneConf() << remote + ":");
+  proc->setProcessChannelMode(QProcess::SeparateChannels);
+
+  QObject::connect(
+      proc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      [proc, remote, callback](int code, QProcess::ExitStatus) {
+        BackendFeatures features;
+        if (code == 0) {
+          features = BackendFeatures::fromJson(proc->readAllStandardOutput());
+        }
+        if (!features.queried) {
+          features.queried = false;
+        }
+        instance().put(remote, features);
+        if (callback)
+          callback(features);
+        proc->deleteLater();
+      });
+
+  QTimer::singleShot(10000, proc, [proc, remote, callback]() {
+    if (proc->state() != QProcess::NotRunning) {
+      proc->kill();
+      BackendFeatures fallback;
+      instance().put(remote, fallback);
+      if (callback)
+        callback(fallback);
+    }
+  });
+
+  proc->start();
+}
 
 bool RcloneCapabilities::hasNameTransform() const {
   return versionAtLeast(rcloneVersion, "1.74");

@@ -1810,6 +1810,17 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
   auto *remote =
       new RemoteWidget(&mIcons, name, isLocal, isGoogle, isGooglePhotos,
                        parent);
+
+  if (!isLocal) {
+    auto defaultFeatures = BackendFeatures::defaultForType(type);
+    remote->applyBackendFeatures(defaultFeatures);
+    BackendFeatureCache::queryAsync(
+        name, [remote](const BackendFeatures &features) {
+          if (remote)
+            remote->applyBackendFeatures(features);
+        });
+  }
+
   QObject::connect(remote, &RemoteWidget::addMount, this,
                    &MainWindow::addMount);
   QObject::connect(remote, &RemoteWidget::addStream, this,
@@ -2601,7 +2612,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   QString message =
       QString("%1 %2").arg(jo->operation).arg(jo->source);
 
-  auto launchTransfer = [=, this]() {
+  auto launchTransfer = [=]() {
   bool hasHooks =
       !heartbeatUrl.isEmpty() || !postCommand.isEmpty() || !webhookUrl.isEmpty();
   if (!args.isEmpty() && hasHooks) {
