@@ -341,7 +341,34 @@ Qt::ItemFlags ItemModel::flags(const QModelIndex &index) const {
     return defaultFlags;
   }
 
-  return Qt::ItemIsDropEnabled | defaultFlags;
+  return Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | defaultFlags;
+}
+
+QStringList ItemModel::mimeTypes() const {
+  return QStringList() << "text/uri-list"
+                       << "application/x-rclone-remote-path";
+}
+
+Qt::DropActions ItemModel::supportedDragActions() const {
+  return Qt::CopyAction;
+}
+
+QMimeData *ItemModel::mimeData(const QModelIndexList &indexes) const {
+  if (indexes.isEmpty())
+    return nullptr;
+  auto *data = new QMimeData();
+  QStringList paths;
+  for (const auto &idx : indexes) {
+    if (idx.column() != 0)
+      continue;
+    Item *item = get(idx);
+    if (item && item != mRoot) {
+      paths << mRemote + ":" + item->path.path();
+    }
+  }
+  data->setData("application/x-rclone-remote-path",
+                paths.join('\n').toUtf8());
+  return data;
 }
 
 bool ItemModel::canDropMimeData(const QMimeData *data, Qt::DropAction action,

@@ -231,6 +231,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.tree->setRootIsDecorated(true);
   ui.tree->setIndentation(18);
   ui.tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  ui.tree->setDragEnabled(true);
+  ui.tree->setDragDropMode(QAbstractItemView::DragDrop);
+  ui.tree->setDefaultDropAction(Qt::CopyAction);
 
   QString root = isLocal ? "/" : QString();
 

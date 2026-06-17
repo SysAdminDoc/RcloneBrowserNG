@@ -74,6 +74,9 @@ public:
   bool removeRows(int row, int count, const QModelIndex &parent) override;
 
   Qt::ItemFlags flags(const QModelIndex &index) const override;
+  QMimeData *mimeData(const QModelIndexList &indexes) const override;
+  QStringList mimeTypes() const override;
+  Qt::DropActions supportedDragActions() const override;
 
   bool canDropMimeData(const QMimeData *data, Qt::DropAction action, int row,
                        int column, const QModelIndex &parent) const override;
