@@ -108,4 +108,17 @@ if(BUILD_TESTING)
   target_include_directories(mount_backend_test PRIVATE src)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
+
+  add_executable(dryrun_contract_test
+    tests/dryrun_contract_test.cpp
+    src/job_options.cpp
+    src/job_options_store.cpp
+    src/utils.cpp
+  )
+  target_include_directories(dryrun_contract_test PRIVATE src)
+  target_link_libraries(dryrun_contract_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(dryrun_contract_test advapi32)
+  endif()
+  add_test(NAME dryrun_contract_test COMMAND dryrun_contract_test)
 endif()
