@@ -977,6 +977,9 @@ MainWindow::MainWindow() {
   QObject::connect(ui.tabs, &QTabWidget::tabCloseRequested, ui.tabs,
                    &QTabWidget::removeTab);
 
+  ui.tabs->tabBar()->setAcceptDrops(true);
+  ui.tabs->tabBar()->installEventFilter(this);
+
   auto *stagingLabel = new QToolButton(this);
   stagingLabel->setCheckable(true);
   stagingLabel->setChecked(false);
@@ -2747,13 +2750,55 @@ bool MainWindow::canClose() {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
-  if (obj == ui.tabs->tabBar() &&
-      event->type() == QEvent::MouseButtonRelease) {
-    auto *mouseEvent = static_cast<QMouseEvent *>(event);
-    if (mouseEvent->button() == Qt::MiddleButton) {
-      int index = ui.tabs->tabBar()->tabAt(mouseEvent->pos());
-      if (index >= 3) {
-        ui.tabs->removeTab(index);
+  if (obj == ui.tabs->tabBar()) {
+    if (event->type() == QEvent::MouseButtonRelease) {
+      auto *mouseEvent = static_cast<QMouseEvent *>(event);
+      if (mouseEvent->button() == Qt::MiddleButton) {
+        int index = ui.tabs->tabBar()->tabAt(mouseEvent->pos());
+        if (index >= 3) {
+          ui.tabs->removeTab(index);
+          return true;
+        }
+      }
+    }
+
+    if (event->type() == QEvent::DragEnter) {
+      auto *de = static_cast<QDragEnterEvent *>(event);
+      if (de->mimeData()->hasFormat("application/x-rclone-remote-path")) {
+        de->acceptProposedAction();
+        return true;
+      }
+    }
+
+    if (event->type() == QEvent::DragMove) {
+      auto *dm = static_cast<QDragMoveEvent *>(event);
+      int tabIdx = ui.tabs->tabBar()->tabAt(dm->position().toPoint());
+      if (tabIdx >= 3) {
+        ui.tabs->setCurrentIndex(tabIdx);
+        dm->acceptProposedAction();
+      } else {
+        dm->ignore();
+      }
+      return true;
+    }
+
+    if (event->type() == QEvent::Drop) {
+      auto *dropEvent = static_cast<QDropEvent *>(event);
+      int tabIdx = ui.tabs->tabBar()->tabAt(dropEvent->position().toPoint());
+      if (tabIdx >= 3) {
+        QString source = QString::fromUtf8(
+            dropEvent->mimeData()->data("application/x-rclone-remote-path"));
+        QString tabName = ui.tabs->tabText(tabIdx);
+        dropEvent->acceptProposedAction();
+
+        QStringList args;
+        args << "copy" << "--verbose" << "--use-json-log"
+             << "--stats" << "1s" << "--stats-file-name-length" << "0"
+             << GetDefaultRcloneOptionsList()
+             << source << tabName + ":";
+        addTransfer(
+            QString("Copy %1 to %2").arg(source, tabName),
+            source, tabName + ":", args);
         return true;
       }
     }
