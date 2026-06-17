@@ -446,20 +446,26 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.tree->setModel(model);
   QTimer::singleShot(0, ui.tree, SLOT(setFocus()));
 
-  QObject::connect(mFileFilter, &QLineEdit::textChanged, this,
-                   [this, model](const QString &text) {
-                     QModelIndex root = ui.tree->rootIndex();
-                     int rows = model->rowCount(root);
-                     for (int i = 0; i < rows; ++i) {
-                       QModelIndex idx = model->index(i, 0, root);
-                       bool match =
-                           text.isEmpty() ||
-                           model->data(idx, Qt::DisplayRole)
-                               .toString()
-                               .contains(text, Qt::CaseInsensitive);
-                       ui.tree->setRowHidden(i, root, !match);
-                     }
-                   });
+  auto applyFileFilter = [this, model]() {
+    QString text = mFileFilter->text();
+    if (!mFileFilter->isVisible())
+      return;
+    QModelIndex root = ui.tree->rootIndex();
+    int rows = model->rowCount(root);
+    for (int i = 0; i < rows; ++i) {
+      QModelIndex idx = model->index(i, 0, root);
+      bool match =
+          text.isEmpty() ||
+          model->data(idx, Qt::DisplayRole)
+              .toString()
+              .contains(text, Qt::CaseInsensitive);
+      ui.tree->setRowHidden(i, root, !match);
+    }
+  };
+
+  QObject::connect(mFileFilter, &QLineEdit::textChanged, this, applyFileFilter);
+  QObject::connect(model, &QAbstractItemModel::layoutChanged, this,
+                   applyFileFilter);
 
   QObject::connect(filterFilesButton, &QToolButton::toggled, this,
                    [this](bool checked) {
