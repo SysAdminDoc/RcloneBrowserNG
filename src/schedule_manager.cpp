@@ -5,6 +5,19 @@
 
 namespace {
 const QString kPrefix = "RcloneBrowserNG_";
+
+#if defined(Q_OS_LINUX)
+bool hasSystemd() {
+  return QFile::exists("/run/systemd/system") ||
+         QFile::exists("/sys/fs/cgroup/systemd");
+}
+
+QString systemdUserDir() {
+  QString dir = QDir::homePath() + "/.config/systemd/user";
+  QDir().mkpath(dir);
+  return dir;
+}
+#endif
 }
 
 QString ScheduleManager::appPath() {
@@ -87,6 +100,74 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   return true;
 
 #elif defined(Q_OS_LINUX)
+  if (hasSystemd()) {
+    QString dir = systemdUserDir();
+    QString servicePath = dir + "/" + sysName + ".service";
+    QString timerPath = dir + "/" + sysName + ".timer";
+
+    QString onCalendar;
+    if (interval == "hourly") {
+      onCalendar = "*-*-* *:00:00";
+    } else if (interval == "weekly") {
+      onCalendar = QString("Sun *-*-* %1:00:00")
+                       .arg(time.isEmpty() ? "00" : time.left(2));
+    } else if (interval == "daily") {
+      onCalendar = QString("*-*-* %1:00:00")
+                       .arg(time.isEmpty() ? "00" : time.left(2));
+    } else if (interval.endsWith("m")) {
+      onCalendar = QString("*-*-* *:%1/%2:00")
+                       .arg("00", interval.left(interval.length() - 1));
+    } else if (interval.endsWith("h")) {
+      onCalendar = QString("*-*-* 00/%1:00:00")
+                       .arg(interval.left(interval.length() - 1));
+    } else {
+      onCalendar = "*-*-* 00:00:00";
+    }
+
+    QString service = QString(
+        "[Unit]\nDescription=RcloneBrowserNG task: %1\n\n"
+        "[Service]\nType=oneshot\nExecStart=%2 --run-task \"%1\"\n")
+            .arg(taskName, app);
+
+    QString timer = QString(
+        "[Unit]\nDescription=RcloneBrowserNG timer: %1\n\n"
+        "[Timer]\nOnCalendar=%2\nPersistent=true\n\n"
+        "[Install]\nWantedBy=timers.target\n")
+            .arg(taskName, onCalendar);
+
+    QFile sf(servicePath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      if (error) *error = "Cannot write " + servicePath;
+      return false;
+    }
+    sf.write(service.toUtf8());
+    sf.close();
+
+    QFile tf(timerPath);
+    if (!tf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      if (error) *error = "Cannot write " + timerPath;
+      return false;
+    }
+    tf.write(timer.toUtf8());
+    tf.close();
+
+    QProcess reload;
+    reload.start("systemctl", QStringList() << "--user" << "daemon-reload");
+    reload.waitForFinished(5000);
+
+    QProcess enable;
+    enable.start("systemctl",
+                 QStringList() << "--user" << "enable" << "--now"
+                               << sysName + ".timer");
+    enable.waitForFinished(5000);
+    if (enable.exitCode() != 0) {
+      if (error)
+        *error = QString::fromUtf8(enable.readAllStandardError()).trimmed();
+      return false;
+    }
+    return true;
+  }
+
   QProcess existing;
   existing.start("crontab", QStringList() << "-l");
   existing.waitForFinished(5000);
@@ -239,6 +320,23 @@ bool ScheduleManager::removeSchedule(const QString &taskName, QString *error) {
   return true;
 
 #elif defined(Q_OS_LINUX)
+  if (hasSystemd()) {
+    QString dir = systemdUserDir();
+    QProcess disable;
+    disable.start("systemctl",
+                  QStringList() << "--user" << "disable" << "--now"
+                                << sysName + ".timer");
+    disable.waitForFinished(5000);
+
+    QFile::remove(dir + "/" + sysName + ".timer");
+    QFile::remove(dir + "/" + sysName + ".service");
+
+    QProcess reload;
+    reload.start("systemctl", QStringList() << "--user" << "daemon-reload");
+    reload.waitForFinished(5000);
+    return true;
+  }
+
   QProcess existing;
   existing.start("crontab", QStringList() << "-l");
   existing.waitForFinished(5000);
@@ -349,19 +447,36 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
   }
 
 #elif defined(Q_OS_LINUX)
-  QProcess existing;
-  existing.start("crontab", QStringList() << "-l");
-  existing.waitForFinished(5000);
-  QString crontab = QString::fromUtf8(existing.readAllStandardOutput());
-  for (const QString &line : crontab.split('\n')) {
-    int marker = line.indexOf("# " + kPrefix);
-    if (marker < 0)
-      continue;
-    ScheduleEntry entry;
-    entry.taskName =
-        line.mid(marker + 2 + kPrefix.length()).trimmed();
-    entry.interval = line.left(line.indexOf('"')).trimmed();
-    result.append(entry);
+  if (hasSystemd()) {
+    QDir dir(systemdUserDir());
+    for (const auto &fi : dir.entryInfoList(
+             QStringList() << kPrefix + "*.timer", QDir::Files)) {
+      ScheduleEntry entry;
+      entry.taskName = fi.baseName().mid(kPrefix.length());
+      QProcess status;
+      status.start("systemctl",
+                   QStringList() << "--user" << "is-enabled" << fi.fileName());
+      status.waitForFinished(3000);
+      entry.enabled =
+          QString::fromUtf8(status.readAllStandardOutput()).trimmed() ==
+          "enabled";
+      result.append(entry);
+    }
+  } else {
+    QProcess existing;
+    existing.start("crontab", QStringList() << "-l");
+    existing.waitForFinished(5000);
+    QString crontab = QString::fromUtf8(existing.readAllStandardOutput());
+    for (const QString &line : crontab.split('\n')) {
+      int marker = line.indexOf("# " + kPrefix);
+      if (marker < 0)
+        continue;
+      ScheduleEntry entry;
+      entry.taskName =
+          line.mid(marker + 2 + kPrefix.length()).trimmed();
+      entry.interval = line.left(line.indexOf('"')).trimmed();
+      result.append(entry);
+    }
   }
 
 #elif defined(Q_OS_MACOS)
