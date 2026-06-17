@@ -13,6 +13,11 @@
 -   NEW: SPDX SBOM generation in release pipeline alongside checksums and attestations
 -   NEW: High-contrast palette support — UI colors derive from system palette when contrast ratio exceeds 12:1 (Windows High Contrast, GNOME High Contrast)
 -   NEW: Parsing/serialization regression tests — 10 golden-file tests covering lsjson streaming parser (chunked, Unicode, >4GB, nested metadata) and JSON stats parser
+-   NEW: Generalized cloud trash — delete operations use backend-specific trash flags for all supporting providers (Drive, OneDrive, Dropbox); non-Google backends get a Clean Up button for `rclone cleanup`
+-   NEW: Cron-expression scheduling — Schedule dialog now supports freeform 5-field cron expressions with a next-5-runs preview alongside the existing simple intervals
+-   NEW: Non-blocking background error queue — errors from running transfers accumulate in a status bar badge instead of blocking modal dialogs; click to review all queued errors
+-   NEW: Drag between remote tabs — drag files from one remote browser to another tab header to initiate a cross-remote copy
+-   NEW: Cross-remote search filters and history — search dialog gains per-remote selection, file type presets, min/max size filters, and persistent search history
 -   SECURITY: Build hardening — added `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, and position-independent code on Linux/macOS; replaced MSVC `/GS-` (stack protection disabled) with `/GS` (enabled)
 -   FIXED: Windows schedule listing now uses proper CSV parsing that respects quoted fields with commas; status column is read by index instead of string-searching for "Disabled"
 -   FIXED: JSON task store now checks the schema version on read and rejects newer schemas with an informative error instead of silently losing fields
