@@ -18,6 +18,8 @@
 -   NEW: Non-blocking background error queue — errors from running transfers accumulate in a status bar badge instead of blocking modal dialogs; click to review all queued errors
 -   NEW: Drag between remote tabs — drag files from one remote browser to another tab header to initiate a cross-remote copy
 -   NEW: Cross-remote search filters and history — search dialog gains per-remote selection, file type presets, min/max size filters, and persistent search history
+-   NEW: Safe inline preview — right-click a file > Preview to view images, text, and code inline; media files open in the system player; 50 MB limit; temp files auto-cleaned
+-   NEW: Versioning/snapshot browser — right-click a file > Versions to browse S3/B2/versioned backend versions with timestamps, sizes, and one-click restore to current path
 -   SECURITY: Build hardening — added `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, and position-independent code on Linux/macOS; replaced MSVC `/GS-` (stack protection disabled) with `/GS` (enabled)
 -   FIXED: Windows schedule listing now uses proper CSV parsing that respects quoted fields with commas; status column is read by index instead of string-searching for "Disabled"
 -   FIXED: JSON task store now checks the schema version on read and rejects newer schemas with an informative error instead of silently losing fields
