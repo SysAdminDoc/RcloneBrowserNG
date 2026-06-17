@@ -199,6 +199,17 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         if (level == "error" || level == "warning") {
           Diagnostics::appendLog("job", msg);
         }
+        if (msg.contains(':') && mTransferDetail.size() < 10000) {
+          QString objectName = obj.value("object").toString();
+          if (!objectName.isEmpty()) {
+            QString ts = obj.value("time").toString();
+            if (ts.isEmpty())
+              ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+            mTransferDetail.append(
+                QString("%1 [%2] %3: %4")
+                    .arg(ts, level, objectName, msg));
+          }
+        }
       }
 
       if (!obj.contains("stats"))
@@ -433,6 +444,7 @@ JobHistoryEntry JobWidget::historyEntry() const {
   entry.files = mFiles;
   entry.errors = mErrors;
   entry.exitCode = mExitCode;
+  entry.transferDetail = mTransferDetail;
   return entry;
 }
 

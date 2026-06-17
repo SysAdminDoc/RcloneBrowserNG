@@ -67,6 +67,7 @@ private:
   int mFiles = 0;
   int mErrors = 0;
   int mExitCode = 0;
+  QStringList mTransferDetail;
   QHash<QString, QLabel *> mActive;
   QLabel *mOverflowLabel = nullptr;
   SparklineWidget *mSparkline = nullptr;

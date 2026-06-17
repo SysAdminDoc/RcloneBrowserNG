@@ -79,9 +79,11 @@ if(BUILD_TESTING)
   add_executable(job_history_test
     tests/job_history_test.cpp
     src/job_history.cpp
+    src/rclone_capabilities.cpp
     src/utils.cpp
   )
   target_include_directories(job_history_test PRIVATE src)
+  target_compile_definitions(job_history_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(job_history_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   if(WIN32)
     target_link_libraries(job_history_test advapi32)

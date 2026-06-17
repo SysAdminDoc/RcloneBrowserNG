@@ -1,4 +1,5 @@
 #include "job_history.h"
+#include "rclone_capabilities.h"
 #include "utils.h"
 
 namespace {
@@ -24,6 +25,13 @@ QJsonObject toObject(const JobHistoryEntry &entry) {
   obj.insert("files", entry.files);
   obj.insert("errors", entry.errors);
   obj.insert("exitCode", entry.exitCode);
+  if (!entry.transferDetail.isEmpty()) {
+    QJsonArray detail;
+    for (const QString &line : entry.transferDetail) {
+      detail.append(line);
+    }
+    obj.insert("transferDetail", detail);
+  }
   return obj;
 }
 
@@ -39,6 +47,10 @@ JobHistoryEntry fromObject(const QJsonObject &obj) {
   entry.files = obj.value("files").toInt();
   entry.errors = obj.value("errors").toInt();
   entry.exitCode = obj.value("exitCode").toInt();
+  QJsonArray detail = obj.value("transferDetail").toArray();
+  for (const QJsonValue &val : detail) {
+    entry.transferDetail.append(val.toString());
+  }
   return entry;
 }
 
@@ -175,4 +187,35 @@ bool JobHistoryStore::Append(const JobHistoryEntry &entry, QString *error,
     return false;
   }
   return true;
+}
+
+QString RedactedJobDetail(const JobHistoryEntry &entry) {
+  QStringList lines;
+  lines << QString("Job: %1").arg(entry.name);
+  lines << QString("Source: %1").arg(
+      Diagnostics::redactSecrets(entry.source));
+  lines << QString("Dest: %1").arg(
+      Diagnostics::redactSecrets(entry.dest));
+  lines << QString("Started: %1").arg(
+      entry.startedAt.toLocalTime().toString(Qt::ISODate));
+  lines << QString("Finished: %1").arg(
+      entry.finishedAt.toLocalTime().toString(Qt::ISODate));
+  lines << QString("Result: %1 (exit %2)")
+               .arg(entry.success ? "success" : "failed")
+               .arg(entry.exitCode);
+  lines << QString("Files: %1  Bytes: %2  Errors: %3")
+               .arg(entry.files)
+               .arg(GetNiceSize(static_cast<quint64>(entry.bytes)))
+               .arg(entry.errors);
+  lines << "";
+  if (entry.transferDetail.isEmpty()) {
+    lines << "(No per-file detail recorded for this job.)";
+  } else {
+    lines << QString("Transfer detail (%1 entries):")
+                 .arg(entry.transferDetail.size());
+    for (const QString &line : entry.transferDetail) {
+      lines << "  " + Diagnostics::redactSecrets(line);
+    }
+  }
+  return lines.join('\n');
 }

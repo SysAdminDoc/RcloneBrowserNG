@@ -13,7 +13,10 @@ struct JobHistoryEntry {
   int files = 0;
   int errors = 0;
   int exitCode = 0;
+  QStringList transferDetail;
 };
+
+QString RedactedJobDetail(const JobHistoryEntry &entry);
 
 QVector<JobHistoryEntry> ReadJobHistory(QIODevice *device, QString *error);
 bool WriteJobHistory(QIODevice *device, const QVector<JobHistoryEntry> &entries,
