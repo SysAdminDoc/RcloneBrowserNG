@@ -103,6 +103,14 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME folder_compare_test COMMAND folder_compare_test)
 
+  add_executable(interface_polish_test
+    tests/interface_polish_test.cpp
+    src/interface_polish.cpp
+  )
+  target_include_directories(interface_polish_test PRIVATE src)
+  target_link_libraries(interface_polish_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME interface_polish_test COMMAND interface_polish_test)
+
   add_executable(mount_backend_test
     tests/mount_backend_test.cpp
     src/mount_backend.cpp

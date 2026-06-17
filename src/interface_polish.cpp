@@ -1,5 +1,7 @@
 #include "interface_polish.h"
 
+#include <cmath>
+
 namespace {
 
 struct Tone {
@@ -34,27 +36,111 @@ bool isHighContrast() {
   return contrast > 12.0;
 }
 
+double srgbChannel(double value) {
+  value /= 255.0;
+  return value <= 0.03928 ? value / 12.92
+                          : std::pow((value + 0.055) / 1.055, 2.4);
+}
+
+double relativeLuminance(const QColor &color) {
+  return 0.2126 * srgbChannel(color.red()) +
+         0.7152 * srgbChannel(color.green()) +
+         0.0722 * srgbChannel(color.blue());
+}
+
+double contrastRatio(const QColor &a, const QColor &b) {
+  const double aLum = relativeLuminance(a);
+  const double bLum = relativeLuminance(b);
+  const double light = qMax(aLum, bLum);
+  const double dark = qMin(aLum, bLum);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+QColor bestContrastingColor(const QColor &background,
+                            const QList<QColor> &candidates) {
+  QColor best(Qt::white);
+  double bestRatio = 0.0;
+  for (const QColor &candidate : candidates) {
+    if (!candidate.isValid())
+      continue;
+    const double ratio = contrastRatio(candidate, background);
+    if (ratio > bestRatio) {
+      best = candidate;
+      bestRatio = ratio;
+    }
+  }
+
+  if (bestRatio >= 4.5) {
+    return best;
+  }
+
+  const QColor black(Qt::black);
+  const QColor white(Qt::white);
+  const double blackRatio = contrastRatio(black, background);
+  if (blackRatio > bestRatio) {
+    best = black;
+    bestRatio = blackRatio;
+  }
+  if (contrastRatio(white, background) > bestRatio) {
+    best = white;
+  }
+  return best;
+}
+
 Tone tones(bool dark) {
   if (isHighContrast()) {
     QPalette pal = QApplication::palette();
     static QByteArray windowBuf, surfaceBuf, fieldBuf, borderBuf,
-        textBuf, mutedBuf, accentBuf, selBuf;
-    windowBuf = pal.color(QPalette::Window).name().toLatin1();
-    surfaceBuf = pal.color(QPalette::Base).name().toLatin1();
-    fieldBuf = pal.color(QPalette::Base).name().toLatin1();
+        textBuf, mutedBuf, accentBuf, selBuf, successBuf, warningBuf,
+        dangerBuf;
+    const QColor window = pal.color(QPalette::Window);
+    const QColor surface = pal.color(QPalette::Base);
+    const QColor text = pal.color(QPalette::WindowText);
+    const QColor highlightedText = pal.color(QPalette::HighlightedText);
+    const QColor accent = pal.color(QPalette::Highlight);
+    windowBuf = window.name().toLatin1();
+    surfaceBuf = surface.name().toLatin1();
+    fieldBuf = surface.name().toLatin1();
     borderBuf = pal.color(QPalette::Mid).name().toLatin1();
-    textBuf = pal.color(QPalette::WindowText).name().toLatin1();
-    mutedBuf = pal.color(QPalette::Disabled, QPalette::WindowText).name().toLatin1();
-    accentBuf = pal.color(QPalette::Highlight).name().toLatin1();
-    selBuf = pal.color(QPalette::HighlightedText).name().toLatin1();
+    textBuf = text.name().toLatin1();
+    mutedBuf =
+        pal.color(QPalette::Disabled, QPalette::WindowText).name().toLatin1();
+    accentBuf = accent.name().toLatin1();
+    selBuf = highlightedText.name().toLatin1();
+    successBuf =
+        bestContrastingColor(surface, QList<QColor>()
+                                          << QColor("#008000")
+                                          << QColor("#00ff66")
+                                          << QColor("#004d1a") << text
+                                          << accent << highlightedText)
+            .name()
+            .toLatin1();
+    warningBuf =
+        bestContrastingColor(surface, QList<QColor>()
+                                          << QColor("#b8860b")
+                                          << QColor("#ffd166")
+                                          << QColor("#6b4500") << text
+                                          << accent << highlightedText)
+            .name()
+            .toLatin1();
+    dangerBuf =
+        bestContrastingColor(surface, QList<QColor>()
+                                          << QColor("#cc0000")
+                                          << QColor("#ff5f5f")
+                                          << QColor("#7a0000") << text
+                                          << accent << highlightedText)
+            .name()
+            .toLatin1();
     return {windowBuf.constData(), surfaceBuf.constData(),
             surfaceBuf.constData(), fieldBuf.constData(),
             borderBuf.constData(), borderBuf.constData(),
             textBuf.constData(), mutedBuf.constData(),
             accentBuf.constData(), accentBuf.constData(),
             accentBuf.constData(),
-            "#008000", "#e0ffe0", "#b8860b", "#fff8e0",
-            "#cc0000", "#ffe0e0", selBuf.constData()};
+            successBuf.constData(), surfaceBuf.constData(),
+            warningBuf.constData(), surfaceBuf.constData(),
+            dangerBuf.constData(), surfaceBuf.constData(),
+            selBuf.constData()};
   }
   if (dark) {
     return {"#1e2228", "#24292f", "#2b3139", "#191d23", "#384150",
@@ -530,6 +616,11 @@ void setBoolProperty(QWidget *widget, const char *name, bool value) {
 } // namespace
 
 namespace UiPolish {
+
+QColor BestContrastingColor(const QColor &background,
+                            const QList<QColor> &candidates) {
+  return bestContrastingColor(background, candidates);
+}
 
 void ApplyApplicationStyle(bool dark) { qApp->setStyleSheet(styleFor(tones(dark))); }
 

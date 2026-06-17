@@ -3,6 +3,7 @@
 
 #include <QBuffer>
 #include <QDebug>
+#include <QRegularExpression>
 #include <cstdlib>
 
 namespace {
@@ -15,6 +16,14 @@ void require(bool condition, const QString &message) {
 
 bool argsContain(const QStringList &args, const QString &flag) {
   return args.contains(flag);
+}
+
+QString argAfter(const QStringList &args, const QString &flag) {
+  const int index = args.indexOf(flag);
+  if (index < 0 || index + 1 >= args.size()) {
+    return QString();
+  }
+  return args.at(index + 1);
 }
 
 JobOptions *makeTask(JobOptions::Operation op, bool dryRun) {
@@ -129,6 +138,25 @@ int main() {
     QStringList withoutDry = jo->getOptions();
     require(!argsContain(withoutDry, "--dry-run"),
             "after clearing dryRun, --dry-run must not appear");
+    delete jo;
+  }
+
+  // Contract 7: backup-dir {date} expansions do not collide within one second
+  {
+    auto jo = makeTask(JobOptions::Sync, false);
+    jo->backupDir = "remote:backups/{date}";
+
+    const QString first = argAfter(jo->getOptions(), "--backup-dir");
+    const QString second = argAfter(jo->getOptions(), "--backup-dir");
+    require(!first.isEmpty(), "first backup-dir arg missing");
+    require(!second.isEmpty(), "second backup-dir arg missing");
+    require(first != second,
+            "backup-dir {date} expansions must be unique per command");
+    require(QRegularExpression(
+                "^remote:backups/\\d{4}-\\d{2}-\\d{2}_\\d{6}_\\d{3}_[0-9a-z]+_[0-9a-z]{4}$")
+                .match(first)
+                .hasMatch(),
+            "backup-dir {date} expansion format changed unexpectedly");
     delete jo;
   }
 
