@@ -320,7 +320,9 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   }
 
   QString cronExpr;
-  if (interval == "hourly") {
+  if (isValidCronExpr(interval)) {
+    cronExpr = interval;
+  } else if (interval == "hourly") {
     cronExpr = QString("0 * * * *");
   } else if (interval == "weekly") {
     cronExpr = QString("%1 * * 0").arg(time.isEmpty() ? "0 0" : "0 " + time.left(2));
@@ -576,4 +578,83 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
 
   Q_UNUSED(error);
   return result;
+}
+
+namespace {
+QSet<int> parseCronField(const QString &field, int minVal, int maxVal) {
+  QSet<int> values;
+  for (const QString &part : field.split(',')) {
+    QString p = part.trimmed();
+    if (p == "*") {
+      for (int i = minVal; i <= maxVal; ++i)
+        values.insert(i);
+      continue;
+    }
+
+    int stepIdx = p.indexOf('/');
+    int step = 1;
+    if (stepIdx >= 0) {
+      step = qMax(1, p.mid(stepIdx + 1).toInt());
+      p = p.left(stepIdx);
+    }
+
+    int dashIdx = p.indexOf('-');
+    if (dashIdx >= 0) {
+      int lo = qBound(minVal, p.left(dashIdx).toInt(), maxVal);
+      int hi = qBound(minVal, p.mid(dashIdx + 1).toInt(), maxVal);
+      for (int i = lo; i <= hi; i += step)
+        values.insert(i);
+    } else if (p == "*") {
+      for (int i = minVal; i <= maxVal; i += step)
+        values.insert(i);
+    } else {
+      int v = p.toInt();
+      if (v >= minVal && v <= maxVal)
+        values.insert(v);
+    }
+  }
+  return values;
+}
+} // namespace
+
+bool ScheduleManager::isValidCronExpr(const QString &cronExpr) {
+  QStringList fields = cronExpr.trimmed().split(QRegularExpression("\\s+"));
+  return fields.size() == 5;
+}
+
+QList<QDateTime> ScheduleManager::nextCronRuns(const QString &cronExpr,
+                                                int count, QDateTime from) {
+  QList<QDateTime> runs;
+  QStringList fields = cronExpr.trimmed().split(QRegularExpression("\\s+"));
+  if (fields.size() != 5)
+    return runs;
+
+  QSet<int> minutes = parseCronField(fields[0], 0, 59);
+  QSet<int> hours = parseCronField(fields[1], 0, 23);
+  QSet<int> doms = parseCronField(fields[2], 1, 31);
+  QSet<int> months = parseCronField(fields[3], 1, 12);
+  QSet<int> dows = parseCronField(fields[4], 0, 6);
+
+  if (minutes.isEmpty() || hours.isEmpty() || doms.isEmpty() ||
+      months.isEmpty() || dows.isEmpty())
+    return runs;
+
+  if (!from.isValid())
+    from = QDateTime::currentDateTime();
+  QDateTime t = from.addSecs(60);
+  t = QDateTime(t.date(), QTime(t.time().hour(), t.time().minute(), 0));
+
+  int maxIter = 525960; // ~1 year of minutes
+  while (runs.size() < count && maxIter > 0) {
+    --maxIter;
+    if (months.contains(t.date().month()) &&
+        doms.contains(t.date().day()) &&
+        dows.contains(t.date().dayOfWeek() % 7) &&
+        hours.contains(t.time().hour()) &&
+        minutes.contains(t.time().minute())) {
+      runs.append(t);
+    }
+    t = t.addSecs(60);
+  }
+  return runs;
 }

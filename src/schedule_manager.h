@@ -35,6 +35,9 @@ public:
                                   const QString &time);
 
   static QString scheduleTaskName(const QString &taskName);
+  static QList<QDateTime> nextCronRuns(const QString &cronExpr, int count,
+                                       QDateTime from = QDateTime());
+  static bool isValidCronExpr(const QString &cronExpr);
 
 private:
   static QString appPath();

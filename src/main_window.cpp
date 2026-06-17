@@ -1332,29 +1332,105 @@ MainWindow::MainWindow() {
         return;
       QString taskName = item->GetData()->description;
 
-      QStringList intervals;
-      intervals << "15m" << "30m" << "hourly" << "daily" << "weekly";
-      bool ok;
-      QString interval = QInputDialog::getItem(
-          this, "Schedule Task",
-          QString("Run \"%1\" every:").arg(taskName), intervals, 3, false,
-          &ok);
-      if (!ok)
+      QDialog dlg(this);
+      dlg.setWindowTitle(QString("Schedule: %1").arg(taskName));
+      dlg.resize(480, 320);
+      UiPolish::SetWindowDefaults(&dlg, QSize(400, 260));
+      auto *layout = new QVBoxLayout(&dlg);
+
+      auto *intervalCombo = new QComboBox(&dlg);
+      intervalCombo->addItems(
+          QStringList() << "Every 15 minutes" << "Every 30 minutes"
+                        << "Hourly" << "Daily" << "Weekly"
+                        << "Custom (cron expression)");
+      intervalCombo->setCurrentIndex(3);
+      layout->addWidget(new QLabel("Interval:", &dlg));
+      layout->addWidget(intervalCombo);
+
+      auto *timeEdit = new QLineEdit("02:00", &dlg);
+      timeEdit->setPlaceholderText("HH:MM (24h)");
+      UiPolish::SetAccessibleFormField(timeEdit, "Start time");
+      auto *timeLabel = new QLabel("Start time:", &dlg);
+      layout->addWidget(timeLabel);
+      layout->addWidget(timeEdit);
+
+      auto *cronEdit = new QLineEdit(&dlg);
+      cronEdit->setPlaceholderText("min hour dom mon dow (e.g. 0 2 * * 1-5)");
+      UiPolish::SetAccessibleFormField(cronEdit, "Cron expression");
+      auto *cronLabel = new QLabel("Cron expression:", &dlg);
+      cronLabel->hide();
+      cronEdit->hide();
+      layout->addWidget(cronLabel);
+      layout->addWidget(cronEdit);
+
+      auto *preview = new QLabel(&dlg);
+      preview->setWordWrap(true);
+      UiPolish::SetMuted(preview);
+      layout->addWidget(preview);
+      layout->addStretch();
+
+      auto updatePreview = [&]() {
+        int idx = intervalCombo->currentIndex();
+        bool isCron = (idx == 5);
+        timeLabel->setVisible(!isCron && idx >= 3);
+        timeEdit->setVisible(!isCron && idx >= 3);
+        cronLabel->setVisible(isCron);
+        cronEdit->setVisible(isCron);
+
+        if (isCron) {
+          QString expr = cronEdit->text().trimmed();
+          if (expr.isEmpty()) {
+            preview->setText("Enter a 5-field cron expression.");
+            return;
+          }
+          if (!ScheduleManager::isValidCronExpr(expr)) {
+            preview->setText("Invalid cron expression (need 5 fields: min hour dom mon dow).");
+            return;
+          }
+          auto runs = ScheduleManager::nextCronRuns(expr, 5);
+          if (runs.isEmpty()) {
+            preview->setText("No upcoming runs found (check expression).");
+            return;
+          }
+          QStringList lines;
+          lines << "Next runs:";
+          for (const auto &dt : runs) {
+            lines << "  " + dt.toString("ddd yyyy-MM-dd HH:mm");
+          }
+          preview->setText(lines.join('\n'));
+        } else {
+          preview->clear();
+        }
+      };
+
+      QObject::connect(intervalCombo,
+                       static_cast<void (QComboBox::*)(int)>(
+                           &QComboBox::currentIndexChanged),
+                       &dlg, updatePreview);
+      QObject::connect(cronEdit, &QLineEdit::textChanged, &dlg, updatePreview);
+      updatePreview();
+
+      auto *buttons = new QDialogButtonBox(
+          QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+      UiPolish::SetDialogButtonBox(buttons);
+      QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
+                       &QDialog::accept);
+      QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
+                       &QDialog::reject);
+      layout->addWidget(buttons);
+
+      if (dlg.exec() != QDialog::Accepted)
         return;
 
-      QString time;
-      if (interval == "daily" || interval == "weekly") {
-        time = QInputDialog::getText(
-            this, "Schedule Task", "Start time (HH:MM, 24h format):",
-            QLineEdit::Normal, "02:00", &ok);
-        if (!ok)
-          return;
-      }
+      int idx = intervalCombo->currentIndex();
+      QStringList intervalMap = {"15m", "30m", "hourly", "daily", "weekly"};
+      QString interval = idx < 5 ? intervalMap[idx] : cronEdit->text().trimmed();
+      QString time = (idx == 3 || idx == 4) ? timeEdit->text().trimmed() : "";
 
       QString error;
       if (ScheduleManager::installSchedule(taskName, interval, time, &error)) {
         setStatusMessage(
-            QString("Scheduled \"%1\" every %2").arg(taskName, interval));
+            QString("Scheduled \"%1\" (%2)").arg(taskName, interval));
       } else {
         QMessageBox::warning(this, "Schedule failed",
                              QString("Could not schedule \"%1\":\n%2")
