@@ -144,8 +144,19 @@ FolderCompareDialog::FolderCompareDialog(
   mCryptCheck = new QCheckBox("Use cryptcheck (for crypt remotes)", this);
   mCryptCheck->setToolTip(
       "Verify a crypt remote against its plaintext source using rclone "
-      "cryptcheck instead of check.");
+      "cryptcheck. Source must be the plaintext remote; Destination must "
+      "be the crypt remote.");
   layout->addWidget(mCryptCheck);
+
+  QObject::connect(mCryptCheck, &QCheckBox::toggled, this, [this](bool on) {
+    if (on) {
+      mSourceEdit->setPlaceholderText("Plaintext source (e.g. remote:path)");
+      mDestinationEdit->setPlaceholderText("Crypt remote (e.g. crypt:path)");
+    } else {
+      mSourceEdit->setPlaceholderText("Source (e.g. remote:path)");
+      mDestinationEdit->setPlaceholderText("Destination (e.g. remote:path)");
+    }
+  });
 
   auto *filters = new QHBoxLayout();
   mCompareButton = new QPushButton("Compare", this);
