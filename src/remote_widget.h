@@ -5,7 +5,7 @@
 
 class IconCache;
 class ItemModel;
-struct BackendFeatures;
+#include "rclone_capabilities.h"
 
 class RemoteWidget : public QWidget {
   Q_OBJECT
@@ -36,6 +36,8 @@ private:
   QLineEdit *mFileFilter = nullptr;
   QHBoxLayout *mBreadcrumbLayout = nullptr;
   bool mIsLocal = false;
+  BackendFeatures mFeatures;
+  QPushButton *mTrashButton = nullptr;
 
   QList<QPersistentModelIndex> mNavHistory;
   int mNavPos = -1;

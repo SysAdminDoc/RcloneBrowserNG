@@ -248,89 +248,144 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   if (!isGoogle) {
     ui.checkBoxShared->hide();
   }
-  if (isGoogle) {
+  {
     auto *trashButton = new QPushButton("Trash", this);
     trashButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
-    trashButton->setToolTip("List trashed files in this Google Drive remote.");
-    trashButton->setAccessibleName("Browse Google Drive trash");
     trashButton->setMaximumHeight(28);
+    if (isGoogle) {
+      trashButton->setToolTip("List trashed files in this Google Drive remote.");
+      trashButton->setAccessibleName("Browse Google Drive trash");
+    } else {
+      trashButton->setToolTip(
+          "Clean up trash or old versions for this remote (rclone cleanup).");
+      trashButton->setAccessibleName("Clean up remote trash");
+    }
+    if (!isGoogle) {
+      trashButton->hide();
+    }
     if (auto *layout =
             qobject_cast<QHBoxLayout *>(ui.checkBoxShared->parentWidget()->layout())) {
       layout->addWidget(trashButton);
     }
-    QObject::connect(trashButton, &QPushButton::clicked, this, [this, remote, trashButton]() {
-      trashButton->setEnabled(false);
-      trashButton->setText("Loading...");
-      auto *proc = new QProcess(this);
-      UseRclonePassword(proc);
-      proc->setProgram(GetRclone());
-      proc->setArguments(QStringList()
-                        << "lsjson" << GetRcloneConf() << "--drive-trashed-only"
-                        << getDriveSharedArgs() << "-R" << "--no-mimetype"
-                        << remote + ":");
-      proc->setProcessChannelMode(QProcess::SeparateChannels);
-      QObject::connect(
-          proc,
-          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-              &QProcess::finished),
-          this, [this, proc, remote, trashButton](int code, QProcess::ExitStatus) {
-            proc->deleteLater();
-            trashButton->setEnabled(true);
-            trashButton->setText("Trash");
-            if (code != 0) {
-              QString err =
-                  QString::fromUtf8(proc->readAllStandardError()).trimmed();
-              QMessageBox::warning(this, "Trash",
-                                   "Could not list trashed files:\n" +
-                                       err.left(500));
-              return;
-            }
-            QJsonDocument doc =
-                QJsonDocument::fromJson(proc->readAllStandardOutput());
-            QJsonArray arr = doc.array();
-            if (arr.isEmpty()) {
-              QMessageBox::information(this, "Trash",
-                                       "No trashed files found.");
-              return;
-            }
-            QStringList items;
-            for (const QJsonValue &val : arr) {
-              QJsonObject obj = val.toObject();
-              QString path = obj.value("Path").toString();
-              qint64 size = obj.value("Size").toVariant().toLongLong();
-              items << QString("%1  (%2)")
-                           .arg(path,
-                                GetNiceSize(static_cast<quint64>(size)));
-            }
-            QDialog dlg(this);
-            dlg.setWindowTitle(
-                QString("Trashed files in %1").arg(remote));
-            dlg.resize(600, 400);
-            UiPolish::SetWindowDefaults(&dlg, QSize(520, 320));
-            auto *layout = new QVBoxLayout(&dlg);
-            auto *list = new QListWidget(&dlg);
-            UiPolish::SetNavigationView(list, "Trashed files");
-            list->addItems(items);
-            layout->addWidget(list);
-            auto *hint = new QLabel(
-                QString("%1 trashed file(s). Use the Google Drive web "
-                        "interface to restore.")
-                    .arg(arr.size()),
-                &dlg);
-            UiPolish::SetMuted(hint);
-            layout->addWidget(hint);
-            auto *close = new QPushButton("Close", &dlg);
-            QObject::connect(close, &QPushButton::clicked, &dlg,
-                             &QDialog::accept);
-            layout->addWidget(close);
-            dlg.exec();
-          });
-      QTimer::singleShot(30000, proc, [proc]() {
-        if (proc->state() != QProcess::NotRunning)
-          proc->kill();
-      });
-      proc->start();
+    QObject::connect(trashButton, &QPushButton::clicked, this, [this, remote, trashButton, isGoogle]() {
+      if (isGoogle) {
+        trashButton->setEnabled(false);
+        trashButton->setText("Loading...");
+        auto *proc = new QProcess(this);
+        UseRclonePassword(proc);
+        proc->setProgram(GetRclone());
+        proc->setArguments(QStringList()
+                          << "lsjson" << GetRcloneConf() << "--drive-trashed-only"
+                          << getDriveSharedArgs() << "-R" << "--no-mimetype"
+                          << remote + ":");
+        proc->setProcessChannelMode(QProcess::SeparateChannels);
+        QObject::connect(
+            proc,
+            static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                &QProcess::finished),
+            this, [this, proc, remote, trashButton](int code, QProcess::ExitStatus) {
+              proc->deleteLater();
+              trashButton->setEnabled(true);
+              trashButton->setText("Trash");
+              if (code != 0) {
+                QString err =
+                    QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                QMessageBox::warning(this, "Trash",
+                                     "Could not list trashed files:\n" +
+                                         err.left(500));
+                return;
+              }
+              QJsonDocument doc =
+                  QJsonDocument::fromJson(proc->readAllStandardOutput());
+              QJsonArray arr = doc.array();
+              if (arr.isEmpty()) {
+                QMessageBox::information(this, "Trash",
+                                         "No trashed files found.");
+                return;
+              }
+              QStringList items;
+              for (const QJsonValue &val : arr) {
+                QJsonObject obj = val.toObject();
+                QString path = obj.value("Path").toString();
+                qint64 size = obj.value("Size").toVariant().toLongLong();
+                items << QString("%1  (%2)")
+                             .arg(path,
+                                  GetNiceSize(static_cast<quint64>(size)));
+              }
+              QDialog dlg(this);
+              dlg.setWindowTitle(
+                  QString("Trashed files in %1").arg(remote));
+              dlg.resize(600, 400);
+              UiPolish::SetWindowDefaults(&dlg, QSize(520, 320));
+              auto *dlgLayout = new QVBoxLayout(&dlg);
+              auto *list = new QListWidget(&dlg);
+              UiPolish::SetNavigationView(list, "Trashed files");
+              list->addItems(items);
+              dlgLayout->addWidget(list);
+              auto *hint = new QLabel(
+                  QString("%1 trashed file(s). Use the Google Drive web "
+                          "interface to restore.")
+                      .arg(arr.size()),
+                  &dlg);
+              UiPolish::SetMuted(hint);
+              dlgLayout->addWidget(hint);
+              auto *close = new QPushButton("Close", &dlg);
+              QObject::connect(close, &QPushButton::clicked, &dlg,
+                               &QDialog::accept);
+              dlgLayout->addWidget(close);
+              dlg.exec();
+            });
+        QTimer::singleShot(30000, proc, [proc]() {
+          if (proc->state() != QProcess::NotRunning)
+            proc->kill();
+        });
+        proc->start();
+      } else {
+        int btn = QMessageBox::question(
+            this, "Clean Up",
+            QString("Run rclone cleanup on %1?\n\n"
+                    "This permanently deletes trashed files, old versions, "
+                    "and other backend-specific garbage. This cannot be undone.")
+                .arg(remote),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (btn != QMessageBox::Yes)
+          return;
+        trashButton->setEnabled(false);
+        trashButton->setText("Cleaning...");
+        auto *proc = new QProcess(this);
+        UseRclonePassword(proc);
+        proc->setProgram(GetRclone());
+        proc->setArguments(QStringList()
+                          << "cleanup" << GetRcloneConf()
+                          << remote + ":");
+        proc->setProcessChannelMode(QProcess::SeparateChannels);
+        QObject::connect(
+            proc,
+            static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                &QProcess::finished),
+            this, [this, proc, trashButton](int code, QProcess::ExitStatus) {
+              proc->deleteLater();
+              trashButton->setEnabled(true);
+              trashButton->setText("Trash");
+              if (code == 0) {
+                QMessageBox::information(this, "Clean Up",
+                                         "Cleanup completed successfully.");
+              } else {
+                QString err =
+                    QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                QMessageBox::warning(this, "Clean Up",
+                                     "Cleanup failed:\n" + err.left(500));
+              }
+            });
+        QTimer::singleShot(60000, proc, [proc]() {
+          if (proc->state() != QProcess::NotRunning)
+            proc->kill();
+        });
+        proc->start();
+      }
     });
+
+    mTrashButton = trashButton;
   }
 
   QStyle *style = QApplication::style();
@@ -926,7 +981,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QStringList args;
         args << (model->isFolder(idx) ? "purge" : "delete");
         args << getDriveSharedArgs();
-        if (isGoogle) {
+        if (!mFeatures.trashFlag.isEmpty()) {
+          args << mFeatures.trashFlag;
+        } else if (isGoogle) {
           args << "--drive-use-trash";
         }
         args << GetDefaultRcloneOptionsList();
@@ -1985,9 +2042,7 @@ QString RemoteWidget::displayPath(const QString &path) const {
 RemoteWidget::~RemoteWidget() {}
 
 void RemoteWidget::applyBackendFeatures(const BackendFeatures &features) {
-  if (!features.queried) {
-    return;
-  }
+  mFeatures = features;
 
   if (!features.publicLink) {
     ui.link->setEnabled(false);
@@ -1998,5 +2053,13 @@ void RemoteWidget::applyBackendFeatures(const BackendFeatures &features) {
     ui.getSize->setToolTip(
         ui.getSize->toolTip() +
         " (Quota unavailable for this backend.)");
+  }
+  if (mTrashButton && (features.trashSupported || features.cleanUp)) {
+    mTrashButton->show();
+    if (features.cleanUp && !features.trashSupported) {
+      mTrashButton->setText("Clean Up");
+      mTrashButton->setToolTip(
+          "Clean up old versions and backend garbage (rclone cleanup).");
+    }
   }
 }
