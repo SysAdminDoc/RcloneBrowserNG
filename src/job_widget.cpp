@@ -391,6 +391,23 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                            ui.horizontalLayout->indexOf(ui.cancel), retry);
                        QObject::connect(retry, &QToolButton::clicked, this,
                                         [this]() { emit retryRequested(); });
+
+                       if (mTransferArgs.contains("bisync")) {
+                         auto *resync = new QToolButton(this);
+                         resync->setIcon(QApplication::style()->standardIcon(
+                             QStyle::SP_DialogResetButton));
+                         resync->setToolTip(
+                             "Resync: re-run with --resync to reset bisync state.\n"
+                             "Warning: this may overwrite changes on one side.");
+                         resync->setAccessibleName("Resync bisync");
+                         UiPolish::SetCompactToolButton(resync, "Resync",
+                             "Reset bisync state and re-run. Use when bisync "
+                             "enters an unrecoverable error state.");
+                         ui.horizontalLayout->insertWidget(
+                             ui.horizontalLayout->indexOf(ui.cancel), resync);
+                         QObject::connect(resync, &QToolButton::clicked, this,
+                                          [this]() { emit resyncRequested(); });
+                       }
                      }
 
                      emit finished(ui.info->text());
