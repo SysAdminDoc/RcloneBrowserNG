@@ -1770,10 +1770,24 @@ MainWindow::MainWindow() {
     layout->addWidget(mErrorLogToggle);
     layout->addWidget(mErrorLog);
   }
+  mErrorBadge = new QToolButton(this);
+  mErrorBadge->setAutoRaise(true);
+  mErrorBadge->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  mErrorBadge->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning));
+  mErrorBadge->setAccessibleName("Background errors");
+  mErrorBadge->setVisible(false);
+  ui.statusBar->addPermanentWidget(mErrorBadge);
+  QObject::connect(mErrorBadge, &QToolButton::clicked, this,
+                   &MainWindow::showErrorQueue);
+
   Diagnostics::setLogCallback(
       [this](const QString &source, const QString &line) {
         mErrorLog->appendPlainText(
             QString("[%1] %2").arg(source, line));
+        if (source == "job") {
+          appendBackgroundError(source, line);
+        }
       });
 
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
@@ -4034,4 +4048,82 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
         QString("Upload %1 to %2").arg(fi.fileName(), dest),
         fi.absoluteFilePath(), dest + fi.fileName(), args);
   }
+}
+
+void MainWindow::appendBackgroundError(const QString &jobName,
+                                        const QString &message) {
+  constexpr int kMaxQueueSize = 100;
+  BackgroundError err;
+  err.timestamp = QDateTime::currentDateTime();
+  err.jobName = jobName;
+  err.message = message;
+  mErrorQueue.append(err);
+  while (mErrorQueue.size() > kMaxQueueSize)
+    mErrorQueue.removeFirst();
+
+  int unreviewed = 0;
+  for (const auto &e : mErrorQueue) {
+    if (!e.reviewed)
+      ++unreviewed;
+  }
+  if (unreviewed > 0) {
+    mErrorBadge->setText(QString("%1").arg(unreviewed));
+    mErrorBadge->setToolTip(
+        QString("%1 unreviewed background error(s)").arg(unreviewed));
+    mErrorBadge->setVisible(true);
+  }
+}
+
+void MainWindow::showErrorQueue() {
+  for (auto &e : mErrorQueue)
+    e.reviewed = true;
+  mErrorBadge->setVisible(false);
+
+  QDialog dialog(this);
+  dialog.setWindowTitle("Background Errors");
+  dialog.resize(680, 400);
+  UiPolish::SetWindowDefaults(&dialog, QSize(520, 320));
+  auto *layout = new QVBoxLayout(&dialog);
+
+  if (mErrorQueue.isEmpty()) {
+    auto *empty = new QLabel(&dialog);
+    UiPolish::SetEmptyState(
+        empty, "No background errors",
+        "Errors from running transfers will appear here instead of "
+        "blocking the interface with modal dialogs.");
+    layout->addWidget(empty);
+  } else {
+    auto *table = new QTableWidget(&dialog);
+    table->setColumnCount(3);
+    table->setHorizontalHeaderLabels(
+        QStringList() << "Time" << "Source" << "Message");
+    UiPolish::SetTableView(table, "Background errors");
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    table->setRowCount(mErrorQueue.size());
+    for (int i = 0; i < mErrorQueue.size(); ++i) {
+      int row = mErrorQueue.size() - 1 - i;
+      const auto &e = mErrorQueue[row];
+      table->setItem(i, 0, new QTableWidgetItem(
+          e.timestamp.toString("HH:mm:ss")));
+      table->setItem(i, 1, new QTableWidgetItem(e.jobName));
+      table->setItem(i, 2, new QTableWidgetItem(e.message));
+    }
+    layout->addWidget(table);
+
+    auto *clearBtn = new QPushButton("Clear All", &dialog);
+    QObject::connect(clearBtn, &QPushButton::clicked, &dialog, [this, &dialog]() {
+      mErrorQueue.clear();
+      mErrorBadge->setVisible(false);
+      dialog.accept();
+    });
+    layout->addWidget(clearBtn);
+  }
+
+  auto *close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+  UiPolish::SetDialogButtonBox(close);
+  QObject::connect(close, &QDialogButtonBox::rejected, &dialog,
+                   &QDialog::reject);
+  layout->addWidget(close);
+  dialog.exec();
 }
