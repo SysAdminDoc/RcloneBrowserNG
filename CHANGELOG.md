@@ -1,6 +1,30 @@
 # Change Log
 ## [Unreleased]
 ### Reliability & Data Safety
+-   SECURITY: Build hardening — added `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, and position-independent code on Linux/macOS; replaced MSVC `/GS-` (stack protection disabled) with `/GS` (enabled)
+-   FIXED: Windows schedule listing now uses proper CSV parsing that respects quoted fields with commas; status column is read by index instead of string-searching for "Disabled"
+-   FIXED: JSON task store now checks the schema version on read and rejects newer schemas with an informative error instead of silently losing fields
+-   FIXED: JSON enum casts from untrusted integers are now clamped to valid ranges instead of producing undefined behavior
+-   FIXED: cryptcheck mode in folder compare now labels Source as "Plaintext" and Destination as "Crypt remote" to clarify the required argument order
+-   FIXED: rclone selfupdate no longer blocks the UI thread for up to 60 seconds — runs asynchronously with status bar feedback
+-   FIXED: Pre-job commands now run asynchronously instead of blocking the UI thread for up to 30 seconds
+-   FIXED: File filter (Ctrl+F) now re-applies after directory navigation — newly loaded children are filtered automatically
+-   FIXED: Send-To now prompts for a subfolder path within the selected remote instead of always uploading to the root
+-   NEW: Back/forward navigation in the remote browser — toolbar buttons and Alt+Left/Right keyboard shortcuts navigate browsing history
+-   NEW: Staging queue now supports drag-and-drop reorder
+-   NEW: Bookmark manager dialog — Bookmarks > Manage Bookmarks lets you reorder bookmarks via drag-and-drop and delete with the Delete key
+-   NEW: Bisync resync recovery — failed bisync jobs show a Resync button that re-runs with `--resync` to reset bisync state
+-   NEW: Transfer performance presets — a Preset dropdown in the transfer dialog offers Default, Large Files, Many Small Files, and Low Bandwidth configurations that auto-fill transfers/checkers/bandwidth
+-   NEW: macOS scheduler uses `StartCalendarInterval` for daily/weekly schedules so users can set a specific hour; uses `launchctl bootstrap`/`bootout` with fallback to deprecated `load`/`unload`
+-   NEW: Linux scheduler now generates systemd user timers with `Persistent=true` on systems with systemd, falling back to crontab when systemd is unavailable
+
+### Build & Compatibility
+-   NEW: CI tests — the linux-qt6 build job now runs `ctest --output-on-failure` after building, gating the build on all 8 test targets
+-   NEW: Windows ARM64 release artifact — tagged releases now include a Windows ARM64 zip alongside the x64 zip and installer
+-   NEW: macOS x86_64 CI migrated from deprecated macos-13 to macos-15 with `-DCMAKE_OSX_ARCHITECTURES=x86_64` cross-compilation
+-   NEW: SECURITY.md vulnerability disclosure policy
+-   NEW: OpenSSF Scorecard weekly analysis with SARIF upload
+-   CHANGED: Top-level CMakeLists.txt cleaned up — removed dead Qt5/Qt5WinExtras/Qt5MacExtras fallback code
 -   SECURITY: Schedule manager task name sanitizer now allowlists alphanumeric, dash, underscore, dot, and space only — blocks crontab newline injection, XML injection in macOS plists, and shell metachar injection across all platforms
 -   SECURITY: Linux crontab entries now use single-quote shell escaping for task names, preventing command injection through task names containing `$(...)` or backticks
 -   SECURITY: macOS launchd plist generation now XML-escapes `&`, `<`, `>` in task names and paths
