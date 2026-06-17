@@ -1456,11 +1456,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         }
 
         QAction *propsAction = nullptr;
+        QAction *previewAction = nullptr;
         if (!model->isFolder(index)) {
           menu.addSeparator();
           editAction = menu.addAction("Open/Edit...");
           editAction->setToolTip(
               "Download, open with the default app, and re-upload on save.");
+          previewAction = menu.addAction("Preview...");
+          previewAction->setToolTip(
+              "Download and preview this file inline (images, text, audio, video up to 50 MB).");
           propsAction = menu.addAction("Properties...");
           propsAction->setToolTip(
               "Show file size, modification time, and available hashes.");
@@ -1471,7 +1475,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                         chosen != archiveAction && chosen != speedAction &&
                         chosen != copyUrlAction && chosen != dedupeAction &&
                         chosen != copyToRemote && chosen != serveAction &&
-                        chosen != propsAction && chosen != bookmarkAction)) {
+                        chosen != propsAction && chosen != bookmarkAction &&
+                        chosen != previewAction)) {
           return;
         }
 
@@ -1737,6 +1742,131 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                         "Jobs tab until stopped.")
                     .arg(target, protocol, url));
           }
+        } else if (chosen == previewAction) {
+          Item *item = model->get(index);
+          if (!item)
+            return;
+          quint64 size = item->size;
+          constexpr quint64 kMaxPreviewBytes = 50 * 1024 * 1024;
+          if (size > kMaxPreviewBytes) {
+            QMessageBox::information(
+                this, "Preview",
+                QString("File is too large for preview (%1).\nMaximum: 50 MB.")
+                    .arg(GetNiceSize(size)));
+            return;
+          }
+
+          QString name = QFileInfo(path).fileName();
+          QString suffix = QFileInfo(name).suffix().toLower();
+          static const QSet<QString> textExts = {
+              "txt", "log", "csv", "json", "xml", "yaml", "yml",
+              "ini", "cfg", "conf", "md", "rst", "html", "htm",
+              "css", "js", "ts", "py", "c", "cpp", "h", "hpp",
+              "java", "sh", "bat", "ps1", "toml"};
+          static const QSet<QString> imageExts = {
+              "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "ico"};
+          static const QSet<QString> audioExts = {
+              "mp3", "wav", "flac", "ogg", "aac", "m4a"};
+          static const QSet<QString> videoExts = {
+              "mp4", "mkv", "avi", "mov", "webm"};
+
+          bool isText = textExts.contains(suffix);
+          bool isImage = imageExts.contains(suffix);
+          bool isMedia = audioExts.contains(suffix) || videoExts.contains(suffix);
+
+          if (!isText && !isImage && !isMedia && size > 0) {
+            QMessageBox::information(
+                this, "Preview",
+                QString("No preview available for .%1 files.\n"
+                        "Supported: text, images, audio, video.")
+                    .arg(suffix));
+            return;
+          }
+
+          QString tempDir = QDir::tempPath() + "/rclonebrowserng-preview";
+          QDir().mkpath(tempDir);
+          QString tempFile = tempDir + "/" + name;
+
+          auto *proc = new QProcess(this);
+          UseRclonePassword(proc);
+          proc->setProgram(GetRclone());
+          proc->setArguments(QStringList()
+                            << "copyto" << GetRcloneConf()
+                            << getDriveSharedArgs()
+                            << target
+                            << tempFile);
+          proc->setProcessChannelMode(QProcess::SeparateChannels);
+
+          QObject::connect(
+              proc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [this, proc, tempFile, name, isText, isImage](
+                        int code, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (code != 0) {
+                  QString err =
+                      QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                  QMessageBox::warning(this, "Preview",
+                                       "Could not download file:\n" +
+                                           err.left(500));
+                  return;
+                }
+
+                QDialog dlg(this);
+                dlg.setWindowTitle(QString("Preview: %1").arg(name));
+                dlg.resize(800, 600);
+                UiPolish::SetWindowDefaults(&dlg, QSize(600, 400));
+                auto *layout = new QVBoxLayout(&dlg);
+
+                if (isImage) {
+                  auto *label = new QLabel(&dlg);
+                  QPixmap pix(tempFile);
+                  if (!pix.isNull()) {
+                    label->setPixmap(
+                        pix.scaled(780, 560, Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation));
+                  } else {
+                    label->setText("Could not load image.");
+                  }
+                  label->setAlignment(Qt::AlignCenter);
+                  layout->addWidget(label);
+                } else if (isText) {
+                  auto *text = new QPlainTextEdit(&dlg);
+                  text->setReadOnly(true);
+                  QFile f(tempFile);
+                  if (f.open(QIODevice::ReadOnly)) {
+                    text->setPlainText(
+                        QString::fromUtf8(f.read(2 * 1024 * 1024)));
+                  }
+                  UiPolish::SetOutputView(text, "File preview");
+                  layout->addWidget(text);
+                } else {
+                  auto *label = new QLabel(&dlg);
+                  label->setText(
+                      QString("Media file downloaded to:\n%1\n\n"
+                              "Use your system media player to play.")
+                          .arg(tempFile));
+                  label->setTextInteractionFlags(
+                      Qt::TextSelectableByMouse);
+                  layout->addWidget(label);
+                  QDesktopServices::openUrl(
+                      QUrl::fromLocalFile(tempFile));
+                }
+
+                auto *close = new QPushButton("Close", &dlg);
+                QObject::connect(close, &QPushButton::clicked, &dlg,
+                                 &QDialog::accept);
+                layout->addWidget(close);
+                dlg.exec();
+
+                QFile::remove(tempFile);
+              });
+          QTimer::singleShot(60000, proc, [proc]() {
+            if (proc->state() != QProcess::NotRunning)
+              proc->kill();
+          });
+          proc->start();
         }
       });
 
