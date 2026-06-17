@@ -87,13 +87,6 @@ Features requested across multiple repos, forks, and forum threads. Sorted by co
 - [ ] **FreeBSD headless compilation** — Build without Qt GUI for server use.  
   _Sources: kapitainsky #247_
 
-- [ ] **Flatpak packaging** — Distribute via Flathub.  
-  _Sources: mmozeiko #112_
-
-- [ ] **Snap packaging** — Distribute via Snap Store.
-
-- [ ] **Homebrew formula fix** — Current install script 404s (needs `.sh` suffix). Unmerged PR: kapitainsky#232.  
-  _Sources: kapitainsky #232_
 
 
 ---
@@ -119,16 +112,16 @@ For context — active alternatives as of June 2026:
 
 | Project | Stars | Stack | Status | Key Differentiator |
 |---------|-------|-------|--------|--------------------|
-| [rclone-ui](https://github.com/rclone-ui/rclone-ui) | 2,076 | TypeScript/Tauri | Active (v3.6.0) | Cron, dual-panel Commander, Cloudflare tunnel mobile, 7 langs, WinGet/Homebrew/Flathub. **Caution: #218 dry-run may execute real sync** |
-| [RClone Manager](https://github.com/Zarestia-Dev/rclone-manager) | 922 | Angular/Tauri | Active (v0.2.7) | Fastest-growing (0→922 in 14mo). FS watchers, webhook/email/Telegram alerts, Docker headless, Crowdin i18n |
+| [rclone-ui](https://github.com/rclone-ui/rclone-ui) | 2,100 | TypeScript/Tauri | Active (v3.6.0) | Cron scheduling, dual-panel Commander, 7 langs, WinGet/Homebrew/Flathub. **Caution: #218 dry-run may execute real sync** |
+| [RClone Manager](https://github.com/Zarestia-Dev/rclone-manager) | 933 | Angular/Tauri | Active (v0.2.7) | Fastest-growing. FS watchers, alert actions (toast/webhook/email/Telegram/script), Docker headless, Crowdin i18n, performance presets |
 | [Celeste](https://github.com/hwittenborn/celeste) | 1,616 | Rust/GTK4 | **Archived Nov 2025** | Was Linux-only bisync — lane now open |
-| [rclone-webui-react](https://github.com/rclone/rclone-webui-react) | 1,562 | JavaScript | Stale (5yr no release) | Official rclone web UI, bundled with `rclone rcd` |
-| [rem](https://github.com/liriliri/rem) | 602 | Electron | Dormant (6mo) | "Open source RcloneView" — file preview, two-panel |
-| [rclone-webui-angular](https://github.com/yuudi/rclone-webui-angular) | 359 | Angular | Active | Web alternative to official GUI |
-| [H4R1B0/rclone-gui](https://github.com/H4R1B0/rclone-gui) | 0 | Swift | Active (v1.6.0, 521 tests) | macOS-native. Cloud trash, bookmarks, bulk rename, search. Zero visibility despite quality |
-| [RcloneShuttle](https://github.com/pieterdd/RcloneShuttle) | 149 | Rust/GTK4 | Active | Linux-native GTK4, upload-only, deliberately minimal |
-| [rclone-rc-web-gui](https://github.com/retifrav/rclone-rc-web-gui) | 125 | TypeScript | Active | Lightweight RC web GUI |
-| [Motuz](https://github.com/FredHutch/motuz) | 114 | JavaScript | Active | Enterprise/scientific multi-user TB-scale transfers |
+| [rclone-webui-react](https://github.com/rclone/rclone-webui-react) | 1,562 | JavaScript | Stale (5yr no release) | Superseded by `rclone gui` (v1.74.0) |
+| [rem](https://github.com/liriliri/rem) | 603 | Electron | Active (v1.4.0, Dec 2025) | "Open source RcloneView" — file preview, multi-window, media preview |
+| [rclone-webui-angular](https://github.com/yuudi/rclone-webui-angular) | 359 | Angular | Slowing (10mo no release) | Web alternative, GPG-signed releases |
+| [H4R1B0/rclone-gui](https://github.com/H4R1B0/rclone-gui) | Low | Swift | Active (v1.6.0, 521 tests) | macOS-native. Cloud trash (10 providers), bookmarks, bulk rename, back/forward nav. Zero visibility |
+| [yet-another-rclone-dashboard](https://github.com/outlook84/yet-another-rclone-dashboard) | 125 | TypeScript | Active (v0.4.4) | New entrant. Lightweight web RC GUI, multiple themes, mobile-responsive, PWA |
+| [RcloneShuttle](https://github.com/pieterdd/RcloneShuttle) | 150 | Rust/GTK4 | Active (v0.1.9) | Linux-only via Flathub, upload-only, anti-AI policy |
+| [rclone-rc-web-gui](https://github.com/retifrav/rclone-rc-web-gui) | 125 | TypeScript | Active (v2026.1.2) | Lightweight RC web GUI, no sync by design |
 
 RcloneBrowserNG's niche: **lightweight native Qt desktop app** — faster startup, lower memory, no Electron/Tauri runtime, no browser tab. The value proposition is a well-maintained, modern C++/Qt6 app that "just works" with current rclone on all desktop platforms. Community signal: strong anti-paywall and anti-AI-vibe-coded sentiment favors a free, well-engineered native GUI.
 
@@ -330,35 +323,118 @@ All items trace back to public GitHub issues/PRs:
 
 ### 2026-06-16 Audit Findings (deferred)
 
-- [ ] P2 — Windows schtasks CSV parsing breaks on quoted fields with commas
-  Why: `QString::split(',')` does not respect CSV quoting; non-English locales may embed commas in date fields, producing wrong column offsets in `listSchedules`. Also "Disabled" status check fails on non-English Windows.
-  Where: `src/schedule_manager.cpp` line 243
 
-- [ ] P2 — cryptcheck argument order may be swapped for crypt-vs-plaintext remotes
-  Why: `rclone cryptcheck` expects plaintext-source crypt-destination but the folder compare dialog passes args in the same order as `check`; results may be incorrect when users pick the wrong direction.
-  Where: `src/folder_compare.cpp` line 262
 
-- [ ] P2 — Send-To always uploads to remote root with no subfolder selection
-  Why: `handleSendToFiles` uses `remote + ":"` as the destination with no path picker; files always land at the top level of the remote.
-  Where: `src/main_window.cpp` handleSendToFiles
 
-- [ ] P2 — JSON task store has no schema version check on read
-  Why: `ReadJobOptionsStoreJson` does not check the `version` field; a future schema change could silently lose fields without warning.
-  Where: `src/job_options_store.cpp` ReadJobOptionsStoreJson
 
-- [ ] P3 — File filter (Ctrl+F) does not re-apply after directory navigation
-  Why: the filter text stays visible but newly loaded children are not filtered; user must retype to filter the new view.
-  Where: `src/remote_widget.cpp` mFileFilter textChanged handler
 
-- [ ] P3 — preCommand blocks the UI thread for up to 30 seconds
-  Why: pre-job commands run synchronously with `waitForFinished(30000)` on the main thread.
-  Where: `src/main_window.cpp` runJobOptions
+### 2026-06-16 Research Refresh
 
-- [ ] P3 — Staging queue has no drag-and-drop reorder support
-  Why: `mStagingList` does not set `DragDropMode(InternalMove)`; users cannot reorder staged transfers.
-  Where: `src/main_window.cpp` staging queue setup
+> Appended from exhaustive codebase audit + ecosystem research. Verified rclone v1.74.3 (still latest), Qt 6.11.1 (new latest), macFUSE 5.3.1, GitHub Actions runner migrations (macos-13 deprecated, macos-latest → macOS 26), competitor updates (rclone-ui 2,100 stars, RClone Manager 933 stars, yet-another-rclone-dashboard 125 stars new entrant), Flatpak 1.16.6 (CVE-2026-34079), Resticprofile v0.33 (missed-task auto-run), Duplicati v2.3, Backrest v1.13. 60+ sources consulted. See RESEARCH.md.
+>
+> Housekeeping: removed completed items — Linux ARM64 AppImage (in release.yml), RcloneRcEngine async migration (done, only startup ping retains QEventLoop), dead macOS 10.9 code (removed), Flatpak desktop ID alignment (done), streaming JSON parsing (done), --list-cutoff (done). Updated RESEARCH.md competitive landscape and architecture assessment.
 
-- [ ] P3 — JSON enum casts from untrusted integers are unclamped
-  Why: `jobOptionsFromJson` casts `.toInt()` directly to `Operation`/`JobType`/`SyncTiming` enums; a tampered JSON with out-of-range values produces undefined behavior at switch sites.
-  Where: `src/job_options_store.cpp` jobOptionsFromJson
+#### P1 — CI & security
 
+
+#### P2 — Code hygiene
+
+#### P3 — Features
+
+- [ ] P3 — Cloud trash for all supporting backends
+  Why: trash operations (`--drive-use-trash`) only apply to Google Drive. rclone supports native trash for 10+ providers (OneDrive, Dropbox, etc. via `--<backend>-use-trash` or backend-specific flags). H4R1B0/rclone-gui implements cloud trash for all providers — this is a competitive gap.
+  Evidence: H4R1B0/rclone-gui v1.4.6+ (10-provider trash); rclone.org backend docs
+  Touches: `src/remote_widget.cpp` (delete action), `src/item_model.cpp` (trash listing)
+  Acceptance: delete operations on remotes that support native trash use the appropriate backend flag; Google Drive Trash browser generalizes to other providers.
+  Complexity: M
+
+
+
+- [ ] P3 — Cron-expression scheduling with human-readable preview
+  Why: the scheduler currently offers fixed intervals (15m/30m/hourly/daily/weekly). rclone-ui offers editable cron expressions with a preview of the next N upcoming runs — the UX gold standard. Power users want "every weekday at 2 AM" or "first Sunday of the month."
+  Evidence: rclone-ui v3.5.0+ cron scheduling; rcloneui.com/changelog
+  Touches: `src/schedule_manager.cpp`, schedule UI in `src/main_window.cpp`
+  Acceptance: scheduling dialog offers both simple intervals and a freeform cron expression; a preview shows the next 5 run times; cron expressions are validated before saving.
+  Complexity: M
+
+
+
+
+
+### P0 — Security and data-safety
+
+- [ ] P0 — Raise packaged Qt baseline and fail vulnerable Qt builds
+  Why: Windows x64 build/release still installs Qt 6.7.*, which is in the affected range for Qt SVG CVE-2026-6210; users should not receive newly built binaries on a known-vulnerable Qt line.
+  Evidence: Qt CVE-2026-6210 advisory; `.github/workflows/build.yml`; `.github/workflows/release.yml`
+  Touches: `.github/workflows/build.yml`, `.github/workflows/release.yml`, CMake configure logs, release notes
+  Acceptance: Windows x64 CI/release uses Qt >=6.8.8 or >=6.11.1; CI prints and validates the Qt version; release fails if the deployed Qt baseline is vulnerable or bundles a vulnerable SVG plugin.
+  Complexity: M
+
+- [ ] P0 — Add dry-run and preview non-mutation contract tests
+  Why: rclone-ui issue #218 shows users can lose data if preview/dry-run ever executes a real sync; RcloneBrowserNG has multiple dry-run, saved-task, and staging entry points without GUI contract tests.
+  Evidence: rclone-ui #218; `src/transfer_dialog.cpp`; `src/main_window.cpp`; `src/job_options.cpp`
+  Touches: `src/transfer_dialog.cpp`, `src/main_window.cpp`, `src/job_options.cpp`, new Qt/CMake test target
+  Acceptance: tests simulate Dry Run, Run, Save Task, Run Task dry-run, and staged enqueue paths; preview commands always include `--dry-run`; no preview path starts/enqueues a mutating job; CI runs the suite.
+  Complexity: M
+
+### P1 — Reliability and backend truth
+
+- [ ] P1 — Add backend capability registry for action gating
+  Why: rclone exposes backend feature flags, but the UI still hard-codes or optimistically offers some backend-dependent actions; this should become a shared capability layer instead of per-action branching.
+  Evidence: rclone `operations/fsinfo`; rclone `backend features`; `src/remote_widget.cpp`; existing P3 cloud-trash item
+  Touches: new capability service, `src/remote_widget.cpp`, `src/main_window.cpp`, `src/rclone_capabilities.cpp`
+  Acceptance: opening a remote fetches/caches feature flags; public link, server-side copy/move, hash, quota, version/restore, cleanup, and future trash actions are enabled, hidden, or explained based on actual backend support with a safe fallback for older rclone.
+  Complexity: L
+
+- [ ] P1 — Make native schedules catch up and verify generated definitions
+  Why: Linux timers use `Persistent=true`, but Windows schedules do not set `StartWhenAvailable`; scheduler definitions are generated without golden tests despite recent cross-platform scheduler churn.
+  Evidence: Microsoft `StartWhenAvailable`; resticprofile missed-run behavior; `src/schedule_manager.cpp`
+  Touches: `src/schedule_manager.cpp`, scheduler UI in `src/main_window.cpp`, new scheduler golden tests
+  Acceptance: schedule UI includes a "run missed jobs when available" option where supported; Windows task XML/settings use `StartWhenAvailable`; Linux/macOS/Windows generated definitions have tests for hourly/daily/weekly/custom intervals; schedule status surfaces last, next, and missed-run state where the OS exposes it.
+  Complexity: M
+
+- [ ] P1 — Store per-file job audit detail with redacted export
+  Why: current job history records only summary counts, while competitors emphasize visual sync history and retained transfer evidence; users need to prove what changed and debug failures without parsing transient output.
+  Evidence: RcloneView visual sync history; Cyberduck retained transfer list; `src/job_history.cpp`; `src/job_widget.cpp`
+  Touches: `src/job_history.cpp`, `src/job_widget.cpp`, `src/main_window.cpp`, job history UI/export
+  Acceptance: each completed job links to a detail record of transferred, skipped, deleted, retried, and failed paths with timestamps and redacted secrets; UI can inspect and export the detail; existing summary history remains backward compatible.
+  Complexity: L
+
+### P2 — Trust, accessibility, and diagnostics
+
+- [ ] P2 — Publish release SBOMs alongside checksums and attestations
+  Why: releases already have SHA256 sums and GitHub artifact attestations; SBOMs close the supply-chain traceability gap for bundled Qt plugins, installers, and native packages.
+  Evidence: Qt 6.11 SBOM/CycloneDX docs; GitHub artifact attestation docs; `.github/workflows/release.yml`
+  Touches: `.github/workflows/release.yml`, release artifact layout, release verification docs
+  Acceptance: each release uploads an SPDX or CycloneDX SBOM covering app binaries, bundled Qt modules/plugins, packaging tools, and key runtime dependencies; CI validates SBOM generation; release notes link checksum, attestation, and SBOM verification steps.
+  Complexity: M
+
+- [ ] P2 — Add an accessibility and high-contrast acceptance pass
+  Why: the app sets many accessible names but has no systematic acceptance gate for descriptions, tab order, keyboard-only completion, high-contrast palettes, or screen-reader semantics.
+  Evidence: Qt `QAccessibilityHints`; `src/interface_polish.cpp`; `.ui` tabstop definitions
+  Touches: `src/interface_polish.cpp`, `src/*.ui`, main dialogs/widgets, accessibility test checklist or static test
+  Acceptance: primary dialogs pass keyboard-only workflows; controls have meaningful names/descriptions/tooltips where needed; custom colors respect high-contrast/system palette; automated or scripted checks cover tab order and missing labels.
+  Complexity: M
+
+- [ ] P2 — Add a remote health and repair view
+  Why: users currently discover expired tokens, unsupported backend APIs, old rclone versions, quota issues, and missing mount dependencies piecemeal through dialogs; competitors surface usage and unsupported-remote states more directly.
+  Evidence: RClone Manager remote overview; RcloneView unsupported remote fallback; `src/main_window.cpp`; `src/remote_provider.cpp`
+  Touches: `src/main_window.cpp`, `src/remote_provider.cpp`, `src/rclone_capabilities.cpp`, preferences/diagnostics UI
+  Acceptance: remotes list or a diagnostics panel shows rclone version/security status, token/listing status, quota if supported, mount dependency readiness, and backend capability warnings; repair actions include reconnect, open config, refresh capabilities, and copy diagnostics.
+  Complexity: M
+
+### P3 — Product polish and discoverability
+
+- [ ] P3 — Add safe inline preview for common file types
+  Why: REM, RClone Manager, yet-another-rclone-dashboard, and H4R1B0/rclone-gui all use preview as a core file-manager affordance; RcloneBrowserNG has open/stream flows but no bounded read-only preview.
+  Evidence: REM README; RClone Manager README; yet-another-rclone-dashboard README; `src/remote_widget.cpp`; `src/stream_widget.cpp`
+  Touches: `src/remote_widget.cpp`, preview dialog/widget, temporary-download handling, size/type limits
+  Acceptance: image, text, PDF, audio, and video previews open read-only within explicit size and backend limits; unsafe or large files show a clear fallback; temp files are cleaned up; preview never mutates remote content.
+  Complexity: L
+
+- [ ] P3 — Add saved cross-remote search filters and history
+  Why: current search supports one filename pattern across all remotes, while native and web competitors expose richer filters and saved search affordances for large multi-cloud libraries.
+  Evidence: H4R1B0/rclone-gui search filters; `src/cross_remote_search.cpp`; rclone `lsjson`
+  Touches: `src/cross_remote_search.cpp`, settings persistence, search result actions
+  Acceptance: search supports remote selection, file type, size, modified-date filters, and the last N searches; double-click/open-location still works; empty/error states explain skipped or failed remotes.
+  Complexity: M
