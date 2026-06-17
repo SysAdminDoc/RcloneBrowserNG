@@ -18,7 +18,24 @@ public:
   static QList<ScheduleEntry> listSchedules(QString *error);
   static bool isSupported();
 
+  static QString generateWindowsTaskXml(const QString &sysName,
+                                        const QString &appPath,
+                                        const QString &taskName,
+                                        const QString &interval,
+                                        const QString &time);
+  static QString generateSystemdService(const QString &taskName,
+                                        const QString &appPath);
+  static QString generateSystemdTimer(const QString &taskName,
+                                      const QString &interval,
+                                      const QString &time);
+  static QString generateMacPlist(const QString &sysName,
+                                  const QString &appPath,
+                                  const QString &taskName,
+                                  const QString &interval,
+                                  const QString &time);
+
+  static QString scheduleTaskName(const QString &taskName);
+
 private:
   static QString appPath();
-  static QString scheduleTaskName(const QString &taskName);
 };

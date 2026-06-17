@@ -18,6 +18,15 @@ QString systemdUserDir() {
   return dir;
 }
 #endif
+
+QString xmlEscape(const QString &s) {
+  QString out = s;
+  out.replace('&', "&amp;");
+  out.replace('<', "&lt;");
+  out.replace('>', "&gt;");
+  out.replace('"', "&quot;");
+  return out;
+}
 }
 
 QString ScheduleManager::appPath() {
@@ -50,6 +59,176 @@ bool ScheduleManager::isSupported() {
 #endif
 }
 
+QString ScheduleManager::generateWindowsTaskXml(
+    const QString &sysName, const QString &appPath, const QString &taskName,
+    const QString &interval, const QString &time) {
+  QString triggerXml;
+  if (interval == "hourly") {
+    triggerXml = "      <CalendarTrigger>\n"
+                 "        <Repetition>\n"
+                 "          <Interval>PT1H</Interval>\n"
+                 "        </Repetition>\n"
+                 "        <StartBoundary>2020-01-01T00:00:00</StartBoundary>\n"
+                 "      </CalendarTrigger>\n";
+  } else if (interval == "weekly") {
+    QString st = time.isEmpty() ? "00:00" : time;
+    triggerXml = QString(
+        "      <CalendarTrigger>\n"
+        "        <StartBoundary>2020-01-01T%1:00</StartBoundary>\n"
+        "        <ScheduleByWeek>\n"
+        "          <WeeksInterval>1</WeeksInterval>\n"
+        "          <DaysOfWeek><Sunday /></DaysOfWeek>\n"
+        "        </ScheduleByWeek>\n"
+        "      </CalendarTrigger>\n").arg(st);
+  } else if (interval.endsWith("m")) {
+    int minutes = interval.left(interval.length() - 1).toInt();
+    if (minutes < 1) minutes = 1;
+    triggerXml = QString(
+        "      <CalendarTrigger>\n"
+        "        <Repetition>\n"
+        "          <Interval>PT%1M</Interval>\n"
+        "        </Repetition>\n"
+        "        <StartBoundary>2020-01-01T00:00:00</StartBoundary>\n"
+        "      </CalendarTrigger>\n").arg(minutes);
+  } else if (interval.endsWith("h")) {
+    int hours = interval.left(interval.length() - 1).toInt();
+    if (hours < 1) hours = 1;
+    triggerXml = QString(
+        "      <CalendarTrigger>\n"
+        "        <Repetition>\n"
+        "          <Interval>PT%1H</Interval>\n"
+        "        </Repetition>\n"
+        "        <StartBoundary>2020-01-01T00:00:00</StartBoundary>\n"
+        "      </CalendarTrigger>\n").arg(hours);
+  } else {
+    QString st = time.isEmpty() ? "00:00" : time;
+    triggerXml = QString(
+        "      <CalendarTrigger>\n"
+        "        <StartBoundary>2020-01-01T%1:00</StartBoundary>\n"
+        "        <ScheduleByDay>\n"
+        "          <DaysInterval>1</DaysInterval>\n"
+        "        </ScheduleByDay>\n"
+        "      </CalendarTrigger>\n").arg(st);
+  }
+
+  return QString(
+      "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n"
+      "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n"
+      "  <RegistrationInfo>\n"
+      "    <Description>RcloneBrowserNG task: %1</Description>\n"
+      "  </RegistrationInfo>\n"
+      "  <Triggers>\n"
+      "%2"
+      "  </Triggers>\n"
+      "  <Settings>\n"
+      "    <StartWhenAvailable>true</StartWhenAvailable>\n"
+      "    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>\n"
+      "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n"
+      "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n"
+      "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n"
+      "  </Settings>\n"
+      "  <Actions Context=\"Author\">\n"
+      "    <Exec>\n"
+      "      <Command>%3</Command>\n"
+      "      <Arguments>--run-task \"%4\"</Arguments>\n"
+      "    </Exec>\n"
+      "  </Actions>\n"
+      "</Task>\n")
+          .arg(xmlEscape(sysName), triggerXml, xmlEscape(appPath),
+               xmlEscape(taskName));
+}
+
+QString ScheduleManager::generateSystemdService(const QString &taskName,
+                                                const QString &appPath) {
+  return QString(
+      "[Unit]\nDescription=RcloneBrowserNG task: %1\n\n"
+      "[Service]\nType=oneshot\nExecStart=%2 --run-task \"%1\"\n")
+          .arg(taskName, appPath);
+}
+
+QString ScheduleManager::generateSystemdTimer(const QString &taskName,
+                                              const QString &interval,
+                                              const QString &time) {
+  QString onCalendar;
+  if (interval == "hourly") {
+    onCalendar = "*-*-* *:00:00";
+  } else if (interval == "weekly") {
+    onCalendar = QString("Sun *-*-* %1:00:00")
+                     .arg(time.isEmpty() ? "00" : time.left(2));
+  } else if (interval == "daily") {
+    onCalendar = QString("*-*-* %1:00:00")
+                     .arg(time.isEmpty() ? "00" : time.left(2));
+  } else if (interval.endsWith("m")) {
+    onCalendar = QString("*-*-* *:%1/%2:00")
+                     .arg("00", interval.left(interval.length() - 1));
+  } else if (interval.endsWith("h")) {
+    onCalendar = QString("*-*-* 00/%1:00:00")
+                     .arg(interval.left(interval.length() - 1));
+  } else {
+    onCalendar = "*-*-* 00:00:00";
+  }
+
+  return QString(
+      "[Unit]\nDescription=RcloneBrowserNG timer: %1\n\n"
+      "[Timer]\nOnCalendar=%2\nPersistent=true\n\n"
+      "[Install]\nWantedBy=timers.target\n")
+          .arg(taskName, onCalendar);
+}
+
+QString ScheduleManager::generateMacPlist(const QString &sysName,
+                                          const QString &appPath,
+                                          const QString &taskName,
+                                          const QString &interval,
+                                          const QString &time) {
+  int hour = 0;
+  if (!time.isEmpty() && time.contains(':'))
+    hour = time.left(time.indexOf(':')).toInt();
+
+  QString scheduleKey;
+  if (interval == "daily") {
+    scheduleKey = QString(
+        "  <key>StartCalendarInterval</key>\n"
+        "  <dict>\n"
+        "    <key>Hour</key><integer>%1</integer>\n"
+        "    <key>Minute</key><integer>0</integer>\n"
+        "  </dict>\n").arg(hour);
+  } else if (interval == "weekly") {
+    scheduleKey = QString(
+        "  <key>StartCalendarInterval</key>\n"
+        "  <dict>\n"
+        "    <key>Weekday</key><integer>0</integer>\n"
+        "    <key>Hour</key><integer>%1</integer>\n"
+        "    <key>Minute</key><integer>0</integer>\n"
+        "  </dict>\n").arg(hour);
+  } else {
+    int intervalSec = 86400;
+    if (interval == "hourly") intervalSec = 3600;
+    else if (interval.endsWith("m"))
+      intervalSec = interval.left(interval.length() - 1).toInt() * 60;
+    else if (interval.endsWith("h"))
+      intervalSec = interval.left(interval.length() - 1).toInt() * 3600;
+    scheduleKey = QString(
+        "  <key>StartInterval</key><integer>%1</integer>\n").arg(intervalSec);
+  }
+
+  return QString(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+      "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+      "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+      "<plist version=\"1.0\">\n<dict>\n"
+      "  <key>Label</key><string>%1</string>\n"
+      "  <key>ProgramArguments</key><array>\n"
+      "    <string>%2</string>\n"
+      "    <string>--run-task</string>\n"
+      "    <string>%3</string>\n"
+      "  </array>\n"
+      "%4"
+      "  <key>RunAtLoad</key><false/>\n"
+      "</dict>\n</plist>\n")
+          .arg(xmlEscape(sysName), xmlEscape(appPath),
+               xmlEscape(taskName), scheduleKey);
+}
+
 bool ScheduleManager::installSchedule(const QString &taskName,
                                        const QString &interval,
                                        const QString &time, QString *error) {
@@ -57,41 +236,27 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   const QString app = appPath();
 
 #if defined(Q_OS_WIN32)
-  QString schedule;
-  QString modifier;
-  if (interval == "hourly") {
-    schedule = "HOURLY";
-  } else if (interval == "daily") {
-    schedule = "DAILY";
-  } else if (interval == "weekly") {
-    schedule = "WEEKLY";
-  } else if (interval.endsWith("m")) {
-    schedule = "MINUTE";
-    modifier = interval.left(interval.length() - 1);
-  } else if (interval.endsWith("h")) {
-    schedule = "HOURLY";
-    modifier = interval.left(interval.length() - 1);
-  } else {
-    schedule = "DAILY";
-  }
+  QString xml = generateWindowsTaskXml(sysName, app, taskName, interval, time);
 
-  QStringList args;
-  args << "/Create" << "/F" << "/TN" << sysName << "/SC" << schedule;
-  if (!modifier.isEmpty()) {
-    args << "/MO" << modifier;
+  QString tempPath = QDir::tempPath() + "/" + sysName + ".xml";
+  QFile xmlFile(tempPath);
+  if (!xmlFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (error) *error = "Cannot write temporary XML: " + tempPath;
+    return false;
   }
-  if (!time.isEmpty() && (schedule == "DAILY" || schedule == "WEEKLY")) {
-    args << "/ST" << time;
-  }
-  args << "/TR"
-       << QString("\"%1\" --run-task \"%2\"").arg(app, taskName);
+  xmlFile.write(xml.toUtf8());
+  xmlFile.close();
 
   QProcess proc;
-  proc.start("schtasks.exe", args);
+  proc.start("schtasks.exe",
+             QStringList() << "/Create" << "/F" << "/TN" << sysName
+                           << "/XML" << tempPath);
   if (!proc.waitForFinished(15000)) {
+    QFile::remove(tempPath);
     if (error) *error = "schtasks.exe timed out";
     return false;
   }
+  QFile::remove(tempPath);
   if (proc.exitCode() != 0) {
     if (error)
       *error = QString::fromLocal8Bit(proc.readAllStandardError()).trimmed();
@@ -105,35 +270,8 @@ bool ScheduleManager::installSchedule(const QString &taskName,
     QString servicePath = dir + "/" + sysName + ".service";
     QString timerPath = dir + "/" + sysName + ".timer";
 
-    QString onCalendar;
-    if (interval == "hourly") {
-      onCalendar = "*-*-* *:00:00";
-    } else if (interval == "weekly") {
-      onCalendar = QString("Sun *-*-* %1:00:00")
-                       .arg(time.isEmpty() ? "00" : time.left(2));
-    } else if (interval == "daily") {
-      onCalendar = QString("*-*-* %1:00:00")
-                       .arg(time.isEmpty() ? "00" : time.left(2));
-    } else if (interval.endsWith("m")) {
-      onCalendar = QString("*-*-* *:%1/%2:00")
-                       .arg("00", interval.left(interval.length() - 1));
-    } else if (interval.endsWith("h")) {
-      onCalendar = QString("*-*-* 00/%1:00:00")
-                       .arg(interval.left(interval.length() - 1));
-    } else {
-      onCalendar = "*-*-* 00:00:00";
-    }
-
-    QString service = QString(
-        "[Unit]\nDescription=RcloneBrowserNG task: %1\n\n"
-        "[Service]\nType=oneshot\nExecStart=%2 --run-task \"%1\"\n")
-            .arg(taskName, app);
-
-    QString timer = QString(
-        "[Unit]\nDescription=RcloneBrowserNG timer: %1\n\n"
-        "[Timer]\nOnCalendar=%2\nPersistent=true\n\n"
-        "[Install]\nWantedBy=timers.target\n")
-            .arg(taskName, onCalendar);
+    QString service = generateSystemdService(taskName, app);
+    QString timer = generateSystemdTimer(taskName, interval, time);
 
     QFile sf(servicePath);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -217,61 +355,7 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   QDir().mkpath(plistDir);
   QString plistPath = plistDir + "/" + sysName + ".plist";
 
-  auto xmlEscape = [](const QString &s) -> QString {
-    QString out = s;
-    out.replace('&', "&amp;");
-    out.replace('<', "&lt;");
-    out.replace('>', "&gt;");
-    return out;
-  };
-
-  int hour = 0;
-  if (!time.isEmpty() && time.contains(':'))
-    hour = time.left(time.indexOf(':')).toInt();
-
-  QString scheduleKey;
-  if (interval == "daily") {
-    scheduleKey = QString(
-        "  <key>StartCalendarInterval</key>\n"
-        "  <dict>\n"
-        "    <key>Hour</key><integer>%1</integer>\n"
-        "    <key>Minute</key><integer>0</integer>\n"
-        "  </dict>\n").arg(hour);
-  } else if (interval == "weekly") {
-    scheduleKey = QString(
-        "  <key>StartCalendarInterval</key>\n"
-        "  <dict>\n"
-        "    <key>Weekday</key><integer>0</integer>\n"
-        "    <key>Hour</key><integer>%1</integer>\n"
-        "    <key>Minute</key><integer>0</integer>\n"
-        "  </dict>\n").arg(hour);
-  } else {
-    int intervalSec = 86400;
-    if (interval == "hourly") intervalSec = 3600;
-    else if (interval.endsWith("m"))
-      intervalSec = interval.left(interval.length() - 1).toInt() * 60;
-    else if (interval.endsWith("h"))
-      intervalSec = interval.left(interval.length() - 1).toInt() * 3600;
-    scheduleKey = QString(
-        "  <key>StartInterval</key><integer>%1</integer>\n").arg(intervalSec);
-  }
-
-  QString plist = QString(
-      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-      "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
-      "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-      "<plist version=\"1.0\">\n<dict>\n"
-      "  <key>Label</key><string>%1</string>\n"
-      "  <key>ProgramArguments</key><array>\n"
-      "    <string>%2</string>\n"
-      "    <string>--run-task</string>\n"
-      "    <string>%3</string>\n"
-      "  </array>\n"
-      "%4"
-      "  <key>RunAtLoad</key><false/>\n"
-      "</dict>\n</plist>\n")
-          .arg(xmlEscape(sysName), xmlEscape(app),
-               xmlEscape(taskName), scheduleKey);
+  QString plist = generateMacPlist(sysName, app, taskName, interval, time);
 
   QFile file(plistPath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
