@@ -3046,6 +3046,77 @@ void MainWindow::showJobHistory() {
   } else {
     layout->addWidget(table);
   }
+  QHBoxLayout *actionRow = new QHBoxLayout();
+  QPushButton *viewDetail = new QPushButton("View Detail", &dialog);
+  viewDetail->setToolTip("View per-file transfer detail for the selected job.");
+  viewDetail->setEnabled(false);
+  QPushButton *exportDetail = new QPushButton("Export Detail", &dialog);
+  exportDetail->setToolTip(
+      "Export per-file transfer detail to a text file with secrets redacted.");
+  exportDetail->setEnabled(false);
+  actionRow->addWidget(viewDetail);
+  actionRow->addWidget(exportDetail);
+  actionRow->addStretch();
+  layout->addLayout(actionRow);
+
+  auto getSelectedEntry = [&]() -> const JobHistoryEntry * {
+    auto sel = table->selectedItems();
+    if (sel.isEmpty())
+      return nullptr;
+    int row = sel.first()->row();
+    int idx = entries.size() - row - 1;
+    if (idx < 0 || idx >= entries.size())
+      return nullptr;
+    return &entries.at(idx);
+  };
+
+  QObject::connect(table, &QTableWidget::itemSelectionChanged, &dialog,
+                   [&]() {
+                     bool hasSel = !table->selectedItems().isEmpty();
+                     viewDetail->setEnabled(hasSel);
+                     exportDetail->setEnabled(hasSel);
+                   });
+
+  QObject::connect(viewDetail, &QPushButton::clicked, &dialog, [&]() {
+    const JobHistoryEntry *entry = getSelectedEntry();
+    if (!entry)
+      return;
+    QDialog detailDlg(&dialog);
+    detailDlg.setWindowTitle(
+        QString("Transfer Detail: %1").arg(entry->name));
+    detailDlg.resize(700, 450);
+    UiPolish::SetWindowDefaults(&detailDlg, QSize(560, 380));
+    QVBoxLayout *dlayout = new QVBoxLayout(&detailDlg);
+    QPlainTextEdit *text = new QPlainTextEdit(&detailDlg);
+    text->setReadOnly(true);
+    text->setPlainText(RedactedJobDetail(*entry));
+    dlayout->addWidget(text);
+    QPushButton *close = new QPushButton("Close", &detailDlg);
+    QObject::connect(close, &QPushButton::clicked, &detailDlg,
+                     &QDialog::accept);
+    dlayout->addWidget(close);
+    detailDlg.exec();
+  });
+
+  QObject::connect(exportDetail, &QPushButton::clicked, &dialog, [&]() {
+    const JobHistoryEntry *entry = getSelectedEntry();
+    if (!entry)
+      return;
+    QString path = QFileDialog::getSaveFileName(
+        &dialog, "Export Job Detail", QString(), "Text Files (*.txt)");
+    if (path.isEmpty())
+      return;
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      QMessageBox::warning(&dialog, "Export",
+                           "Could not write to " + path);
+      return;
+    }
+    file.write(RedactedJobDetail(*entry).toUtf8());
+    file.close();
+    setStatusMessage("Job detail exported to " + path);
+  });
+
   QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
   UiPolish::SetDialogButtonBox(buttons);
   QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
