@@ -1457,6 +1457,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
         QAction *propsAction = nullptr;
         QAction *previewAction = nullptr;
+        QAction *versionsAction = nullptr;
         if (!model->isFolder(index)) {
           menu.addSeparator();
           editAction = menu.addAction("Open/Edit...");
@@ -1468,6 +1469,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           propsAction = menu.addAction("Properties...");
           propsAction->setToolTip(
               "Show file size, modification time, and available hashes.");
+          versionsAction = menu.addAction("Versions...");
+          versionsAction->setToolTip(
+              "Browse prior versions of this file (requires backend versioning support).");
         }
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));
@@ -1476,7 +1480,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                         chosen != copyUrlAction && chosen != dedupeAction &&
                         chosen != copyToRemote && chosen != serveAction &&
                         chosen != propsAction && chosen != bookmarkAction &&
-                        chosen != previewAction)) {
+                        chosen != previewAction && chosen != versionsAction)) {
           return;
         }
 
@@ -1863,6 +1867,125 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                 QFile::remove(tempFile);
               });
           QTimer::singleShot(60000, proc, [proc]() {
+            if (proc->state() != QProcess::NotRunning)
+              proc->kill();
+          });
+          proc->start();
+        } else if (chosen == versionsAction) {
+          auto *proc = new QProcess(this);
+          UseRclonePassword(proc);
+          proc->setProgram(GetRclone());
+          proc->setArguments(QStringList()
+                            << "lsjson" << GetRcloneConf()
+                            << getDriveSharedArgs()
+                            << "--versions" << "--no-mimetype"
+                            << target);
+          proc->setProcessChannelMode(QProcess::SeparateChannels);
+          QObject::connect(
+              proc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [this, proc, remote, path, target](int code, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (code != 0) {
+                  QString err =
+                      QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                  if (err.contains("not supported") || err.contains("unknown flag")) {
+                    QMessageBox::information(
+                        this, "Versions",
+                        "This backend does not support file versioning.");
+                  } else {
+                    QMessageBox::warning(
+                        this, "Versions",
+                        "Could not list versions:\n" + err.left(500));
+                  }
+                  return;
+                }
+
+                QJsonDocument doc =
+                    QJsonDocument::fromJson(proc->readAllStandardOutput());
+                QJsonArray arr = doc.array();
+                if (arr.isEmpty()) {
+                  QMessageBox::information(this, "Versions",
+                                           "No versions found for this file.");
+                  return;
+                }
+
+                QDialog dlg(this);
+                dlg.setWindowTitle(
+                    QString("Versions: %1").arg(QFileInfo(path).fileName()));
+                dlg.resize(700, 400);
+                UiPolish::SetWindowDefaults(&dlg, QSize(560, 320));
+                auto *layout = new QVBoxLayout(&dlg);
+
+                auto *table = new QTableWidget(&dlg);
+                table->setColumnCount(4);
+                table->setHorizontalHeaderLabels(
+                    QStringList() << "Modified" << "Size" << "Version ID" << "");
+                UiPolish::SetTableView(table, "File versions");
+                table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+                table->horizontalHeader()->setSectionResizeMode(
+                    0, QHeaderView::Stretch);
+                table->setRowCount(arr.size());
+
+                for (int i = 0; i < arr.size(); ++i) {
+                  QJsonObject obj = arr[i].toObject();
+                  QString modTime = obj.value("ModTime").toString();
+                  QDateTime dt =
+                      QDateTime::fromString(modTime, Qt::ISODateWithMs);
+                  QString displayTime = dt.isValid()
+                      ? dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss")
+                      : modTime;
+                  qint64 size = obj.value("Size").toVariant().toLongLong();
+                  QString versionId = obj.value("ID").toString();
+                  if (versionId.isEmpty())
+                    versionId = obj.value("VersionID").toString();
+
+                  table->setItem(i, 0, new QTableWidgetItem(displayTime));
+                  table->setItem(i, 1, new QTableWidgetItem(
+                      GetNiceSize(static_cast<quint64>(size))));
+                  table->setItem(i, 2, new QTableWidgetItem(
+                      versionId.isEmpty() ? "(current)" : versionId));
+
+                  auto *restoreBtn = new QPushButton(
+                      i == 0 ? "Current" : "Restore", &dlg);
+                  restoreBtn->setEnabled(i > 0);
+                  table->setCellWidget(i, 3, restoreBtn);
+
+                  QString vPath = obj.value("Path").toString();
+                  if (vPath.isEmpty())
+                    vPath = path;
+                  QObject::connect(restoreBtn, &QPushButton::clicked, &dlg,
+                      [this, remote, vPath, target, &dlg]() {
+                        QString src = remote + ":" + vPath;
+                        QStringList args;
+                        args << "copyto" << "--verbose" << "--use-json-log"
+                             << "--stats" << "1s"
+                             << GetDefaultRcloneOptionsList()
+                             << src << target;
+                        emit addTransfer(
+                            QString("Restore %1").arg(vPath), src, target, args);
+                        dlg.accept();
+                      });
+                }
+
+                layout->addWidget(table);
+
+                auto *hint = new QLabel(
+                    QString("%1 version(s). Select Restore to copy an older "
+                            "version back to the current path.")
+                        .arg(arr.size()),
+                    &dlg);
+                UiPolish::SetMuted(hint);
+                layout->addWidget(hint);
+
+                auto *close = new QPushButton("Close", &dlg);
+                QObject::connect(close, &QPushButton::clicked, &dlg,
+                                 &QDialog::accept);
+                layout->addWidget(close);
+                dlg.exec();
+              });
+          QTimer::singleShot(30000, proc, [proc]() {
             if (proc->state() != QProcess::NotRunning)
               proc->kill();
           });
