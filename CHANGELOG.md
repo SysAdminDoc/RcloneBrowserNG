@@ -1,6 +1,18 @@
 # Change Log
 ## [Unreleased]
+### Security
+-   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
+
 ### Reliability & Data Safety
+-   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types
+-   NEW: Backend capability registry — opening a remote asynchronously queries `rclone backend features` to cache per-remote capabilities (PublicLink, Move, About, etc.) and gates UI actions accordingly
+-   NEW: Windows schedules now use XML-based task creation with `StartWhenAvailable=true` so missed runs are caught up when the machine comes back online
+-   NEW: Scheduler golden tests — 20+ tests cover Windows XML, systemd timers, and macOS plists for every interval type
+-   NEW: Per-file job audit detail — completed jobs record per-file transfer events (transferred, deleted, skipped, error) with timestamps; viewable and exportable (secrets redacted) from Job History
+-   NEW: Remote Health diagnostics panel (Help > Remote Health) — shows rclone version, mount backend, per-remote connectivity and quota status with Copy Report
+-   NEW: SPDX SBOM generation in release pipeline alongside checksums and attestations
+-   NEW: High-contrast palette support — UI colors derive from system palette when contrast ratio exceeds 12:1 (Windows High Contrast, GNOME High Contrast)
+-   NEW: Parsing/serialization regression tests — 10 golden-file tests covering lsjson streaming parser (chunked, Unicode, >4GB, nested metadata) and JSON stats parser
 -   SECURITY: Build hardening — added `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, and position-independent code on Linux/macOS; replaced MSVC `/GS-` (stack protection disabled) with `/GS` (enabled)
 -   FIXED: Windows schedule listing now uses proper CSV parsing that respects quoted fields with commas; status column is read by index instead of string-searching for "Disabled"
 -   FIXED: JSON task store now checks the schema version on read and rejects newer schemas with an informative error instead of silently losing fields
