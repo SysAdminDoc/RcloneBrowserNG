@@ -109,6 +109,14 @@ if(BUILD_TESTING)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
 
+  add_executable(schedule_golden_test
+    tests/schedule_golden_test.cpp
+    src/schedule_manager.cpp
+  )
+  target_include_directories(schedule_golden_test PRIVATE src)
+  target_link_libraries(schedule_golden_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME schedule_golden_test COMMAND schedule_golden_test)
+
   add_executable(backend_features_test
     tests/backend_features_test.cpp
     src/rclone_capabilities.cpp
