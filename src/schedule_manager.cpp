@@ -238,12 +238,13 @@ bool ScheduleManager::installSchedule(const QString &taskName,
 #if defined(Q_OS_WIN32)
   QString xml = generateWindowsTaskXml(sysName, app, taskName, interval, time);
 
-  QString tempPath = QDir::tempPath() + "/" + sysName + ".xml";
-  QFile xmlFile(tempPath);
-  if (!xmlFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    if (error) *error = "Cannot write temporary XML: " + tempPath;
+  QTemporaryFile xmlFile(QDir::tempPath() + "/rclonebrowserng-XXXXXX.xml");
+  xmlFile.setAutoRemove(false);
+  if (!xmlFile.open()) {
+    if (error) *error = "Cannot create temporary XML file";
     return false;
   }
+  QString tempPath = xmlFile.fileName();
   xmlFile.write(xml.toUtf8());
   xmlFile.close();
 
@@ -619,7 +620,16 @@ QSet<int> parseCronField(const QString &field, int minVal, int maxVal) {
 
 bool ScheduleManager::isValidCronExpr(const QString &cronExpr) {
   QStringList fields = cronExpr.trimmed().split(QRegularExpression("\\s+"));
-  return fields.size() == 5;
+  if (fields.size() != 5)
+    return false;
+  const int mins[] = {0, 0, 1, 1, 0};
+  const int maxs[] = {59, 23, 31, 12, 6};
+  for (int i = 0; i < 5; ++i) {
+    QSet<int> vals = parseCronField(fields[i], mins[i], maxs[i]);
+    if (vals.isEmpty())
+      return false;
+  }
+  return true;
 }
 
 QList<QDateTime> ScheduleManager::nextCronRuns(const QString &cronExpr,

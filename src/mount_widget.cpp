@@ -290,11 +290,11 @@ void MountWidget::cancel() {
   if (!mRcPass.isEmpty()) {
     args << "--rc-pass" << mRcPass;
   }
-  // clean the process up when it finishes instead of leaking it
   QObject::connect(p,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
                    p, &QObject::deleteLater);
+  QObject::connect(p, &QProcess::errorOccurred, p, &QObject::deleteLater);
   UseRclonePassword(p);
   p->start(GetRclone(), args, QIODevice::ReadOnly);
 #else
