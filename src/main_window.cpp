@@ -834,6 +834,8 @@ MainWindow::MainWindow() {
   mStagingList->setMaximumHeight(120);
   mStagingList->setAccessibleName("Staged transfers awaiting review");
   mStagingList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  mStagingList->setDragDropMode(QAbstractItemView::InternalMove);
+  mStagingList->setDefaultDropAction(Qt::MoveAction);
   auto *stagingBar = new QWidget(this);
   auto *stagingBarLayout = new QHBoxLayout(stagingBar);
   stagingBarLayout->setContentsMargins(0, 0, 0, 0);
@@ -2551,30 +2553,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   QString message =
       QString("%1 %2").arg(jo->operation).arg(jo->source);
 
-  if (!jo->preCommand.isEmpty()) {
-    QProcess pre;
-    pre.setProcessChannelMode(QProcess::MergedChannels);
-#ifdef Q_OS_WIN
-    pre.start("cmd.exe", QStringList() << "/c" << jo->preCommand);
-#else
-    pre.start("/bin/sh", QStringList() << "-c" << jo->preCommand);
-#endif
-    pre.waitForFinished(30000);
-    if (pre.exitCode() != 0) {
-      QString output = QString::fromUtf8(pre.readAll()).trimmed();
-      int button = QMessageBox::warning(
-          this, "Pre-job command failed",
-          QString("The pre-job command exited with status %1.\n\n%2\n\n"
-                  "Run the transfer anyway?")
-              .arg(pre.exitCode())
-              .arg(output.left(500)),
-          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-      if (button != QMessageBox::Yes) {
-        return;
-      }
-    }
-  }
-
+  auto launchTransfer = [=, this]() {
   bool hasHooks =
       !heartbeatUrl.isEmpty() || !postCommand.isEmpty() || !webhookUrl.isEmpty();
   if (!args.isEmpty() && hasHooks) {
@@ -2608,6 +2587,41 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
         });
   } else {
     addTransfer(message, jo->source, jo->dest, args);
+  }
+  };
+
+  if (!jo->preCommand.isEmpty()) {
+    setStatusMessage("Running pre-job command…");
+    auto *pre = new QProcess(this);
+    pre->setProcessChannelMode(QProcess::MergedChannels);
+    connect(
+        pre,
+        static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+            &QProcess::finished),
+        this, [this, pre, launchTransfer](int code, QProcess::ExitStatus) {
+          pre->deleteLater();
+          setStatusMessage(QString());
+          if (code != 0) {
+            QString output = QString::fromUtf8(pre->readAll()).trimmed();
+            int button = QMessageBox::warning(
+                this, "Pre-job command failed",
+                QString("The pre-job command exited with status %1.\n\n%2\n\n"
+                        "Run the transfer anyway?")
+                    .arg(code)
+                    .arg(output.left(500)),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (button != QMessageBox::Yes)
+              return;
+          }
+          launchTransfer();
+        });
+#ifdef Q_OS_WIN
+    pre->start("cmd.exe", QStringList() << "/c" << jo->preCommand);
+#else
+    pre->start("/bin/sh", QStringList() << "-c" << jo->preCommand);
+#endif
+  } else {
+    launchTransfer();
   }
 }
 
@@ -3619,6 +3633,22 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
   if (!ok)
     return;
 
+  QString subfolder = QInputDialog::getText(
+      this, "Upload to Remote",
+      "Destination path within " + remote + ": (leave empty for root):",
+      QLineEdit::Normal, QString(), &ok);
+  if (!ok)
+    return;
+  subfolder = subfolder.trimmed();
+  while (subfolder.startsWith('/'))
+    subfolder = subfolder.mid(1);
+  while (subfolder.endsWith('/'))
+    subfolder.chop(1);
+
+  QString dest = remote + ":";
+  if (!subfolder.isEmpty())
+    dest += subfolder + "/";
+
   for (const QString &file : files) {
     QFileInfo fi(file);
 
@@ -3628,10 +3658,10 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
          << GetDefaultExcludeList()
          << GetDefaultRcloneOptionsList()
          << QDir::toNativeSeparators(fi.absoluteFilePath())
-         << remote + ":";
+         << dest;
 
     addTransfer(
-        QString("Upload %1 to %2").arg(fi.fileName(), remote),
-        fi.absoluteFilePath(), remote + ":" + fi.fileName(), args);
+        QString("Upload %1 to %2").arg(fi.fileName(), dest),
+        fi.absoluteFilePath(), dest + fi.fileName(), args);
   }
 }
