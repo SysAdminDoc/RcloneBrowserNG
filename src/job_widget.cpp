@@ -199,7 +199,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         if (level == "error" || level == "warning") {
           Diagnostics::appendLog("job", msg);
         }
-        if (msg.contains(':') && mTransferDetail.size() < 10000) {
+        if (mTransferDetail.size() < 10000) {
           QString objectName = obj.value("object").toString();
           if (!objectName.isEmpty()) {
             QString ts = obj.value("time").toString();

@@ -755,9 +755,12 @@ MainWindow::MainWindow() {
     auto *refreshBtn = new QPushButton("Check All", &dialog);
     refreshBtn->setToolTip("Test connectivity for all configured remotes.");
 
-    auto runChecks = [this, table, refreshBtn]() {
-      refreshBtn->setEnabled(false);
-      refreshBtn->setText("Checking...");
+    QPointer<QTableWidget> safeTable(table);
+    QPointer<QPushButton> safeRefresh(refreshBtn);
+    auto runChecks = [this, safeTable, safeRefresh]() {
+      if (!safeRefresh || !safeTable) return;
+      safeRefresh->setEnabled(false);
+      safeRefresh->setText("Checking...");
 
       auto *proc = new QProcess();
       UseRclonePassword(proc);
@@ -769,15 +772,16 @@ MainWindow::MainWindow() {
           proc,
           static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
               &QProcess::finished),
-          this, [proc, table, refreshBtn](int code, QProcess::ExitStatus) {
+          this, [proc, safeTable, safeRefresh](int code, QProcess::ExitStatus) {
             proc->deleteLater();
-            refreshBtn->setEnabled(true);
-            refreshBtn->setText("Check All");
+            if (!safeRefresh || !safeTable) return;
+            safeRefresh->setEnabled(true);
+            safeRefresh->setText("Check All");
             if (code != 0) return;
 
             QString output = QString::fromUtf8(proc->readAllStandardOutput());
             QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-            table->setRowCount(lines.size());
+            safeTable->setRowCount(lines.size());
             for (int i = 0; i < lines.size(); ++i) {
               QString line = lines[i].trimmed();
               int colonIdx = line.indexOf(':');
@@ -786,10 +790,10 @@ MainWindow::MainWindow() {
               QString type = colonIdx > 0
                                  ? line.mid(colonIdx + 1).trimmed()
                                  : "";
-              table->setItem(i, 0, new QTableWidgetItem(name));
-              table->setItem(i, 1, new QTableWidgetItem(type));
-              table->setItem(i, 2, new QTableWidgetItem("Checking..."));
-              table->setItem(i, 3, new QTableWidgetItem("-"));
+              safeTable->setItem(i, 0, new QTableWidgetItem(name));
+              safeTable->setItem(i, 1, new QTableWidgetItem(type));
+              safeTable->setItem(i, 2, new QTableWidgetItem("Checking..."));
+              safeTable->setItem(i, 3, new QTableWidgetItem("-"));
 
               auto *check = new QProcess();
               UseRclonePassword(check);
@@ -802,31 +806,32 @@ MainWindow::MainWindow() {
                   check,
                   static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                       &QProcess::finished),
-                  [check, table, i](int rc, QProcess::ExitStatus) {
+                  [check, safeTable, i](int rc, QProcess::ExitStatus) {
                     check->deleteLater();
-                    if (i >= table->rowCount()) return;
+                    if (!safeTable) return;
+                    if (i >= safeTable->rowCount()) return;
                     if (rc == 0) {
-                      table->item(i, 2)->setText("OK");
+                      safeTable->item(i, 2)->setText("OK");
                       QJsonDocument doc = QJsonDocument::fromJson(
                           check->readAllStandardOutput());
                       QJsonObject obj = doc.object();
                       qint64 total = obj.value("total").toVariant().toLongLong();
                       qint64 used = obj.value("used").toVariant().toLongLong();
                       if (total > 0) {
-                        table->item(i, 3)->setText(
+                        safeTable->item(i, 3)->setText(
                             QString("%1 / %2")
                                 .arg(GetNiceSize(static_cast<quint64>(used)),
                                      GetNiceSize(static_cast<quint64>(total))));
                       } else {
-                        table->item(i, 3)->setText("N/A");
+                        safeTable->item(i, 3)->setText("N/A");
                       }
                     } else {
                       QString err = QString::fromUtf8(
                           check->readAllStandardError()).trimmed();
                       if (err.contains("not supported"))
-                        table->item(i, 2)->setText("OK (quota N/A)");
+                        safeTable->item(i, 2)->setText("OK (quota N/A)");
                       else
-                        table->item(i, 2)->setText("Error: " + err.left(80));
+                        safeTable->item(i, 2)->setText("Error: " + err.left(80));
                     }
                   });
               QTimer::singleShot(15000, check, [check]() {
@@ -2063,10 +2068,11 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
   if (!isLocal) {
     auto defaultFeatures = BackendFeatures::defaultForType(type);
     remote->applyBackendFeatures(defaultFeatures);
+    QPointer<RemoteWidget> safeRemote(remote);
     BackendFeatureCache::queryAsync(
-        name, [remote](const BackendFeatures &features) {
-          if (remote)
-            remote->applyBackendFeatures(features);
+        name, [safeRemote](const BackendFeatures &features) {
+          if (safeRemote)
+            safeRemote->applyBackendFeatures(features);
         });
   }
 
@@ -2786,19 +2792,22 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
       auto *dropEvent = static_cast<QDropEvent *>(event);
       int tabIdx = ui.tabs->tabBar()->tabAt(dropEvent->position().toPoint());
       if (tabIdx >= 3) {
-        QString source = QString::fromUtf8(
+        QString rawData = QString::fromUtf8(
             dropEvent->mimeData()->data("application/x-rclone-remote-path"));
+        QStringList sources = rawData.split('\n', Qt::SkipEmptyParts);
         QString tabName = ui.tabs->tabText(tabIdx);
         dropEvent->acceptProposedAction();
 
-        QStringList args;
-        args << "copy" << "--verbose" << "--use-json-log"
-             << "--stats" << "1s" << "--stats-file-name-length" << "0"
-             << GetDefaultRcloneOptionsList()
-             << source << tabName + ":";
-        addTransfer(
-            QString("Copy %1 to %2").arg(source, tabName),
-            source, tabName + ":", args);
+        for (const QString &source : sources) {
+          QStringList args;
+          args << "copy" << "--verbose" << "--use-json-log"
+               << "--stats" << "1s" << "--stats-file-name-length" << "0"
+               << GetDefaultRcloneOptionsList()
+               << source << tabName + ":";
+          addTransfer(
+              QString("Copy %1 to %2").arg(source, tabName),
+              source, tabName + ":", args);
+        }
         return true;
       }
     }

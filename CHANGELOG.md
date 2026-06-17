@@ -2,6 +2,18 @@
 ## [Unreleased]
 ### Security
 -   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
+-   SECURITY: Preview temp files now use sanitized filenames (`QFileInfo::fileName()`) preventing path-traversal via malicious remote filenames
+-   SECURITY: Schedule XML temp files now use `QTemporaryFile` with random names instead of predictable paths, preventing symlink/replacement attacks
+-   FIXED: Use-after-free in backend feature query — `QPointer` guard prevents callback from accessing destroyed RemoteWidget
+-   FIXED: Use-after-free in Remote Health dialog — nested async process callbacks now use `QPointer` guards for dialog widgets
+-   FIXED: Preview temp files are now cleaned up on download error (previously leaked)
+-   FIXED: Preview of 0-byte files shows "File is empty" message instead of a blank dialog
+-   FIXED: Cron expression validation now rejects out-of-range values (e.g., minute 60, hour 25, day 32)
+-   FIXED: Cross-remote search button is disabled when no remotes are checked (previously silently searched all)
+-   FIXED: Progress dialog now flushes remaining process output before reporting completion (prevents last-line data loss)
+-   FIXED: Mount unmount process is cleaned up on start failure via `errorOccurred` signal (prevents memory leak)
+-   FIXED: Drag-and-drop of multiple files between remote tabs now creates individual transfers instead of silently dropping all but the first
+-   FIXED: Transfer detail capture no longer requires colon in message — any rclone log entry with an `object` field is captured
 
 ### Reliability & Data Safety
 -   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types

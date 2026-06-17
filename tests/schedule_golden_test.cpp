@@ -188,6 +188,51 @@ int main() {
     requireContains(plist, "&lt;with&gt;", "macOS plist XML escaping <>");
   }
 
+  // Cron validation: valid expressions
+  {
+    require(ScheduleManager::isValidCronExpr("0 2 * * *"),
+            "daily at 2am should be valid");
+    require(ScheduleManager::isValidCronExpr("*/15 * * * *"),
+            "every 15 minutes should be valid");
+    require(ScheduleManager::isValidCronExpr("0 0 * * 0"),
+            "weekly on Sunday should be valid");
+    require(ScheduleManager::isValidCronExpr("30 14 1-5 * 1-5"),
+            "weekdays 1st-5th at 14:30 should be valid");
+  }
+
+  // Cron validation: invalid expressions
+  {
+    require(!ScheduleManager::isValidCronExpr("60 * * * *"),
+            "minute 60 should be invalid");
+    require(!ScheduleManager::isValidCronExpr("* 25 * * *"),
+            "hour 25 should be invalid");
+    require(!ScheduleManager::isValidCronExpr("* * 32 * *"),
+            "day 32 should be invalid");
+    require(!ScheduleManager::isValidCronExpr("* * * 13 *"),
+            "month 13 should be invalid");
+    require(!ScheduleManager::isValidCronExpr("* * * * 8"),
+            "dow 8 should be invalid");
+    require(!ScheduleManager::isValidCronExpr("not a cron"),
+            "text should be invalid");
+    require(!ScheduleManager::isValidCronExpr("* * *"),
+            "3 fields should be invalid");
+  }
+
+  // Cron next runs: valid expression returns results
+  {
+    auto runs = ScheduleManager::nextCronRuns("0 * * * *", 3);
+    require(runs.size() == 3,
+            QString("hourly cron should return 3 runs, got %1")
+                .arg(runs.size()));
+  }
+
+  // Cron next runs: invalid expression returns empty
+  {
+    auto runs = ScheduleManager::nextCronRuns("60 * * * *", 5);
+    require(runs.isEmpty(),
+            "invalid cron should return empty list");
+  }
+
   qInfo() << "All schedule golden tests passed.";
   return 0;
 }

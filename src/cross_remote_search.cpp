@@ -102,6 +102,17 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
                    &QDialog::reject);
   layout->addWidget(buttons);
 
+  auto updateSearchEnabled = [this]() {
+    if (mRunning.isEmpty()) {
+      bool hasQuery = !mQueryEdit->text().trimmed().isEmpty();
+      bool hasRemotes = false;
+      for (auto *cb : mRemoteChecks) {
+        if (cb->isChecked()) { hasRemotes = true; break; }
+      }
+      mSearchButton->setEnabled(hasQuery && hasRemotes);
+    }
+  };
+
   QObject::connect(mSearchButton, &QPushButton::clicked, this,
                    &CrossRemoteSearchDialog::startSearch);
   QObject::connect(mCancelButton, &QPushButton::clicked, this,
@@ -109,12 +120,13 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   QObject::connect(mQueryEdit, &QLineEdit::returnPressed, this,
                    &CrossRemoteSearchDialog::startSearch);
   QObject::connect(mQueryEdit, &QLineEdit::textChanged, this,
-                   [this](const QString &text) {
+                   [this, updateSearchEnabled](const QString &) {
                      UiPolish::SetFieldState(mQueryEdit, QString());
-                     if (mRunning.isEmpty()) {
-                       mSearchButton->setEnabled(!text.trimmed().isEmpty());
-                     }
+                     updateSearchEnabled();
                    });
+  for (auto *cb : mRemoteChecks) {
+    QObject::connect(cb, &QCheckBox::toggled, this, updateSearchEnabled);
+  }
 
   QObject::connect(mResults, &QTableWidget::cellDoubleClicked, this,
                    [this](int row, int) {
@@ -305,7 +317,7 @@ QStringList CrossRemoteSearchDialog::selectedRemotes() const {
     if (it != mRemoteChecks.end() && it.value()->isChecked())
       result << r;
   }
-  return result.isEmpty() ? mRemotes : result;
+  return result;
 }
 
 void CrossRemoteSearchDialog::loadHistory() {

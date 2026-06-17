@@ -1789,7 +1789,10 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
           QString tempDir = QDir::tempPath() + "/rclonebrowserng-preview";
           QDir().mkpath(tempDir);
-          QString tempFile = tempDir + "/" + name;
+          QString safeName = QFileInfo(name).fileName();
+          if (safeName.isEmpty())
+            safeName = "preview";
+          QString tempFile = tempDir + "/" + safeName;
 
           auto *proc = new QProcess(this);
           UseRclonePassword(proc);
@@ -1814,6 +1817,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                   QMessageBox::warning(this, "Preview",
                                        "Could not download file:\n" +
                                            err.left(500));
+                  QFile::remove(tempFile);
+                  return;
+                }
+
+                QFileInfo fi(tempFile);
+                if (fi.size() == 0) {
+                  QMessageBox::information(this, "Preview",
+                                           "File is empty (0 bytes).");
+                  QFile::remove(tempFile);
                   return;
                 }
 

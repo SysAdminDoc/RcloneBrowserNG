@@ -45,6 +45,14 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
                     this, [=](int code, QProcess::ExitStatus status) {
+                      QByteArray remaining = process->readAll();
+                      if (!remaining.isEmpty()) {
+                        QString output = QString::fromUtf8(remaining);
+                        if (trim)
+                          output = output.trimmed();
+                        if (!output.isEmpty())
+                          ui.output->appendPlainText(output);
+                      }
                       if (status == QProcess::NormalExit && code == 0) {
                         UiPolish::SetStatus(ui.buttonShowOutput, "success",
                                             "Finished");
