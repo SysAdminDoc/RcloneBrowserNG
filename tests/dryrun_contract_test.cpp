@@ -228,6 +228,21 @@ int main() {
     require(targets.isEmpty(), "keep-all setting produced delete targets");
   }
 
+  // Contract 12: external callback/download URLs must be valid HTTP(S)
+  {
+    QUrl parsed;
+    QString error;
+    require(ParseHttpUrl("https://example.com/hook?token=abc", &parsed, &error),
+            "valid HTTPS URL was rejected");
+    require(parsed.scheme() == "https" && parsed.host() == "example.com",
+            "valid HTTPS URL parsed incorrectly");
+    require(!ParseHttpUrl("file:///C:/secret.txt", &parsed, &error),
+            "file URL was accepted");
+    require(error.contains("http://"), "file URL error was not actionable");
+    require(!ParseHttpUrl("https://", &parsed, &error),
+            "hostless HTTPS URL was accepted");
+  }
+
   qInfo() << "All dry-run contract tests passed.";
   return 0;
 }

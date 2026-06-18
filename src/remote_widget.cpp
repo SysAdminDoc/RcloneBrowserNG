@@ -1587,11 +1587,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           if (!ok || url.trimmed().isEmpty()) {
             return;
           }
-          QUrl parsed(url.trimmed());
-          if (parsed.scheme() != "http" && parsed.scheme() != "https") {
-            QMessageBox::warning(
-                this, "Invalid URL",
-                "Only http:// and https:// URLs are supported.");
+          QString urlError;
+          if (!ParseHttpUrl(url, nullptr, &urlError)) {
+            QMessageBox::warning(this, "Invalid URL", urlError);
             return;
           }
           QProcess process;
