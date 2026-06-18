@@ -135,9 +135,7 @@ QStringList ExportDialog::getOptions() const {
 
   QString extra = ui.textExtra->text().trimmed();
   if (!extra.isEmpty()) {
-    for (const auto &arg : extra.split(' ', Qt::SkipEmptyParts)) {
-      list << arg;
-    }
+    list << SplitRcloneOptions(extra);
   }
 
   list << mTarget;

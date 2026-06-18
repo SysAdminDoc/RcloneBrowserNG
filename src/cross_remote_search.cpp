@@ -213,23 +213,7 @@ void CrossRemoteSearchDialog::startSearch() {
 
     QObject::connect(proc, &QProcess::readyReadStandardOutput, this,
                      [this, proc, remote]() {
-                       while (proc->canReadLine()) {
-                         QByteArray line = proc->readLine().trimmed();
-                         if (line.isEmpty() || line.startsWith('[') ||
-                             line.startsWith(']'))
-                           continue;
-                         if (line.endsWith(','))
-                           line.chop(1);
-                         QJsonDocument doc = QJsonDocument::fromJson(line);
-                         if (!doc.isObject())
-                           continue;
-                         QJsonObject obj = doc.object();
-                         if (obj.value("IsDir").toBool())
-                           continue;
-                         addResult(remote, obj.value("Path").toString(),
-                                   obj.value("Size").toVariant().toLongLong(),
-                                   obj.value("ModTime").toString());
-                       }
+                       consumeSearchOutput(proc, remote);
                      });
 
     QObject::connect(
@@ -237,44 +221,24 @@ void CrossRemoteSearchDialog::startSearch() {
         static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
             &QProcess::finished),
         this, [this, proc, remote](int code, QProcess::ExitStatus) {
+          consumeSearchOutput(proc, remote, true);
+          QString stderrText;
           if (code != 0) {
-            ++mFailedRemotes;
-            const QString stderrText =
-                QString::fromUtf8(proc->readAllStandardError()).trimmed();
-            mRemoteErrors << QString("%1: %2")
-                                 .arg(remote,
-                                      stderrText.isEmpty()
-                                          ? QString("rclone exited with status %1")
-                                                .arg(code)
-                                          : stderrText.left(500));
-          }
-          mRunning.removeOne(proc);
-          proc->deleteLater();
-          if (mRunning.isEmpty()) {
-            mSearchButton->setEnabled(!mQueryEdit->text().trimmed().isEmpty());
-            mCancelButton->setEnabled(false);
-            QString status =
-                QString("Done. %1 file(s) found across %2 remote(s).")
-                    .arg(mTotalMatches)
-                    .arg(selectedRemotes().size());
-            if (mFailedRemotes > 0) {
-              status += QString(" %1 remote(s) need attention.")
-                            .arg(mFailedRemotes);
-              mStatus->setToolTip(mRemoteErrors.join("\n\n"));
-            }
-            mStatus->setText(status);
-            mEmptyState->setVisible(mTotalMatches == 0);
-            if (mTotalMatches == 0) {
-              UiPolish::SetEmptyState(
-                  mEmptyState,
-                  mFailedRemotes > 0 ? "No matches from completed remotes"
-                                     : "No matching files",
-                  mFailedRemotes > 0
-                      ? "Check the status tooltip for remote errors, or refine the pattern."
-                      : "Try a broader pattern or disable case-sensitive matching.");
+            stderrText = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+            if (stderrText.isEmpty()) {
+              stderrText = QString("rclone exited with status %1").arg(code);
             }
           }
+          finishRemoteSearch(proc, remote, code != 0, stderrText);
         });
+
+    QObject::connect(proc, &QProcess::errorOccurred, this,
+                     [this, proc, remote](QProcess::ProcessError error) {
+                       if (error == QProcess::FailedToStart) {
+                         finishRemoteSearch(proc, remote, true,
+                                            proc->errorString());
+                       }
+                     });
 
     proc->start(GetRclone(), args, QIODevice::ReadOnly);
   }
@@ -307,6 +271,95 @@ void CrossRemoteSearchDialog::cancelSearch() {
     UiPolish::SetEmptyState(
         mEmptyState, "Search cancelled",
         "Start another search when you are ready.");
+  }
+}
+
+void CrossRemoteSearchDialog::finishRemoteSearch(QProcess *proc,
+                                                 const QString &remote,
+                                                 bool failed,
+                                                 const QString &errorText) {
+  if (!mRunning.contains(proc)) {
+    return;
+  }
+  if (failed) {
+    ++mFailedRemotes;
+    mRemoteErrors << QString("%1: %2")
+                         .arg(remote,
+                              errorText.isEmpty()
+                                  ? QString("rclone failed")
+                                  : errorText.left(500));
+  }
+  mRunning.removeOne(proc);
+  proc->deleteLater();
+  if (!mRunning.isEmpty()) {
+    return;
+  }
+
+  mSearchButton->setEnabled(!mQueryEdit->text().trimmed().isEmpty());
+  mCancelButton->setEnabled(false);
+  QString status = QString("Done. %1 file(s) found across %2 remote(s).")
+                       .arg(mTotalMatches)
+                       .arg(selectedRemotes().size());
+  if (mFailedRemotes > 0) {
+    status += QString(" %1 remote(s) need attention.").arg(mFailedRemotes);
+    mStatus->setToolTip(mRemoteErrors.join("\n\n"));
+  } else {
+    mStatus->setToolTip(QString());
+  }
+  mStatus->setText(status);
+  mEmptyState->setVisible(mTotalMatches == 0);
+  if (mTotalMatches == 0) {
+    UiPolish::SetEmptyState(
+        mEmptyState,
+        mFailedRemotes > 0 ? "No matches from completed remotes"
+                           : "No matching files",
+        mFailedRemotes > 0
+            ? "Check the status tooltip for remote errors, or refine the pattern."
+            : "Try a broader pattern or disable case-sensitive matching.");
+  }
+}
+
+void CrossRemoteSearchDialog::consumeSearchOutput(QProcess *proc,
+                                                  const QString &remote,
+                                                  bool finalChunk) {
+  auto parseLine = [this, &remote](QByteArray line) {
+    auto addObject = [this, &remote](const QJsonObject &obj) {
+      if (obj.value("IsDir").toBool())
+        return;
+      addResult(remote, obj.value("Path").toString(),
+                obj.value("Size").toVariant().toLongLong(),
+                obj.value("ModTime").toString());
+    };
+
+    line = line.trimmed();
+    if (line.isEmpty() || line.startsWith(']'))
+      return;
+    if (line.endsWith(','))
+      line.chop(1);
+    QJsonDocument doc = QJsonDocument::fromJson(line);
+    if (doc.isArray()) {
+      for (const QJsonValue &value : doc.array()) {
+        if (value.isObject()) {
+          addObject(value.toObject());
+        }
+      }
+      return;
+    }
+    if (!doc.isObject())
+      return;
+    addObject(doc.object());
+  };
+
+  while (proc->canReadLine()) {
+    parseLine(proc->readLine());
+  }
+
+  if (finalChunk) {
+    const QList<QByteArray> remaining =
+        proc->readAllStandardOutput().split('\n');
+    for (const QByteArray &line : remaining) {
+      parseLine(line);
+    }
   }
 }
 

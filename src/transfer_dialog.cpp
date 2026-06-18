@@ -244,7 +244,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   auto *heartbeatLabel = new QLabel("Heartbeat URL:", this);
   heartbeatLabel->setToolTip(
       "Healthchecks.io, ntfy.sh, or any URL to ping on job completion.\n"
-      "On success the app sends GET to this URL; on failure it appends /fail.");
+      "Use http:// or https:// only. On success the app sends GET to this "
+      "URL; on failure it appends /fail.");
   mHeartbeatUrl = new QLineEdit(this);
   mHeartbeatUrl->setPlaceholderText("https://hc-ping.com/your-uuid or https://ntfy.sh/your-topic");
   mHeartbeatUrl->setAccessibleName("Heartbeat URL for monitoring");
@@ -253,8 +254,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   auto *webhookLabel = new QLabel("Webhook URL:", this);
   webhookLabel->setToolTip(
       "Discord, Gotify, Shoutrrr, or any URL to POST a JSON status on "
-      "job completion.\nPayload includes task name, status, duration, "
-      "bytes transferred, and error message (if any).");
+      "job completion.\nUse http:// or https:// only. Payload includes task "
+      "name, status, duration, bytes transferred, and error message (if any).");
   mWebhookUrl = new QLineEdit(this);
   mWebhookUrl->setPlaceholderText("https://discord.com/api/webhooks/... or https://gotify.example.com/message");
   mWebhookUrl->setAccessibleName("Webhook URL for notifications");

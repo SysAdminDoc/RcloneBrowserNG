@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Security
+-   SECURITY: Heartbeat and webhook callbacks now reject malformed or non-http(s) URLs before creating a network request
 -   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
 -   SECURITY: Preview temp files now use sanitized filenames (`QFileInfo::fileName()`) preventing path-traversal via malicious remote filenames
 -   SECURITY: Schedule XML temp files now use `QTemporaryFile` with random names instead of predictable paths, preventing symlink/replacement attacks
@@ -13,6 +14,13 @@
 -   FIXED: Progress dialog now flushes remaining process output before reporting completion (prevents last-line data loss)
 -   FIXED: Mount unmount process is cleaned up on start failure via `errorOccurred` signal (prevents memory leak)
 -   FIXED: Drag-and-drop of multiple files between remote tabs now creates individual transfers instead of silently dropping all but the first
+-   FIXED: Free-form rclone option fields now preserve quoted values with spaces instead of splitting them into broken arguments
+-   FIXED: Task store migration now preserves backup-dir retention and bisync conflict-resolution fields in the legacy binary serializer
+-   FIXED: Task store JSON loading now fails closed on malformed roots or non-object task entries instead of silently dropping bad data
+-   FIXED: Cross-remote search now drains final stdout, handles failed-to-start rclone processes, clears stale error tooltips, and accepts compact lsjson arrays
+-   FIXED: Saved task dry-runs no longer leave the in-memory task marked dry-run after launching, and pre-job commands report failed starts without leaving the transfer flow stuck
+-   FIXED: Remote listing now consumes the final process output chunk before deciding whether a directory load failed
+-   CHANGED: Remote browser back/forward toolbar buttons no longer advertise removed keyboard shortcuts and remain keyboard-focusable
 -   FIXED: Transfer detail capture no longer requires colon in message — any rclone log entry with an `object` field is captured
 
 -   FIXED: High-contrast status badge colors now choose palette-contrasting success/warning/error tones instead of fixed colors

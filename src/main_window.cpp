@@ -73,6 +73,23 @@ QString shellQuote(QString arg) {
   return "'" + arg.replace("'", "'\"'\"'") + "'";
 }
 
+bool parseHttpCallbackUrl(const QString &value, QUrl *url, QString *error) {
+  const QString trimmed = value.trimmed();
+  const QUrl parsed(trimmed, QUrl::StrictMode);
+  const QString scheme = parsed.scheme().toLower();
+  if (!parsed.isValid() || parsed.host().isEmpty() ||
+      (scheme != QStringLiteral("http") && scheme != QStringLiteral("https"))) {
+    if (error) {
+      *error = QStringLiteral("Only valid http:// or https:// callback URLs are supported.");
+    }
+    return false;
+  }
+  if (url) {
+    *url = parsed;
+  }
+  return true;
+}
+
 QVector<RemoteProvider> loadRemoteProviders(QWidget *parent, QString *error) {
   if (error) {
     error->clear();
@@ -2905,12 +2922,14 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
 
   jo->dryRun = dryrun;
   QStringList args = jo->getOptions();
+  jo->dryRun = false;
   QString heartbeatUrl = jo->heartbeatUrl;
   QString postCommand = jo->postCommand;
   QString webhookUrl = jo->webhookUrl;
   QString taskName = jo->description;
-  QString message =
-      QString("%1 %2").arg(jo->operation).arg(jo->source);
+  QString source = jo->source;
+  QString dest = jo->dest;
+  QString message = QString("%1 %2").arg(jo->operation).arg(source);
 
   auto launchTransfer = [=]() {
   bool hasHooks =
@@ -2924,7 +2943,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
           if (jobId >= 0) {
             auto *widget = new RcJobWidget(
                 mRcEngine, jobId, message,
-                mRcEngine->rcCommandForDisplay(args), jo->source, jo->dest);
+                mRcEngine->rcCommandForDisplay(args), source, dest);
             addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName);
             if (!postCommand.isEmpty()) {
               QObject::connect(
@@ -2940,12 +2959,12 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             }
             return;
           }
-          addTransferViaProcess(message, jo->source, jo->dest, args,
+          addTransferViaProcess(message, source, dest, args,
                                 heartbeatUrl, postCommand, webhookUrl,
                                 taskName);
         });
   } else {
-    addTransfer(message, jo->source, jo->dest, args);
+    addTransfer(message, source, dest, args);
   }
   };
 
@@ -2953,11 +2972,17 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
     setStatusMessage("Running pre-job command…");
     auto *pre = new QProcess(this);
     pre->setProcessChannelMode(QProcess::MergedChannels);
+    auto preCompleted = QSharedPointer<bool>::create(false);
     connect(
         pre,
         static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
             &QProcess::finished),
-        this, [this, pre, launchTransfer](int code, QProcess::ExitStatus) {
+        this, [this, pre, launchTransfer, preCompleted](
+                  int code, QProcess::ExitStatus) {
+          if (*preCompleted) {
+            return;
+          }
+          *preCompleted = true;
           pre->deleteLater();
           setStatusMessage(QString());
           if (code != 0) {
@@ -2974,6 +2999,25 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
           }
           launchTransfer();
         });
+    connect(pre, &QProcess::errorOccurred, this,
+            [this, pre, launchTransfer, preCompleted](
+                QProcess::ProcessError error) {
+              if (error != QProcess::FailedToStart || *preCompleted) {
+                return;
+              }
+              *preCompleted = true;
+              pre->deleteLater();
+              setStatusMessage(QString());
+              int button = QMessageBox::warning(
+                  this, "Pre-job command failed",
+                  QString("The pre-job command could not start.\n\n%1\n\n"
+                          "Run the transfer anyway?")
+                      .arg(pre->errorString()),
+                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+              if (button == QMessageBox::Yes) {
+                launchTransfer();
+              }
+            });
 #ifdef Q_OS_WIN
     pre->start("cmd.exe", QStringList() << "/c" << jo->preCommand);
 #else
@@ -3567,20 +3611,27 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
     return;
   }
 
+  QString error;
+  QUrl endpoint;
+  if (!parseHttpCallbackUrl(url, &endpoint, &error)) {
+    setStatusMessage(QString("Heartbeat skipped: %1").arg(error));
+    return;
+  }
+
   if (!mNetworkManager) {
     mNetworkManager = new QNetworkAccessManager(this);
   }
 
-  QString endpoint = url;
   if (!success) {
-    if (endpoint.endsWith('/')) {
-      endpoint += "fail";
-    } else {
-      endpoint += "/fail";
+    QString path = endpoint.path();
+    if (!path.endsWith('/')) {
+      path += '/';
     }
+    path += "fail";
+    endpoint.setPath(path);
   }
 
-  QNetworkRequest req{QUrl(endpoint)};
+  QNetworkRequest req{endpoint};
   QNetworkReply *reply = mNetworkManager->get(req);
   QTimer::singleShot(15000, reply, [reply]() {
     if (reply->isRunning()) {
@@ -3594,6 +3645,13 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
 void MainWindow::sendWebhook(const QString &url, const QString &taskName,
                              bool success, const QString &error) {
   if (url.isEmpty()) {
+    return;
+  }
+
+  QString urlError;
+  QUrl endpoint;
+  if (!parseHttpCallbackUrl(url, &endpoint, &urlError)) {
+    setStatusMessage(QString("Webhook skipped: %1").arg(urlError));
     return;
   }
 
@@ -3615,7 +3673,7 @@ void MainWindow::sendWebhook(const QString &url, const QString &taskName,
       : QString("Task \"%1\" failed: %2").arg(taskName, error);
   payload.insert("content", summary);
 
-  QNetworkRequest req{QUrl(url)};
+  QNetworkRequest req{endpoint};
   req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
   QNetworkReply *reply = mNetworkManager->post(
       req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
@@ -3823,7 +3881,7 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   macMountFacts.macOsMajorVersion =
       IsMacOs26OrNewer() ? 26 : QOperatingSystemVersion::current().majorVersion();
   if (!opt.isEmpty()) {
-    macMountFacts.userMountOptions = opt.split(' ', Qt::SkipEmptyParts);
+    macMountFacts.userMountOptions = SplitRcloneOptions(opt);
   }
   const MountBackendPlan macMountPlan = PlanMacMountBackend(macMountFacts);
   if (!macMountPlan.warningText.isEmpty()) {
@@ -3952,7 +4010,7 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
 
   args.append(GetRcloneConf());
   if (!opt.isEmpty()) {
-    args.append(opt.split(' ', Qt::SkipEmptyParts));
+    args.append(SplitRcloneOptions(opt));
   }
   args.append(mountBackendArgs);
   args << remote << folder;

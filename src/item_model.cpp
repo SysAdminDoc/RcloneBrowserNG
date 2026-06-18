@@ -518,6 +518,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
       static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
           &QProcess::finished),
       this, [=](int code, QProcess::ExitStatus) {
+        parser->feed(proc->readAllStandardOutput(), parent);
         proc->deleteLater();
 
         QStringList loadErrors;

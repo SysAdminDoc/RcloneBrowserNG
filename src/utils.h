@@ -24,6 +24,7 @@ void ClearRcloneConfigPassword();
 bool IsRclonePasswordCommandRequest(const QStringList &arguments);
 
 QStringList GetDriveSharedWithMe();
+QStringList SplitRcloneOptions(const QString &options);
 QStringList GetDefaultRcloneOptionsList();
 QStringList GetDefaultExcludeList();
 QStringList GetGlobalBandwidthLimit();
