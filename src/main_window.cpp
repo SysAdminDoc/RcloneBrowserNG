@@ -73,23 +73,6 @@ QString shellQuote(QString arg) {
   return "'" + arg.replace("'", "'\"'\"'") + "'";
 }
 
-bool parseHttpCallbackUrl(const QString &value, QUrl *url, QString *error) {
-  const QString trimmed = value.trimmed();
-  const QUrl parsed(trimmed, QUrl::StrictMode);
-  const QString scheme = parsed.scheme().toLower();
-  if (!parsed.isValid() || parsed.host().isEmpty() ||
-      (scheme != QStringLiteral("http") && scheme != QStringLiteral("https"))) {
-    if (error) {
-      *error = QStringLiteral("Only valid http:// or https:// callback URLs are supported.");
-    }
-    return false;
-  }
-  if (url) {
-    *url = parsed;
-  }
-  return true;
-}
-
 QVector<RemoteProvider> loadRemoteProviders(QWidget *parent, QString *error) {
   if (error) {
     error->clear();
@@ -3760,7 +3743,7 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
 
   QString error;
   QUrl endpoint;
-  if (!parseHttpCallbackUrl(url, &endpoint, &error)) {
+  if (!ParseHttpUrl(url, &endpoint, &error)) {
     setStatusMessage(QString("Heartbeat skipped: %1").arg(error));
     return;
   }
@@ -3797,7 +3780,7 @@ void MainWindow::sendWebhook(const QString &url, const QString &taskName,
 
   QString urlError;
   QUrl endpoint;
-  if (!parseHttpCallbackUrl(url, &endpoint, &urlError)) {
+  if (!ParseHttpUrl(url, &endpoint, &urlError)) {
     setStatusMessage(QString("Webhook skipped: %1").arg(urlError));
     return;
   }

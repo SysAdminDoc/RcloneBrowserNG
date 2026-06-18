@@ -25,6 +25,8 @@ bool IsRclonePasswordCommandRequest(const QStringList &arguments);
 
 QStringList GetDriveSharedWithMe();
 QStringList SplitRcloneOptions(const QString &options);
+bool ParseHttpUrl(const QString &value, QUrl *url = nullptr,
+                  QString *error = nullptr);
 bool BuildBackupRetentionPlan(const QString &backupDirTemplate, int keepCount,
                               const QStringList &snapshotNames,
                               QString *parentPath,

@@ -508,6 +508,27 @@ QStringList SplitRcloneOptions(const QString &options) {
   return QProcess::splitCommand(trimmed);
 }
 
+bool ParseHttpUrl(const QString &value, QUrl *url, QString *error) {
+  const QString trimmed = value.trimmed();
+  const QUrl parsed(trimmed, QUrl::StrictMode);
+  const QString scheme = parsed.scheme().toLower();
+  if (!parsed.isValid() || parsed.host().isEmpty() ||
+      (scheme != QStringLiteral("http") && scheme != QStringLiteral("https"))) {
+    if (error) {
+      *error =
+          QStringLiteral("Only valid http:// or https:// URLs are supported.");
+    }
+    return false;
+  }
+  if (url) {
+    *url = parsed;
+  }
+  if (error) {
+    error->clear();
+  }
+  return true;
+}
+
 namespace {
 QString JoinBackupRetentionPath(const QString &parent, const QString &child) {
   if (parent.endsWith(':') || parent.endsWith('/') || parent.endsWith('\\')) {
