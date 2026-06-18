@@ -31,7 +31,9 @@ private slots:
   void listTasks();
 
   void addTransfer(const QString &message, const QString &source,
-                   const QString &dest, const QStringList &args);
+                   const QString &dest, const QStringList &args,
+                   const QString &backupDirTemplate = QString(),
+                   int backupRetainCount = 0);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
 
@@ -74,6 +76,8 @@ private:
     QString postCommand;
     QString webhookUrl;
     QString taskName;
+    QString backupDirTemplate;
+    int backupRetainCount = 0;
   };
   QQueue<QueuedTransfer> mTransferQueue;
   QListWidget *mStagingList = nullptr;
@@ -105,17 +109,23 @@ private:
                              const QString &heartbeatUrl = QString(),
                              const QString &postCommand = QString(),
                              const QString &webhookUrl = QString(),
-                             const QString &taskName = QString());
+                             const QString &taskName = QString(),
+                             const QString &backupDirTemplate = QString(),
+                             int backupRetainCount = 0);
   void addRcJobWidget(RcJobWidget *widget,
                       const QString &heartbeatUrl = QString(),
                       const QString &webhookUrl = QString(),
-                      const QString &taskName = QString());
+                      const QString &taskName = QString(),
+                      const QString &backupDirTemplate = QString(),
+                      int backupRetainCount = 0);
   void showJobHistory();
   void noteJobStarted();
   void noteJobFinished(bool success);
   void updateJobIndicators();
   void persistJobHistory(const JobHistoryEntry &entry);
   void updateGlobalStats();
+  void pruneBackupRetention(const QString &backupDirTemplate,
+                            int backupRetainCount);
   void drainTransferQueue();
   void checkStaleness();
   void sendHeartbeat(const QString &url, bool success);

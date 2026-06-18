@@ -508,6 +508,98 @@ QStringList SplitRcloneOptions(const QString &options) {
   return QProcess::splitCommand(trimmed);
 }
 
+namespace {
+QString JoinBackupRetentionPath(const QString &parent, const QString &child) {
+  if (parent.endsWith(':') || parent.endsWith('/') || parent.endsWith('\\')) {
+    return parent + child;
+  }
+  return parent + "/" + child;
+}
+} // namespace
+
+bool BuildBackupRetentionPlan(const QString &backupDirTemplate, int keepCount,
+                              const QStringList &snapshotNames,
+                              QString *parentPath,
+                              QStringList *deleteTargets) {
+  if (parentPath) {
+    parentPath->clear();
+  }
+  if (deleteTargets) {
+    deleteTargets->clear();
+  }
+  if (keepCount <= 0) {
+    return false;
+  }
+
+  constexpr qsizetype kTokenSize = 6;
+  const qsizetype tokenStart = backupDirTemplate.indexOf("{date}");
+  if (tokenStart < 0) {
+    return false;
+  }
+
+  const qsizetype slashBefore =
+      qMax(backupDirTemplate.lastIndexOf('/', tokenStart),
+           backupDirTemplate.lastIndexOf('\\', tokenStart));
+  const qsizetype segmentStart = slashBefore + 1;
+  const qsizetype slashAfterForward =
+      backupDirTemplate.indexOf('/', tokenStart + kTokenSize);
+  const qsizetype slashAfterBack =
+      backupDirTemplate.indexOf('\\', tokenStart + kTokenSize);
+  qsizetype segmentEnd = backupDirTemplate.size();
+  if (slashAfterForward >= 0) {
+    segmentEnd = slashAfterForward;
+  }
+  if (slashAfterBack >= 0) {
+    segmentEnd = qMin(segmentEnd, slashAfterBack);
+  }
+
+  QString parent = backupDirTemplate.left(segmentStart);
+  while (parent.size() > 1 &&
+         (parent.endsWith('/') || parent.endsWith('\\')) &&
+         !parent.endsWith(":/")) {
+    parent.chop(1);
+  }
+  if (parent.isEmpty()) {
+    return false;
+  }
+  if (parentPath) {
+    *parentPath = parent;
+  }
+
+  const QString segment =
+      backupDirTemplate.mid(segmentStart, segmentEnd - segmentStart);
+  const qsizetype segmentTokenStart = segment.indexOf("{date}");
+  const QString prefix = segment.left(segmentTokenStart);
+  const QString suffix = segment.mid(segmentTokenStart + kTokenSize);
+  const QString datePattern =
+      "\\d{4}-\\d{2}-\\d{2}_\\d{6}(?:_\\d{3})?"
+      "(?:_[0-9a-z]+_[0-9a-z]{4})?";
+  const QRegularExpression snapshotPattern(
+      "^" + QRegularExpression::escape(prefix) + datePattern +
+      QRegularExpression::escape(suffix) + "$");
+
+  QStringList snapshots;
+  for (QString name : snapshotNames) {
+    name = name.trimmed();
+    while (name.endsWith('/') || name.endsWith('\\')) {
+      name.chop(1);
+    }
+    if (snapshotPattern.match(name).hasMatch()) {
+      snapshots << name;
+    }
+  }
+
+  snapshots.sort(Qt::CaseSensitive);
+  const int removeCount = snapshots.size() - keepCount;
+  if (removeCount <= 0 || !deleteTargets) {
+    return true;
+  }
+  for (int i = 0; i < removeCount; ++i) {
+    deleteTargets->append(JoinBackupRetentionPath(parent, snapshots.at(i)));
+  }
+  return true;
+}
+
 QStringList GetDefaultRcloneOptionsList() {
   auto settings = GetSettings();
   QString defaultRcloneOptions =

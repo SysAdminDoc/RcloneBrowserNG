@@ -25,6 +25,10 @@ bool IsRclonePasswordCommandRequest(const QStringList &arguments);
 
 QStringList GetDriveSharedWithMe();
 QStringList SplitRcloneOptions(const QString &options);
+bool BuildBackupRetentionPlan(const QString &backupDirTemplate, int keepCount,
+                              const QStringList &snapshotNames,
+                              QString *parentPath,
+                              QStringList *deleteTargets);
 QStringList GetDefaultRcloneOptionsList();
 QStringList GetDefaultExcludeList();
 QStringList GetGlobalBandwidthLimit();

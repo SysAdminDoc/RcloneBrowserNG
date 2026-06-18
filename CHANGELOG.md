@@ -20,6 +20,8 @@
 -   FIXED: Cross-remote search now drains final stdout, handles failed-to-start rclone processes, clears stale error tooltips, and accepts compact lsjson arrays
 -   FIXED: Saved task dry-runs no longer leave the in-memory task marked dry-run after launching, and pre-job commands report failed starts without leaving the transfer flow stuck
 -   FIXED: Remote listing now consumes the final process output chunk before deciding whether a directory load failed
+-   FIXED: Backup retention is now enforced for `{date}` backup-dir snapshots after successful transfers instead of only saving the retain count
+-   FIXED: Drag-and-drop uploads now honor the dialog's Enqueue action instead of always starting immediately
 -   CHANGED: Remote browser back/forward toolbar buttons no longer advertise removed keyboard shortcuts and remain keyboard-focusable
 -   FIXED: Transfer detail capture no longer requires colon in message — any rclone log entry with an `object` field is captured
 

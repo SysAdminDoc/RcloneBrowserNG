@@ -22,9 +22,13 @@ public:
 
 signals:
   void addTransfer(const QString &message, const QString &source,
-                   const QString &remote, const QStringList &args);
+                   const QString &remote, const QStringList &args,
+                   const QString &backupDirTemplate = QString(),
+                   int backupRetainCount = 0);
   void enqueueTransfer(const QString &message, const QString &source,
-                       const QString &dest, const QStringList &args);
+                       const QString &dest, const QStringList &args,
+                       const QString &backupDirTemplate = QString(),
+                       int backupRetainCount = 0);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
   void requestReconnect(const QString &remote);
