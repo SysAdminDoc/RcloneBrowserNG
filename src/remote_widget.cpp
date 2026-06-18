@@ -1188,12 +1188,18 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     if (t.exec() == QDialog::Accepted) {
       QString src = t.getSource();
       QString dst = t.getDest();
-      QStringList args = t.getOptions();
+      JobOptions *opts = t.getJobOptions();
+      QStringList args = opts->getOptions();
+      const QString backupDirTemplate = opts->backupDir;
+      const int backupRetainCount =
+          opts->dryRun ? 0 : opts->backupRetainCount;
       QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
       if (t.wasEnqueued()) {
-        emit enqueueTransfer(msg, src, dst, args);
+        emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
+                             backupRetainCount);
       } else {
-        emit addTransfer(msg, src, dst, args);
+        emit addTransfer(msg, src, dst, args, backupDirTemplate,
+                         backupRetainCount);
       }
     }
   });
@@ -1220,7 +1226,11 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       }
       TransferDialog t(true, false, remote, parentPath, true, this);
       if (t.exec() == QDialog::Accepted) {
-        QStringList args = t.getOptions();
+        JobOptions *opts = t.getJobOptions();
+        QStringList args = opts->getOptions();
+        const QString backupDirTemplate = opts->backupDir;
+        const int backupRetainCount =
+            opts->dryRun ? 0 : opts->backupRetainCount;
         for (const QString &name : includeFilters) {
           args.prepend(name);
           args.prepend("--include");
@@ -1229,9 +1239,11 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QString dst = t.getDest();
         QString msg = QString("%1 %2 (%3 items)").arg(t.getMode(), src).arg(rows.size());
         if (t.wasEnqueued()) {
-          emit enqueueTransfer(msg, src, dst, args);
+          emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
+                               backupRetainCount);
         } else {
-          emit addTransfer(msg, src, dst, args);
+          emit addTransfer(msg, src, dst, args, backupDirTemplate,
+                           backupRetainCount);
         }
       }
     } else {
@@ -1241,12 +1253,18 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       if (t.exec() == QDialog::Accepted) {
         QString src = t.getSource();
         QString dst = t.getDest();
-        QStringList args = t.getOptions();
+        JobOptions *opts = t.getJobOptions();
+        QStringList args = opts->getOptions();
+        const QString backupDirTemplate = opts->backupDir;
+        const int backupRetainCount =
+            opts->dryRun ? 0 : opts->backupRetainCount;
         QString msg = QString("%1 %2").arg(t.getMode()).arg(src);
         if (t.wasEnqueued()) {
-          emit enqueueTransfer(msg, src, dst, args);
+          emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
+                               backupRetainCount);
         } else {
-          emit addTransfer(msg, src, dst, args);
+          emit addTransfer(msg, src, dst, args, backupDirTemplate,
+                           backupRetainCount);
         }
       }
     }
@@ -1379,9 +1397,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           QString src = t.getSource();
           QString dst = t.getDest();
 
-          QStringList args = t.getOptions();
-          emit addTransfer(QString("%1 from %2").arg(t.getMode()).arg(src), src,
-                           dst, args);
+          JobOptions *opts = t.getJobOptions();
+          QStringList args = opts->getOptions();
+          const QString backupDirTemplate = opts->backupDir;
+          const int backupRetainCount =
+              opts->dryRun ? 0 : opts->backupRetainCount;
+          const QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
+          if (t.wasEnqueued()) {
+            emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
+                                 backupRetainCount);
+          } else {
+            emit addTransfer(msg, src, dst, args, backupDirTemplate,
+                             backupRetainCount);
+          }
         }
       });
 

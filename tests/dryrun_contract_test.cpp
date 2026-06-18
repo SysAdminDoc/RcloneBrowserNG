@@ -1,5 +1,6 @@
 #include "job_options.h"
 #include "job_options_store.h"
+#include "utils.h"
 
 #include <QBuffer>
 #include <QDebug>
@@ -174,6 +175,57 @@ int main() {
     require(!args.contains("\"display"),
             "quote characters leaked into parsed extra args");
     delete jo;
+  }
+
+  // Contract 9: backup retention prunes only old dated snapshots
+  {
+    QString parent;
+    QStringList targets;
+    const bool planned = BuildBackupRetentionPlan(
+        "remote:backups/{date}", 2,
+        QStringList()
+            << "2026-06-17_010203_004_abcd_0001/"
+            << "not-a-backup/"
+            << "2026-06-18_010203_004_abcd_0002/"
+            << "2026-06-16_010203_004_abcd_0000/",
+        &parent, &targets);
+    require(planned, "backup retention plan was not created");
+    require(parent == "remote:backups", "backup retention parent changed");
+    require(targets == QStringList({"remote:backups/2026-06-16_010203_004_abcd_0000"}),
+            "backup retention did not select only the oldest dated snapshot");
+  }
+
+  // Contract 10: nested backup templates prune the dated parent segment
+  {
+    QString parent;
+    QStringList targets;
+    const bool planned = BuildBackupRetentionPlan(
+        "remote:backups/snap-{date}/deleted", 1,
+        QStringList()
+            << "snap-2026-06-17_010203"
+            << "snap-2026-06-18_010203"
+            << "manual-2026-06-10_010203",
+        &parent, &targets);
+    require(planned, "nested backup retention plan was not created");
+    require(parent == "remote:backups", "nested backup retention parent changed");
+    require(targets == QStringList({"remote:backups/snap-2026-06-17_010203"}),
+            "nested backup retention selected the wrong snapshot");
+  }
+
+  // Contract 11: fixed backup dirs and keep-all settings never prune
+  {
+    QString parent;
+    QStringList targets;
+    require(!BuildBackupRetentionPlan("remote:backups/current", 2,
+                                      QStringList() << "current", &parent,
+                                      &targets),
+            "fixed backup dir should not create a retention plan");
+    require(targets.isEmpty(), "fixed backup dir produced delete targets");
+    require(!BuildBackupRetentionPlan("remote:backups/{date}", 0,
+                                      QStringList() << "2026-06-18_010203",
+                                      &parent, &targets),
+            "keep-all setting should not create a retention plan");
+    require(targets.isEmpty(), "keep-all setting produced delete targets");
   }
 
   qInfo() << "All dry-run contract tests passed.";

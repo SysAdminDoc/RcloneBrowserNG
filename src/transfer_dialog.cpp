@@ -346,7 +346,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   auto *retainLabel = new QLabel("Retain backups:", this);
   retainLabel->setToolTip(
-      "Maximum number of backup-dir snapshots to keep. 0 = keep all.");
+      "Maximum number of {date} backup-dir snapshots to keep after a "
+      "successful transfer. 0 = keep all.");
   mBackupRetain = new QSpinBox(this);
   mBackupRetain->setMinimum(0);
   mBackupRetain->setMaximum(9999);

@@ -1052,7 +1052,9 @@ MainWindow::MainWindow() {
       QString src = item->data(Qt::UserRole + 1).toString();
       QString dst = item->data(Qt::UserRole + 2).toString();
       QStringList args = item->data(Qt::UserRole + 3).toStringList();
-      addTransfer(msg, src, dst, args);
+      QString backupDirTemplate = item->data(Qt::UserRole + 4).toString();
+      int backupRetainCount = item->data(Qt::UserRole + 5).toInt();
+      addTransfer(msg, src, dst, args, backupDirTemplate, backupRetainCount);
       delete mStagingList->takeItem(0);
     }
     setStatusMessage(
@@ -2102,12 +2104,15 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
   QObject::connect(
       remote, &RemoteWidget::enqueueTransfer, this,
       [this](const QString &msg, const QString &src, const QString &dst,
-             const QStringList &args) {
+             const QStringList &args, const QString &backupDirTemplate,
+             int backupRetainCount) {
         auto *item = new QListWidgetItem(msg, mStagingList);
         item->setData(Qt::UserRole, msg);
         item->setData(Qt::UserRole + 1, src);
         item->setData(Qt::UserRole + 2, dst);
         item->setData(Qt::UserRole + 3, args);
+        item->setData(Qt::UserRole + 4, backupDirTemplate);
+        item->setData(Qt::UserRole + 5, backupRetainCount);
         item->setToolTip(QString("%1 -> %2").arg(src, dst));
         setStatusMessage(QString("Enqueued: %1 (%2 staged)")
                              .arg(msg)
@@ -2927,6 +2932,8 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   QString postCommand = jo->postCommand;
   QString webhookUrl = jo->webhookUrl;
   QString taskName = jo->description;
+  QString backupDirTemplate = jo->backupDir;
+  int backupRetainCount = dryrun ? 0 : jo->backupRetainCount;
   QString source = jo->source;
   QString dest = jo->dest;
   QString message = QString("%1 %2").arg(jo->operation).arg(source);
@@ -2944,7 +2951,8 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             auto *widget = new RcJobWidget(
                 mRcEngine, jobId, message,
                 mRcEngine->rcCommandForDisplay(args), source, dest);
-            addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName);
+            addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
+                           backupDirTemplate, backupRetainCount);
             if (!postCommand.isEmpty()) {
               QObject::connect(
                   widget, &RcJobWidget::finished, this, [=]() {
@@ -2959,12 +2967,13 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             }
             return;
           }
-          addTransferViaProcess(message, source, dest, args,
-                                heartbeatUrl, postCommand, webhookUrl,
-                                taskName);
+          addTransferViaProcess(message, source, dest, args, heartbeatUrl,
+                                postCommand, webhookUrl, taskName,
+                                backupDirTemplate, backupRetainCount);
         });
   } else {
-    addTransfer(message, source, dest, args);
+    addTransfer(message, source, dest, args, backupDirTemplate,
+                backupRetainCount);
   }
   };
 
@@ -3153,7 +3162,9 @@ void MainWindow::editSelectedTask() {
 }
 
 void MainWindow::addTransfer(const QString &message, const QString &source,
-                             const QString &dest, const QStringList &args) {
+                             const QString &dest, const QStringList &args,
+                             const QString &backupDirTemplate,
+                             int backupRetainCount) {
   if (!args.isEmpty()) {
     if (!mRcEngine) {
       mRcEngine = new RcloneRcEngine(this);
@@ -3165,21 +3176,28 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
             auto *widget = new RcJobWidget(
                 mRcEngine, jobId, message,
                 mRcEngine->rcCommandForDisplay(args), source, dest);
-            addRcJobWidget(widget);
+            addRcJobWidget(widget, QString(), QString(), QString(),
+                           backupDirTemplate, backupRetainCount);
             return;
           }
-          addTransferViaProcess(message, source, dest, args);
+          addTransferViaProcess(message, source, dest, args, QString(),
+                                QString(), QString(), QString(),
+                                backupDirTemplate, backupRetainCount);
         });
     return;
   }
 
-  addTransferViaProcess(message, source, dest, args);
+  addTransferViaProcess(message, source, dest, args, QString(), QString(),
+                        QString(), QString(), backupDirTemplate,
+                        backupRetainCount);
 }
 
 void MainWindow::addRcJobWidget(RcJobWidget *widget,
                                 const QString &heartbeatUrl,
                                 const QString &webhookUrl,
-                                const QString &taskName) {
+                                const QString &taskName,
+                                const QString &backupDirTemplate,
+                                int backupRetainCount) {
   auto *line = new QFrame();
   line->setFrameShape(QFrame::HLine);
   line->setFrameShadow(QFrame::Sunken);
@@ -3201,6 +3219,10 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
                      }
 
                      persistJobHistory(widget->historyEntry());
+                     if (widget->wasSuccessful()) {
+                       pruneBackupRetention(backupDirTemplate,
+                                            backupRetainCount);
+                     }
                      noteJobFinished(widget->wasSuccessful());
                    });
 
@@ -3230,14 +3252,16 @@ void MainWindow::addTransferViaProcess(const QString &message,
                                        const QString &heartbeatUrl,
                                        const QString &postCommand,
                                        const QString &webhookUrl,
-                                       const QString &taskName) {
+                                       const QString &taskName,
+                                       const QString &backupDirTemplate,
+                                       int backupRetainCount) {
   auto settings = GetSettings();
   int maxConcurrent =
       settings->value("Settings/maxConcurrentTransfers", 0).toInt();
   if (maxConcurrent > 0 && mRunningTransfers >= maxConcurrent) {
     mTransferQueue.enqueue(
         {message, source, dest, args, heartbeatUrl, postCommand, webhookUrl,
-         taskName});
+         taskName, backupDirTemplate, backupRetainCount});
     setStatusMessage(
         QString("Queued: %1 (%2 in queue)")
             .arg(message)
@@ -3281,6 +3305,9 @@ void MainWindow::addTransferViaProcess(const QString &message,
         }
 
         persistJobHistory(widget->historyEntry());
+        if (widget->wasSuccessful()) {
+          pruneBackupRetention(backupDirTemplate, backupRetainCount);
+        }
         noteJobFinished(widget->wasSuccessful());
       });
 
@@ -3547,7 +3574,8 @@ void MainWindow::drainTransferQueue() {
     addTransferViaProcess(queued.message, queued.source, queued.dest,
                           queued.args, queued.heartbeatUrl,
                           queued.postCommand, queued.webhookUrl,
-                          queued.taskName);
+                          queued.taskName, queued.backupDirTemplate,
+                          queued.backupRetainCount);
   }
 }
 
@@ -3604,6 +3632,125 @@ void MainWindow::updateGlobalStats() {
           .arg(totalFiles)
           .arg(totalJobs));
   mStatsLabel->setToolTip("Cumulative transfer statistics across all sessions.");
+}
+
+void MainWindow::pruneBackupRetention(const QString &backupDirTemplate,
+                                      int backupRetainCount) {
+  QString parentPath;
+  QStringList deleteTargets;
+  if (!BuildBackupRetentionPlan(backupDirTemplate, backupRetainCount, {},
+                                &parentPath, &deleteTargets)) {
+    return;
+  }
+
+  auto *listProc = new QProcess(this);
+  listProc->setProcessChannelMode(QProcess::SeparateChannels);
+  UseRclonePassword(listProc);
+  auto listCompleted = QSharedPointer<bool>::create(false);
+
+  QObject::connect(
+      listProc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [this, listProc, backupDirTemplate, backupRetainCount,
+             listCompleted](int code, QProcess::ExitStatus) {
+        if (*listCompleted) {
+          return;
+        }
+        *listCompleted = true;
+        const QString stderrText =
+            QString::fromUtf8(listProc->readAllStandardError()).trimmed();
+        const QString stdoutText =
+            QString::fromUtf8(listProc->readAllStandardOutput());
+        listProc->deleteLater();
+
+        if (code != 0) {
+          setStatusMessage(
+              QString("Backup retention skipped: %1")
+                  .arg(stderrText.isEmpty()
+                           ? QString("rclone lsf exited with status %1")
+                                 .arg(code)
+                           : stderrText.left(300)));
+          return;
+        }
+
+        QString parentPath;
+        QStringList targets;
+        BuildBackupRetentionPlan(
+            backupDirTemplate, backupRetainCount,
+            stdoutText.split('\n', Qt::SkipEmptyParts), &parentPath, &targets);
+        if (targets.isEmpty()) {
+          return;
+        }
+
+        setStatusMessage(QString("Pruning %1 old backup snapshot(s)...")
+                             .arg(targets.size()));
+        for (const QString &target : targets) {
+          auto *purgeProc = new QProcess(this);
+          purgeProc->setProcessChannelMode(QProcess::SeparateChannels);
+          UseRclonePassword(purgeProc);
+          auto purgeCompleted = QSharedPointer<bool>::create(false);
+          QObject::connect(
+              purgeProc,
+              static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                  &QProcess::finished),
+              this, [this, purgeProc, target, purgeCompleted](
+                        int purgeCode, QProcess::ExitStatus) {
+                if (*purgeCompleted) {
+                  return;
+                }
+                *purgeCompleted = true;
+                const QString purgeError =
+                    QString::fromUtf8(purgeProc->readAllStandardError())
+                        .trimmed();
+                purgeProc->deleteLater();
+                if (purgeCode != 0) {
+                  appendBackgroundError(
+                      "Backup retention",
+                      QString("Could not prune %1: %2")
+                          .arg(target,
+                               purgeError.isEmpty()
+                                   ? QString("rclone purge exited with status %1")
+                                         .arg(purgeCode)
+                                   : purgeError.left(300)));
+                }
+              });
+          QObject::connect(
+              purgeProc, &QProcess::errorOccurred, this,
+              [this, purgeProc, target, purgeCompleted](
+                  QProcess::ProcessError error) {
+                if (error != QProcess::FailedToStart || *purgeCompleted) {
+                  return;
+                }
+                *purgeCompleted = true;
+                appendBackgroundError(
+                    "Backup retention",
+                    QString("Could not start rclone purge for %1: %2")
+                        .arg(target, purgeProc->errorString()));
+                purgeProc->deleteLater();
+              });
+          purgeProc->start(GetRclone(),
+                           QStringList() << "purge" << GetRcloneConf()
+                                         << target,
+                           QIODevice::ReadOnly);
+        }
+      });
+  QObject::connect(listProc, &QProcess::errorOccurred, this,
+                   [this, listProc, listCompleted](
+                       QProcess::ProcessError error) {
+                     if (error != QProcess::FailedToStart || *listCompleted) {
+                       return;
+                     }
+                     *listCompleted = true;
+                     setStatusMessage(
+                         "Backup retention skipped: could not start rclone.");
+                     listProc->deleteLater();
+                   });
+
+  listProc->start(GetRclone(),
+                  QStringList() << "lsf" << GetRcloneConf() << "--dirs-only"
+                                << parentPath,
+                  QIODevice::ReadOnly);
 }
 
 void MainWindow::sendHeartbeat(const QString &url, bool success) {
