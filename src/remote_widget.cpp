@@ -192,22 +192,20 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.path->setPlaceholderText("Select a folder or file");
   mBackButton = new QToolButton(this);
   mBackButton->setIcon(qApp->style()->standardIcon(QStyle::SP_ArrowBack));
-  mBackButton->setToolTip("Go back (Alt+Left)");
+  mBackButton->setToolTip("Go back");
   mBackButton->setAccessibleName("Navigate back");
   mBackButton->setAutoRaise(true);
   mBackButton->setEnabled(false);
-  mBackButton->setFocusPolicy(Qt::NoFocus);
   QObject::connect(mBackButton, &QToolButton::clicked, this,
                    &RemoteWidget::goBack);
 
   mForwardButton = new QToolButton(this);
   mForwardButton->setIcon(
       qApp->style()->standardIcon(QStyle::SP_ArrowForward));
-  mForwardButton->setToolTip("Go forward (Alt+Right)");
+  mForwardButton->setToolTip("Go forward");
   mForwardButton->setAccessibleName("Navigate forward");
   mForwardButton->setAutoRaise(true);
   mForwardButton->setEnabled(false);
-  mForwardButton->setFocusPolicy(Qt::NoFocus);
   QObject::connect(mForwardButton, &QToolButton::clicked, this,
                    &RemoteWidget::goForward);
 

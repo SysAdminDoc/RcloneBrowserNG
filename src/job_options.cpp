@@ -32,7 +32,7 @@ JobOptions::JobOptions()
       dontUpdateModified(false), maxDepth(0), deleteExcluded(false),
       isFolder(false), watchFolder(false) {}
 
-const qint32 JobOptions::classVersion = 8;
+const qint32 JobOptions::classVersion = 9;
 
 JobOptions::~JobOptions() {}
 
@@ -159,9 +159,7 @@ QStringList JobOptions::getOptions() const {
   }
 
   if (!extra.isEmpty()) {
-    for (const auto &arg : extra.split(' ', Qt::SkipEmptyParts)) {
-      list << arg;
-    }
+    list << SplitRcloneOptions(extra);
   }
 
   if (DriveSharedWithMe) {

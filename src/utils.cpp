@@ -500,18 +500,19 @@ QStringList GetDriveSharedWithMe() {
   return driveSharedOption;
 }
 
+QStringList SplitRcloneOptions(const QString &options) {
+  const QString trimmed = options.trimmed();
+  if (trimmed.isEmpty()) {
+    return {};
+  }
+  return QProcess::splitCommand(trimmed);
+}
+
 QStringList GetDefaultRcloneOptionsList() {
   auto settings = GetSettings();
   QString defaultRcloneOptions =
       settings->value("Settings/defaultRcloneOptions").toString();
-  QStringList defaultRcloneOptionsList;
-  if (!defaultRcloneOptions.isEmpty()) {
-    for (const auto &arg :
-         defaultRcloneOptions.split(' ', Qt::SkipEmptyParts)) {
-      defaultRcloneOptionsList << arg;
-    }
-  }
-  return defaultRcloneOptionsList;
+  return SplitRcloneOptions(defaultRcloneOptions);
 }
 
 QStringList GetDefaultExcludeList() {

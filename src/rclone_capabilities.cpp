@@ -122,12 +122,18 @@ void BackendFeatureCache::queryAsync(
   proc->setArguments(QStringList() << "backend" << "features"
                                    << GetRcloneConf() << remote + ":");
   proc->setProcessChannelMode(QProcess::SeparateChannels);
+  auto completed = QSharedPointer<bool>::create(false);
 
   QObject::connect(
       proc,
       static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
           &QProcess::finished),
-      [proc, remote, callback](int code, QProcess::ExitStatus) {
+      [proc, remote, callback, completed](int code, QProcess::ExitStatus) {
+        if (*completed) {
+          proc->deleteLater();
+          return;
+        }
+        *completed = true;
         BackendFeatures features;
         if (code == 0) {
           features = BackendFeatures::fromJson(proc->readAllStandardOutput());
@@ -141,8 +147,12 @@ void BackendFeatureCache::queryAsync(
         proc->deleteLater();
       });
 
-  QTimer::singleShot(10000, proc, [proc, remote, callback]() {
+  QTimer::singleShot(10000, proc, [proc, remote, callback, completed]() {
+    if (*completed) {
+      return;
+    }
     if (proc->state() != QProcess::NotRunning) {
+      *completed = true;
       proc->kill();
       BackendFeatures fallback;
       instance().put(remote, fallback);

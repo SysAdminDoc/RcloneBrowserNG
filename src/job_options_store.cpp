@@ -45,7 +45,8 @@ QDataStream &operator<<(QDataStream &stream, const JobOptions &jo) {
          << jo.DriveSharedWithMe << jo.source << jo.dest << jo.isFolder
          << jo.uniqueId << jo.heartbeatUrl << jo.nameTransform
          << jo.preCommand << jo.postCommand << jo.webhookUrl
-         << jo.watchFolder;
+         << jo.watchFolder << jo.backupDir << jo.backupRetainCount
+         << jo.conflictResolve;
 
   return stream;
 }
@@ -89,6 +90,10 @@ void readJobOptions(QDataStream &stream, JobOptions &jo,
               stream >> jo.webhookUrl;
               if (actualVersion >= 8) {
                 stream >> jo.watchFolder;
+                if (actualVersion >= 9) {
+                  stream >> jo.backupDir >> jo.backupRetainCount >>
+                      jo.conflictResolve;
+                }
               }
             }
           }
@@ -314,7 +319,14 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
 JobOptionsStoreLoadResult ReadJobOptionsStoreJson(QIODevice *device) {
   JobOptionsStoreLoadResult result;
   QByteArray data = device->readAll();
-  QJsonDocument doc = QJsonDocument::fromJson(data);
+  QJsonParseError parseError;
+  QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+  if (parseError.error != QJsonParseError::NoError) {
+    result.error = QString("invalid JSON task store at offset %1: %2")
+                       .arg(parseError.offset)
+                       .arg(parseError.errorString());
+    return result;
+  }
   if (!doc.isObject()) {
     result.error = "invalid JSON task store";
     return result;
@@ -327,10 +339,19 @@ JobOptionsStoreLoadResult ReadJobOptionsStoreJson(QIODevice *device) {
                        .arg(version);
     return result;
   }
-  QJsonArray arr = root["tasks"].toArray();
-  for (const QJsonValue &val : arr) {
-    if (!val.isObject())
-      continue;
+  const QJsonValue tasksValue = root.value("tasks");
+  if (!tasksValue.isArray()) {
+    result.error = "JSON task store is missing a tasks array";
+    return result;
+  }
+  QJsonArray arr = tasksValue.toArray();
+  for (int i = 0; i < arr.size(); ++i) {
+    const QJsonValue val = arr.at(i);
+    if (!val.isObject()) {
+      ClearJobOptionsList(&result.tasks);
+      result.error = QString("JSON task store task %1 is not an object").arg(i);
+      return result;
+    }
     result.tasks.append(jobOptionsFromJson(val.toObject()));
   }
   return result;

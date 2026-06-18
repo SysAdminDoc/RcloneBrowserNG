@@ -160,6 +160,22 @@ int main() {
     delete jo;
   }
 
+  // Contract 8: free-form extra options preserve quoted arguments
+  {
+    auto jo = makeTask(JobOptions::Copy, false);
+    jo->extra = "--metadata \"display name=Quarterly Report\" --suffix \"old copy\"";
+
+    QStringList args = jo->getOptions();
+    require(args.contains("--metadata"), "quoted extra flag missing");
+    require(args.contains("display name=Quarterly Report"),
+            "quoted extra value with spaces was split");
+    require(args.contains("--suffix"), "second quoted extra flag missing");
+    require(args.contains("old copy"), "second quoted extra value was split");
+    require(!args.contains("\"display"),
+            "quote characters leaked into parsed extra args");
+    delete jo;
+  }
+
   qInfo() << "All dry-run contract tests passed.";
   return 0;
 }

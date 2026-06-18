@@ -33,6 +33,10 @@ private:
 
   void startSearch();
   void cancelSearch();
+  void consumeSearchOutput(QProcess *proc, const QString &remote,
+                           bool finalChunk = false);
+  void finishRemoteSearch(QProcess *proc, const QString &remote, bool failed,
+                          const QString &errorText = QString());
   void addResult(const QString &remote, const QString &path, qint64 size,
                  const QString &modTime);
   void loadHistory();
