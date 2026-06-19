@@ -62,6 +62,13 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: Automated tests or a release check enumerate every app-created RC startup/helper command and fail if it lacks `--rc-user`/`--rc-pass`, includes `--rc-no-auth`, or weakens the existing vulnerable-rclone warning path.
   Complexity: M
 
+- [ ] P1 — Trust-gate saved-task shell hooks before execution
+  Why: Saved or imported tasks can execute `preCommand` and `postCommand` through the user's shell, so command execution needs an explicit trust boundary separate from normal task loading.
+  Evidence: `src/main_window.cpp`, `src/transfer_dialog.cpp`, `src/job_options_store.cpp`, H4R1B0/rclone-gui Keychain/app-lock pattern, GoodSync post-job automation patterns.
+  Touches: `src/job_options.*`, `src/job_options_store.*`, `src/transfer_dialog.*`, `src/main_window.cpp`, `src/job_history.*`, `tests/job_options_store_test.cpp`, `tests/`.
+  Acceptance: Imported, migrated, or edited tasks with shell hooks are marked untrusted until reviewed; untrusted hooks do not execute; transfer UI warns that hooks are local code execution; job history/support output records redacted hook status and exit result; tests prove untrusted hook commands are blocked.
+  Complexity: M
+
 - [ ] P1 — Remove remaining GUI-thread process waits from user-triggered helper operations
   Why: Search cancellation, mount backend checks/unmount, and native scheduler operations still block on helper processes and can freeze the desktop shell.
   Evidence: `src/cross_remote_search.cpp:255`, `src/mount_backend.cpp`, `src/mount_widget.cpp`, `src/schedule_manager.cpp`, Mountain Duck mount UX, GoodSync scheduling UX.
@@ -99,6 +106,13 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: Shell scripts pass `bash -n` or compatible checks, Windows batch has a dry-run validation path, icon preparation uses a matching Bash shebang or POSIX syntax, and CI fails on script syntax drift.
   Complexity: S
 
+- [ ] P2 — Add packaged-artifact launch smoke tests before release publish
+  Why: Release jobs build, deploy, checksum, and attest artifacts, but package regressions can still ship if the packaged binary is never executed after `linuxdeploy`, `macdeployqt`, `windeployqt`, zip, or installer staging.
+  Evidence: `.github/workflows/release.yml`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, `scripts/release_windows.cmd`, GitHub artifact attestation guidance.
+  Touches: `.github/workflows/release.yml`, `scripts/`, app startup/version flag handling if a dedicated smoke flag is needed.
+  Acceptance: Linux AppImage, macOS app/DMG staging, Windows x64 zip/installer staging, and Windows ARM64 zip each run a non-GUI packaged-binary smoke such as `--version` or an equivalent release-smoke flag on compatible runners; publish depends on the smoke result; failures identify missing runtime/deployment files.
+  Complexity: M
+
 - [ ] P2 — Add optional post-transfer verification workflow
   Why: Backup users need a first-class integrity answer after copy/sync instead of manually running rclone CLI checks after the GUI job completes.
   Evidence: `rclone check` docs, GoodSync file-copy verification, `src/transfer_dialog.cpp`, `src/job_options.h`, `src/job_history.*`.
@@ -112,6 +126,20 @@ All items trace back to public GitHub issues/PRs:
   Touches: `src/preferences_dialog.*`, `src/utils.*`, new config-backup helper/test code, README usage notes if the workflow changes setup.
   Acceptance: Users can export the active rclone config, restore from a selected file only after the current config is backed up, validate paths before writing, and receive clear warnings for encrypted/password-protected configs; tests cover backup naming and unsafe path rejection.
   Complexity: M
+
+- [ ] P2 — Add first-run rclone acquisition and repair assistant
+  Why: Users still have to resolve missing or broken rclone manually, while current competitors auto-download or guide install repair and community demand includes simpler GUI onboarding for cloud download workflows.
+  Evidence: `README.md`, `src/main_window.cpp`, `src/preferences_dialog.cpp`, RClone Manager system requirements, rclone download/install/selfupdate docs, rclone/rclone#9375.
+  Touches: `src/main_window.*`, `src/preferences_dialog.*`, `src/utils.*`, rclone capability/version checks, README usage notes if setup changes, tests for missing/invalid executable states.
+  Acceptance: Missing, invalid, or too-old rclone shows a first-run repair panel with Locate existing rclone, Open official install/download guidance, and optional verified app-managed download only if checksum/signature validation is implemented; capability/version checks re-run after repair; tests cover missing-path and invalid-binary states.
+  Complexity: L
+
+- [ ] P2 — Make job history restartable for failed or interrupted transfers
+  Why: In-session retry exists, but persisted history is evidence-only; backup operators need a safe restart path after app restart or crash once secrets and command context are protected.
+  Evidence: `src/job_history.*`, `src/job_widget.*`, `src/main_window.cpp`, H4R1B0/rclone-gui transfer restart from history, WinSCP transfer queue recovery patterns.
+  Touches: `src/job_history.*`, `src/job_widget.*`, `src/main_window.*`, `src/job_options.*`, command serialization/redaction tests.
+  Acceptance: Failed, canceled, or interrupted persisted history entries with safe command snapshots expose Restart and Dry Run actions after app relaunch; secret-bearing fields are redacted or vaulted; destructive sync/move reruns require clear confirmation; tests prove restart snapshots survive reload without cleartext secrets.
+  Complexity: L
 
 ### P3
 
