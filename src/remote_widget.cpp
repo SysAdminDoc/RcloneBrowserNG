@@ -159,7 +159,8 @@ public:
       return false;
     }
 
-    mRemoteFingerprint = remoteFingerprint();
+    mRemoteFingerprint =
+        remoteFingerprint("Checking downloaded file version...");
     mWatcher.addPath(mLocalFile);
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(mLocalFile))) {
       QMessageBox::warning(mDialogParent, "Open/Edit",
@@ -179,20 +180,98 @@ private:
   QStringList mDriveSharedArgs;
   QWidget *mDialogParent = nullptr;
 
-  QString remoteFingerprint() const {
+  QString remoteFingerprint(const QString &operation) const {
     QProcess process;
     UseRclonePassword(&process);
     process.setProgram(GetRclone());
     process.setArguments(QStringList()
                          << "lsjson" << GetRcloneConf() << mDriveSharedArgs
                          << GetDefaultRcloneOptionsList() << mRemoteFile);
+    process.setProcessChannelMode(QProcess::SeparateChannels);
+
+    QProgressDialog progress(operation, "Cancel", 0, 0, mDialogParent);
+    progress.setWindowTitle("Open/Edit");
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(500);
+    progress.setAutoClose(false);
+    progress.setAutoReset(false);
+    UiPolish::SetWindowDefaults(&progress, QSize(420, 120));
+
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+
+    bool completed = false;
+    QString pendingAbortError;
+    QString error;
+    QByteArray stdoutData;
+
+    auto finish = [&]() {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      timeout.stop();
+      progress.close();
+      loop.quit();
+    };
+
+    auto abortProcess = [&](const QString &message) {
+      if (!pendingAbortError.isEmpty() || completed) {
+        return;
+      }
+      pendingAbortError = message;
+      progress.setLabelText(message);
+      if (process.state() == QProcess::NotRunning) {
+        finish();
+        return;
+      }
+      process.kill();
+    };
+
+    QObject::connect(&timeout, &QTimer::timeout, &progress, [&]() {
+      abortProcess("Timed out while checking the remote file version.");
+    });
+    QObject::connect(&progress, &QProgressDialog::canceled, &progress, [&]() {
+      abortProcess("Remote version check cancelled.");
+    });
+    QObject::connect(&process, &QProcess::errorOccurred, &progress,
+                     [&](QProcess::ProcessError processError) {
+                       if (processError == QProcess::FailedToStart) {
+                         error = "Failed to start rclone.";
+                         finish();
+                       }
+                     });
+    QObject::connect(
+        &process,
+        static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+            &QProcess::finished),
+        &progress, [&](int code, QProcess::ExitStatus status) {
+          const QByteArray stderrData = process.readAllStandardError();
+          if (!pendingAbortError.isEmpty()) {
+            error = pendingAbortError;
+          } else if (status != QProcess::NormalExit || code != 0) {
+            error = QString::fromUtf8(stderrData).trimmed();
+            if (error.isEmpty()) {
+              error = "Could not read the remote file version.";
+            }
+          } else {
+            stdoutData = process.readAllStandardOutput();
+          }
+          finish();
+        });
+
     process.start(QIODevice::ReadOnly);
-    if (!process.waitForFinished(30000) ||
-        process.exitStatus() != QProcess::NormalExit ||
-        process.exitCode() != 0) {
+    timeout.start(30000);
+    progress.open();
+    if (!completed) {
+      loop.exec();
+    }
+
+    if (!error.isEmpty()) {
       return QString();
     }
-    return fingerprintFromLsjson(process.readAllStandardOutput());
+    return fingerprintFromLsjson(stdoutData);
   }
 
   void uploadNow() {
@@ -203,7 +282,8 @@ private:
       mWatcher.addPath(mLocalFile);
     }
 
-    const QString currentFingerprint = remoteFingerprint();
+    const QString currentFingerprint =
+        remoteFingerprint("Checking remote file version...");
     if (!mRemoteFingerprint.isEmpty() && !currentFingerprint.isEmpty() &&
         currentFingerprint != mRemoteFingerprint) {
       QMessageBox box(mDialogParent);
@@ -238,7 +318,8 @@ private:
     if (progress.exec() == QDialog::Accepted &&
         process.exitStatus() == QProcess::NormalExit &&
         process.exitCode() == 0) {
-      mRemoteFingerprint = remoteFingerprint();
+      mRemoteFingerprint =
+          remoteFingerprint("Refreshing remote file version...");
     }
   }
 };
