@@ -2,6 +2,7 @@
 ## [Unreleased]
 ### Security
 -   SECURITY: Release packaging now uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and local/CI Windows release paths share the same Qt CVE floor check.
+-   SECURITY: Preview download errors now render remote `rclone` output as plain text, preventing backend error text from being interpreted as rich text.
 -   SECURITY: File Properties now escapes remote-provided filenames, hashes, and metadata before rendering rich-text details.
 -   SECURITY: Heartbeat, webhook, and copyurl inputs now reject malformed or non-http(s) URLs before creating network requests
 -   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
@@ -32,6 +33,7 @@
 -   FIXED: Backup-dir `{date}` placeholders now include milliseconds, process id, and a per-command sequence to avoid same-second collisions
 
 ### Reliability & Data Safety
+-   CHANGED: File previews now download into isolated per-preview temporary folders with cancel/timeout feedback instead of a shared filename-based temp path.
 -   CHANGED: Create Remote provider loading, Open/Edit version checks, and file Properties metadata reads now run asynchronously with cancelable loading states instead of blocking the GUI thread.
 -   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types
 -   NEW: Backend capability registry — opening a remote asynchronously queries `rclone backend features` to cache per-remote capabilities (PublicLink, Move, About, etc.) and gates UI actions accordingly

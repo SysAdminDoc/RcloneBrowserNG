@@ -111,6 +111,15 @@ QString formatFilePropertiesHtml(const QString &path,
   return lines.join("<br>");
 }
 
+void showPlainPreviewWarning(QWidget *parent, const QString &message) {
+  QMessageBox box(parent);
+  box.setIcon(QMessageBox::Warning);
+  box.setWindowTitle("Preview");
+  box.setTextFormat(Qt::PlainText);
+  box.setText(message);
+  box.exec();
+}
+
 class RemoteEditSession : public QObject {
 public:
   RemoteEditSession(const QString &remoteFile, const QString &fileName,
@@ -1902,12 +1911,17 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
             return;
           }
 
-          QString tempDir = QDir::tempPath() + "/rclonebrowserng-preview";
-          QDir().mkpath(tempDir);
           QString safeName = QFileInfo(name).fileName();
           if (safeName.isEmpty())
             safeName = "preview";
-          QString tempFile = tempDir + "/" + safeName;
+          auto tempDir = std::make_shared<QTemporaryDir>(
+              QDir::tempPath() + "/rclonebrowserng-preview-XXXXXX");
+          if (!tempDir->isValid()) {
+            showPlainPreviewWarning(
+                this, "Could not create a temporary folder for preview.");
+            return;
+          }
+          QString tempFile = QDir(tempDir->path()).filePath(safeName);
 
           auto *proc = new QProcess(this);
           UseRclonePassword(proc);
@@ -1919,20 +1933,76 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                             << tempFile);
           proc->setProcessChannelMode(QProcess::SeparateChannels);
 
+          auto *progress = new QProgressDialog("Downloading preview...",
+                                               "Cancel", 0, 0, this);
+          progress->setWindowTitle("Preview");
+          progress->setWindowModality(Qt::WindowModal);
+          progress->setMinimumDuration(500);
+          progress->setAutoClose(false);
+          progress->setAutoReset(false);
+          progress->setAttribute(Qt::WA_DeleteOnClose);
+          UiPolish::SetWindowDefaults(progress, QSize(420, 120));
+          QPointer<QProgressDialog> safeProgress(progress);
+          auto completed = std::make_shared<bool>(false);
+          auto cancelled = std::make_shared<bool>(false);
+          auto timedOut = std::make_shared<bool>(false);
+
+          QObject::connect(progress, &QProgressDialog::canceled, this,
+                           [this, proc, completed, cancelled]() {
+                             if (*completed) {
+                               return;
+                             }
+                             *cancelled = true;
+                             if (proc->state() != QProcess::NotRunning) {
+                               proc->kill();
+                             }
+                             showPathMessage("Preview download cancelled.");
+                           });
+          QObject::connect(
+              proc, &QProcess::errorOccurred, this,
+              [this, proc, safeProgress, completed](
+                  QProcess::ProcessError processError) {
+                if (*completed ||
+                    processError != QProcess::FailedToStart) {
+                  return;
+                }
+                *completed = true;
+                if (safeProgress) {
+                  safeProgress->close();
+                }
+                showPlainPreviewWarning(
+                    this, "Failed to start rclone:\n" + proc->errorString());
+                proc->deleteLater();
+              });
+
           QObject::connect(
               proc,
               static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                   &QProcess::finished),
-              this, [this, proc, tempFile, name, isText, isImage](
+              this, [this, proc, tempDir, tempFile, name, isText, isImage,
+                     safeProgress, completed, cancelled, timedOut](
                         int code, QProcess::ExitStatus) {
+                if (*completed) {
+                  return;
+                }
+                *completed = true;
+                if (safeProgress) {
+                  safeProgress->close();
+                }
                 proc->deleteLater();
+                if (*cancelled) {
+                  return;
+                }
+                if (*timedOut) {
+                  showPlainPreviewWarning(
+                      this, "Timed out while downloading preview.");
+                  return;
+                }
                 if (code != 0) {
                   QString err =
                       QString::fromUtf8(proc->readAllStandardError()).trimmed();
-                  QMessageBox::warning(this, "Preview",
-                                       "Could not download file:\n" +
-                                           err.left(500));
-                  QFile::remove(tempFile);
+                  showPlainPreviewWarning(
+                      this, "Could not download file:\n" + err.left(500));
                   return;
                 }
 
@@ -1940,7 +2010,6 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                 if (fi.size() == 0) {
                   QMessageBox::information(this, "Preview",
                                            "File is empty (0 bytes).");
-                  QFile::remove(tempFile);
                   return;
                 }
 
@@ -1978,6 +2047,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                       QString("Media file downloaded to:\n%1\n\n"
                               "Use your system media player to play.")
                           .arg(tempFile));
+                  label->setTextFormat(Qt::PlainText);
                   label->setTextInteractionFlags(
                       Qt::TextSelectableByMouse);
                   layout->addWidget(label);
@@ -1990,14 +2060,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                                  &QDialog::accept);
                 layout->addWidget(close);
                 dlg.exec();
-
-                QFile::remove(tempFile);
               });
-          QTimer::singleShot(60000, proc, [proc]() {
-            if (proc->state() != QProcess::NotRunning)
+          QTimer::singleShot(60000, proc, [proc, timedOut]() {
+            if (proc->state() != QProcess::NotRunning) {
+              *timedOut = true;
               proc->kill();
+            }
           });
           proc->start();
+          progress->show();
         } else if (chosen == versionsAction) {
           auto *proc = new QProcess(this);
           UseRclonePassword(proc);
