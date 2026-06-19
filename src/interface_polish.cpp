@@ -696,6 +696,7 @@ void SetNotice(QLabel *label, const QString &text) {
   label->setProperty("notice", true);
   label->setAccessibleName("Information");
   label->setWordWrap(true);
+  label->setTextFormat(Qt::PlainText);
   label->setText(text);
   Repolish(label);
 }

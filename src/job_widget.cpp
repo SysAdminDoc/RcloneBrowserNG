@@ -106,6 +106,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   ui.source->setToolTip(source);
   ui.dest->setText(dest);
   ui.dest->setToolTip(dest);
+  ui.info->setTextFormat(Qt::PlainText);
   ui.info->setText(info);
   ui.info->setToolTip(info);
   ui.info->setMinimumWidth(0);
