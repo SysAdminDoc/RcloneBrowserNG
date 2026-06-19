@@ -349,6 +349,11 @@ QToolButton[compact="true"] {
   min-width: 30px;
   min-height: 30px;
 }
+QToolButton[compact="true"]:checked {
+  background: %11;
+  border-color: %9;
+  color: %7;
+}
 QToolButton[disclosure="true"] {
   background: transparent;
   border: 1px solid transparent;
@@ -414,8 +419,12 @@ QWidget[actionBar="true"] {
 
 /* ── Labels ───────────────────────────────────────────── */
 QLabel[emptyState="true"] {
+  background: %2;
+  border: 1px solid %5;
+  border-radius: 8px;
   color: %8;
-  padding: 32px 24px;
+  padding: 28px 24px;
+  min-height: 72px;
 }
 QLabel[notice="true"] {
   background: %11;
@@ -459,6 +468,10 @@ QListView::item, QTreeView::item, QTableView::item {
 QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
   background: %11;
   color: %7;
+}
+QListView::item:disabled, QTreeView::item:disabled,
+QTableView::item:disabled {
+  color: %8;
 }
 QListView::item:selected:active, QTreeView::item:selected:active,
 QTableView::item:selected:active {
@@ -660,6 +673,7 @@ void SetEmptyState(QLabel *label, const QString &title, const QString &detail) {
   }
   label->setProperty("emptyState", true);
   label->setAccessibleName(title);
+  label->setAccessibleDescription(detail);
   label->setAlignment(Qt::AlignCenter);
   label->setWordWrap(true);
   label->setTextFormat(Qt::RichText);

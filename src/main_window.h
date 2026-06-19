@@ -55,9 +55,9 @@ private:
   QPlainTextEdit *mErrorLog = nullptr;
   QToolButton *mErrorLogToggle = nullptr;
   QLineEdit *mRemotesFilter = nullptr;
-  QListWidgetItem *mRemotesFilterEmptyItem = nullptr;
+  QLabel *mRemotesEmptyState = nullptr;
   QLineEdit *mTasksFilter = nullptr;
-  QListWidgetItem *mTasksFilterEmptyItem = nullptr;
+  QLabel *mTasksEmptyState = nullptr;
 
   IconCache mIcons;
 
@@ -81,6 +81,11 @@ private:
   };
   QQueue<QueuedTransfer> mTransferQueue;
   QListWidget *mStagingList = nullptr;
+  QLabel *mStagingEmptyState = nullptr;
+  QToolButton *mStagingDisclosure = nullptr;
+  QWidget *mStagingBar = nullptr;
+  QPushButton *mRunStagedButton = nullptr;
+  QPushButton *mClearStagedButton = nullptr;
   QHash<QUuid, QFileSystemWatcher *> mWatchers;
   QHash<QUuid, QTimer *> mWatchTimers;
   QSet<QUuid> mPausedWatchTasks;
@@ -96,6 +101,11 @@ private:
                                            const QString &type,
                                            QWidget *parent);
   void setStatusMessage(const QString &message);
+  void showRemotesEmptyState(const QString &title, const QString &detail);
+  void hideRemotesEmptyState();
+  void showTasksEmptyState(const QString &title, const QString &detail);
+  void hideTasksEmptyState();
+  void updateStagingEmptyState();
   QString terminalRcloneConfigCommand(const QStringList &args) const;
   bool startDetachedTerminalCommand(const QStringList &args,
                                     const QDateTime &configBefore,

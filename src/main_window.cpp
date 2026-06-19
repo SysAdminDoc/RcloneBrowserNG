@@ -198,14 +198,17 @@ MainWindow::MainWindow() {
       "Transfers, mounts and streams will appear here with live progress.");
   UiPolish::SetMuted(ui.statusBar);
   UiPolish::SetActionBar(ui.tasksActionBar);
+
+  auto *remotesTools = new QWidget(this);
+  auto *remotesToolsLayout = new QHBoxLayout(remotesTools);
+  remotesToolsLayout->setContentsMargins(0, 0, 0, 0);
+  remotesToolsLayout->setSpacing(6);
   mRemotesFilter = new QLineEdit(this);
   mRemotesFilter->setPlaceholderText("Filter remotes…");
   mRemotesFilter->setClearButtonEnabled(true);
   mRemotesFilter->setAccessibleName("Filter remotes");
   UiPolish::SetPathField(mRemotesFilter, "Filter remotes");
-  if (auto *layout = ui.remotes->parentWidget()->layout()) {
-    static_cast<QVBoxLayout *>(layout)->insertWidget(0, mRemotesFilter);
-  }
+  remotesToolsLayout->addWidget(mRemotesFilter, 1);
   QObject::connect(mRemotesFilter, &QLineEdit::textChanged, this,
                    [=](const QString &text) {
                      bool hasAnyRemote = false;
@@ -225,19 +228,18 @@ MainWindow::MainWindow() {
                        item->setHidden(!matches);
                        hasVisibleMatch = hasVisibleMatch || matches;
                      }
-                     if (!mRemotesFilterEmptyItem) {
-                       mRemotesFilterEmptyItem = new QListWidgetItem(
-                           "No remotes match this filter.");
-                       mRemotesFilterEmptyItem->setFlags(Qt::NoItemFlags);
-                       mRemotesFilterEmptyItem->setForeground(
-                           qApp->palette().color(QPalette::Disabled,
-                                                 QPalette::Text));
-                       mRemotesFilterEmptyItem->setSizeHint(QSize(0, 54));
-                       ui.remotes->addItem(mRemotesFilterEmptyItem);
+                     if (!hasAnyRemote) {
+                       showRemotesEmptyState(
+                           "No remotes yet",
+                           "Create a remote or open rclone config to connect "
+                           "storage.");
+                     } else if (!text.isEmpty() && !hasVisibleMatch) {
+                       showRemotesEmptyState(
+                           "No matching remotes",
+                           "Clear the filter or try another remote name.");
+                     } else {
+                       hideRemotesEmptyState();
                      }
-                     mRemotesFilterEmptyItem->setHidden(text.isEmpty() ||
-                                                        hasVisibleMatch ||
-                                                        !hasAnyRemote);
                    });
   UiPolish::SetNavigationView(ui.remotes, "Configured rclone remotes");
   ui.remotes->setSpacing(4);
@@ -250,9 +252,7 @@ MainWindow::MainWindow() {
     viewToggle->setAccessibleName("Toggle remotes view mode");
     UiPolish::SetCompactToolButton(viewToggle, "View mode",
                                    "Switch between list and tile layout.");
-    if (auto *layout = ui.remotes->parentWidget()->layout()) {
-      static_cast<QVBoxLayout *>(layout)->insertWidget(1, viewToggle);
-    }
+    remotesToolsLayout->addWidget(viewToggle);
     auto settings = GetSettings();
     bool tileMode = settings->value("Settings/remotesTileView", false).toBool();
     viewToggle->setChecked(tileMode);
@@ -274,6 +274,16 @@ MainWindow::MainWindow() {
         ui.remotes->setWordWrap(false);
       }
     });
+  }
+  mRemotesEmptyState = new QLabel(this);
+  UiPolish::SetEmptyState(
+      mRemotesEmptyState, "No remotes yet",
+      "Create a remote or open rclone config to connect storage.");
+  mRemotesEmptyState->hide();
+  if (auto *layout =
+          qobject_cast<QVBoxLayout *>(ui.remotes->parentWidget()->layout())) {
+    layout->insertWidget(0, remotesTools);
+    layout->insertWidget(1, mRemotesEmptyState);
   }
   ui.remotes->setUniformItemSizes(true);
   ui.remotes->setTextElideMode(Qt::ElideMiddle);
@@ -985,14 +995,14 @@ MainWindow::MainWindow() {
   ui.tabs->tabBar()->setAcceptDrops(true);
   ui.tabs->tabBar()->installEventFilter(this);
 
-  auto *stagingLabel = new QToolButton(this);
-  stagingLabel->setCheckable(true);
-  stagingLabel->setChecked(false);
-  stagingLabel->setArrowType(Qt::RightArrow);
-  stagingLabel->setText("Staging Queue");
-  stagingLabel->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-  stagingLabel->setAutoRaise(true);
-  UiPolish::SetDisclosureButton(stagingLabel, "Toggle staging queue");
+  mStagingDisclosure = new QToolButton(this);
+  mStagingDisclosure->setCheckable(true);
+  mStagingDisclosure->setChecked(false);
+  mStagingDisclosure->setArrowType(Qt::RightArrow);
+  mStagingDisclosure->setText("Staging Queue");
+  mStagingDisclosure->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  mStagingDisclosure->setAutoRaise(true);
+  UiPolish::SetDisclosureButton(mStagingDisclosure, "Toggle staging queue");
   mStagingList = new QListWidget(this);
   mStagingList->setVisible(false);
   mStagingList->setMaximumHeight(120);
@@ -1000,32 +1010,38 @@ MainWindow::MainWindow() {
   mStagingList->setSelectionMode(QAbstractItemView::ExtendedSelection);
   mStagingList->setDragDropMode(QAbstractItemView::InternalMove);
   mStagingList->setDefaultDropAction(Qt::MoveAction);
-  auto *stagingBar = new QWidget(this);
-  auto *stagingBarLayout = new QHBoxLayout(stagingBar);
+  mStagingEmptyState = new QLabel(this);
+  UiPolish::SetEmptyState(
+      mStagingEmptyState, "No staged transfers",
+      "Use Enqueue in Upload or Download to collect work before running it.");
+  mStagingEmptyState->hide();
+  mStagingBar = new QWidget(this);
+  auto *stagingBarLayout = new QHBoxLayout(mStagingBar);
   stagingBarLayout->setContentsMargins(0, 0, 0, 0);
   stagingBarLayout->setSpacing(4);
-  auto *runStaged = new QPushButton("Run All", stagingBar);
-  runStaged->setToolTip("Execute all staged transfers now.");
-  runStaged->setAccessibleName("Run all staged transfers");
-  UiPolish::SetPrimaryButton(runStaged);
-  auto *clearStaged = new QPushButton("Clear", stagingBar);
-  clearStaged->setToolTip("Remove all staged transfers without running them.");
-  clearStaged->setAccessibleName("Clear staging queue");
-  stagingBarLayout->addWidget(runStaged);
-  stagingBarLayout->addWidget(clearStaged);
+  mRunStagedButton = new QPushButton("Run All", mStagingBar);
+  mRunStagedButton->setToolTip("Execute all staged transfers now.");
+  mRunStagedButton->setAccessibleName("Run all staged transfers");
+  UiPolish::SetPrimaryButton(mRunStagedButton);
+  mClearStagedButton = new QPushButton("Clear", mStagingBar);
+  mClearStagedButton->setToolTip(
+      "Remove all staged transfers without running them.");
+  mClearStagedButton->setAccessibleName("Clear staging queue");
+  stagingBarLayout->addWidget(mRunStagedButton);
+  stagingBarLayout->addWidget(mClearStagedButton);
   stagingBarLayout->addStretch();
-  stagingBar->setVisible(false);
+  mStagingBar->setVisible(false);
 
-  QObject::connect(stagingLabel, &QToolButton::toggled, this,
+  QObject::connect(mStagingDisclosure, &QToolButton::toggled, this,
                    [=](bool checked) {
-                     mStagingList->setVisible(checked);
-                     stagingBar->setVisible(checked);
-                     stagingLabel->setArrowType(
+                     mStagingDisclosure->setArrowType(
                          checked ? Qt::DownArrow : Qt::RightArrow);
+                     updateStagingEmptyState();
                    });
-  QObject::connect(runStaged, &QPushButton::clicked, this, [this]() {
+  QObject::connect(mRunStagedButton, &QPushButton::clicked, this, [this]() {
     if (mStagingList->count() == 0) {
       setStatusMessage("Staging queue is empty.");
+      updateStagingEmptyState();
       return;
     }
     int count = mStagingList->count();
@@ -1042,18 +1058,22 @@ MainWindow::MainWindow() {
     }
     setStatusMessage(
         QString("%1 staged transfer(s) started.").arg(count));
+    updateStagingEmptyState();
   });
-  QObject::connect(clearStaged, &QPushButton::clicked, this, [this]() {
+  QObject::connect(mClearStagedButton, &QPushButton::clicked, this, [this]() {
     mStagingList->clear();
     setStatusMessage("Staging queue cleared.");
+    updateStagingEmptyState();
   });
 
   if (auto *layout =
           qobject_cast<QVBoxLayout *>(ui.tasksListWidget->parentWidget()->layout())) {
-    layout->insertWidget(0, stagingLabel);
+    layout->insertWidget(0, mStagingDisclosure);
     layout->insertWidget(1, mStagingList);
-    layout->insertWidget(2, stagingBar);
+    layout->insertWidget(2, mStagingEmptyState);
+    layout->insertWidget(3, mStagingBar);
   }
+  updateStagingEmptyState();
 
   mTasksFilter = new QLineEdit(this);
   mTasksFilter->setPlaceholderText("Filter saved tasks...");
@@ -1063,6 +1083,13 @@ MainWindow::MainWindow() {
   if (auto *layout =
           qobject_cast<QVBoxLayout *>(ui.tasksListWidget->parentWidget()->layout())) {
     layout->insertWidget(0, mTasksFilter);
+    mTasksEmptyState = new QLabel(this);
+    UiPolish::SetEmptyState(
+        mTasksEmptyState, "No saved tasks yet",
+        "Save a transfer from Upload or Download to run it again later.");
+    mTasksEmptyState->hide();
+    const int listIndex = layout->indexOf(ui.tasksListWidget);
+    layout->insertWidget(qMax(0, listIndex), mTasksEmptyState);
   }
   QObject::connect(mTasksFilter, &QLineEdit::textChanged, this,
                    [this](const QString &text) {
@@ -1070,9 +1097,6 @@ MainWindow::MainWindow() {
                      bool hasVisibleMatch = false;
                      for (int i = 0; i < ui.tasksListWidget->count(); ++i) {
                        auto *item = ui.tasksListWidget->item(i);
-                       if (item == mTasksFilterEmptyItem) {
-                         continue;
-                       }
                        auto *task =
                            static_cast<JobOptionsListWidgetItem *>(item);
                        if (!task->GetData()) {
@@ -1091,18 +1115,19 @@ MainWindow::MainWindow() {
                        item->setHidden(!matches);
                        hasVisibleMatch = hasVisibleMatch || matches;
                      }
-                     if (!mTasksFilterEmptyItem) {
-                       mTasksFilterEmptyItem = new JobOptionsListWidgetItem(
-                           nullptr, QIcon(), "No saved tasks match this filter.");
-                       mTasksFilterEmptyItem->setFlags(Qt::NoItemFlags);
-                       mTasksFilterEmptyItem->setForeground(
-                           qApp->palette().color(QPalette::Disabled,
-                                                 QPalette::Text));
-                       mTasksFilterEmptyItem->setSizeHint(QSize(0, 58));
-                       ui.tasksListWidget->addItem(mTasksFilterEmptyItem);
+                     if (!hasAnyTask) {
+                       showTasksEmptyState(
+                           "No saved tasks yet",
+                           "Save a transfer from Upload or Download to run it "
+                           "again later.");
+                     } else if (!text.isEmpty() && !hasVisibleMatch) {
+                       showTasksEmptyState(
+                           "No matching saved tasks",
+                           "Clear the filter or search by task, source, or "
+                           "destination.");
+                     } else {
+                       hideTasksEmptyState();
                      }
-                     mTasksFilterEmptyItem->setHidden(
-                         text.isEmpty() || hasVisibleMatch || !hasAnyTask);
                    });
 
   ui.tasksListWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -2100,6 +2125,7 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
         setStatusMessage(QString("Enqueued: %1 (%2 staged)")
                              .arg(msg)
                              .arg(mStagingList->count()));
+        updateStagingEmptyState();
       });
   QObject::connect(remote, &RemoteWidget::requestReconnect, this,
                    [this](const QString &remoteName) {
@@ -2463,6 +2489,67 @@ void MainWindow::setStatusMessage(const QString &message) {
   mStatusMessage->setToolTip(message);
 }
 
+void MainWindow::showRemotesEmptyState(const QString &title,
+                                       const QString &detail) {
+  if (!mRemotesEmptyState) {
+    return;
+  }
+  UiPolish::SetEmptyState(mRemotesEmptyState, title, detail);
+  mRemotesEmptyState->show();
+  ui.remotes->hide();
+}
+
+void MainWindow::hideRemotesEmptyState() {
+  if (mRemotesEmptyState) {
+    mRemotesEmptyState->hide();
+  }
+  ui.remotes->show();
+}
+
+void MainWindow::showTasksEmptyState(const QString &title,
+                                     const QString &detail) {
+  if (!mTasksEmptyState) {
+    return;
+  }
+  UiPolish::SetEmptyState(mTasksEmptyState, title, detail);
+  mTasksEmptyState->show();
+  ui.tasksListWidget->hide();
+}
+
+void MainWindow::hideTasksEmptyState() {
+  if (mTasksEmptyState) {
+    mTasksEmptyState->hide();
+  }
+  ui.tasksListWidget->show();
+}
+
+void MainWindow::updateStagingEmptyState() {
+  const bool expanded =
+      mStagingDisclosure && mStagingDisclosure->isChecked();
+  const bool hasItems = mStagingList && mStagingList->count() > 0;
+
+  if (mStagingDisclosure) {
+    mStagingDisclosure->setText(
+        hasItems ? tr("Staging Queue (%1)").arg(mStagingList->count())
+                 : tr("Staging Queue"));
+  }
+  if (mStagingList) {
+    mStagingList->setVisible(expanded && hasItems);
+  }
+  if (mStagingEmptyState) {
+    mStagingEmptyState->setVisible(expanded && !hasItems);
+  }
+  if (mStagingBar) {
+    mStagingBar->setVisible(expanded);
+  }
+  if (mRunStagedButton) {
+    mRunStagedButton->setEnabled(hasItems);
+  }
+  if (mClearStagedButton) {
+    mClearStagedButton->setEnabled(hasItems);
+  }
+}
+
 void MainWindow::rcloneListRemotes() {
   if (mRemotesFilter) {
     const bool wasBlocked = mRemotesFilter->blockSignals(true);
@@ -2470,7 +2557,8 @@ void MainWindow::rcloneListRemotes() {
     mRemotesFilter->blockSignals(wasBlocked);
   }
   ui.remotes->clear();
-  mRemotesFilterEmptyItem = nullptr;
+  showRemotesEmptyState("Loading remotes",
+                        "Reading remotes from rclone.conf...");
 
   QProcess *p = new QProcess();
 
@@ -2621,17 +2709,14 @@ void MainWindow::rcloneListRemotes() {
           }
 
           if (ui.remotes->count() == 0) {
-            auto *empty = new QListWidgetItem(
-                "No remotes configured yet. Use New Remote or Config to add one.");
-            empty->setFlags(Qt::NoItemFlags);
-            empty->setForeground(qApp->palette().color(QPalette::Disabled,
-                                                       QPalette::Text));
-            empty->setSizeHint(QSize(0, 54));
-            ui.remotes->addItem(empty);
-
+            showRemotesEmptyState(
+                "No remotes yet",
+                "Create a remote or open rclone config to connect storage.");
             if (!mTabsRestored) {
               QTimer::singleShot(0, this, &MainWindow::createRemote);
             }
+          } else {
+            hideRemotesEmptyState();
           }
 
           if (!mTabsRestored) {
@@ -2679,8 +2764,16 @@ void MainWindow::rcloneListRemotes() {
           if (p->error() != QProcess::FailedToStart) {
             if (getConfigPassword(p)) {
               rcloneListRemotes();
+              p->deleteLater();
+              return;
             }
           }
+          showRemotesEmptyState(
+              p->error() == QProcess::FailedToStart
+                  ? "rclone could not start"
+                  : "Could not load remotes",
+              "Check the rclone path, encrypted config password, or config "
+              "file location, then refresh.");
         }
         p->deleteLater();
       });
@@ -2845,7 +2938,6 @@ void MainWindow::listTasks() {
     mTasksFilter->blockSignals(wasBlocked);
   }
   ui.tasksListWidget->clear();
-  mTasksFilterEmptyItem = nullptr;
 
   ListOfJobOptions *ljo = ListOfJobOptions::getInstance();
 
@@ -2869,14 +2961,11 @@ void MainWindow::listTasks() {
   }
 
   if (ui.tasksListWidget->count() == 0) {
-    auto *empty = new JobOptionsListWidgetItem(
-        nullptr, QIcon(),
-        "No saved tasks yet. Save a transfer from Upload or Download to reuse it.");
-    empty->setFlags(Qt::NoItemFlags);
-    empty->setForeground(qApp->palette().color(QPalette::Disabled,
-                                               QPalette::Text));
-    empty->setSizeHint(QSize(0, 58));
-    ui.tasksListWidget->addItem(empty);
+    showTasksEmptyState(
+        "No saved tasks yet",
+        "Save a transfer from Upload or Download to run it again later.");
+  } else {
+    hideTasksEmptyState();
   }
 
   ui.buttonDeleteTask->setEnabled(false);
