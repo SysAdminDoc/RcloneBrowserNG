@@ -8,7 +8,7 @@ rem Usage: release_windows.cmd
 rem
 rem Requirements:
 rem   - Visual Studio 2022 (Build Tools or Community) with C++ workload
-rem   - Qt 6.x MSVC 64-bit (set QT env var or edit the default below)
+rem   - Qt 6.8.8+ or 6.11.1+ MSVC 64-bit (set QT env var or edit the default below)
 rem   - CMake on PATH
 rem   - Inno Setup 6 (for installer, optional)
 rem   - 7-Zip (for zip archive, optional)
@@ -31,9 +31,15 @@ if errorlevel 1 (
 )
 
 rem --- Locate Qt --------------------------------------------------------------
-if "%QT%" == "" set "QT=C:\Qt\6.7.3\msvc2019_64"
-if not exist "%QT%\bin\qmake.exe" (
+if "%QT%" == "" set "QT=C:\Qt\6.8.8\msvc2019_64"
+set "QMAKE=%QT%\bin\qmake6.exe"
+if not exist "%QMAKE%" set "QMAKE=%QT%\bin\qmake.exe"
+if not exist "%QMAKE%" (
   echo ERROR: Qt not found at %QT%. Set the QT environment variable to your Qt MSVC 64-bit directory.
+  exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0validate_qt_version.ps1" -QtDir "%QT%"
+if errorlevel 1 (
   exit /b 1
 )
 set "PATH=%QT%\bin;%PATH%"

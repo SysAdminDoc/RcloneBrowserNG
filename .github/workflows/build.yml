@@ -22,6 +22,8 @@ jobs:
         run: |
           desktop-file-validate assets/io.github.sysadmindoc.rclonebrowserng.desktop
           appstreamcli validate --no-net assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml
+      - name: Validate release scripts
+        run: bash -n scripts/*.sh
       - name: Build
         run: |
           mkdir build && cd build
@@ -83,22 +85,7 @@ jobs:
           arch: ${{ matrix.arch }}
       - name: Validate Qt version
         shell: pwsh
-        run: |
-          $qmake = Join-Path $env:Qt6_DIR "bin" "qmake6.exe"
-          if (-not (Test-Path $qmake)) { $qmake = Join-Path $env:Qt6_DIR "bin" "qmake.exe" }
-          $ver = & $qmake -query QT_VERSION
-          Write-Host "Qt version: $ver"
-          $parts = $ver -split '\.'
-          $major = [int]$parts[0]; $minor = [int]$parts[1]; $patch = [int]$parts[2]
-          # Reject Qt versions vulnerable to CVE-2026-6210: only 6.8.8+ and 6.11.1+ are patched
-          $safe = ($major -gt 6) -or
-                  ($major -eq 6 -and $minor -eq 8 -and $patch -ge 8) -or
-                  ($major -eq 6 -and $minor -eq 11 -and $patch -ge 1) -or
-                  ($major -eq 6 -and $minor -gt 11)
-          if (-not $safe) {
-            Write-Error "Qt $ver is in the CVE-2026-6210 vulnerable range. Require >= 6.8.8 or >= 6.11.1."
-            exit 1
-          }
+        run: ./scripts/validate_qt_version.ps1 -QtDir "$env:Qt6_DIR"
       - name: Build
         shell: cmd
         run: |

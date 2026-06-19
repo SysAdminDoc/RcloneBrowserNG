@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # requires following programs:
 # brew install optipng

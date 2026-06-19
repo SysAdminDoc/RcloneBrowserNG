@@ -55,13 +55,7 @@ jobs:
           cp LICENSE AppDir/License.txt
 
           mkdir -p tools release
-          wget -q -O "tools/linuxdeploy-${arch}.AppImage" \
-            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${arch}.AppImage"
-          wget -q -O "tools/linuxdeploy-plugin-qt-${arch}.AppImage" \
-            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${arch}.AppImage"
-          wget -q -O "tools/linuxdeploy-plugin-appimage-${arch}.AppImage" \
-            "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${arch}.AppImage"
-          chmod +x tools/*.AppImage
+          scripts/fetch_linuxdeploy_tools.sh "$arch" tools
 
           export APPIMAGE_EXTRACT_AND_RUN=1
           export PATH="$PWD/tools:$PATH"
@@ -128,21 +122,7 @@ jobs:
           arch: win64_msvc2019_64
       - name: Validate Qt version
         shell: pwsh
-        run: |
-          $qmake = Join-Path $env:Qt6_DIR "bin" "qmake6.exe"
-          if (-not (Test-Path $qmake)) { $qmake = Join-Path $env:Qt6_DIR "bin" "qmake.exe" }
-          $ver = & $qmake -query QT_VERSION
-          Write-Host "Qt version: $ver"
-          $parts = $ver -split '\.'
-          $major = [int]$parts[0]; $minor = [int]$parts[1]; $patch = [int]$parts[2]
-          $safe = ($major -gt 6) -or
-                  ($major -eq 6 -and $minor -eq 8 -and $patch -ge 8) -or
-                  ($major -eq 6 -and $minor -eq 11 -and $patch -ge 1) -or
-                  ($major -eq 6 -and $minor -gt 11)
-          if (-not $safe) {
-            Write-Error "Qt $ver is in the CVE-2026-6210 vulnerable range. Require >= 6.8.8 or >= 6.11.1."
-            exit 1
-          }
+        run: ./scripts/validate_qt_version.ps1 -QtDir "$env:Qt6_DIR"
       - name: Install Inno Setup
         shell: powershell
         run: choco install innosetup --no-progress --yes
@@ -198,6 +178,9 @@ jobs:
         with:
           version: '6.8.*'
           arch: win64_msvc2022_arm64
+      - name: Validate Qt version
+        shell: pwsh
+        run: ./scripts/validate_qt_version.ps1 -QtDir "$env:Qt6_DIR"
       - name: Build Windows ARM64 packages
         shell: powershell
         run: |
