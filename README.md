@@ -89,11 +89,11 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 
 1.  Install [Visual Studio 2022](https://visualstudio.microsoft.com/) (the "Desktop development with C++" workload is enough — Build Tools also work)
 2.  Install [CMake](https://cmake.org/)
-3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/) — these steps assume `C:\Qt`
+3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/) — release packaging should use Qt 6.8.8+ or 6.11.1+; these steps assume `C:\Qt`
 4.  `git clone https://github.com/SysAdminDoc/RcloneBrowserNG.git && cd RcloneBrowserNG`
 5.  `mkdir build && cd build`
-6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.7.3\msvc2019_64 .. && cmake --build . --config Release`
-7.  `C:\Qt\6.7.3\msvc2019_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
+6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.8.8\msvc2019_64 .. && cmake --build . --config Release`
+7.  `C:\Qt\6.8.8\msvc2019_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
 
 ## Portable vs standard mode

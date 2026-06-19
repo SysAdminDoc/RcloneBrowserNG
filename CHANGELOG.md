@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Security
+-   SECURITY: Release packaging now uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and local/CI Windows release paths share the same Qt CVE floor check.
 -   SECURITY: Heartbeat, webhook, and copyurl inputs now reject malformed or non-http(s) URLs before creating network requests
 -   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
 -   SECURITY: Preview temp files now use sanitized filenames (`QFileInfo::fileName()`) preventing path-traversal via malicious remote filenames

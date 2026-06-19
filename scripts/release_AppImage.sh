@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # Requirements:
 #   - Ubuntu 22.04+ or equivalent (glibc 2.35+)
-#   - cmake, g++, make, patchelf, wget
+#   - cmake, g++, make, patchelf, sha256sum, curl or wget
 #   - Qt 6 development packages (qt6-base-dev, qt6-base-dev-tools, qt6-qmake)
 #   - desktop-file-utils, appstream (for validation)
 #   - linuxdeploy, linuxdeploy-plugin-qt, linuxdeploy-plugin-appimage (auto-downloaded)
@@ -24,12 +24,16 @@ case "$ARCH" in
     ;;
 esac
 
-for cmd in cmake g++ patchelf wget; do
+for cmd in cmake g++ patchelf sha256sum; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "ERROR: '$cmd' not found. Install it first."
     exit 1
   fi
 done
+if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+  echo "ERROR: curl or wget is required to download packaging tools."
+  exit 1
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
 VERSION="$(cat "$ROOT/VERSION")"
@@ -77,18 +81,9 @@ cp "$ROOT/README.md" "$APPDIR/AppDir/Readme.md"
 cp "$ROOT/CHANGELOG.md" "$APPDIR/AppDir/Changelog.md"
 cp "$ROOT/LICENSE" "$APPDIR/AppDir/License.txt"
 
-# Download linuxdeploy tools (architecture-specific)
+# Download and verify pinned linuxdeploy tools (architecture-specific)
 TOOLS_DIR="$APPDIR/tools"
-mkdir -p "$TOOLS_DIR"
-DEPLOY_BASE="https://github.com/linuxdeploy"
-
-wget -q -O "$TOOLS_DIR/linuxdeploy-${ARCH}.AppImage" \
-  "${DEPLOY_BASE}/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
-wget -q -O "$TOOLS_DIR/linuxdeploy-plugin-qt-${ARCH}.AppImage" \
-  "${DEPLOY_BASE}/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${ARCH}.AppImage"
-wget -q -O "$TOOLS_DIR/linuxdeploy-plugin-appimage-${ARCH}.AppImage" \
-  "${DEPLOY_BASE}/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${ARCH}.AppImage"
-chmod +x "$TOOLS_DIR"/*.AppImage
+"$ROOT/scripts/fetch_linuxdeploy_tools.sh" "$ARCH" "$TOOLS_DIR"
 
 cd "$APPDIR"
 export APPIMAGE_EXTRACT_AND_RUN=1
