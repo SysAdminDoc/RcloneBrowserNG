@@ -34,6 +34,7 @@
 -   FIXED: Backup-dir `{date}` placeholders now include milliseconds, process id, and a per-command sequence to avoid same-second collisions
 
 ### Reliability & Data Safety
+-   FIXED: Serve stream cards now close without blocking the UI or touching a stale rclone process after it has already exited.
 -   CHANGED: File previews now download into isolated per-preview temporary folders with cancel/timeout feedback instead of a shared filename-based temp path.
 -   CHANGED: Create Remote provider loading, Open/Edit version checks, and file Properties metadata reads now run asynchronously with cancelable loading states instead of blocking the GUI thread.
 -   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types
