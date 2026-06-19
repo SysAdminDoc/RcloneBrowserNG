@@ -39,22 +39,6 @@ All items trace back to public GitHub issues/PRs:
 
 ## Research-Driven Additions
 
-### P0
-
-- [ ] P0 — Pin and verify AppImage packaging tools
-  Why: Release and local AppImage builds execute mutable `linuxdeploy` continuous artifacts before checksums/provenance are generated.
-  Evidence: `.github/workflows/release.yml`, `scripts/release_AppImage.sh`, linuxdeploy continuous releases, GitHub artifact attestation docs, OpenSSF Token-Permissions guidance.
-  Touches: `.github/workflows/release.yml`, `scripts/release_AppImage.sh`, optional release-tool helper script/test.
-  Acceptance: CI and local AppImage builds fetch versioned or commit-addressed linuxdeploy/plugin artifacts, verify expected SHA256 before `chmod`/execution, and fail closed with a clear error when a hash or version drifts.
-  Complexity: M
-
-- [ ] P0 — Enforce the safe Qt floor in local Windows release builds
-  Why: The local Windows release script can still package Qt 6.7.3 even though CI rejects Qt versions affected by CVE-2026-6210.
-  Evidence: `scripts/release_windows.cmd`, `.github/workflows/build.yml`, `.github/workflows/release.yml`, Qt CVE-2026-6210 advisory.
-  Touches: `scripts/release_windows.cmd`, `.github/workflows/release.yml`, optional shared Qt-version validation helper.
-  Acceptance: Windows x64 and ARM64 release paths query qmake, reject vulnerable Qt ranges (`<6.8.8` for 6.8, `6.9.x`, `<6.11.1` for 6.11), remove the 6.7.3 default, and print the required remediation.
-  Complexity: S
-
 ### P1
 
 - [ ] P1 — Protect sensitive saved-task fields at rest
@@ -71,12 +55,19 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: Enqueued transfers are written atomically with schema/version data, restored on launch as pending staged items, validated before execution, removable by the user, and covered by a restart-style unit test.
   Complexity: M
 
-- [ ] P1 — Make provider and metadata probes asynchronous
-  Why: Remote creation, edit conflict checks, and file properties can freeze the GUI for 15-30 seconds when rclone or a backend stalls.
-  Evidence: `src/main_window.cpp::loadRemoteProviders`, `src/remote_widget.cpp::remoteFingerprint`, `src/remote_widget.cpp` properties action, official rclone GUI/dashboard status patterns.
-  Touches: `src/main_window.cpp`, `src/main_window.h`, `src/remote_widget.cpp`, `src/remote_widget.h`, `src/progress_dialog.*`, tests for async helpers.
-  Acceptance: Provider loading, remote fingerprint, and properties use cancellable async `QProcess` flows with loading/error states; no GUI-thread `waitForFinished()` remains for network-backed metadata probes.
+- [ ] P1 — Add RC security regression gates for app-started RC endpoints
+  Why: Rclone's 2026 RC advisories make any future unauthenticated app-started RC path a critical command-execution risk.
+  Evidence: rclone GHSA-qw24-gh76-8rvv, GHSA-25qr-6mpr-f7qx, GHSA-jfwf-28xr-xw6q; `src/rclone_rc_engine.cpp`; `src/mount_widget.cpp`; `src/main_window.cpp`.
+  Touches: `tests/`, `src/rclone_rc_engine.*`, `src/mount_widget.cpp`, `src/main_window.cpp`, any shared rclone command-builder code.
+  Acceptance: Automated tests or a release check enumerate every app-created RC startup/helper command and fail if it lacks `--rc-user`/`--rc-pass`, includes `--rc-no-auth`, or weakens the existing vulnerable-rclone warning path.
   Complexity: M
+
+- [ ] P1 — Remove remaining GUI-thread process waits from user-triggered helper operations
+  Why: Search cancellation, mount backend checks/unmount, and native scheduler operations still block on helper processes and can freeze the desktop shell.
+  Evidence: `src/cross_remote_search.cpp:255`, `src/mount_backend.cpp`, `src/mount_widget.cpp`, `src/schedule_manager.cpp`, Mountain Duck mount UX, GoodSync scheduling UX.
+  Touches: `src/cross_remote_search.*`, `src/mount_backend.*`, `src/mount_widget.*`, `src/schedule_manager.*`, tests for process-helper behavior.
+  Acceptance: Cancel search, detect mount backend, unmount, schedule, unschedule, and schedule-status flows use async or worker-backed helpers with progress/error states; no user-triggered GUI path blocks on `waitForFinished()` except documented bounded teardown.
+  Complexity: L
 
 ### P2
 
@@ -107,3 +98,26 @@ All items trace back to public GitHub issues/PRs:
   Touches: `scripts/prepare_icons.sh`, release scripts, `.github/workflows/build.yml` or a script-test workflow step.
   Acceptance: Shell scripts pass `bash -n` or compatible checks, Windows batch has a dry-run validation path, icon preparation uses a matching Bash shebang or POSIX syntax, and CI fails on script syntax drift.
   Complexity: S
+
+- [ ] P2 — Add optional post-transfer verification workflow
+  Why: Backup users need a first-class integrity answer after copy/sync instead of manually running rclone CLI checks after the GUI job completes.
+  Evidence: `rclone check` docs, GoodSync file-copy verification, `src/transfer_dialog.cpp`, `src/job_options.h`, `src/job_history.*`.
+  Touches: `src/transfer_dialog.*`, `src/job_options.*`, `src/job_widget.*`, `src/job_history.*`, command construction/tests for copy, sync, and cryptcheck paths.
+  Acceptance: Transfer and saved-task options can run a non-mutating verify step after successful copy/sync; the app chooses `check` or `cryptcheck` where appropriate, records pass/fail/skipped evidence in job history, and tests prove verification is not run for unsupported/destructive operations.
+  Complexity: M
+
+- [ ] P2 — Add rclone config backup and restore guardrails
+  Why: Config loss or a bad restore can break every remote, and comparable rclone GUIs expose backup/migration as a dedicated safety workflow.
+  Evidence: RcloneView config backup/restore/migration docs, RClone Manager config import/export, `src/preferences_dialog.cpp`, `src/utils.cpp`.
+  Touches: `src/preferences_dialog.*`, `src/utils.*`, new config-backup helper/test code, README usage notes if the workflow changes setup.
+  Acceptance: Users can export the active rclone config, restore from a selected file only after the current config is backed up, validate paths before writing, and receive clear warnings for encrypted/password-protected configs; tests cover backup naming and unsafe path rejection.
+  Complexity: M
+
+### P3
+
+- [ ] P3 — Add validated operation option profiles per remote
+  Why: Expert users need repeatable per-remote copy/sync/mount flags without retyping advanced rclone options, but this should follow the higher-priority safety and persistence work.
+  Evidence: Rclone UI configurable command workflows, H4R1B0/rclone-gui sync rule profiles, `src/transfer_dialog.cpp`, `src/preferences_dialog.cpp`.
+  Touches: `src/preferences_dialog.*`, `src/transfer_dialog.*`, task serialization code, command-building tests.
+  Acceptance: Users can save, edit, and remove validated default flags per remote and operation; transfer dialogs show the active profile, preserve explicit per-job overrides, and tests prove quoting/merge order remains stable.
+  Complexity: L
