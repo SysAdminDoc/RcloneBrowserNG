@@ -4,6 +4,7 @@
 #include "job_history.h"
 #include "job_options.h"
 #include "pch.h"
+#include "remote_provider.h"
 #include <QQueue>
 #include "ui_main_window.h"
 
@@ -101,6 +102,7 @@ private:
                                            const QString &type,
                                            QWidget *parent);
   void setStatusMessage(const QString &message);
+  void showCreateRemoteDialog(const QVector<RemoteProvider> &providers);
   void showRemotesEmptyState(const QString &title, const QString &detail);
   void hideRemotesEmptyState();
   void showTasksEmptyState(const QString &title, const QString &detail);

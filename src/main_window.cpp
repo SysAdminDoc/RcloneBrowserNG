@@ -73,45 +73,6 @@ QString shellQuote(QString arg) {
   return "'" + arg.replace("'", "'\"'\"'") + "'";
 }
 
-QVector<RemoteProvider> loadRemoteProviders(QWidget *parent, QString *error) {
-  if (error) {
-    error->clear();
-  }
-
-  QProcess p(parent);
-  UseRclonePassword(&p);
-  QStringList args = GetRcloneConf();
-  args << "rc"
-       << "--loopback"
-       << "config/providers";
-  p.start(GetRclone(), args, QIODevice::ReadOnly);
-  if (!p.waitForStarted(5000)) {
-    if (error) {
-      *error = "Failed to start rclone.";
-    }
-    return {};
-  }
-  if (!p.waitForFinished(15000)) {
-    p.kill();
-    p.waitForFinished(2000);
-    if (error) {
-      *error = "Timed out while reading rclone providers.";
-    }
-    return {};
-  }
-  if (p.exitCode() != 0) {
-    if (error) {
-      const QString stderrText =
-          QString::fromUtf8(p.readAllStandardError()).trimmed();
-      *error = stderrText.isEmpty() ? "rclone config/providers failed."
-                                    : stderrText;
-    }
-    return {};
-  }
-
-  return ParseRemoteProviders(p.readAllStandardOutput(), error);
-}
-
 } // namespace
 
 // Fusion-based dark theme used on Windows, Linux and older macOS.
@@ -2155,13 +2116,109 @@ void MainWindow::createRemote() {
     return;
   }
 
-  QString error;
-  const QVector<RemoteProvider> providers = loadRemoteProviders(this, &error);
-  if (!error.isEmpty()) {
-    QMessageBox::critical(this, qApp->applicationDisplayName(), error);
-    return;
-  }
+  setStatusMessage("Loading rclone provider list...");
 
+  auto *progress = new QProgressDialog("Loading rclone provider list...",
+                                       "Cancel", 0, 0, this);
+  progress->setWindowTitle("Create Remote");
+  progress->setWindowModality(Qt::WindowModal);
+  progress->setMinimumDuration(0);
+  progress->setAutoClose(false);
+  progress->setAutoReset(false);
+  progress->setAttribute(Qt::WA_DeleteOnClose);
+  UiPolish::SetWindowDefaults(progress, QSize(420, 120));
+
+  auto *process = new QProcess(this);
+  auto *timeout = new QTimer(process);
+  timeout->setSingleShot(true);
+  auto completed = std::make_shared<bool>(false);
+  QPointer<QProgressDialog> safeProgress(progress);
+
+  auto finish = [=](const QString &error, const QByteArray &stdoutData) {
+    if (*completed) {
+      return;
+    }
+    *completed = true;
+    timeout->stop();
+    if (safeProgress) {
+      safeProgress->close();
+    }
+
+    if (!error.isEmpty()) {
+      setStatusMessage("Could not load rclone provider list.");
+      QMessageBox::critical(this, qApp->applicationDisplayName(), error);
+      process->deleteLater();
+      return;
+    }
+
+    QString parseError;
+    const QVector<RemoteProvider> providers =
+        ParseRemoteProviders(stdoutData, &parseError);
+    if (!parseError.isEmpty()) {
+      setStatusMessage("Could not parse rclone provider list.");
+      QMessageBox::critical(this, qApp->applicationDisplayName(), parseError);
+      process->deleteLater();
+      return;
+    }
+
+    process->deleteLater();
+    setStatusMessage("Rclone provider list loaded.");
+    showCreateRemoteDialog(providers);
+  };
+
+  QObject::connect(timeout, &QTimer::timeout, this, [=]() {
+    process->kill();
+    finish("Timed out while reading rclone providers.", QByteArray());
+  });
+  QObject::connect(progress, &QProgressDialog::canceled, this, [=]() {
+    if (*completed) {
+      return;
+    }
+    *completed = true;
+    timeout->stop();
+    process->kill();
+    process->deleteLater();
+    setStatusMessage("Remote creation cancelled.");
+  });
+  QObject::connect(process, &QProcess::errorOccurred, this,
+                   [=](QProcess::ProcessError error) {
+                     if (error == QProcess::FailedToStart) {
+                       finish("Failed to start rclone.", QByteArray());
+                     }
+                   });
+  QObject::connect(
+      process,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [=](int code, QProcess::ExitStatus) {
+        if (*completed) {
+          return;
+        }
+        const QByteArray stderrData = process->readAllStandardError();
+        const QByteArray stdoutData = process->readAllStandardOutput();
+        if (code != 0) {
+          const QString stderrText =
+              QString::fromUtf8(stderrData).trimmed();
+          finish(stderrText.isEmpty() ? "rclone config/providers failed."
+                                      : stderrText,
+                 QByteArray());
+          return;
+        }
+        finish(QString(), stdoutData);
+      });
+
+  UseRclonePassword(process);
+  QStringList args = GetRcloneConf();
+  args << "rc"
+       << "--loopback"
+       << "config/providers";
+  process->start(GetRclone(), args, QIODevice::ReadOnly);
+  timeout->start(15000);
+  progress->show();
+}
+
+void MainWindow::showCreateRemoteDialog(
+    const QVector<RemoteProvider> &providers) {
   QDialog dialog(this);
   dialog.setWindowTitle("Create Remote");
   UiPolish::SetWindowDefaults(&dialog, QSize(600, 340));
