@@ -32,7 +32,7 @@
 -   FIXED: Backup-dir `{date}` placeholders now include milliseconds, process id, and a per-command sequence to avoid same-second collisions
 
 ### Reliability & Data Safety
--   CHANGED: Create Remote provider loading and file Properties metadata reads now run asynchronously with cancelable loading states instead of blocking the GUI thread.
+-   CHANGED: Create Remote provider loading, Open/Edit version checks, and file Properties metadata reads now run asynchronously with cancelable loading states instead of blocking the GUI thread.
 -   NEW: Dry-run and preview non-mutation contract tests — 6 tests verify `--dry-run` is never lost, never persisted, and always produced exactly once for all operation types
 -   NEW: Backend capability registry — opening a remote asynchronously queries `rclone backend features` to cache per-remote capabilities (PublicLink, Move, About, etc.) and gates UI actions accordingly
 -   NEW: Windows schedules now use XML-based task creation with `StartWhenAvailable=true` so missed runs are caught up when the machine comes back online
