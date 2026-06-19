@@ -62,4 +62,5 @@ private:
   void updateNavButtons();
   QModelIndex findLoadedPath(const QString &path) const;
   QString displayPath(const QString &path) const;
+  void showFileProperties(const QString &path, const QString &target);
 };

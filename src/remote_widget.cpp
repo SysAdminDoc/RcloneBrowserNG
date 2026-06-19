@@ -43,6 +43,74 @@ QString fingerprintFromLsjson(const QByteArray &data) {
          QString::number(obj.value("Size").toVariant().toLongLong());
 }
 
+QString propertyLine(const QString &label, const QString &value) {
+  return label.toHtmlEscaped() + ": " + value.toHtmlEscaped();
+}
+
+bool hasFilePropertiesObject(const QByteArray &stdoutData) {
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(stdoutData, &parseError);
+  return parseError.error == QJsonParseError::NoError && doc.isArray() &&
+         !doc.array().isEmpty() && doc.array().first().isObject();
+}
+
+QString formatFilePropertiesHtml(const QString &path,
+                                 const QByteArray &stdoutData,
+                                 const QByteArray &stderrData,
+                                 const QString &fallbackError) {
+  QStringList lines;
+  lines << QString("<b>%1</b>").arg(QFileInfo(path).fileName().toHtmlEscaped());
+
+  QJsonParseError parseError;
+  const QJsonDocument doc = QJsonDocument::fromJson(stdoutData, &parseError);
+  const QJsonArray arr = doc.array();
+  if (parseError.error == QJsonParseError::NoError && !arr.isEmpty()) {
+    const QJsonObject obj = arr.first().toObject();
+    const qint64 size = obj.value("Size").toVariant().toLongLong();
+    lines << propertyLine(
+        "Size", GetNiceSize(static_cast<quint64>(size)) +
+                    QString(" (%L1 bytes)").arg(size));
+
+    const QString modTime = obj.value("ModTime").toString();
+    if (!modTime.isEmpty()) {
+      const QDateTime dt = QDateTime::fromString(modTime, Qt::ISODateWithMs);
+      lines << propertyLine(
+          "Modified",
+          dt.isValid() ? dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss")
+                       : modTime);
+    }
+
+    const QString mimeType = obj.value("MimeType").toString();
+    if (!mimeType.isEmpty()) {
+      lines << propertyLine("Type", mimeType);
+    }
+
+    const QJsonObject hashes = obj.value("Hashes").toObject();
+    for (auto it = hashes.begin(); it != hashes.end(); ++it) {
+      lines << propertyLine(it.key(), it.value().toString());
+    }
+
+    const QJsonObject meta = obj.value("Metadata").toObject();
+    if (!meta.isEmpty()) {
+      lines << "<br><b>Metadata</b>";
+      for (auto it = meta.begin(); it != meta.end(); ++it) {
+        lines << propertyLine(it.key(), it.value().toString());
+      }
+    }
+  } else {
+    lines << "Could not retrieve properties.";
+    const QString err =
+        fallbackError.isEmpty()
+            ? QString::fromUtf8(stderrData).trimmed().left(300)
+            : fallbackError;
+    if (!err.isEmpty()) {
+      lines << err.toHtmlEscaped();
+    }
+  }
+
+  return lines.join("<br>");
+}
+
 class RemoteEditSession : public QObject {
 public:
   RemoteEditSession(const QString &remoteFile, const QString &fileName,
@@ -1662,65 +1730,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
               QString("Copy %1 -> %2").arg(target, dest.trimmed()),
               target, dest.trimmed(), args);
         } else if (chosen == propsAction) {
-          QProcess proc;
-          UseRclonePassword(&proc);
-          proc.setProgram(GetRclone());
-          proc.setArguments(QStringList()
-                            << "lsjson" << GetRcloneConf() << "--stat"
-                            << "--hash" << getDriveSharedArgs() << "-M"
-                            << target);
-          proc.setProcessChannelMode(QProcess::SeparateChannels);
-          proc.start();
-          proc.waitForFinished(15000);
-
-          QStringList lines;
-          lines << QString("<b>%1</b>").arg(QFileInfo(path).fileName());
-
-          if (proc.exitCode() == 0) {
-            QJsonDocument doc =
-                QJsonDocument::fromJson(proc.readAllStandardOutput());
-            QJsonArray arr = doc.array();
-            if (!arr.isEmpty()) {
-              QJsonObject obj = arr.first().toObject();
-              qint64 size = obj.value("Size").toVariant().toLongLong();
-              lines << "Size: " +
-                        GetNiceSize(static_cast<quint64>(size)) +
-                        QString(" (%L1 bytes)").arg(size);
-              QString modTime = obj.value("ModTime").toString();
-              if (!modTime.isEmpty()) {
-                QDateTime dt =
-                    QDateTime::fromString(modTime, Qt::ISODateWithMs);
-                if (dt.isValid())
-                  lines << "Modified: " +
-                              dt.toLocalTime().toString(
-                                  "yyyy-MM-dd HH:mm:ss");
-                else
-                  lines << "Modified: " + modTime;
-              }
-              QString mimeType = obj.value("MimeType").toString();
-              if (!mimeType.isEmpty())
-                lines << "Type: " + mimeType;
-              QJsonObject hashes = obj.value("Hashes").toObject();
-              for (auto it = hashes.begin(); it != hashes.end(); ++it) {
-                lines << it.key() + ": " + it.value().toString();
-              }
-              QJsonObject meta = obj.value("Metadata").toObject();
-              if (!meta.isEmpty()) {
-                lines << "<br><b>Metadata</b>";
-                for (auto it = meta.begin(); it != meta.end(); ++it) {
-                  lines << it.key() + ": " + it.value().toString();
-                }
-              }
-            }
-          } else {
-            lines << "Could not retrieve properties.";
-            QString err =
-                QString::fromUtf8(proc.readAll()).trimmed();
-            if (!err.isEmpty())
-              lines << err.left(300);
-          }
-
-          QMessageBox::information(this, "Properties", lines.join("<br>"));
+          showFileProperties(path, target);
         } else if (chosen == serveAction) {
           QStringList protocols;
           protocols << "http" << "webdav" << "ftp" << "dlna" << "s3" << "nfs";
@@ -2082,6 +2092,100 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 void RemoteWidget::refreshCurrentDir() { ui.refresh->trigger(); }
 
 void RemoteWidget::focusPathBar() { showPathEditor(); }
+
+void RemoteWidget::showFileProperties(const QString &path,
+                                      const QString &target) {
+  showPathMessage("Loading properties...");
+
+  auto *progress = new QProgressDialog("Loading file properties...", "Cancel",
+                                       0, 0, this);
+  progress->setWindowTitle("Properties");
+  progress->setWindowModality(Qt::WindowModal);
+  progress->setMinimumDuration(0);
+  progress->setAutoClose(false);
+  progress->setAutoReset(false);
+  progress->setAttribute(Qt::WA_DeleteOnClose);
+  UiPolish::SetWindowDefaults(progress, QSize(420, 120));
+
+  auto *proc = new QProcess(this);
+  proc->setProcessChannelMode(QProcess::SeparateChannels);
+  auto *timeout = new QTimer(proc);
+  timeout->setSingleShot(true);
+  auto completed = std::make_shared<bool>(false);
+  QPointer<QProgressDialog> safeProgress(progress);
+
+  auto finish = [=](bool ok, const QByteArray &stdoutData,
+                    const QByteArray &stderrData,
+                    const QString &fallbackError) {
+    if (*completed) {
+      return;
+    }
+    *completed = true;
+    timeout->stop();
+    if (safeProgress) {
+      safeProgress->close();
+    }
+
+    const bool displayOk = ok && hasFilePropertiesObject(stdoutData);
+    showPathMessage(displayOk ? "Properties loaded."
+                              : "Could not retrieve properties.");
+
+    QMessageBox box(this);
+    box.setIcon(displayOk ? QMessageBox::Information : QMessageBox::Warning);
+    box.setWindowTitle("Properties");
+    box.setTextFormat(Qt::RichText);
+    box.setText(formatFilePropertiesHtml(path, stdoutData, stderrData,
+                                         fallbackError));
+    box.exec();
+
+    proc->deleteLater();
+  };
+
+  QObject::connect(timeout, &QTimer::timeout, this, [=]() {
+    proc->kill();
+    finish(false, QByteArray(), QByteArray(),
+           "Timed out while reading file properties.");
+  });
+  QObject::connect(progress, &QProgressDialog::canceled, this, [=]() {
+    if (*completed) {
+      return;
+    }
+    *completed = true;
+    timeout->stop();
+    proc->kill();
+    proc->deleteLater();
+    showPathMessage("Properties request cancelled.");
+  });
+  QObject::connect(proc, &QProcess::errorOccurred, this,
+                   [=](QProcess::ProcessError error) {
+                     if (error == QProcess::FailedToStart) {
+                       finish(false, QByteArray(), QByteArray(),
+                              "Failed to start rclone.");
+                     }
+                   });
+  QObject::connect(
+      proc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [=](int code, QProcess::ExitStatus status) {
+        if (*completed) {
+          return;
+        }
+        const QByteArray stdoutData = proc->readAllStandardOutput();
+        const QByteArray stderrData = proc->readAllStandardError();
+        finish(status == QProcess::NormalExit && code == 0, stdoutData,
+               stderrData, QString());
+      });
+
+  UseRclonePassword(proc);
+  proc->start(GetRclone(), QStringList()
+                               << "lsjson" << GetRcloneConf() << "--stat"
+                               << "--hash" << getDriveSharedArgs() << "-M"
+                               << target,
+              QIODevice::ReadOnly);
+  timeout->start(15000);
+  progress->show();
+}
 
 bool RemoteWidget::eventFilter(QObject *obj, QEvent *event) {
   if (obj == mBreadcrumbBar && event->type() == QEvent::MouseButtonPress) {
