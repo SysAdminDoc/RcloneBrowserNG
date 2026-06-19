@@ -1858,10 +1858,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           auto *line = new QFrame();
           line->setFrameShape(QFrame::HLine);
           line->setFrameShadow(QFrame::Sunken);
+          QPointer<QProcess> serveProcess(proc);
           QObject::connect(widget, &StreamWidget::closed, this, [=]() {
-            proc->terminate();
-            if (!proc->waitForFinished(3000))
-              proc->kill();
+            if (!serveProcess ||
+                serveProcess->state() == QProcess::NotRunning) {
+              return;
+            }
+            serveProcess->terminate();
+            QTimer::singleShot(3000, serveProcess, [serveProcess]() {
+              if (serveProcess &&
+                  serveProcess->state() != QProcess::NotRunning) {
+                serveProcess->kill();
+              }
+            });
           });
           if (!url.isEmpty()) {
             QMessageBox::information(
