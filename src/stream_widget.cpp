@@ -27,6 +27,7 @@ StreamWidget::StreamWidget(QProcess *rclone, QProcess *player,
   ui.remote->setToolTip(remote);
   ui.stream->setText(stream);
   ui.stream->setToolTip(stream);
+  ui.info->setTextFormat(Qt::PlainText);
   ui.info->setText(remote);
   ui.info->setToolTip(remote);
   ui.info->setMinimumWidth(0);

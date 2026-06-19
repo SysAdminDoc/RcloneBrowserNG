@@ -33,6 +33,7 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
   ui.remote->setToolTip(remote);
   ui.folder->setText(folder);
   ui.folder->setToolTip(folder);
+  ui.info->setTextFormat(Qt::PlainText);
   ui.info->setText(QString("%1 on %2").arg(remote).arg(folder));
   ui.info->setToolTip(ui.info->text());
   ui.info->setMinimumWidth(0);

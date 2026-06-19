@@ -4,6 +4,7 @@
 -   SECURITY: Release packaging now uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and local/CI Windows release paths share the same Qt CVE floor check.
 -   SECURITY: Preview download errors now render remote `rclone` output as plain text, preventing backend error text from being interpreted as rich text.
 -   SECURITY: File Properties now escapes remote-provided filenames, hashes, and metadata before rendering rich-text details.
+-   SECURITY: Transfer, mount, stream, and notice summaries now force plain-text rendering for path and remote-derived labels.
 -   SECURITY: Heartbeat, webhook, and copyurl inputs now reject malformed or non-http(s) URLs before creating network requests
 -   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
 -   SECURITY: Preview temp files now use sanitized filenames (`QFileInfo::fileName()`) preventing path-traversal via malicious remote filenames
