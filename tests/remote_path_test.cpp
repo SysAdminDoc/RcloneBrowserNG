@@ -1,52 +1,50 @@
 #include "remote_path.h"
 
-#include <QDebug>
 #include <QJsonObject>
-#include <cstdlib>
+#include <QTest>
 
-namespace {
-
-void require(bool condition, const QString &message) {
-  if (!condition) {
-    qCritical().noquote() << message;
-    std::exit(1);
+class RemotePathTest : public QObject {
+  Q_OBJECT
+private slots:
+  void rootJoinPreservesPunctuation() {
+    const QString special = "folder [x] (y) : trailing ";
+    QCOMPARE(JoinRemotePath(".", special), special);
   }
-}
 
-} // namespace
+  void nestedJoinPreservesPunctuation() {
+    const QString special = "folder [x] (y) : trailing ";
+    QCOMPARE(JoinRemotePath("parent", special), "parent/" + special);
+  }
 
-int main() {
-  const QString special = "folder [x] (y) : trailing ";
-  require(JoinRemotePath(".", special) == special,
-          "root path join did not preserve punctuation/trailing space");
-  require(JoinRemotePath("parent", special) == "parent/" + special,
-          "nested path join did not preserve punctuation/trailing space");
+  void lsjsonPathPreferredOverName() {
+    const QString special = "folder [x] (y) : trailing ";
+    QJsonObject obj;
+    obj.insert("Path", special);
+    obj.insert("Name", "different fallback");
+    QCOMPARE(ChildRemotePathFromLsjson("parent", obj), "parent/" + special);
+  }
 
-  QJsonObject withPath;
-  withPath.insert("Path", special);
-  withPath.insert("Name", "different fallback");
-  require(ChildRemotePathFromLsjson("parent", withPath) == "parent/" + special,
-          "lsjson Path was not preferred over Name");
+  void lsjsonPrejoinedPathNotDoubled() {
+    const QString special = "folder [x] (y) : trailing ";
+    QJsonObject obj;
+    obj.insert("Path", "parent/" + special);
+    QCOMPARE(ChildRemotePathFromLsjson("parent", obj), "parent/" + special);
+  }
 
-  QJsonObject alreadyRelativeToRoot;
-  alreadyRelativeToRoot.insert("Path", "parent/" + special);
-  require(ChildRemotePathFromLsjson("parent", alreadyRelativeToRoot) ==
-              "parent/" + special,
-          "prejoined lsjson Path was joined twice");
+  void lsjsonNameFallback() {
+    const QString special = "folder [x] (y) : trailing ";
+    QJsonObject obj;
+    obj.insert("Name", special);
+    QCOMPARE(ChildRemotePathFromLsjson(".", obj), special);
+  }
 
-  QJsonObject fallbackName;
-  fallbackName.insert("Name", special);
-  require(ChildRemotePathFromLsjson(".", fallbackName) == special,
-          "Name fallback did not preserve special characters");
+  void googlePhotosAlbumPath() {
+    QVERIFY(IsGooglePhotosRecursiveAlbumPath("album/family"));
+    QVERIFY(IsGooglePhotosRecursiveAlbumPath("shared-album/family"));
+    QVERIFY(!IsGooglePhotosRecursiveAlbumPath("album"));
+    QVERIFY(!IsGooglePhotosRecursiveAlbumPath("media/by-month"));
+  }
+};
 
-  require(IsGooglePhotosRecursiveAlbumPath("album/family"),
-          "Google Photos album path was not recognized");
-  require(IsGooglePhotosRecursiveAlbumPath("shared-album/family"),
-          "Google Photos shared album path was not recognized");
-  require(!IsGooglePhotosRecursiveAlbumPath("album"),
-          "Google Photos album root should stay one-level");
-  require(!IsGooglePhotosRecursiveAlbumPath("media/by-month"),
-          "Google Photos media paths should not use the album fallback");
-
-  return 0;
-}
+QTEST_MAIN(RemotePathTest)
+#include "remote_path_test.moc"

@@ -3,18 +3,10 @@
 #include "utils.h"
 
 #include <QBuffer>
-#include <QDebug>
 #include <QRegularExpression>
-#include <cstdlib>
+#include <QTest>
 
 namespace {
-void require(bool condition, const QString &message) {
-  if (!condition) {
-    qCritical().noquote() << message;
-    std::exit(1);
-  }
-}
-
 bool argsContain(const QStringList &args, const QString &flag) {
   return args.contains(flag);
 }
@@ -38,44 +30,43 @@ JobOptions *makeTask(JobOptions::Operation op, bool dryRun) {
 }
 } // namespace
 
-int main() {
-  // Contract 1: dryRun defaults to false
-  {
+class DryRunContractTest : public QObject {
+  Q_OBJECT
+
+private slots:
+  void dryRunDefaultsFalse() {
     JobOptions jo;
-    require(!jo.dryRun, "dryRun must default to false");
+    QVERIFY2(!jo.dryRun, "dryRun must default to false");
   }
 
-  // Contract 2: dryRun=true produces --dry-run for every operation type
-  {
+  void dryRunTrueProducesDryRunFlag() {
     const JobOptions::Operation ops[] = {JobOptions::Copy, JobOptions::Move,
                                          JobOptions::Sync, JobOptions::Bisync};
     const char *names[] = {"Copy", "Move", "Sync", "Bisync"};
     for (int i = 0; i < 4; ++i) {
       auto jo = makeTask(ops[i], true);
       QStringList args = jo->getOptions();
-      require(argsContain(args, "--dry-run"),
-              QString("dryRun=true must produce --dry-run for %1").arg(names[i]));
+      QVERIFY2(argsContain(args, "--dry-run"),
+               qPrintable(QString("dryRun=true must produce --dry-run for %1").arg(names[i])));
       delete jo;
     }
   }
 
-  // Contract 3: dryRun=false never produces --dry-run for any operation type
-  {
+  void dryRunFalseNeverProducesDryRunFlag() {
     const JobOptions::Operation ops[] = {JobOptions::Copy, JobOptions::Move,
                                          JobOptions::Sync, JobOptions::Bisync};
     const char *names[] = {"Copy", "Move", "Sync", "Bisync"};
     for (int i = 0; i < 4; ++i) {
       auto jo = makeTask(ops[i], false);
       QStringList args = jo->getOptions();
-      require(!argsContain(args, "--dry-run"),
-              QString("dryRun=false must NOT produce --dry-run for %1")
-                  .arg(names[i]));
+      QVERIFY2(!argsContain(args, "--dry-run"),
+               qPrintable(QString("dryRun=false must NOT produce --dry-run for %1")
+                              .arg(names[i])));
       delete jo;
     }
   }
 
-  // Contract 4: dryRun is not persisted through save/load round-trip
-  {
+  void dryRunNotPersistedThroughRoundTrip() {
     auto jo = makeTask(JobOptions::Sync, true);
     jo->description = "test-persist";
     jo->uniqueId =
@@ -86,30 +77,30 @@ int main() {
 
     QByteArray bytes;
     QBuffer out(&bytes);
-    require(out.open(QIODevice::WriteOnly), "failed to open write buffer");
+    QVERIFY2(out.open(QIODevice::WriteOnly), "failed to open write buffer");
     QString error;
-    require(WriteJobOptionsStore(&out, tasks, &error),
-            "failed to write store: " + error);
+    QVERIFY2(WriteJobOptionsStore(&out, tasks, &error),
+             qPrintable("failed to write store: " + error));
     out.close();
 
     QBuffer in(&bytes);
-    require(in.open(QIODevice::ReadOnly), "failed to open read buffer");
+    QVERIFY2(in.open(QIODevice::ReadOnly), "failed to open read buffer");
     JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&in);
-    require(loaded.error.isEmpty(), "failed to read store: " + loaded.error);
-    require(loaded.tasks.size() == 1, "round-trip task count wrong");
-    require(!loaded.tasks.first()->dryRun,
-            "dryRun must NOT survive save/load round-trip");
+    QVERIFY2(loaded.error.isEmpty(),
+             qPrintable("failed to read store: " + loaded.error));
+    QCOMPARE(loaded.tasks.size(), 1);
+    QVERIFY2(!loaded.tasks.first()->dryRun,
+             "dryRun must NOT survive save/load round-trip");
 
     QStringList args = loaded.tasks.first()->getOptions();
-    require(!argsContain(args, "--dry-run"),
-            "loaded task must NOT produce --dry-run");
+    QVERIFY2(!argsContain(args, "--dry-run"),
+             "loaded task must NOT produce --dry-run");
 
     ClearJobOptionsList(&loaded.tasks);
     ClearJobOptionsList(&tasks);
   }
 
-  // Contract 5: --dry-run appears exactly once even with many options enabled
-  {
+  void dryRunAppearsExactlyOnce() {
     auto jo = makeTask(JobOptions::Sync, true);
     jo->sync = true;
     jo->syncTiming = JobOptions::After;
@@ -124,61 +115,58 @@ int main() {
       if (a == "--dry-run")
         ++count;
     }
-    require(count == 1, QString("--dry-run must appear exactly once, got %1")
-                            .arg(count));
+    QVERIFY2(count == 1,
+             qPrintable(QString("--dry-run must appear exactly once, got %1")
+                            .arg(count)));
     delete jo;
   }
 
-  // Contract 6: toggling dryRun on then off produces clean args
-  {
+  void togglingDryRunProducesCleanArgs() {
     auto jo = makeTask(JobOptions::Copy, true);
     QStringList withDry = jo->getOptions();
-    require(argsContain(withDry, "--dry-run"), "initial dry-run missing");
+    QVERIFY2(argsContain(withDry, "--dry-run"), "initial dry-run missing");
 
     jo->dryRun = false;
     QStringList withoutDry = jo->getOptions();
-    require(!argsContain(withoutDry, "--dry-run"),
-            "after clearing dryRun, --dry-run must not appear");
+    QVERIFY2(!argsContain(withoutDry, "--dry-run"),
+             "after clearing dryRun, --dry-run must not appear");
     delete jo;
   }
 
-  // Contract 7: backup-dir {date} expansions do not collide within one second
-  {
+  void backupDirDateExpansionsUnique() {
     auto jo = makeTask(JobOptions::Sync, false);
     jo->backupDir = "remote:backups/{date}";
 
     const QString first = argAfter(jo->getOptions(), "--backup-dir");
     const QString second = argAfter(jo->getOptions(), "--backup-dir");
-    require(!first.isEmpty(), "first backup-dir arg missing");
-    require(!second.isEmpty(), "second backup-dir arg missing");
-    require(first != second,
-            "backup-dir {date} expansions must be unique per command");
-    require(QRegularExpression(
-                "^remote:backups/\\d{4}-\\d{2}-\\d{2}_\\d{6}_\\d{3}_[0-9a-z]+_[0-9a-z]{4}$")
-                .match(first)
-                .hasMatch(),
-            "backup-dir {date} expansion format changed unexpectedly");
+    QVERIFY2(!first.isEmpty(), "first backup-dir arg missing");
+    QVERIFY2(!second.isEmpty(), "second backup-dir arg missing");
+    QVERIFY2(first != second,
+             "backup-dir {date} expansions must be unique per command");
+    QVERIFY2(QRegularExpression(
+                 "^remote:backups/\\d{4}-\\d{2}-\\d{2}_\\d{6}_\\d{3}_[0-9a-z]+_[0-9a-z]{4}$")
+                 .match(first)
+                 .hasMatch(),
+             "backup-dir {date} expansion format changed unexpectedly");
     delete jo;
   }
 
-  // Contract 8: free-form extra options preserve quoted arguments
-  {
+  void freeFormExtraOptionsPreserveQuotes() {
     auto jo = makeTask(JobOptions::Copy, false);
     jo->extra = "--metadata \"display name=Quarterly Report\" --suffix \"old copy\"";
 
     QStringList args = jo->getOptions();
-    require(args.contains("--metadata"), "quoted extra flag missing");
-    require(args.contains("display name=Quarterly Report"),
-            "quoted extra value with spaces was split");
-    require(args.contains("--suffix"), "second quoted extra flag missing");
-    require(args.contains("old copy"), "second quoted extra value was split");
-    require(!args.contains("\"display"),
-            "quote characters leaked into parsed extra args");
+    QVERIFY2(args.contains("--metadata"), "quoted extra flag missing");
+    QVERIFY2(args.contains("display name=Quarterly Report"),
+             "quoted extra value with spaces was split");
+    QVERIFY2(args.contains("--suffix"), "second quoted extra flag missing");
+    QVERIFY2(args.contains("old copy"), "second quoted extra value was split");
+    QVERIFY2(!args.contains("\"display"),
+             "quote characters leaked into parsed extra args");
     delete jo;
   }
 
-  // Contract 9: backup retention prunes only old dated snapshots
-  {
+  void backupRetentionPrunesOldSnapshots() {
     QString parent;
     QStringList targets;
     const bool planned = BuildBackupRetentionPlan(
@@ -189,14 +177,13 @@ int main() {
             << "2026-06-18_010203_004_abcd_0002/"
             << "2026-06-16_010203_004_abcd_0000/",
         &parent, &targets);
-    require(planned, "backup retention plan was not created");
-    require(parent == "remote:backups", "backup retention parent changed");
-    require(targets == QStringList({"remote:backups/2026-06-16_010203_004_abcd_0000"}),
-            "backup retention did not select only the oldest dated snapshot");
+    QVERIFY2(planned, "backup retention plan was not created");
+    QCOMPARE(parent, QString("remote:backups"));
+    QCOMPARE(targets,
+             QStringList({"remote:backups/2026-06-16_010203_004_abcd_0000"}));
   }
 
-  // Contract 10: nested backup templates prune the dated parent segment
-  {
+  void nestedBackupTemplatesPruneDatedSegment() {
     QString parent;
     QStringList targets;
     const bool planned = BuildBackupRetentionPlan(
@@ -206,43 +193,41 @@ int main() {
             << "snap-2026-06-18_010203"
             << "manual-2026-06-10_010203",
         &parent, &targets);
-    require(planned, "nested backup retention plan was not created");
-    require(parent == "remote:backups", "nested backup retention parent changed");
-    require(targets == QStringList({"remote:backups/snap-2026-06-17_010203"}),
-            "nested backup retention selected the wrong snapshot");
+    QVERIFY2(planned, "nested backup retention plan was not created");
+    QCOMPARE(parent, QString("remote:backups"));
+    QCOMPARE(targets,
+             QStringList({"remote:backups/snap-2026-06-17_010203"}));
   }
 
-  // Contract 11: fixed backup dirs and keep-all settings never prune
-  {
+  void fixedBackupDirsAndKeepAllNeverPrune() {
     QString parent;
     QStringList targets;
-    require(!BuildBackupRetentionPlan("remote:backups/current", 2,
-                                      QStringList() << "current", &parent,
-                                      &targets),
-            "fixed backup dir should not create a retention plan");
-    require(targets.isEmpty(), "fixed backup dir produced delete targets");
-    require(!BuildBackupRetentionPlan("remote:backups/{date}", 0,
-                                      QStringList() << "2026-06-18_010203",
-                                      &parent, &targets),
-            "keep-all setting should not create a retention plan");
-    require(targets.isEmpty(), "keep-all setting produced delete targets");
+    QVERIFY2(!BuildBackupRetentionPlan("remote:backups/current", 2,
+                                       QStringList() << "current", &parent,
+                                       &targets),
+             "fixed backup dir should not create a retention plan");
+    QVERIFY2(targets.isEmpty(), "fixed backup dir produced delete targets");
+    QVERIFY2(!BuildBackupRetentionPlan("remote:backups/{date}", 0,
+                                       QStringList() << "2026-06-18_010203",
+                                       &parent, &targets),
+             "keep-all setting should not create a retention plan");
+    QVERIFY2(targets.isEmpty(), "keep-all setting produced delete targets");
   }
 
-  // Contract 12: external callback/download URLs must be valid HTTP(S)
-  {
+  void externalCallbackUrlsMustBeValidHttp() {
     QUrl parsed;
     QString error;
-    require(ParseHttpUrl("https://example.com/hook?token=abc", &parsed, &error),
-            "valid HTTPS URL was rejected");
-    require(parsed.scheme() == "https" && parsed.host() == "example.com",
-            "valid HTTPS URL parsed incorrectly");
-    require(!ParseHttpUrl("file:///C:/secret.txt", &parsed, &error),
-            "file URL was accepted");
-    require(error.contains("http://"), "file URL error was not actionable");
-    require(!ParseHttpUrl("https://", &parsed, &error),
-            "hostless HTTPS URL was accepted");
+    QVERIFY2(ParseHttpUrl("https://example.com/hook?token=abc", &parsed, &error),
+             "valid HTTPS URL was rejected");
+    QVERIFY2(parsed.scheme() == "https" && parsed.host() == "example.com",
+             "valid HTTPS URL parsed incorrectly");
+    QVERIFY2(!ParseHttpUrl("file:///C:/secret.txt", &parsed, &error),
+             "file URL was accepted");
+    QVERIFY2(error.contains("http://"), "file URL error was not actionable");
+    QVERIFY2(!ParseHttpUrl("https://", &parsed, &error),
+             "hostless HTTPS URL was accepted");
   }
+};
 
-  qInfo() << "All dry-run contract tests passed.";
-  return 0;
-}
+QTEST_MAIN(DryRunContractTest)
+#include "dryrun_contract_test.moc"

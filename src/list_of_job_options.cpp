@@ -34,6 +34,8 @@ bool ListOfJobOptions::Persist(JobOptions *jo) {
   return isNew;
 }
 
+void ListOfJobOptions::Persist() { PersistToUserData(); }
+
 bool ListOfJobOptions::Forget(JobOptions *jo) {
   bool isKnown = this->tasks.contains(jo);
   if (!isKnown)

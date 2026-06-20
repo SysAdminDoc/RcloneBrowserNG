@@ -1,17 +1,9 @@
 #include "job_options_store.h"
 
 #include <QBuffer>
-#include <QDebug>
-#include <cstdlib>
+#include <QTest>
 
 namespace {
-void require(bool condition, const QString &message) {
-  if (!condition) {
-    qCritical().noquote() << message;
-    std::exit(1);
-  }
-}
-
 JobOptions *makeTask() {
   auto jo = new JobOptions(false);
   jo->description = "Nightly upload";
@@ -51,114 +43,130 @@ void writeLegacyTask(QIODevice *device, const JobOptions &jo) {
          << jo.dest << jo.isFolder << jo.uniqueId;
 }
 
-void requireTaskMatches(const JobOptions *task, bool expectWatchFolder = true,
-                        bool expectCurrentFields = true) {
-  require(task->description == "Nightly upload", "description changed");
-  require(task->operation == JobOptions::Sync, "operation changed");
-  require(task->syncTiming == JobOptions::After, "sync timing changed");
-  require(task->skipNewer, "skip-newer flag changed");
-  require(task->source == "C:/data", "source changed");
-  require(task->dest == "remote:backup", "dest changed");
-  require(task->isFolder, "folder flag changed");
-  require(task->DriveSharedWithMe, "Drive shared flag changed");
-  require(task->watchFolder == expectWatchFolder, "watch folder flag changed");
+void verifyTaskMatches(const JobOptions *task, bool expectWatchFolder = true,
+                       bool expectCurrentFields = true) {
+  QCOMPARE(task->description, QString("Nightly upload"));
+  QCOMPARE(task->operation, JobOptions::Sync);
+  QCOMPARE(task->syncTiming, JobOptions::After);
+  QVERIFY2(task->skipNewer, "skip-newer flag changed");
+  QCOMPARE(task->source, QString("C:/data"));
+  QCOMPARE(task->dest, QString("remote:backup"));
+  QVERIFY2(task->isFolder, "folder flag changed");
+  QVERIFY2(task->DriveSharedWithMe, "Drive shared flag changed");
+  QCOMPARE(task->watchFolder, expectWatchFolder);
   if (expectCurrentFields) {
-    require(task->backupDir == "remote:backups/{date}", "backup dir changed");
-    require(task->backupRetainCount == 7, "backup retain count changed");
-    require(task->conflictResolve == "newer", "conflict strategy changed");
+    QCOMPARE(task->backupDir, QString("remote:backups/{date}"));
+    QCOMPARE(task->backupRetainCount, 7);
+    QCOMPARE(task->conflictResolve, QString("newer"));
   } else {
-    require(task->backupDir.isEmpty(), "legacy backup dir should be empty");
-    require(task->backupRetainCount == 0,
-            "legacy backup retain count should be zero");
-    require(task->conflictResolve.isEmpty(),
-            "legacy conflict strategy should be empty");
+    QVERIFY2(task->backupDir.isEmpty(), "legacy backup dir should be empty");
+    QCOMPARE(task->backupRetainCount, 0);
+    QVERIFY2(task->conflictResolve.isEmpty(),
+             "legacy conflict strategy should be empty");
   }
-  require(task->uniqueId ==
-              QUuid::fromString("{11111111-2222-3333-4444-555555555555}"),
-          "unique id changed");
+  QCOMPARE(task->uniqueId,
+           QUuid::fromString("{11111111-2222-3333-4444-555555555555}"));
 }
 } // namespace
 
-int main() {
-  QList<JobOptions *> tasks;
-  tasks.append(makeTask());
+class JobOptionsStoreTest : public QObject {
+  Q_OBJECT
 
-  QByteArray bytes;
-  QBuffer out(&bytes);
-  require(out.open(QIODevice::WriteOnly), "failed to open write buffer");
-  QString error;
-  require(WriteJobOptionsStore(&out, tasks, &error),
-          "failed to write new store: " + error);
-  out.close();
+private slots:
+  void newFormatRoundTrip() {
+    QList<JobOptions *> tasks;
+    tasks.append(makeTask());
 
-  QBuffer in(&bytes);
-  require(in.open(QIODevice::ReadOnly), "failed to open read buffer");
-  JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&in);
-  require(loaded.error.isEmpty(), "failed to read new store: " + loaded.error);
-  require(!loaded.migratedFromLegacy, "new store was marked legacy");
-  require(loaded.tasks.size() == 1, "new store task count changed");
-  requireTaskMatches(loaded.tasks.first());
-  ClearJobOptionsList(&loaded.tasks);
+    QByteArray bytes;
+    QBuffer out(&bytes);
+    QVERIFY2(out.open(QIODevice::WriteOnly), "failed to open write buffer");
+    QString error;
+    QVERIFY2(WriteJobOptionsStore(&out, tasks, &error),
+             qPrintable("failed to write new store: " + error));
+    out.close();
 
-  QByteArray legacyBytes;
-  QBuffer legacyOut(&legacyBytes);
-  require(legacyOut.open(QIODevice::WriteOnly),
-          "failed to open legacy write buffer");
-  writeLegacyTask(&legacyOut, *tasks.first());
-  legacyOut.close();
+    QBuffer in(&bytes);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "failed to open read buffer");
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&in);
+    QVERIFY2(loaded.error.isEmpty(),
+             qPrintable("failed to read new store: " + loaded.error));
+    QVERIFY2(!loaded.migratedFromLegacy, "new store was marked legacy");
+    QCOMPARE(loaded.tasks.size(), 1);
+    verifyTaskMatches(loaded.tasks.first());
+    ClearJobOptionsList(&loaded.tasks);
+    ClearJobOptionsList(&tasks);
+  }
 
-  QBuffer legacyIn(&legacyBytes);
-  require(legacyIn.open(QIODevice::ReadOnly),
-          "failed to open legacy read buffer");
-  JobOptionsStoreLoadResult legacy = ReadJobOptionsStore(&legacyIn);
-  require(legacy.error.isEmpty(),
-          "failed to read legacy store: " + legacy.error);
-  require(legacy.migratedFromLegacy, "legacy store was not marked migrated");
-  require(legacy.tasks.size() == 1, "legacy store task count changed");
-  requireTaskMatches(legacy.tasks.first(), false, false);
-  ClearJobOptionsList(&legacy.tasks);
+  void legacyFormatMigration() {
+    QList<JobOptions *> tasks;
+    tasks.append(makeTask());
 
-  QByteArray newerBytes;
-  QBuffer newerOut(&newerBytes);
-  require(newerOut.open(QIODevice::WriteOnly),
-          "failed to open newer write buffer");
-  QDataStream newerStream(&newerOut);
-  newerStream.setVersion(QDataStream::Qt_5_2);
-  newerStream << QString("RcloneBrowserNG.tasks") << qint32(999) << qint32(0);
-  newerOut.close();
+    QByteArray legacyBytes;
+    QBuffer legacyOut(&legacyBytes);
+    QVERIFY2(legacyOut.open(QIODevice::WriteOnly),
+             "failed to open legacy write buffer");
+    writeLegacyTask(&legacyOut, *tasks.first());
+    legacyOut.close();
 
-  QBuffer newerIn(&newerBytes);
-  require(newerIn.open(QIODevice::ReadOnly),
-          "failed to open newer read buffer");
-  JobOptionsStoreLoadResult newer = ReadJobOptionsStore(&newerIn);
-  require(newer.tasks.isEmpty(), "newer schema unexpectedly returned tasks");
-  require(newer.error.contains("stored task schema is newer"),
-          "newer schema error was not actionable");
+    QBuffer legacyIn(&legacyBytes);
+    QVERIFY2(legacyIn.open(QIODevice::ReadOnly),
+             "failed to open legacy read buffer");
+    JobOptionsStoreLoadResult legacy = ReadJobOptionsStore(&legacyIn);
+    QVERIFY2(legacy.error.isEmpty(),
+             qPrintable("failed to read legacy store: " + legacy.error));
+    QVERIFY2(legacy.migratedFromLegacy, "legacy store was not marked migrated");
+    QCOMPARE(legacy.tasks.size(), 1);
+    verifyTaskMatches(legacy.tasks.first(), false, false);
+    ClearJobOptionsList(&legacy.tasks);
+    ClearJobOptionsList(&tasks);
+  }
 
-  QByteArray missingTasks = R"({"version":1})";
-  QBuffer missingTasksIn(&missingTasks);
-  require(missingTasksIn.open(QIODevice::ReadOnly),
-          "failed to open missing-tasks JSON buffer");
-  JobOptionsStoreLoadResult missingTasksLoaded =
-      ReadJobOptionsStoreJson(&missingTasksIn);
-  require(missingTasksLoaded.tasks.isEmpty(),
-          "missing tasks array unexpectedly returned tasks");
-  require(missingTasksLoaded.error.contains("tasks array"),
-          "missing tasks array error was not actionable");
+  void newerSchemaRejected() {
+    QByteArray newerBytes;
+    QBuffer newerOut(&newerBytes);
+    QVERIFY2(newerOut.open(QIODevice::WriteOnly),
+             "failed to open newer write buffer");
+    QDataStream newerStream(&newerOut);
+    newerStream.setVersion(QDataStream::Qt_5_2);
+    newerStream << QString("RcloneBrowserNG.tasks") << qint32(999) << qint32(0);
+    newerOut.close();
 
-  QByteArray nonObjectTask = R"({"version":1,"tasks":[42]})";
-  QBuffer nonObjectTaskIn(&nonObjectTask);
-  require(nonObjectTaskIn.open(QIODevice::ReadOnly),
-          "failed to open non-object JSON task buffer");
-  JobOptionsStoreLoadResult nonObjectTaskLoaded =
-      ReadJobOptionsStoreJson(&nonObjectTaskIn);
-  require(nonObjectTaskLoaded.tasks.isEmpty(),
-          "non-object task unexpectedly returned tasks");
-  require(nonObjectTaskLoaded.error.contains("not an object"),
-          "non-object task error was not actionable");
+    QBuffer newerIn(&newerBytes);
+    QVERIFY2(newerIn.open(QIODevice::ReadOnly),
+             "failed to open newer read buffer");
+    JobOptionsStoreLoadResult newer = ReadJobOptionsStore(&newerIn);
+    QVERIFY2(newer.tasks.isEmpty(), "newer schema unexpectedly returned tasks");
+    QVERIFY2(newer.error.contains("stored task schema is newer"),
+             "newer schema error was not actionable");
+  }
 
-  // Trust-gate: loaded tasks with hooks should be untrusted by default
-  {
+  void missingTasksArrayInJson() {
+    QByteArray missingTasks = R"({"version":1})";
+    QBuffer missingTasksIn(&missingTasks);
+    QVERIFY2(missingTasksIn.open(QIODevice::ReadOnly),
+             "failed to open missing-tasks JSON buffer");
+    JobOptionsStoreLoadResult missingTasksLoaded =
+        ReadJobOptionsStoreJson(&missingTasksIn);
+    QVERIFY2(missingTasksLoaded.tasks.isEmpty(),
+             "missing tasks array unexpectedly returned tasks");
+    QVERIFY2(missingTasksLoaded.error.contains("tasks array"),
+             "missing tasks array error was not actionable");
+  }
+
+  void nonObjectTaskInJson() {
+    QByteArray nonObjectTask = R"({"version":1,"tasks":[42]})";
+    QBuffer nonObjectTaskIn(&nonObjectTask);
+    QVERIFY2(nonObjectTaskIn.open(QIODevice::ReadOnly),
+             "failed to open non-object JSON task buffer");
+    JobOptionsStoreLoadResult nonObjectTaskLoaded =
+        ReadJobOptionsStoreJson(&nonObjectTaskIn);
+    QVERIFY2(nonObjectTaskLoaded.tasks.isEmpty(),
+             "non-object task unexpectedly returned tasks");
+    QVERIFY2(nonObjectTaskLoaded.error.contains("not an object"),
+             "non-object task error was not actionable");
+  }
+
+  void hookTrustGate() {
     auto *hooked = makeTask();
     hooked->preCommand = "echo pre";
     hooked->postCommand = "echo post";
@@ -168,43 +176,40 @@ int main() {
 
     QByteArray jsonBytes;
     QBuffer jsonOut(&jsonBytes);
-    require(jsonOut.open(QIODevice::WriteOnly), "failed to open hook json out");
-    require(WriteJobOptionsStoreJson(&jsonOut, hookedList, &error),
-            "failed to write hooked task: " + error);
+    QString error;
+    QVERIFY2(jsonOut.open(QIODevice::WriteOnly), "failed to open hook json out");
+    QVERIFY2(WriteJobOptionsStoreJson(&jsonOut, hookedList, &error),
+             qPrintable("failed to write hooked task: " + error));
     jsonOut.close();
 
     QBuffer jsonIn(&jsonBytes);
-    require(jsonIn.open(QIODevice::ReadOnly), "failed to open hook json in");
+    QVERIFY2(jsonIn.open(QIODevice::ReadOnly), "failed to open hook json in");
     JobOptionsStoreLoadResult hookedLoaded = ReadJobOptionsStoreJson(&jsonIn);
-    require(hookedLoaded.error.isEmpty(),
-            "failed to read hooked task: " + hookedLoaded.error);
-    require(hookedLoaded.tasks.size() == 1, "hooked task count");
-    require(hookedLoaded.tasks.first()->preCommand == "echo pre",
-            "preCommand not preserved");
-    require(hookedLoaded.tasks.first()->postCommand == "echo post",
-            "postCommand not preserved");
-    require(hookedLoaded.tasks.first()->hooksTrusted == true,
-            "hooksTrusted should be preserved when explicitly true");
+    QVERIFY2(hookedLoaded.error.isEmpty(),
+             qPrintable("failed to read hooked task: " + hookedLoaded.error));
+    QCOMPARE(hookedLoaded.tasks.size(), 1);
+    QCOMPARE(hookedLoaded.tasks.first()->preCommand, QString("echo pre"));
+    QCOMPARE(hookedLoaded.tasks.first()->postCommand, QString("echo post"));
+    QVERIFY2(hookedLoaded.tasks.first()->hooksTrusted == true,
+             "hooksTrusted should be preserved when explicitly true");
     ClearJobOptionsList(&hookedLoaded.tasks);
 
     // Verify that tasks without hooksTrusted in JSON default to false
     QByteArray untrustedJson =
         R"({"version":1,"tasks":[{"description":"test","preCommand":"rm -rf /","jobType":1,"operation":1,"source":"/a","dest":"r:b","uniqueId":"{11111111-2222-3333-4444-555555555555}"}]})";
     QBuffer untrustedIn(&untrustedJson);
-    require(untrustedIn.open(QIODevice::ReadOnly), "open untrusted json");
+    QVERIFY2(untrustedIn.open(QIODevice::ReadOnly), "open untrusted json");
     JobOptionsStoreLoadResult untrusted = ReadJobOptionsStoreJson(&untrustedIn);
-    require(untrusted.error.isEmpty(), "untrusted load error");
-    require(untrusted.tasks.size() == 1, "untrusted task count");
-    require(!untrusted.tasks.first()->hooksTrusted,
-            "task loaded without hooksTrusted key must default to untrusted");
-    require(untrusted.tasks.first()->preCommand == "rm -rf /",
-            "preCommand not loaded");
+    QVERIFY2(untrusted.error.isEmpty(), "untrusted load error");
+    QCOMPARE(untrusted.tasks.size(), 1);
+    QVERIFY2(!untrusted.tasks.first()->hooksTrusted,
+             "task loaded without hooksTrusted key must default to untrusted");
+    QCOMPARE(untrusted.tasks.first()->preCommand, QString("rm -rf /"));
     ClearJobOptionsList(&untrusted.tasks);
     ClearJobOptionsList(&hookedList);
   }
 
-  // Sensitive field protection: verify sensitive values are not stored in plain text
-  {
+  void sensitiveFieldProtection() {
     auto *sensitive = makeTask();
     sensitive->heartbeatUrl = "https://hc-ping.com/secret-uuid-123";
     sensitive->webhookUrl = "https://discord.com/api/webhooks/SECRET";
@@ -215,42 +220,41 @@ int main() {
 
     QByteArray sensitiveBytes;
     QBuffer sensitiveOut(&sensitiveBytes);
-    require(sensitiveOut.open(QIODevice::WriteOnly), "open sensitive out");
-    require(WriteJobOptionsStoreJson(&sensitiveOut, sensitiveList, &error),
-            "write sensitive task: " + error);
+    QString error;
+    QVERIFY2(sensitiveOut.open(QIODevice::WriteOnly), "open sensitive out");
+    QVERIFY2(WriteJobOptionsStoreJson(&sensitiveOut, sensitiveList, &error),
+             qPrintable("write sensitive task: " + error));
     sensitiveOut.close();
 
     QString stored = QString::fromUtf8(sensitiveBytes);
-    require(!stored.contains("secret-uuid-123"),
-            "heartbeatUrl secret must not appear in plain text in JSON");
-    require(!stored.contains("SECRET"),
-            "webhookUrl secret must not appear in plain text in JSON");
-    require(!stored.contains("secret-pre"),
-            "preCommand must not appear in plain text in JSON");
-    require(!stored.contains("secret-post"),
-            "postCommand must not appear in plain text in JSON");
+    QVERIFY2(!stored.contains("secret-uuid-123"),
+             "heartbeatUrl secret must not appear in plain text in JSON");
+    QVERIFY2(!stored.contains("SECRET"),
+             "webhookUrl secret must not appear in plain text in JSON");
+    QVERIFY2(!stored.contains("secret-pre"),
+             "preCommand must not appear in plain text in JSON");
+    QVERIFY2(!stored.contains("secret-post"),
+             "postCommand must not appear in plain text in JSON");
 
     QBuffer sensitiveIn(&sensitiveBytes);
-    require(sensitiveIn.open(QIODevice::ReadOnly), "open sensitive in");
+    QVERIFY2(sensitiveIn.open(QIODevice::ReadOnly), "open sensitive in");
     JobOptionsStoreLoadResult sensitiveLoaded =
         ReadJobOptionsStoreJson(&sensitiveIn);
-    require(sensitiveLoaded.error.isEmpty(),
-            "load sensitive task: " + sensitiveLoaded.error);
-    require(sensitiveLoaded.tasks.size() == 1, "sensitive task count");
-    require(sensitiveLoaded.tasks.first()->heartbeatUrl ==
-                "https://hc-ping.com/secret-uuid-123",
-            "heartbeatUrl not round-tripped correctly");
-    require(sensitiveLoaded.tasks.first()->webhookUrl ==
-                "https://discord.com/api/webhooks/SECRET",
-            "webhookUrl not round-tripped correctly");
-    require(sensitiveLoaded.tasks.first()->preCommand == "echo secret-pre",
-            "preCommand not round-tripped correctly");
-    require(sensitiveLoaded.tasks.first()->postCommand == "echo secret-post",
-            "postCommand not round-tripped correctly");
+    QVERIFY2(sensitiveLoaded.error.isEmpty(),
+             qPrintable("load sensitive task: " + sensitiveLoaded.error));
+    QCOMPARE(sensitiveLoaded.tasks.size(), 1);
+    QCOMPARE(sensitiveLoaded.tasks.first()->heartbeatUrl,
+             QString("https://hc-ping.com/secret-uuid-123"));
+    QCOMPARE(sensitiveLoaded.tasks.first()->webhookUrl,
+             QString("https://discord.com/api/webhooks/SECRET"));
+    QCOMPARE(sensitiveLoaded.tasks.first()->preCommand,
+             QString("echo secret-pre"));
+    QCOMPARE(sensitiveLoaded.tasks.first()->postCommand,
+             QString("echo secret-post"));
     ClearJobOptionsList(&sensitiveLoaded.tasks);
     ClearJobOptionsList(&sensitiveList);
   }
+};
 
-  ClearJobOptionsList(&tasks);
-  return 0;
-}
+QTEST_MAIN(JobOptionsStoreTest)
+#include "job_options_store_test.moc"
