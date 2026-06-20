@@ -8,7 +8,7 @@ if(WIN32)
 endif()
 
 find_package(QT NAMES Qt6 REQUIRED COMPONENTS Core Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network Test)
 
 if(WIN32)
   set_property(GLOBAL PROPERTY USE_FOLDERS OFF)
@@ -31,12 +31,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${rclone-browser_BINARY_DIR}/build")
 add_subdirectory(src)
 
 if(BUILD_TESTING)
+  set(CMAKE_AUTOMOC ON)
+
   add_executable(export_list_writer_test
     tests/export_list_writer_test.cpp
     src/export_list_writer.cpp
   )
   target_include_directories(export_list_writer_test PRIVATE src)
-  target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(export_list_writer_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME export_list_writer_test COMMAND export_list_writer_test)
 
   add_executable(vfs_upload_state_test
@@ -44,7 +46,7 @@ if(BUILD_TESTING)
     src/vfs_upload_state.cpp
   )
   target_include_directories(vfs_upload_state_test PRIVATE src)
-  target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(vfs_upload_state_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME vfs_upload_state_test COMMAND vfs_upload_state_test)
 
   add_executable(remote_path_test
@@ -52,7 +54,7 @@ if(BUILD_TESTING)
     src/remote_path.cpp
   )
   target_include_directories(remote_path_test PRIVATE src)
-  target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME remote_path_test COMMAND remote_path_test)
 
   add_executable(remote_provider_test
@@ -60,7 +62,7 @@ if(BUILD_TESTING)
     src/remote_provider.cpp
   )
   target_include_directories(remote_provider_test PRIVATE src)
-  target_link_libraries(remote_provider_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(remote_provider_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME remote_provider_test COMMAND remote_provider_test)
 
   add_executable(job_options_store_test
@@ -70,7 +72,7 @@ if(BUILD_TESTING)
     src/utils.cpp
   )
   target_include_directories(job_options_store_test PRIVATE src)
-  target_link_libraries(job_options_store_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(job_options_store_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(job_options_store_test advapi32)
   endif()
@@ -84,7 +86,7 @@ if(BUILD_TESTING)
   )
   target_include_directories(job_history_test PRIVATE src)
   target_compile_definitions(job_history_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
-  target_link_libraries(job_history_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(job_history_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(job_history_test advapi32)
   endif()
@@ -97,7 +99,7 @@ if(BUILD_TESTING)
     src/utils.cpp
   )
   target_include_directories(folder_compare_test PRIVATE src)
-  target_link_libraries(folder_compare_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(folder_compare_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(folder_compare_test advapi32)
   endif()
@@ -108,7 +110,7 @@ if(BUILD_TESTING)
     src/interface_polish.cpp
   )
   target_include_directories(interface_polish_test PRIVATE src)
-  target_link_libraries(interface_polish_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(interface_polish_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME interface_polish_test COMMAND interface_polish_test)
 
   add_executable(mount_backend_test
@@ -116,12 +118,13 @@ if(BUILD_TESTING)
     src/mount_backend.cpp
   )
   target_include_directories(mount_backend_test PRIVATE src)
-  target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
 
   add_executable(parsing_regression_test
     tests/parsing_regression_test.cpp
   )
+  set_target_properties(parsing_regression_test PROPERTIES AUTOMOC OFF)
   target_include_directories(parsing_regression_test PRIVATE src)
   target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   add_test(NAME parsing_regression_test COMMAND parsing_regression_test)
@@ -131,7 +134,7 @@ if(BUILD_TESTING)
     src/schedule_manager.cpp
   )
   target_include_directories(schedule_golden_test PRIVATE src)
-  target_link_libraries(schedule_golden_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(schedule_golden_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME schedule_golden_test COMMAND schedule_golden_test)
 
   add_executable(backend_features_test
@@ -141,7 +144,7 @@ if(BUILD_TESTING)
   )
   target_include_directories(backend_features_test PRIVATE src)
   target_compile_definitions(backend_features_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
-  target_link_libraries(backend_features_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(backend_features_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(backend_features_test advapi32)
   endif()
@@ -154,7 +157,7 @@ if(BUILD_TESTING)
     src/utils.cpp
   )
   target_include_directories(dryrun_contract_test PRIVATE src)
-  target_link_libraries(dryrun_contract_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(dryrun_contract_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(dryrun_contract_test advapi32)
   endif()
@@ -164,6 +167,6 @@ if(BUILD_TESTING)
     tests/rc_auth_regression_test.cpp
   )
   target_include_directories(rc_auth_regression_test PRIVATE src)
-  target_link_libraries(rc_auth_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(rc_auth_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME rc_auth_regression_test COMMAND rc_auth_regression_test)
 endif()
