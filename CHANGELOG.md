@@ -1,6 +1,33 @@
 # Change Log
 ## [Unreleased]
 ### Security
+-   SECURITY: Saved-task webhook tokens, heartbeat URLs, and shell hook commands are now protected at rest using Windows DPAPI encryption (base64 obfuscation on other platforms); no representative secret appears in plaintext in the JSON task store
+-   SECURITY: Saved-task shell hooks (preCommand/postCommand) are now trust-gated — imported or migrated tasks with hooks prompt for user review before execution; hooks set directly in the transfer dialog are trusted implicitly
+-   SECURITY: CodeQL analysis upgraded from extractionless (`build-mode: none`) to traced build (`build-mode: manual`) for proper interprocedural C++ vulnerability detection; all CodeQL and Scorecard actions SHA-pinned
+-   SECURITY: OpenSSF-recommended binary hardening flags added — MSVC `/guard:cf` (Control Flow Guard), `/CETCOMPAT` (Intel CET), `/DYNAMICBASE`; GCC/Clang `-fcf-protection=full`, `-Wl,-z,relro,-z,now` (full RELRO), `_FORTIFY_SOURCE` raised from 2 to 3
+-   SECURITY: RC auth regression test gate — automated test scans all source files for RC command construction and fails if any path lacks `--rc-user`/`--rc-pass` or introduces `--rc-no-auth`
+
+### Reliability & Data Safety
+-   NEW: Staged transfers now persist across restart — enqueued transfers are saved atomically to `staged.json` and restored on launch
+-   NEW: Post-transfer verification — a "Verify integrity after transfer" checkbox in the transfer dialog runs `rclone check` (or `cryptcheck` for crypt remotes) after successful copy/sync operations
+-   NEW: Restartable job history — completed transfers now store their command arguments in history; failed or interrupted jobs can be restarted or dry-run previewed from the Job History dialog
+-   NEW: Operation option profiles — save, load, and delete named rclone flag profiles in the transfer dialog for repeatable per-remote configurations
+-   NEW: Config backup and restore — Preferences dialog now has Backup Config and Restore Config buttons; restore automatically backs up the current config before overwriting
+-   NEW: First-run rclone repair assistant — missing or broken rclone shows a guided dialog with Browse, Open Download Page, and Open Preferences options instead of a bare warning
+-   NEW: `--version` command-line flag for headless version checks and release smoke tests
+-   NEW: Qt Linguist i18n scaffolding — QTranslator loading from bundled and external translation files; Qt LinguistTools CMake integration
+
+### Build & Compatibility
+-   NEW: clang-tidy static analysis runs on every Linux CI build with bugprone, performance, and modernize checks
+-   NEW: AppImage delta updates — release AppImages embed zsync UPDATE_INFORMATION for efficient incremental updates via AppImageUpdate
+-   NEW: Release artifact smoke tests — Linux AppImage, Windows x64, and Windows ARM64 packages are verified with `--version` before release publication
+-   NEW: Package-manager manifest generation — release workflow produces WinGet, Homebrew Cask, and Scoop manifests with correct versions and checksums
+-   NEW: AppStream metainfo release entry updated with detailed v2.0.0 description
+-   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)
+-   CHANGED: 13 of 14 test targets migrated from custom `require()`/`std::exit(1)` harness to Qt QTest framework with QVERIFY/QCOMPARE assertions and proper test reporting
+-   FIXED: Cross-remote search cancel now uses async process termination instead of blocking `waitForFinished()`
+
+### Security
 -   SECURITY: Release packaging now uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and local/CI Windows release paths share the same Qt CVE floor check.
 -   SECURITY: Preview download errors now render remote `rclone` output as plain text, preventing backend error text from being interpreted as rich text.
 -   SECURITY: File Properties now escapes remote-provided filenames, hashes, and metadata before rendering rich-text details.
