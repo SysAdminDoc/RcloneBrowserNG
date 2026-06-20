@@ -1,69 +1,62 @@
-# Research - RcloneBrowserNG
+# Research — RcloneBrowserNG
 
 ## Executive Summary
-RcloneBrowserNG is a native Qt 6 desktop operator for rclone: it browses remotes, runs and schedules transfers, mounts and serves paths, previews and compares files, saves reusable tasks, and publishes Windows, macOS, and Linux release artifacts. Its strongest current shape is local trust: recent work added capability gates, safe previews, async metadata probes, release SBOM/provenance, pinned AppImage tools, Qt CVE floor checks, high-contrast polish, and per-file job evidence. The highest-value direction is to finish recovery, trust, and release assurance before adding broader feature surface: protect saved-task secrets, trust-gate shell hooks, persist staged transfer intent, regression-test all app-started RC endpoints, remove remaining GUI-thread helper-process waits, make job history restartable, add post-transfer verification, add config backup/restore guardrails, and turn i18n/accessibility/package metadata into automated release acceptance.
+RcloneBrowserNG is a native Qt 6/C++17 desktop operator for rclone that browses remotes, runs and schedules transfers, mounts/serves paths, previews and compares files, saves reusable tasks, and publishes signed Windows/macOS/Linux release artifacts with SBOM and provenance attestations. Its strongest current shape is local trust and correctness: capability gates, safe previews, async metadata probes, authenticated RC endpoints, high-contrast polish, per-file job audit detail, and 13 test targets covering parsers, contracts, schedules, and backend features. The project has addressed every open upstream issue and unmerged PR from both abandoned parent repositories. The highest-value direction is to (1) finish the remaining security/trust/recovery stack (secrets at rest, shell hook trust, staged persistence, RC regression gates, GUI-thread wait removal), (2) close the distribution gap (zero package managers vs. competitors in 7+, with a hard Homebrew September 2026 deadline for code signing), and (3) harden CI and build quality (CodeQL build-mode, static analysis, binary hardening flags, QTest migration, AppImage delta updates).
 
-Top opportunities, in priority order:
+Top 10 opportunities, in priority order:
 
-1. [Verified] Protect saved-task secrets at rest; `src/job_options_store.cpp` still writes heartbeat URLs, webhook URLs, and shell hooks directly into JSON.
-2. [Verified] Trust-gate saved-task shell hooks; `src/main_window.cpp` executes `preCommand`/`postCommand` through `cmd.exe /c` or `/bin/sh -c`, including commands loaded from saved task JSON.
-3. [Verified] Persist staged transfers; `src/main_window.cpp` stores staged work only in `QListWidget` item data, so restart or crash loses prepared batch intent.
-4. [Verified] Add an RC security regression gate; rclone's 2026 RC CVEs make any future unauthenticated `rcd` startup or `--rc-no-auth` regression release-critical.
-5. [Verified] Remove remaining GUI-thread waits from user-triggered helper operations; search cancellation, mount backend detection/unmount, and native scheduler calls still block on `QProcess::waitForFinished()`.
-6. [Verified] Add an optional post-transfer verification workflow using `rclone check` / `cryptcheck`, with results attached to job evidence.
-7. [Verified] Add rclone config backup/restore/migration guardrails; comparable tools treat config backup as a first-class safety workflow, while this app relies on manual file handling.
-8. [Likely] Add packaged-artifact launch smoke tests before publishing releases; `.github/workflows/release.yml` builds, checksums, and attests artifacts but does not run the deployed binaries from their packaged locations.
-9. [Likely] Add a first-run rclone acquisition and repair assistant; current onboarding warns about missing rclone and offers selfupdate only after a working rclone is already configured.
-10. [Likely] Make job history restartable for failed or interrupted transfers after the secret-store work lands; active jobs can be retried in-session, but persisted history is currently evidence, not recovery.
+1. **[Verified]** Protect saved-task secrets at rest — `src/job_options_store.cpp` writes webhook tokens, heartbeat URLs, and shell hooks directly to JSON.
+2. **[Verified]** Trust-gate saved-task shell hooks — `src/main_window.cpp` executes `preCommand`/`postCommand` through the user's shell from task JSON.
+3. **[Verified]** Persist staged transfers — `src/main_window.cpp` stores staged work only in `QListWidget` item data; restart loses it.
+4. **[Verified]** RC security regression gate — rclone's 2026 RC CVEs require continuous proof that app-started RC paths stay authenticated.
+5. **[Verified]** Remove GUI-thread waits — `schedule_manager.cpp` (17 calls), `mount_backend.cpp`, `mount_widget.cpp`, `cross_remote_search.cpp` block on `waitForFinished()`.
+6. **[Verified]** Strengthen CodeQL to traced build — current `build-mode: none` misses most C++ vulnerabilities; unpinned `@v4` tag violates project SHA-pin policy.
+7. **[Verified]** Add OpenSSF binary hardening flags — MSVC lacks `/guard:cf`, `/CETCOMPAT`; Linux lacks full RELRO (`-Wl,-z,relro,-z,now`); `_FORTIFY_SOURCE` at 2, could be 3.
+8. **[Likely]** Add AppImage delta-update metadata — no zsync `UPDATE_INFORMATION` embedded; users must re-download full images.
+9. **[Likely]** Add clang-tidy CI integration — no static analysis beyond CodeQL exists; bugprone/cppcoreguidelines checks would catch use-after-free and uninitialized patterns that CodeQL extractionless mode misses.
+10. **[Likely]** Migrate tests to QTest framework — current `require()` + `std::exit(1)` harness provides no line numbers, no comparison output, and no integration with CTest reporting.
 
 ## Product Map
-- Core workflows: select and manage rclone configs; browse/filter/preview/compare remotes; upload/download/copy/move/delete/archive/dedupe/check files; dry-run, save, enqueue, run, schedule, and audit transfer tasks; mount, serve, stream, and inspect remote paths.
-- User personas: experienced rclone users who want a native GUI; backup operators who need dry-run evidence and recoverability; admins moving data between cloud providers; Windows/macOS/Linux users avoiding abandoned, paywalled, or heavy web/Electron wrappers.
-- Platforms and distribution: CMake/Qt 6/C++17; Windows x64 and ARM64, macOS arm64 and x86_64, Linux x86_64 and aarch64 AppImage; GitHub Releases with checksums, SPDX SBOM, and provenance attestations.
-- Key integrations and data flows: rclone CLI and authenticated local `rcd`; OS schedulers (`schtasks.exe`, systemd user timers, launchd, cron); WinFsp/macFUSE/FUSE; rclone config/password-command handling; JSON task/history stores; release packaging scripts and GitHub Actions.
+- Core workflows: manage rclone configs; browse/filter/preview/compare/search remotes; upload/download/copy/move/delete/archive/dedupe/check/serve files; dry-run, save, enqueue, schedule, and audit transfer tasks; mount and stream remote paths.
+- User personas: experienced rclone CLI users wanting a native GUI; backup operators needing dry-run evidence and recoverability; admins moving data between cloud providers; desktop users avoiding abandoned, paywalled, or heavy web/Electron wrappers.
+- Platforms: Windows x64 + ARM64, macOS arm64 + x86_64, Linux x86_64 + aarch64 AppImage; Qt 6.4+ (CI builds at 6.8+); GitHub Releases with SHA256, SPDX SBOM, and provenance attestations.
+- Key integrations: rclone CLI and authenticated local `rcd`; OS schedulers (schtasks, systemd timers, launchd, cron); WinFsp/macFUSE/FUSE/nfsmount; rclone config/password-command; JSON task/history stores; GitHub Actions CI/CD.
 
 ## Competitive Landscape
-- Rclone UI: strong package-manager reach, Docker/homelab host profiles, configurable command workflows, and explicit production RC-auth guidance. Learn from install reach, host profile clarity, and command-profile flexibility; avoid remote-server scope creep and unsafe `--rc-no-auth` defaults.
-- RClone Manager: fast-moving Tauri/Angular GUI with Crowdin, localized READMEs, headless mode, ARM packages, auto-download of rclone when missing, and broad package-manager support. Learn from onboarding, localization, and distribution breadth; avoid replacing the native Qt stack with a web shell.
-- H4R1B0/rclone-gui: macOS-native app with dual panels, drag/drop, Quick Look, transfer history/restart, schedule logging/export, Keychain/app-lock patterns, and multi-language support. Learn from restartable transfer evidence and native secret storage; avoid macOS-only assumptions and AI/file-organization expansion.
-- Official `rclone gui`, `rclone-web`, and yet-another-rclone-dashboard: cover the browser dashboard lane with metrics, remotes, mounts, serves, running/completed jobs, multi-profile RC management, mobile/PWA UI, and explicit RC-auth caveats. Learn from status summaries and RC security copy; avoid building a parallel web/PWA product.
-- REM and RcloneView: show demand for polished file browsing, preview, multi-window workspaces, batch jobs, config backup/migration, schedule history, and commercial-grade transfer evidence. Learn from config safety and visible job history; avoid paywalled core transfer controls.
-- Mountain Duck, GoodSync, WinSCP, and FreeFileSync: adjacent mature tools normalize durable queues, retained background work, post-copy verification, conflict/version recovery, offline/cache status, and clear queue controls. Learn from recovery affordances and verification language; defer full smart-sync/filesystem-cache semantics until the current staging and task stores are restart-safe.
+- **Rclone UI** (2.1k stars, TypeScript/Tauri, v3.6.0): Strongest distribution (WinGet, Homebrew, Chocolatey, Flathub, Scoop, AUR, npm). Remote server management via rcd profiles. Caution: #218 dry-run may execute real sync. Learn: distribution breadth, host profile clarity, command-profile flexibility. Avoid: web-shell runtime overhead, remote-server scope creep.
+- **RClone Manager** (933 stars, Angular/Tauri, v0.2.7): Fastest-growing. FS watchers, alert actions (toast/webhook/email/Telegram/script), Docker headless, Crowdin i18n, performance presets, ARM packages, auto-downloads rclone when missing. Learn: onboarding, localization, distribution. Avoid: replacing native Qt with web shell.
+- **H4R1B0/rclone-gui** (low visibility, Swift, v1.6.0, 521 tests): macOS-native with dual panels, Quick Look, cloud trash (10 providers), Keychain app-lock, transfer history/restart, bulk rename. Learn: restartable transfer evidence, native secret storage. Avoid: macOS-only assumptions.
+- **Official rclone gui/web** (v1.74.0 embedded `rclone gui` command): Covers browser dashboard lane with remote browsing, jobs, mounts, serves. No scheduling, no saved tasks, no verification, no packaging. Learn: RC endpoint patterns, status summaries. Avoid: building parallel web UI.
+- **Mountain Duck / GoodSync / WinSCP / FreeFileSync**: Adjacent mature tools normalizing durable queues, retained background work, post-copy verification (GoodSync Analyze + MD5 check), conflict/version recovery, offline/cache status, and clear queue controls. Learn: recovery affordances, verification language, analyze-before-commit UX. Defer: full smart-sync/filesystem-cache semantics.
 
 ## Security, Privacy, and Reliability
-- [Verified] `src/job_options_store.cpp` writes `heartbeatUrl`, `webhookUrl`, `preCommand`, and `postCommand` directly to JSON; support redaction does not protect the task store itself.
-- [Verified] `src/main_window.cpp` executes saved `preCommand` and `postCommand` strings through the user's shell. `src/transfer_dialog.cpp` labels them as shell commands, but there is no separate trust state for imported, migrated, or edited tasks.
-- [Verified] `src/main_window.cpp` keeps staged transfers only in `mStagingList`; no atomic store, schema version, restart recovery, or migration path exists for queued intent.
-- [Verified] Rclone RC advisories in 2026 (`options/set`, `operations/fsinfo`, and `rcd --rc-serve`) share the same dangerous precondition: reachable RC without global auth. RcloneBrowserNG already uses RC auth in current code, but no regression test proves future app-started RC paths stay authenticated.
-- [Verified] Remaining helper-process waits include `src/cross_remote_search.cpp:255`, `src/mount_backend.cpp`, `src/mount_widget.cpp`, and `src/schedule_manager.cpp`; these can stall the UI during cancel, mount checks, unmount, schedule, unschedule, or status work.
-- [Likely] `.github/workflows/release.yml` builds deployable artifacts, uploads them, generates checksums, SBOM, and provenance, but no release job executes the packaged binary after `linuxdeploy`, `macdeployqt`, `windeployqt`, zip, or installer staging.
-- Missing guardrails: secret-at-rest migration tests, shell-hook trust tests, staged-queue restart tests, RC startup security assertions, no-GUI-thread-wait tests for user actions, packaged-artifact smoke, post-transfer verification result capture, config backup/restore preflight, Qt Linguist extraction checks, and dialog accessibility smoke tests.
-- Recovery needs: staged work should survive restart or fail visibly; failed/interrupted job history should expose safe restart where enough non-sensitive command context is available; config restore should first back up the existing config and validate target paths; verification jobs should attach structured results to job history rather than relying on users to rerun CLI commands manually.
+- **[Verified]** `src/job_options_store.cpp` writes `heartbeatUrl`, `webhookUrl`, `preCommand`, `postCommand` directly to JSON; support redaction does not protect the task store.
+- **[Verified]** `src/main_window.cpp` executes saved `preCommand`/`postCommand` through `cmd.exe /c` or `/bin/sh -c`. No trust state for imported/migrated/edited tasks.
+- **[Verified]** `src/main_window.cpp` keeps staged transfers only in `mStagingList` (QListWidget); no persistence, schema, or recovery path.
+- **[Verified]** Rclone RC advisories (GHSA-qw24-gh76-8rvv, GHSA-25qr-6mpr-f7qx, GHSA-jfwf-28xr-xw6q) share the precondition of reachable unauthenticated RC. Current code uses auth, but no regression test proves it.
+- **[Verified]** `waitForFinished()` in `schedule_manager.cpp` (17 calls), `mount_backend.cpp`, `mount_widget.cpp:173-181`, `cross_remote_search.cpp:255` block the GUI thread during user-initiated operations.
+- **[Verified]** CodeQL `build-mode: none` performs extractionless analysis inadequate for C++ (misses interprocedural flows, taint tracking). Unpinned `@v4` tag violates SHA-pin security policy.
+- **[Verified]** Build hardening gaps: MSVC linker missing `/guard:cf` (Control Flow Guard), `/CETCOMPAT` (Intel CET Shadow Stack), `/DYNAMICBASE` (explicit ASLR). GCC/Clang missing `-Wl,-z,relro,-z,now` (full RELRO). `_FORTIFY_SOURCE=2` below recommended level 3 per OpenSSF Compiler Hardening Guide.
+- **[Verified]** AppImages lack embedded `UPDATE_INFORMATION` for zsync delta updates; users must download full AppImage for each release.
+- **[Likely]** No static analysis beyond CodeQL: no clang-tidy, cppcheck, or PVS-Studio integration. The custom test harness (`require()` + `std::exit(1)`) provides no assertion diagnostics.
 
 ## Architecture Assessment
-- `src/main_window.cpp` and `src/remote_widget.cpp` remain large workflow controllers. New work should extract focused services for staged-transfer persistence, shell-hook trust, RC command construction/security assertions, first-run rclone repair, restartable job snapshots, and operation verification instead of adding more inline branches.
-- Add a `TaskSecretStore` abstraction around saved-task sensitive values using OS credential storage where practical, with a clearly warned plaintext fallback and JSON references rather than raw tokens.
-- Add explicit shell-hook trust metadata to saved tasks. Imported or migrated tasks with `preCommand`/`postCommand` should not execute until the user reviews and trusts them; job history/support bundles should report redacted hook status and exit evidence.
-- Add a `StagedTransferStore` under the existing app data location, written with `QSaveFile`, schema versioning, and the same validation rules used before executing queued transfers.
-- Add command-builder tests for app-started RC flows so `rclone rcd`/RC helper paths cannot accidentally drop `--rc-user`/`--rc-pass` or introduce `--rc-no-auth`.
-- Move remaining user-triggered helper operations onto async workers or signal-driven helpers. Keep bounded destructor cleanup separate and documented so reliability tests do not require artificial process leaks.
-- Add a verification step model to `JobOptions` and job history: `rclone check` for normal copy/sync paths, `cryptcheck` for crypt comparisons, and explicit skipped/unsupported states when hashes or endpoints make verification misleading.
-- Add config backup/restore as a small service around rclone config paths: export current config, restore with automatic backup of the current file, validate user-selected paths, and surface clear warnings for encrypted configs.
-- Add a first-run rclone assistant around the existing preferences/version-check path: locate an executable, open official install/download guidance, or perform an optional verified app-managed download only if checksum/signature validation is implemented.
-- Add packaged-artifact launch smoke after deployment packaging. Prefer a non-GUI command such as `--version` or a purpose-built smoke flag from the packaged location, and make release publication depend on that result.
-- Add Qt Linguist through CMake (`Qt6::LinguistTools`, `qt_add_translations`, or equivalent), wrap user-visible strings, and seed a pseudo-locale or smoke translation so CI proves extraction/build/load works.
-- Expand `tests/interface_polish_test.cpp` beyond palette assertions to instantiate main, transfer, preferences, schedule, mount/serve, and remote-action dialogs offscreen and assert accessible names, descriptions, focusability, and tab-order basics.
-- Generate package-manager manifest artifacts after each release artifact exists and checksums are known; external store submission can remain operator-driven, but manifest generation should be reproducible and validated.
+- `src/main_window.cpp` (4517 lines) and `src/remote_widget.cpp` (2622 lines) are large workflow controllers. New work should extract focused services (staged-transfer store, shell-hook trust, RC command security assertions, config backup, restartable job snapshots, verification results) rather than adding more inline branches.
+- Tests (13 targets, 1450 lines) use a custom `require()` harness instead of QTest. Migration to QTest would add: assertion messages with line numbers, comparison output for failed values, `QSignalSpy` for async flows, CTest XML reporting integration, and offscreen widget instantiation via `QT_QPA_PLATFORM=offscreen`.
+- Remote provider icons (`src/images/`) cover only 18 services. New rclone backends since v1.69 (iCloud Drive, iCloud Photos, Archive, Filen, Internxt, Huawei Drive, Shade, Drime, DOI, FileLu, Cloudinary) have no dedicated icons and fall through to `unknown.png`. The generated provider picker (`src/remote_provider.cpp`) dynamically lists backends but the icon system is static.
+- `BackendFeatures::defaultForType()` in `src/rclone_capabilities.cpp` hardcodes known backend types. New backends fall through to conservative defaults, which is safe but means features like cloud trash, public links, and about/quota may be hidden for new providers until the async feature query completes.
+- The `RcloneRcEngine` (`src/rclone_rc_engine.cpp`, 300 lines) is well-structured with async `postAsync` and bounded `postSync` (used only for startup ping). The rcd engine is ready for `job/batch` (rclone v1.72) and `core/disks` (v1.74) integration.
 
 ## Rejected Ideas
-- New web UI, remote-host dashboard, or PWA/mobile companion: official `rclone gui`, `rclone-web`, Rclone UI, and yet-another-rclone-dashboard already cover that lane.
-- Full Dropbox-style smart sync/offline filesystem: Mountain Duck proves value, but it requires a cache daemon, placeholder semantics, conflict resolution, and background reconciliation outside this app's current architecture.
-- Plugin marketplace: rclone already owns provider extensibility, and an app plugin ABI would add a large trust and support surface without a current boundary.
-- Multi-user/team collaboration server: the product is a local desktop operator around local rclone config, not an authorization/audit server.
-- Built-in terminal tab: it increases credential exposure and duplicates the user's shell; safer command-copy and dry-run evidence fit the app better.
-- AI-powered file organization/search: H4R1B0 lists it as a future vision item, but it is not grounded in this repo's safety-first transfer philosophy and ranks below recovery/security work.
-- Store submission as a local roadmap item: Homebrew, WinGet, Chocolatey, and Flathub publication depends on external maintainer workflows; generated validated manifests are the actionable repo-owned step.
-- Bundling a private rclone fork or replacing CLI calls with librclone: H4R1B0 shows native FFI can work on macOS, but this project benefits from staying a transparent wrapper over the user's installed rclone across all desktop platforms.
+- **Web UI / PWA / mobile companion**: official `rclone gui` (v1.74), rclone-web, Rclone UI, and yet-another-rclone-dashboard cover that lane. Source: rclone.org/gui, rclone forum.
+- **Full smart-sync / offline filesystem**: Mountain Duck proves value but requires cache daemon, placeholder semantics, conflict resolution, and background reconciliation outside the current architecture. Source: docs.duck.sh/mountainduck/sync.
+- **Plugin marketplace**: rclone already owns provider extensibility; an app plugin ABI adds trust and support surface without clear boundaries. Source: rclone provider model.
+- **Multi-user / team collaboration server**: the product is a local desktop operator. Source: product philosophy.
+- **Built-in terminal tab**: increases credential exposure and duplicates the user's shell; command-copy and dry-run evidence are safer. Source: SECURITY.md scope.
+- **AI-powered file organization**: H4R1B0 lists it as a future vision item; not grounded in safety-first transfer philosophy. Source: github.com/H4R1B0/rclone-gui.
+- **Bundling private rclone fork / librclone FFI**: the project benefits from staying a transparent wrapper over the user's installed rclone. Source: project philosophy, H4R1B0 FFI experience.
+- **Store submission as local roadmap item**: publication depends on external maintainer workflows; generated validated manifests are the repo-owned step. Source: packaging research.
+- **Keyboard shortcuts for remote browser actions**: intentionally removed per project design rules (actions exposed through visible buttons, menus, context menus). Source: CLAUDE.md, CHANGELOG.md.
 
 ## Sources
 Competitors and adjacent products:
@@ -76,29 +69,43 @@ Competitors and adjacent products:
 - https://github.com/rclone/rclone-web
 - https://github.com/outlook84/yet-another-rclone-dashboard
 - https://rcloneview.com/support/blog/config-backup-restore-migrate-rcloneview
-- https://rcloneview.com/support/blog/automate-your-backup-routine
-- https://docs.duck.sh/mountainduck/sync/
 - https://www.goodsync.com/features
 - https://winscp.net/eng/docs/transfer_queue
 - https://awesome-rclone.com/
-- https://github.com/rclone/rclone/issues/9375
+- https://docs.duck.sh/mountainduck/sync/
+- https://duplicacy.com/
 
 Core platform, security, and standards:
 - https://rclone.org/changelog/
 - https://rclone.org/gui/
 - https://rclone.org/rc/
 - https://rclone.org/commands/rclone_check/
-- https://rclone.org/commands/rclone_cryptcheck/
-- https://rclone.org/commands/rclone_selfupdate/
 - https://github.com/rclone/rclone/security/advisories/GHSA-qw24-gh76-8rvv
 - https://github.com/rclone/rclone/security/advisories/GHSA-25qr-6mpr-f7qx
 - https://github.com/advisories/GHSA-jfwf-28xr-xw6q
 - https://www.qt.io/blog/security-advisory-type-confusion-and-heap-buffer-overflow-vulnerability-in-qt-svg-marker-handling
+- https://www.qt.io/blog/qt-6.8-released
 - https://doc.qt.io/qt-6/internationalization.html
 - https://doc.qt.io/qt-6/qaccessible.html
-- https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds
+- https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html
+
+Packaging and distribution:
+- https://workbrew.com/blog/homebrew-5-0-0
+- https://github.com/orgs/Homebrew/discussions/6482
 - https://learn.microsoft.com/en-us/windows/package-manager/package/manifest
-- https://docs.chocolatey.org/en-us/create/functions/get-checksumvalid/
+- https://github.com/michidk/winget-updater
+- https://docs.chocolatey.org/en-us/community-repository/moderation/
+- https://docs.flathub.org/docs/for-app-authors/metainfo-guidelines
+- https://docs.appimage.org/packaging-guide/optional/updates.html
+- https://signpath.org/
+- https://repology.org/project/rclone-browser/information
+- https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations
+
+Community signal:
+- https://github.com/kapitainsky/RcloneBrowser/issues (138 open, 2.9k stars, 252 forks)
+- https://github.com/mmozeiko/RcloneBrowser/issues (30 open, original author)
+- https://github.com/rclone/rclone/issues/9375
+- https://forum.rclone.org/t/a-new-rclone-web-gui-built-for-the-latest-rc-api/53596
 
 ## Open Questions
-None block prioritization. Implementation choices remain for the exact cross-platform secret-store backend, whether optional rclone acquisition performs a verified app-managed download or only opens official install guidance, and whether generated package-manager manifests are submitted manually or by future authenticated release automation.
+None block prioritization. Implementation choices remain for: the exact cross-platform secret-store backend (`CredRead`/`CredWrite` on Windows, Keychain on macOS, libsecret on Linux); whether optional rclone acquisition performs a verified app-managed download or only opens official install guidance; whether generated package-manager manifests are submitted manually or by future authenticated release automation; and whether the Flathub AI policy's "mature, well-maintained projects" exception applies to this fork.
