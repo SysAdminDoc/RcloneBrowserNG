@@ -446,6 +446,7 @@ JobHistoryEntry JobWidget::historyEntry() const {
   entry.errors = mErrors;
   entry.exitCode = mExitCode;
   entry.transferDetail = mTransferDetail;
+  entry.args = mTransferArgs;
   return entry;
 }
 

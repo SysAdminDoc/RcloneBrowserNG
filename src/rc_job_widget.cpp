@@ -207,6 +207,7 @@ JobHistoryEntry RcJobWidget::historyEntry() const {
   entry.files = mFiles;
   entry.errors = mErrors;
   entry.exitCode = mExitCode;
+  entry.args = mDisplayArgs;
   return entry;
 }
 
