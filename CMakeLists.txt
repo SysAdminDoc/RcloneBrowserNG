@@ -159,4 +159,11 @@ if(BUILD_TESTING)
     target_link_libraries(dryrun_contract_test advapi32)
   endif()
   add_test(NAME dryrun_contract_test COMMAND dryrun_contract_test)
+
+  add_executable(rc_auth_regression_test
+    tests/rc_auth_regression_test.cpp
+  )
+  target_include_directories(rc_auth_regression_test PRIVATE src)
+  target_link_libraries(rc_auth_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  add_test(NAME rc_auth_regression_test COMMAND rc_auth_regression_test)
 endif()
