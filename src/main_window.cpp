@@ -3106,6 +3106,31 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   }
   };
 
+  bool hasShellHooks =
+      !jo->preCommand.isEmpty() || !jo->postCommand.isEmpty();
+  if (hasShellHooks && !jo->hooksTrusted) {
+    QString hookSummary;
+    if (!jo->preCommand.isEmpty()) {
+      hookSummary += "Pre-job: " + jo->preCommand.left(200) + "\n";
+    }
+    if (!jo->postCommand.isEmpty()) {
+      hookSummary += "Post-job: " + jo->postCommand.left(200) + "\n";
+    }
+    int button = QMessageBox::warning(
+        this, "Shell hooks need review",
+        "This task has shell commands that will run on your system:\n\n" +
+            hookSummary +
+            "\nThese commands execute with your user privileges. "
+            "Trust and run them?",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (button != QMessageBox::Yes) {
+      return;
+    }
+    jo->hooksTrusted = true;
+    auto *store = ListOfJobOptions::getInstance();
+    store->Persist();
+  }
+
   if (!jo->preCommand.isEmpty()) {
     setStatusMessage("Running pre-job command…");
     auto *pre = new QProcess(this);

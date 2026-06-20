@@ -64,6 +64,7 @@ public:
   QString preCommand;
   QString postCommand;
   QString webhookUrl;
+  bool hooksTrusted = false;
   bool watchFolder;
   QString backupDir;
   int backupRetainCount = 0;

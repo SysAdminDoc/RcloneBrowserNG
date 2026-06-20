@@ -252,6 +252,7 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["preCommand"] = jo.preCommand;
   obj["postCommand"] = jo.postCommand;
   obj["webhookUrl"] = jo.webhookUrl;
+  obj["hooksTrusted"] = jo.hooksTrusted;
   obj["watchFolder"] = jo.watchFolder;
   obj["backupDir"] = jo.backupDir;
   obj["backupRetainCount"] = jo.backupRetainCount;
@@ -308,6 +309,7 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   jo->preCommand = obj["preCommand"].toString();
   jo->postCommand = obj["postCommand"].toString();
   jo->webhookUrl = obj["webhookUrl"].toString();
+  jo->hooksTrusted = obj["hooksTrusted"].toBool(false);
   jo->watchFolder = obj["watchFolder"].toBool();
   jo->backupDir = obj["backupDir"].toString();
   jo->backupRetainCount = obj["backupRetainCount"].toInt();

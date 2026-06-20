@@ -935,6 +935,11 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->preCommand = mPreCommand->text().trimmed();
   mJobOptions->postCommand = mPostCommand->text().trimmed();
   mJobOptions->webhookUrl = mWebhookUrl->text().trimmed();
+  bool hasHooks = !mJobOptions->preCommand.isEmpty() ||
+                  !mJobOptions->postCommand.isEmpty();
+  if (hasHooks) {
+    mJobOptions->hooksTrusted = true;
+  }
   mJobOptions->watchFolder =
       mWatchFolder->isChecked() && mJobOptions->jobType == JobOptions::Upload;
   mJobOptions->backupDir = mBackupDir->text().trimmed();

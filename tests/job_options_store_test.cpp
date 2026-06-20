@@ -157,6 +157,52 @@ int main() {
   require(nonObjectTaskLoaded.error.contains("not an object"),
           "non-object task error was not actionable");
 
+  // Trust-gate: loaded tasks with hooks should be untrusted by default
+  {
+    auto *hooked = makeTask();
+    hooked->preCommand = "echo pre";
+    hooked->postCommand = "echo post";
+    hooked->hooksTrusted = true;
+    QList<JobOptions *> hookedList;
+    hookedList.append(hooked);
+
+    QByteArray jsonBytes;
+    QBuffer jsonOut(&jsonBytes);
+    require(jsonOut.open(QIODevice::WriteOnly), "failed to open hook json out");
+    require(WriteJobOptionsStoreJson(&jsonOut, hookedList, &error),
+            "failed to write hooked task: " + error);
+    jsonOut.close();
+
+    QBuffer jsonIn(&jsonBytes);
+    require(jsonIn.open(QIODevice::ReadOnly), "failed to open hook json in");
+    JobOptionsStoreLoadResult hookedLoaded = ReadJobOptionsStoreJson(&jsonIn);
+    require(hookedLoaded.error.isEmpty(),
+            "failed to read hooked task: " + hookedLoaded.error);
+    require(hookedLoaded.tasks.size() == 1, "hooked task count");
+    require(hookedLoaded.tasks.first()->preCommand == "echo pre",
+            "preCommand not preserved");
+    require(hookedLoaded.tasks.first()->postCommand == "echo post",
+            "postCommand not preserved");
+    require(hookedLoaded.tasks.first()->hooksTrusted == true,
+            "hooksTrusted should be preserved when explicitly true");
+    ClearJobOptionsList(&hookedLoaded.tasks);
+
+    // Verify that tasks without hooksTrusted in JSON default to false
+    QByteArray untrustedJson =
+        R"({"version":1,"tasks":[{"description":"test","preCommand":"rm -rf /","jobType":1,"operation":1,"source":"/a","dest":"r:b","uniqueId":"{11111111-2222-3333-4444-555555555555}"}]})";
+    QBuffer untrustedIn(&untrustedJson);
+    require(untrustedIn.open(QIODevice::ReadOnly), "open untrusted json");
+    JobOptionsStoreLoadResult untrusted = ReadJobOptionsStoreJson(&untrustedIn);
+    require(untrusted.error.isEmpty(), "untrusted load error");
+    require(untrusted.tasks.size() == 1, "untrusted task count");
+    require(!untrusted.tasks.first()->hooksTrusted,
+            "task loaded without hooksTrusted key must default to untrusted");
+    require(untrusted.tasks.first()->preCommand == "rm -rf /",
+            "preCommand not loaded");
+    ClearJobOptionsList(&untrusted.tasks);
+    ClearJobOptionsList(&hookedList);
+  }
+
   ClearJobOptionsList(&tasks);
   return 0;
 }
