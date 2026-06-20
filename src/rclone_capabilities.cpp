@@ -184,6 +184,10 @@ bool RcloneCapabilities::hasJobBatch() const {
   return versionAtLeast(rcloneVersion, "1.72");
 }
 
+bool RcloneCapabilities::hasCoreDisks() const {
+  return versionAtLeast(rcloneVersion, "1.74");
+}
+
 QString RcloneCapabilities::summary() const {
   QStringList lines;
   lines << QString("Rclone Browser NG v%1").arg(RCLONE_BROWSER_VERSION);

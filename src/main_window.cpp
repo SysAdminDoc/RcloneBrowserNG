@@ -825,7 +825,7 @@ MainWindow::MainWindow() {
     btnRow->addWidget(refreshBtn);
 
     auto *copyBtn = new QPushButton("Copy Report", &dialog);
-    QObject::connect(copyBtn, &QPushButton::clicked, &dialog, [table, &caps]() {
+    QObject::connect(copyBtn, &QPushButton::clicked, &dialog, [table, &caps, &dialog]() {
       QStringList lines;
       lines << caps.summary() << "" << "Remote Health:";
       for (int r = 0; r < table->rowCount(); ++r) {
@@ -834,12 +834,78 @@ MainWindow::MainWindow() {
                           table->item(r, 2)->text(),
                           table->item(r, 3)->text());
       }
+      auto *diskTable = dialog.findChild<QTableWidget *>("diskTable");
+      if (diskTable && diskTable->rowCount() > 0) {
+        lines << "" << "Local Disks:";
+        for (int r = 0; r < diskTable->rowCount(); ++r) {
+          lines << QString("  %1 (%2): %3 / %4")
+                       .arg(diskTable->item(r, 0)->text(),
+                            diskTable->item(r, 1)->text(),
+                            diskTable->item(r, 2)->text(),
+                            diskTable->item(r, 3)->text());
+        }
+      }
       QGuiApplication::clipboard()->setText(
           Diagnostics::redactSecrets(lines.join('\n')));
     });
     btnRow->addWidget(copyBtn);
     btnRow->addStretch();
     layout->addLayout(btnRow);
+
+    if (caps.hasCoreDisks()) {
+      auto *diskLabel = new QLabel("<b>Local Disks</b>", &dialog);
+      layout->addWidget(diskLabel);
+      auto *diskTable = new QTableWidget(&dialog);
+      diskTable->setColumnCount(4);
+      diskTable->setHorizontalHeaderLabels(
+          QStringList() << "Path" << "Filesystem" << "Used" << "Total");
+      diskTable->setObjectName("diskTable");
+      UiPolish::SetTableView(diskTable, "Local disks");
+      diskTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+      diskTable->horizontalHeader()->setStretchLastSection(true);
+      diskTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+      diskTable->setMaximumHeight(120);
+      layout->addWidget(diskTable);
+
+      auto *diskProc = new QProcess(&dialog);
+      UseRclonePassword(diskProc);
+      diskProc->setProgram(GetRclone());
+      diskProc->setArguments(QStringList()
+                              << "rc" << "--loopback" << "core/disks");
+      diskProc->setProcessChannelMode(QProcess::SeparateChannels);
+      QPointer<QTableWidget> safeDiskTable(diskTable);
+      QObject::connect(
+          diskProc,
+          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+              &QProcess::finished),
+          &dialog, [diskProc, safeDiskTable](int rc, QProcess::ExitStatus) {
+            diskProc->deleteLater();
+            if (!safeDiskTable || rc != 0) return;
+            QJsonDocument doc = QJsonDocument::fromJson(
+                diskProc->readAllStandardOutput());
+            QJsonArray disks = doc.object().value("diskInfo").toArray();
+            safeDiskTable->setRowCount(disks.size());
+            for (int i = 0; i < disks.size(); ++i) {
+              QJsonObject d = disks[i].toObject();
+              QString path = d.value("path").toString();
+              QString fs = d.value("fsType").toString();
+              qint64 total = d.value("total").toVariant().toLongLong();
+              qint64 free = d.value("free").toVariant().toLongLong();
+              qint64 used = total > 0 ? total - free : 0;
+              safeDiskTable->setItem(i, 0, new QTableWidgetItem(path));
+              safeDiskTable->setItem(i, 1, new QTableWidgetItem(fs));
+              safeDiskTable->setItem(i, 2, new QTableWidgetItem(
+                  total > 0 ? GetNiceSize(static_cast<quint64>(used)) : "N/A"));
+              safeDiskTable->setItem(i, 3, new QTableWidgetItem(
+                  total > 0 ? GetNiceSize(static_cast<quint64>(total)) : "N/A"));
+            }
+          });
+      QTimer::singleShot(10000, diskProc, [diskProc]() {
+        if (diskProc->state() != QProcess::NotRunning)
+          diskProc->kill();
+      });
+      diskProc->start();
+    }
 
     auto *close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
     UiPolish::SetDialogButtonBox(close);
