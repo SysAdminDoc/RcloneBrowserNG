@@ -3775,8 +3775,18 @@ void MainWindow::showJobHistory() {
   exportDetail->setToolTip(
       "Export per-file transfer detail to a text file with secrets redacted.");
   exportDetail->setEnabled(false);
+  QPushButton *restartBtn = new QPushButton("Restart", &dialog);
+  restartBtn->setToolTip(
+      "Rerun this transfer with its original arguments.");
+  restartBtn->setEnabled(false);
+  QPushButton *dryRunBtn = new QPushButton("Dry Run", &dialog);
+  dryRunBtn->setToolTip(
+      "Preview this transfer without making changes.");
+  dryRunBtn->setEnabled(false);
   actionRow->addWidget(viewDetail);
   actionRow->addWidget(exportDetail);
+  actionRow->addWidget(restartBtn);
+  actionRow->addWidget(dryRunBtn);
   actionRow->addStretch();
   layout->addLayout(actionRow);
 
@@ -3796,6 +3806,10 @@ void MainWindow::showJobHistory() {
                      bool hasSel = !table->selectedItems().isEmpty();
                      viewDetail->setEnabled(hasSel);
                      exportDetail->setEnabled(hasSel);
+                     const JobHistoryEntry *e = hasSel ? getSelectedEntry() : nullptr;
+                     bool hasArgs = e && !e->args.isEmpty();
+                     restartBtn->setEnabled(hasArgs);
+                     dryRunBtn->setEnabled(hasArgs);
                    });
 
   QObject::connect(viewDetail, &QPushButton::clicked, &dialog, [&]() {
@@ -3837,6 +3851,42 @@ void MainWindow::showJobHistory() {
     file.close();
     setStatusMessage("Job detail exported to " + path);
   });
+
+  auto restartFromHistory = [&](bool dryRun) {
+    const JobHistoryEntry *entry = getSelectedEntry();
+    if (!entry || entry->args.isEmpty())
+      return;
+    QStringList args = entry->args;
+    bool isSyncOrMove = false;
+    for (const QString &a : args) {
+      if (a == "sync" || a == "move") {
+        isSyncOrMove = true;
+        break;
+      }
+    }
+    if (isSyncOrMove && !dryRun) {
+      int btn = QMessageBox::warning(
+          &dialog, "Restart Transfer",
+          QString("This is a sync or move operation that may delete files.\n"
+                  "Are you sure you want to restart \"%1\"?")
+              .arg(entry->name),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      if (btn != QMessageBox::Yes)
+        return;
+    }
+    if (dryRun && !args.contains("--dry-run")) {
+      args.insert(1, "--dry-run");
+    }
+    dialog.accept();
+    addTransfer(QString("%1%2")
+                    .arg(dryRun ? "Dry-run " : "", entry->name),
+                entry->source, entry->dest, args);
+  };
+
+  QObject::connect(restartBtn, &QPushButton::clicked, &dialog,
+                   [&]() { restartFromHistory(false); });
+  QObject::connect(dryRunBtn, &QPushButton::clicked, &dialog,
+                   [&]() { restartFromHistory(true); });
 
   QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
   UiPolish::SetDialogButtonBox(buttons);

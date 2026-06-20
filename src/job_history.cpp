@@ -32,6 +32,13 @@ QJsonObject toObject(const JobHistoryEntry &entry) {
     }
     obj.insert("transferDetail", detail);
   }
+  if (!entry.args.isEmpty()) {
+    QJsonArray argsArr;
+    for (const QString &arg : entry.args) {
+      argsArr.append(Diagnostics::redactSecrets(arg));
+    }
+    obj.insert("args", argsArr);
+  }
   return obj;
 }
 
@@ -50,6 +57,10 @@ JobHistoryEntry fromObject(const QJsonObject &obj) {
   QJsonArray detail = obj.value("transferDetail").toArray();
   for (const QJsonValue &val : detail) {
     entry.transferDetail.append(val.toString());
+  }
+  QJsonArray argsArr = obj.value("args").toArray();
+  for (const QJsonValue &val : argsArr) {
+    entry.args.append(val.toString());
   }
   return entry;
 }

@@ -14,6 +14,7 @@ struct JobHistoryEntry {
   int errors = 0;
   int exitCode = 0;
   QStringList transferDetail;
+  QStringList args;
 };
 
 QString RedactedJobDetail(const JobHistoryEntry &entry);
