@@ -252,8 +252,16 @@ void CrossRemoteSearchDialog::cancelSearch() {
   for (auto *proc : mRunning) {
     proc->disconnect();
     proc->kill();
-    proc->waitForFinished(2000);
-    proc->deleteLater();
+    QObject::connect(proc,
+                     static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                         &QProcess::finished),
+                     proc, &QObject::deleteLater);
+    QTimer::singleShot(3000, proc, [proc]() {
+      if (proc->state() != QProcess::NotRunning) {
+        proc->kill();
+      }
+      proc->deleteLater();
+    });
   }
   mRunning.clear();
   mSearchButton->setEnabled(!mQueryEdit->text().trimmed().isEmpty());
