@@ -123,7 +123,8 @@ private:
                              const QString &webhookUrl = QString(),
                              const QString &taskName = QString(),
                              const QString &backupDirTemplate = QString(),
-                             int backupRetainCount = 0);
+                             int backupRetainCount = 0,
+                             bool verifyAfterTransfer = false);
   void addRcJobWidget(RcJobWidget *widget,
                       const QString &heartbeatUrl = QString(),
                       const QString &webhookUrl = QString(),
