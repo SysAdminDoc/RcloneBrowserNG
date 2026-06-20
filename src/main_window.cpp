@@ -1020,11 +1020,13 @@ MainWindow::MainWindow() {
     setStatusMessage(
         QString("%1 staged transfer(s) started.").arg(count));
     updateStagingEmptyState();
+    saveStagedTransfers();
   });
   QObject::connect(mClearStagedButton, &QPushButton::clicked, this, [this]() {
     mStagingList->clear();
     setStatusMessage("Staging queue cleared.");
     updateStagingEmptyState();
+    saveStagedTransfers();
   });
 
   if (auto *layout =
@@ -1034,6 +1036,7 @@ MainWindow::MainWindow() {
     layout->insertWidget(2, mStagingEmptyState);
     layout->insertWidget(3, mStagingBar);
   }
+  restoreStagedTransfers();
   updateStagingEmptyState();
 
   mTasksFilter = new QLineEdit(this);
@@ -2087,6 +2090,7 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
                              .arg(msg)
                              .arg(mStagingList->count()));
         updateStagingEmptyState();
+        saveStagedTransfers();
       });
   QObject::connect(remote, &RemoteWidget::requestReconnect, this,
                    [this](const QString &remoteName) {
@@ -2607,6 +2611,88 @@ void MainWindow::updateStagingEmptyState() {
   }
 }
 
+void MainWindow::saveStagedTransfers() {
+  if (!mStagingList || mStagingList->count() == 0) {
+    QString path =
+        QFileInfo(ListOfJobOptions::GetPersistenceFilePath()).absolutePath() +
+        "/staged.json";
+    QFile::remove(path);
+    return;
+  }
+  QJsonArray arr;
+  for (int i = 0; i < mStagingList->count(); ++i) {
+    auto *item = mStagingList->item(i);
+    QJsonObject obj;
+    obj["message"] = item->data(Qt::UserRole).toString();
+    obj["source"] = item->data(Qt::UserRole + 1).toString();
+    obj["dest"] = item->data(Qt::UserRole + 2).toString();
+    QJsonArray argsArr;
+    for (const QString &a : item->data(Qt::UserRole + 3).toStringList()) {
+      argsArr.append(a);
+    }
+    obj["args"] = argsArr;
+    obj["backupDirTemplate"] = item->data(Qt::UserRole + 4).toString();
+    obj["backupRetainCount"] = item->data(Qt::UserRole + 5).toInt();
+    arr.append(obj);
+  }
+  QJsonObject root;
+  root["version"] = 1;
+  root["staged"] = arr;
+  QString path =
+      QFileInfo(ListOfJobOptions::GetPersistenceFilePath()).absolutePath() +
+      "/staged.json";
+  QSaveFile file(path);
+  if (file.open(QIODevice::WriteOnly)) {
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.commit();
+  }
+}
+
+void MainWindow::restoreStagedTransfers() {
+  QString path =
+      QFileInfo(ListOfJobOptions::GetPersistenceFilePath()).absolutePath() +
+      "/staged.json";
+  QFile file(path);
+  if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+    return;
+  }
+  QJsonParseError parseError;
+  QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+  file.close();
+  if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+    return;
+  }
+  QJsonObject root = doc.object();
+  if (root["version"].toInt() != 1) {
+    return;
+  }
+  QJsonArray arr = root["staged"].toArray();
+  for (int i = 0; i < arr.size(); ++i) {
+    QJsonObject obj = arr[i].toObject();
+    QString msg = obj["message"].toString();
+    if (msg.isEmpty()) {
+      continue;
+    }
+    auto *item = new QListWidgetItem(msg, mStagingList);
+    item->setData(Qt::UserRole, msg);
+    item->setData(Qt::UserRole + 1, obj["source"].toString());
+    item->setData(Qt::UserRole + 2, obj["dest"].toString());
+    QStringList args;
+    for (const auto &a : obj["args"].toArray()) {
+      args << a.toString();
+    }
+    item->setData(Qt::UserRole + 3, args);
+    item->setData(Qt::UserRole + 4, obj["backupDirTemplate"].toString());
+    item->setData(Qt::UserRole + 5, obj["backupRetainCount"].toInt());
+    item->setToolTip(
+        QString("%1 -> %2")
+            .arg(obj["source"].toString(), obj["dest"].toString()));
+  }
+  if (mStagingList->count() > 0) {
+    updateStagingEmptyState();
+  }
+}
+
 void MainWindow::rcloneListRemotes() {
   if (mRemotesFilter) {
     const bool wasBlocked = mRemotesFilter->blockSignals(true);
@@ -2982,6 +3068,7 @@ void MainWindow::closeEvent(QCloseEvent *ev) {
   }
 
   if (canClose()) {
+    saveStagedTransfers();
     QApplication::quit();
   } else {
     ev->ignore();

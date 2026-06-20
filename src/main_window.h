@@ -164,6 +164,8 @@ private:
   void refreshTaskWatchers();
   void rebuildWatchTrayMenu();
   void editSelectedTask();
+  void saveStagedTransfers();
+  void restoreStagedTransfers();
   QIcon mUploadIcon;
   QIcon mDownloadIcon;
 };
