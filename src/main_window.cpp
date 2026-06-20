@@ -2058,21 +2058,48 @@ void MainWindow::rcloneGetVersion() {
           }
 
           if (firstTime) {
+            QMessageBox dlg(this);
+            dlg.setIcon(QMessageBox::Warning);
             if (p->error() == QProcess::FailedToStart) {
-              QMessageBox::warning(
-                  this, "Error",
-                  "Wrong rclone executable or rclone not found!\nPlease "
-                  "select its location in the next dialog.");
+              dlg.setWindowTitle("rclone not found");
+              dlg.setText(
+                  "Could not find a working rclone executable.\n\n"
+                  "Rclone is the command-line tool that powers all transfers. "
+                  "Install it, then set its location in Preferences.");
             } else {
-              QMessageBox::warning(
-                  this, "Error",
-                  "Cannot check rclone version!\nPlease verify your rclone "
-                  "location and configuration." +
-                      (error.isEmpty()
-                           ? QString()
-                           : "\n\nrclone reported:\n" + error.left(500)));
+              dlg.setWindowTitle("rclone error");
+              dlg.setText(
+                  "Cannot verify the rclone installation.\n\n"
+                  "Check that rclone is installed and the path in Preferences "
+                  "points to a working rclone binary." +
+                  (error.isEmpty()
+                       ? QString()
+                       : "\n\nrclone reported:\n" + error.left(500)));
             }
-            emit ui.preferences->trigger();
+            auto *downloadBtn =
+                dlg.addButton("Open Download Page", QMessageBox::HelpRole);
+            auto *browseBtn =
+                dlg.addButton("Browse for rclone...", QMessageBox::ActionRole);
+            dlg.addButton("Open Preferences", QMessageBox::AcceptRole);
+            dlg.exec();
+            if (dlg.clickedButton() == downloadBtn) {
+              QDesktopServices::openUrl(
+                  QUrl("https://rclone.org/downloads/"));
+              emit ui.preferences->trigger();
+            } else if (dlg.clickedButton() == browseBtn) {
+              QString rclone = QFileDialog::getOpenFileName(
+                  this, "Select rclone executable");
+              if (!rclone.isEmpty()) {
+                SetRclone(rclone);
+                auto settings = GetSettings();
+                settings->setValue(
+                    "Settings/rclone",
+                    QDir::toNativeSeparators(rclone));
+                rcloneGetVersion();
+              }
+            } else {
+              emit ui.preferences->trigger();
+            }
           }
         }
 
