@@ -34,6 +34,23 @@ private slots:
         QColor(Qt::white), QList<QColor>() << QColor("#f4f4f4"));
     QCOMPARE(result, QColor(Qt::black));
   }
+
+  void highContrastDetectionDoesNotCrash() {
+    bool result = UiPolish::IsHighContrastActive();
+    Q_UNUSED(result);
+  }
+
+  void bestContrastingWithEmptyListReturnsBlack() {
+    const QColor result =
+        UiPolish::BestContrastingColor(QColor(Qt::white), QList<QColor>());
+    QCOMPARE(result, QColor(Qt::black));
+  }
+
+  void bestContrastingWithSingleGoodCandidate() {
+    const QColor result = UiPolish::BestContrastingColor(
+        QColor(Qt::white), QList<QColor>() << QColor("#000000"));
+    QCOMPARE(result.name(), QString("#000000"));
+  }
 };
 
 QTEST_MAIN(InterfacePolishTest)
