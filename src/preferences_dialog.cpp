@@ -162,6 +162,110 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     ui.rcloneConf->setText(rcloneConf);
   });
 
+  auto *backupBtn = new QPushButton("Backup Config...", this);
+  backupBtn->setToolTip("Save a copy of the current rclone configuration file.");
+  backupBtn->setAccessibleName("Backup rclone config");
+  auto *restoreBtn = new QPushButton("Restore Config...", this);
+  restoreBtn->setToolTip(
+      "Restore a previously backed up rclone configuration file.");
+  restoreBtn->setAccessibleName("Restore rclone config");
+
+  if (auto *layout = qobject_cast<QFormLayout *>(
+          ui.rcloneConf->parentWidget()->layout())) {
+    auto *row = new QHBoxLayout();
+    row->addWidget(backupBtn);
+    row->addWidget(restoreBtn);
+    row->addStretch();
+    int confRow = -1;
+    QFormLayout::ItemRole confRole;
+    layout->getWidgetPosition(ui.rcloneConfBrowse, &confRow, &confRole);
+    if (confRow >= 0) {
+      layout->insertRow(confRow + 1, "", row);
+    }
+  }
+
+  QObject::connect(backupBtn, &QPushButton::clicked, this, [this]() {
+    QStringList confArgs = GetRcloneConf();
+    QString confPath;
+    for (int i = 0; i < confArgs.size(); ++i) {
+      if (confArgs[i] == "--config" && i + 1 < confArgs.size()) {
+        confPath = confArgs[i + 1];
+        break;
+      }
+    }
+    if (confPath.isEmpty()) {
+      confPath = QDir::home().filePath(".config/rclone/rclone.conf");
+    }
+    if (!QFile::exists(confPath)) {
+      QMessageBox::warning(this, "Backup Config",
+                           "Could not find rclone config at:\n" + confPath);
+      return;
+    }
+    QString dest = QFileDialog::getSaveFileName(
+        this, "Save config backup",
+        QDir::home().filePath(
+            "rclone.conf.backup-" +
+            QDateTime::currentDateTime().toString("yyyy-MM-dd")),
+        "Config files (*.conf *.conf.backup-*);;All files (*)");
+    if (dest.isEmpty()) {
+      return;
+    }
+    if (QFile::copy(confPath, dest)) {
+      QMessageBox::information(
+          this, "Backup Config",
+          "Config backed up to:\n" + QDir::toNativeSeparators(dest));
+    } else {
+      QMessageBox::warning(this, "Backup Config",
+                           "Failed to copy config to:\n" + dest);
+    }
+  });
+
+  QObject::connect(restoreBtn, &QPushButton::clicked, this, [this]() {
+    QStringList confArgs = GetRcloneConf();
+    QString confPath;
+    for (int i = 0; i < confArgs.size(); ++i) {
+      if (confArgs[i] == "--config" && i + 1 < confArgs.size()) {
+        confPath = confArgs[i + 1];
+        break;
+      }
+    }
+    if (confPath.isEmpty()) {
+      confPath = QDir::home().filePath(".config/rclone/rclone.conf");
+    }
+
+    QString source = QFileDialog::getOpenFileName(
+        this, "Select config file to restore", QDir::homePath(),
+        "Config files (*.conf *.conf.backup-*);;All files (*)");
+    if (source.isEmpty()) {
+      return;
+    }
+
+    if (QFile::exists(confPath)) {
+      QString autoBackup = confPath + ".pre-restore-" +
+                           QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
+      if (!QFile::copy(confPath, autoBackup)) {
+        QMessageBox::warning(
+            this, "Restore Config",
+            "Failed to back up current config before restore.\n"
+            "Aborting to protect your existing configuration.");
+        return;
+      }
+    }
+
+    if (QFile::exists(confPath)) {
+      QFile::remove(confPath);
+    }
+    if (QFile::copy(source, confPath)) {
+      QMessageBox::information(
+          this, "Restore Config",
+          "Config restored. The previous config was backed up automatically.\n"
+          "Close this dialog and refresh remotes to see the changes.");
+    } else {
+      QMessageBox::warning(this, "Restore Config",
+                           "Failed to restore config from:\n" + source);
+    }
+  });
+
   QObject::connect(
       ui.defaultDownloadDirBrowse, &QPushButton::clicked, this, [=]() {
         QString defaultDownloadDir = QFileDialog::getExistingDirectory(
