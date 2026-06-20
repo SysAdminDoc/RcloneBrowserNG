@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y appstream cmake desktop-file-utils g++ qt6-base-dev libgl1-mesa-dev
+          sudo apt-get install -y appstream cmake clang-tidy desktop-file-utils g++ qt6-base-dev libgl1-mesa-dev
       - name: Validate desktop metadata
         run: |
           desktop-file-validate assets/io.github.sysadmindoc.rclonebrowserng.desktop
@@ -31,6 +31,14 @@ jobs:
           cmake --build . --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: clang-tidy
+        run: |
+          cd build
+          run-clang-tidy -p . -header-filter='src/.*\.h$' ../src/*.cpp 2>&1 | tee clang-tidy.log
+          if grep -q 'error:' clang-tidy.log; then
+            echo "clang-tidy found errors"
+            exit 1
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-qt6
