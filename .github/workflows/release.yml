@@ -267,6 +267,72 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
+      - name: Generate package-manager manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          base="https://github.com/SysAdminDoc/RcloneBrowserNG/releases/download/${tag}"
+          cd dist
+
+          win_sha=$(grep "windows-x64.zip" SHA256SUMS.txt | awk '{print $1}')
+          mac_arm_sha=$(grep "macos-arm64.dmg" SHA256SUMS.txt | awk '{print $1}')
+          mac_x86_sha=$(grep "macos-x86_64.dmg" SHA256SUMS.txt | awk '{print $1}')
+
+          cat > winget-manifest.yaml << WINGET
+          PackageIdentifier: SysAdminDoc.RcloneBrowserNG
+          PackageVersion: "${version}"
+          PackageName: Rclone Browser NG
+          Publisher: SysAdminDoc
+          License: MIT
+          ShortDescription: Simple cross-platform GUI for the rclone command line tool
+          PackageUrl: https://github.com/SysAdminDoc/RcloneBrowserNG
+          Installers:
+            - Architecture: x64
+              InstallerType: zip
+              InstallerUrl: "${base}/RcloneBrowserNG-${version}-windows-x64.zip"
+              InstallerSha256: "${win_sha}"
+          ManifestType: singleton
+          ManifestVersion: 1.6.0
+          WINGET
+
+          cat > homebrew-cask.rb << CASK
+          cask "rclone-browser-ng" do
+            version "${version}"
+            sha256 arm:   "${mac_arm_sha}",
+                   intel: "${mac_x86_sha}"
+            url "https://github.com/SysAdminDoc/RcloneBrowserNG/releases/download/v#{version}/RcloneBrowserNG-#{version}-macos-#{arch == :arm64 ? "arm64" : "x86_64"}.dmg"
+            name "Rclone Browser NG"
+            desc "GUI for the rclone command line tool"
+            homepage "https://github.com/SysAdminDoc/RcloneBrowserNG"
+            app "rclone-browser.app"
+          end
+          CASK
+
+          cat > scoop-manifest.json << SCOOP
+          {
+            "version": "${version}",
+            "description": "Simple cross-platform GUI for the rclone command line tool",
+            "homepage": "https://github.com/SysAdminDoc/RcloneBrowserNG",
+            "license": "MIT",
+            "architecture": {
+              "64bit": {
+                "url": "${base}/RcloneBrowserNG-${version}-windows-x64.zip",
+                "hash": "${win_sha}"
+              }
+            },
+            "bin": "RcloneBrowser.exe",
+            "checkver": "github",
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "https://github.com/SysAdminDoc/RcloneBrowserNG/releases/download/v\$version/RcloneBrowserNG-\$version-windows-x64.zip"
+                }
+              }
+            }
+          }
+          SCOOP
       - name: Generate SBOM
         uses: anchore/sbom-action@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
         with:
