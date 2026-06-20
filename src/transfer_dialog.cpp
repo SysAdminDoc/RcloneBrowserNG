@@ -375,9 +375,84 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mVerifyAfter->setAccessibleName("Verify integrity after transfer");
   ui.gridLayout->addWidget(mVerifyAfter, 18, 1);
 
+  auto *profileLabel = new QLabel("Profile:", this);
+  profileLabel->setToolTip(
+      "Load saved rclone option defaults for this remote.");
+  auto *profileCombo = new QComboBox(this);
+  profileCombo->setAccessibleName("Operation profile");
+  profileCombo->setToolTip(
+      "Select a saved profile to auto-fill rclone flags for this remote.");
+  profileCombo->addItem("(none)");
+  {
+    auto settings = GetSettings();
+    settings->beginGroup("RemoteProfiles");
+    for (const QString &key : settings->childKeys()) {
+      profileCombo->addItem(key);
+    }
+    settings->endGroup();
+  }
+  auto *profileSaveBtn = new QPushButton("Save", this);
+  profileSaveBtn->setToolTip(
+      "Save the current Extra Options as a named profile.");
+  profileSaveBtn->setAccessibleName("Save operation profile");
+  auto *profileDeleteBtn = new QPushButton("Delete", this);
+  profileDeleteBtn->setToolTip("Delete the selected profile.");
+  profileDeleteBtn->setAccessibleName("Delete operation profile");
+  profileDeleteBtn->setEnabled(false);
+
+  auto *profileRow = new QHBoxLayout();
+  profileRow->addWidget(profileLabel);
+  profileRow->addWidget(profileCombo, 1);
+  profileRow->addWidget(profileSaveBtn);
+  profileRow->addWidget(profileDeleteBtn);
+  ui.gridLayout->addLayout(profileRow, 19, 0, 1, 2);
+
+  QObject::connect(profileCombo, &QComboBox::currentTextChanged, this,
+                   [this, profileCombo, profileDeleteBtn](const QString &name) {
+                     profileDeleteBtn->setEnabled(
+                         profileCombo->currentIndex() > 0);
+                     if (profileCombo->currentIndex() <= 0)
+                       return;
+                     auto settings = GetSettings();
+                     QString extra = settings
+                                         ->value("RemoteProfiles/" + name)
+                                         .toString();
+                     if (!extra.isEmpty()) {
+                       ui.textExtra->setText(extra);
+                     }
+                   });
+
+  QObject::connect(profileSaveBtn, &QPushButton::clicked, this,
+                   [this, profileCombo]() {
+                     bool ok = false;
+                     QString name = QInputDialog::getText(
+                         this, "Save Profile", "Profile name:",
+                         QLineEdit::Normal, profileCombo->currentText(), &ok);
+                     if (!ok || name.trimmed().isEmpty())
+                       return;
+                     name = name.trimmed();
+                     auto settings = GetSettings();
+                     settings->setValue("RemoteProfiles/" + name,
+                                        ui.textExtra->text().trimmed());
+                     if (profileCombo->findText(name) < 0) {
+                       profileCombo->addItem(name);
+                     }
+                     profileCombo->setCurrentText(name);
+                   });
+
+  QObject::connect(profileDeleteBtn, &QPushButton::clicked, this,
+                   [this, profileCombo]() {
+                     QString name = profileCombo->currentText();
+                     if (name.isEmpty() || profileCombo->currentIndex() <= 0)
+                       return;
+                     auto settings = GetSettings();
+                     settings->remove("RemoteProfiles/" + name);
+                     profileCombo->removeItem(profileCombo->currentIndex());
+                   });
+
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 18, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 20, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
