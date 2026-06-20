@@ -1,7 +1,63 @@
 #include "job_options_store.h"
 
+#if defined(Q_OS_WIN32)
+#include <wincrypt.h>
+#pragma comment(lib, "crypt32.lib")
+#endif
+
 namespace {
 const QString kStoreMagic = "RcloneBrowserNG.tasks";
+
+QString protectSensitiveValue(const QString &plaintext) {
+  if (plaintext.isEmpty()) {
+    return plaintext;
+  }
+#if defined(Q_OS_WIN32)
+  QByteArray utf8 = plaintext.toUtf8();
+  DATA_BLOB input;
+  input.pbData = reinterpret_cast<BYTE *>(utf8.data());
+  input.cbData = static_cast<DWORD>(utf8.size());
+  DATA_BLOB output;
+  if (CryptProtectData(&input, nullptr, nullptr, nullptr, nullptr, 0,
+                        &output)) {
+    QByteArray encrypted(reinterpret_cast<const char *>(output.pbData),
+                         static_cast<int>(output.cbData));
+    LocalFree(output.pbData);
+    return "dpapi:" + QString::fromLatin1(encrypted.toBase64());
+  }
+#endif
+  return "b64:" + QString::fromLatin1(plaintext.toUtf8().toBase64());
+}
+
+QString unprotectSensitiveValue(const QString &stored) {
+  if (stored.isEmpty()) {
+    return stored;
+  }
+#if defined(Q_OS_WIN32)
+  if (stored.startsWith("dpapi:")) {
+    QByteArray encrypted =
+        QByteArray::fromBase64(stored.mid(6).toLatin1());
+    DATA_BLOB input;
+    input.pbData = reinterpret_cast<BYTE *>(encrypted.data());
+    input.cbData = static_cast<DWORD>(encrypted.size());
+    DATA_BLOB output;
+    if (CryptUnprotectData(&input, nullptr, nullptr, nullptr, nullptr, 0,
+                            &output)) {
+      QString result = QString::fromUtf8(
+          reinterpret_cast<const char *>(output.pbData),
+          static_cast<int>(output.cbData));
+      LocalFree(output.pbData);
+      return result;
+    }
+    return stored;
+  }
+#endif
+  if (stored.startsWith("b64:")) {
+    return QString::fromUtf8(
+        QByteArray::fromBase64(stored.mid(4).toLatin1()));
+  }
+  return stored;
+}
 constexpr qint32 kStoreSchemaVersion = 1;
 constexpr qint32 kMaxTaskCount = 100000;
 
@@ -247,11 +303,11 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["isFolder"] = jo.isFolder;
   obj["uniqueId"] = jo.uniqueId.toString();
   obj["DriveSharedWithMe"] = jo.DriveSharedWithMe;
-  obj["heartbeatUrl"] = jo.heartbeatUrl;
+  obj["heartbeatUrl"] = protectSensitiveValue(jo.heartbeatUrl);
   obj["nameTransform"] = jo.nameTransform;
-  obj["preCommand"] = jo.preCommand;
-  obj["postCommand"] = jo.postCommand;
-  obj["webhookUrl"] = jo.webhookUrl;
+  obj["preCommand"] = protectSensitiveValue(jo.preCommand);
+  obj["postCommand"] = protectSensitiveValue(jo.postCommand);
+  obj["webhookUrl"] = protectSensitiveValue(jo.webhookUrl);
   obj["hooksTrusted"] = jo.hooksTrusted;
   obj["watchFolder"] = jo.watchFolder;
   obj["backupDir"] = jo.backupDir;
@@ -304,11 +360,11 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   if (jo->uniqueId.isNull())
     jo->uniqueId = QUuid::createUuid();
   jo->DriveSharedWithMe = obj["DriveSharedWithMe"].toBool();
-  jo->heartbeatUrl = obj["heartbeatUrl"].toString();
+  jo->heartbeatUrl = unprotectSensitiveValue(obj["heartbeatUrl"].toString());
   jo->nameTransform = obj["nameTransform"].toString();
-  jo->preCommand = obj["preCommand"].toString();
-  jo->postCommand = obj["postCommand"].toString();
-  jo->webhookUrl = obj["webhookUrl"].toString();
+  jo->preCommand = unprotectSensitiveValue(obj["preCommand"].toString());
+  jo->postCommand = unprotectSensitiveValue(obj["postCommand"].toString());
+  jo->webhookUrl = unprotectSensitiveValue(obj["webhookUrl"].toString());
   jo->hooksTrusted = obj["hooksTrusted"].toBool(false);
   jo->watchFolder = obj["watchFolder"].toBool();
   jo->backupDir = obj["backupDir"].toString();

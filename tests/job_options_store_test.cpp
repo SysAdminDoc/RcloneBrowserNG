@@ -203,6 +203,54 @@ int main() {
     ClearJobOptionsList(&hookedList);
   }
 
+  // Sensitive field protection: verify sensitive values are not stored in plain text
+  {
+    auto *sensitive = makeTask();
+    sensitive->heartbeatUrl = "https://hc-ping.com/secret-uuid-123";
+    sensitive->webhookUrl = "https://discord.com/api/webhooks/SECRET";
+    sensitive->preCommand = "echo secret-pre";
+    sensitive->postCommand = "echo secret-post";
+    QList<JobOptions *> sensitiveList;
+    sensitiveList.append(sensitive);
+
+    QByteArray sensitiveBytes;
+    QBuffer sensitiveOut(&sensitiveBytes);
+    require(sensitiveOut.open(QIODevice::WriteOnly), "open sensitive out");
+    require(WriteJobOptionsStoreJson(&sensitiveOut, sensitiveList, &error),
+            "write sensitive task: " + error);
+    sensitiveOut.close();
+
+    QString stored = QString::fromUtf8(sensitiveBytes);
+    require(!stored.contains("secret-uuid-123"),
+            "heartbeatUrl secret must not appear in plain text in JSON");
+    require(!stored.contains("SECRET"),
+            "webhookUrl secret must not appear in plain text in JSON");
+    require(!stored.contains("secret-pre"),
+            "preCommand must not appear in plain text in JSON");
+    require(!stored.contains("secret-post"),
+            "postCommand must not appear in plain text in JSON");
+
+    QBuffer sensitiveIn(&sensitiveBytes);
+    require(sensitiveIn.open(QIODevice::ReadOnly), "open sensitive in");
+    JobOptionsStoreLoadResult sensitiveLoaded =
+        ReadJobOptionsStoreJson(&sensitiveIn);
+    require(sensitiveLoaded.error.isEmpty(),
+            "load sensitive task: " + sensitiveLoaded.error);
+    require(sensitiveLoaded.tasks.size() == 1, "sensitive task count");
+    require(sensitiveLoaded.tasks.first()->heartbeatUrl ==
+                "https://hc-ping.com/secret-uuid-123",
+            "heartbeatUrl not round-tripped correctly");
+    require(sensitiveLoaded.tasks.first()->webhookUrl ==
+                "https://discord.com/api/webhooks/SECRET",
+            "webhookUrl not round-tripped correctly");
+    require(sensitiveLoaded.tasks.first()->preCommand == "echo secret-pre",
+            "preCommand not round-tripped correctly");
+    require(sensitiveLoaded.tasks.first()->postCommand == "echo secret-post",
+            "postCommand not round-tripped correctly");
+    ClearJobOptionsList(&sensitiveLoaded.tasks);
+    ClearJobOptionsList(&sensitiveList);
+  }
+
   ClearJobOptionsList(&tasks);
   return 0;
 }
