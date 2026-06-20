@@ -368,6 +368,13 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   }
   ui.gridLayout->addWidget(mWatchFolder, 17, 1);
 
+  mVerifyAfter = new QCheckBox("Verify integrity after transfer", this);
+  mVerifyAfter->setToolTip(
+      "Run rclone check (or cryptcheck for crypt remotes) after a "
+      "successful transfer to verify file integrity.");
+  mVerifyAfter->setAccessibleName("Verify integrity after transfer");
+  ui.gridLayout->addWidget(mVerifyAfter, 18, 1);
+
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
   ui.gridLayout->addWidget(mValidation, 18, 0, 1, 2);
@@ -946,6 +953,7 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->backupRetainCount = mBackupRetain->value();
   mJobOptions->conflictResolve =
       mConflictResolve->currentData().toString();
+  mJobOptions->verifyAfterTransfer = mVerifyAfter->isChecked();
 
   return mJobOptions;
 }
@@ -1017,6 +1025,7 @@ void TransferDialog::putJobOptions() {
   mPostCommand->setText(mJobOptions->postCommand);
   mWebhookUrl->setText(mJobOptions->webhookUrl);
   mWatchFolder->setChecked(mJobOptions->watchFolder);
+  mVerifyAfter->setChecked(mJobOptions->verifyAfterTransfer);
   mBackupDir->setText(mJobOptions->backupDir);
   mBackupRetain->setValue(mJobOptions->backupRetainCount);
   int conflictIdx =

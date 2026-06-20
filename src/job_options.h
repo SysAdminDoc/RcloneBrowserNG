@@ -69,6 +69,7 @@ public:
   QString backupDir;
   int backupRetainCount = 0;
   QString conflictResolve;
+  bool verifyAfterTransfer = false;
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

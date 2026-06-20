@@ -3219,6 +3219,9 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   QString source = jo->source;
   QString dest = jo->dest;
   QString message = QString("%1 %2").arg(jo->operation).arg(source);
+  bool verifyAfter = jo->verifyAfterTransfer && !dryrun &&
+                     (jo->operation == JobOptions::Copy ||
+                      jo->operation == JobOptions::Sync);
 
   auto launchTransfer = [=]() {
   bool hasHooks =
@@ -3251,7 +3254,8 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
           }
           addTransferViaProcess(message, source, dest, args, heartbeatUrl,
                                 postCommand, webhookUrl, taskName,
-                                backupDirTemplate, backupRetainCount);
+                                backupDirTemplate, backupRetainCount,
+                                verifyAfter);
         });
   } else {
     addTransfer(message, source, dest, args, backupDirTemplate,
@@ -3552,16 +3556,15 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
   noteJobStarted();
 }
 
-void MainWindow::addTransferViaProcess(const QString &message,
-                                       const QString &source,
-                                       const QString &dest,
-                                       const QStringList &args,
-                                       const QString &heartbeatUrl,
+void MainWindow::addTransferViaProcess(
+    const QString &message, const QString &source, const QString &dest,
+    const QStringList &args, const QString &heartbeatUrl,
                                        const QString &postCommand,
                                        const QString &webhookUrl,
                                        const QString &taskName,
                                        const QString &backupDirTemplate,
-                                       int backupRetainCount) {
+                                       int backupRetainCount,
+                                       bool verifyAfterTransfer) {
   auto settings = GetSettings();
   int maxConcurrent =
       settings->value("Settings/maxConcurrentTransfers", 0).toInt();
@@ -3614,6 +3617,19 @@ void MainWindow::addTransferViaProcess(const QString &message,
         persistJobHistory(widget->historyEntry());
         if (widget->wasSuccessful()) {
           pruneBackupRetention(backupDirTemplate, backupRetainCount);
+          if (verifyAfterTransfer) {
+            bool isCrypt =
+                dest.contains("crypt", Qt::CaseInsensitive) ||
+                source.contains("crypt", Qt::CaseInsensitive);
+            QString checkCmd = isCrypt ? "cryptcheck" : "check";
+            QStringList checkArgs;
+            checkArgs << checkCmd << GetRcloneConf() << "--use-json-log"
+                      << "--stats" << "1s" << "--stats-file-name-length"
+                      << "0" << source << dest;
+            addTransfer(QString("Verify %1").arg(source), source, dest,
+                        checkArgs);
+            setStatusMessage("Verification started.");
+          }
         }
         noteJobFinished(widget->wasSuccessful());
       });

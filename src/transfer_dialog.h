@@ -36,6 +36,7 @@ private:
   QLineEdit *mBackupDir = nullptr;
   QSpinBox *mBackupRetain = nullptr;
   QCheckBox *mWatchFolder = nullptr;
+  QCheckBox *mVerifyAfter = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
 
