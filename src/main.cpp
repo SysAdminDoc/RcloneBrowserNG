@@ -40,6 +40,12 @@ int main(int argc, char *argv[]) {
   QGuiApplication::setDesktopFileName("io.github.sysadmindoc.rclonebrowserng");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
 
+  if (app.arguments().contains("--version")) {
+    QTextStream(stdout) << "Rclone Browser NG " << RCLONE_BROWSER_VERSION
+                        << "\n";
+    return 0;
+  }
+
   if (IsRclonePasswordCommandRequest(app.arguments())) {
     QString error;
     const QString password = ReadRcloneConfigPassword(&error);

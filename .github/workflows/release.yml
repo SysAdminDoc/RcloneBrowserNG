@@ -70,6 +70,14 @@ jobs:
           appimage="$(find . -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
           test -n "$appimage"
           mv "$appimage" "release/RcloneBrowserNG-${version}-linux-${{ matrix.arch }}.AppImage"
+      - name: Smoke test packaged binary
+        if: matrix.arch == 'x86_64'
+        run: |
+          set -euo pipefail
+          export QT_QPA_PLATFORM=offscreen
+          output="$(release/RcloneBrowserNG-*-linux-${{ matrix.arch }}.AppImage --version 2>&1)"
+          echo "Smoke output: $output"
+          echo "$output" | grep -q "Rclone Browser NG"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-linux-${{ matrix.arch }}
@@ -163,6 +171,17 @@ jobs:
             "/F$name-setup" `
             "rclone-browser-win-installer.iss"
           Pop-Location
+      - name: Smoke test packaged binary
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME
+          if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+          $exe = "release\RcloneBrowserNG-$version-windows-x64\RcloneBrowser.exe"
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $output = & $exe --version 2>&1
+          Write-Host "Smoke output: $output"
+          if ($output -notmatch 'Rclone Browser NG') { throw 'Smoke test failed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-windows-x64
@@ -207,6 +226,17 @@ jobs:
 
           $zip = Join-Path $PWD "release\$name.zip"
           Compress-Archive -Path $dist -DestinationPath $zip -Force
+      - name: Smoke test packaged binary
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME
+          if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+          $exe = "release\RcloneBrowserNG-$version-windows-arm64\RcloneBrowser.exe"
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $output = & $exe --version 2>&1
+          Write-Host "Smoke output: $output"
+          if ($output -notmatch 'Rclone Browser NG') { throw 'Smoke test failed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-windows-arm64
