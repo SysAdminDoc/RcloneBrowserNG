@@ -28,6 +28,7 @@ project(rclone-browser)
 
 find_package(QT NAMES Qt6 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS LinguistTools)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)

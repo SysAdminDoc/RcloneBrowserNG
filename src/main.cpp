@@ -40,6 +40,19 @@ int main(int argc, char *argv[]) {
   QGuiApplication::setDesktopFileName("io.github.sysadmindoc.rclonebrowserng");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
 
+  QTranslator translator;
+  const QStringList uiLanguages = QLocale::system().uiLanguages();
+  for (const QString &locale : uiLanguages) {
+    const QString baseName = "rclone-browser_" + QLocale(locale).name();
+    if (translator.load(baseName, ":/i18n") ||
+        translator.load(baseName,
+                         QCoreApplication::applicationDirPath() +
+                             "/translations")) {
+      app.installTranslator(&translator);
+      break;
+    }
+  }
+
   if (app.arguments().contains("--version")) {
     QTextStream(stdout) << "Rclone Browser NG " << RCLONE_BROWSER_VERSION
                         << "\n";
