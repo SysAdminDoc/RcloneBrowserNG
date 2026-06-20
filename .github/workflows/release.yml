@@ -60,6 +60,7 @@ jobs:
           export APPIMAGE_EXTRACT_AND_RUN=1
           export PATH="$PWD/tools:$PATH"
           export VERSION="$version"
+          export UPDATE_INFORMATION="gh-releases-zsync|SysAdminDoc|RcloneBrowserNG|latest|RcloneBrowserNG-*-linux-${{ matrix.arch }}.AppImage.zsync"
           "tools/linuxdeploy-${arch}.AppImage" \
             --appdir AppDir \
             --desktop-file AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop \
