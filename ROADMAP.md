@@ -149,3 +149,67 @@ All items trace back to public GitHub issues/PRs:
   Touches: `src/preferences_dialog.*`, `src/transfer_dialog.*`, task serialization code, command-building tests.
   Acceptance: Users can save, edit, and remove validated default flags per remote and operation; transfer dialogs show the active profile, preserve explicit per-job overrides, and tests prove quoting/merge order remains stable.
   Complexity: L
+
+## Research-Driven Additions (2026-06-20)
+
+### P1
+
+- [ ] P1 — Strengthen CodeQL to traced build and SHA-pin its actions
+  Why: `build-mode: none` performs extractionless C++ analysis that misses interprocedural dataflow, taint tracking, and most vulnerability classes. The CodeQL init and analyze actions use unpinned `@v4` tags while every other workflow action is SHA-pinned, violating the project's own supply-chain security policy.
+  Evidence: `.github/workflows/codeql.yml` lines 21/28 use `@v4` not SHA pins; `build-mode: none` per CodeQL docs provides "limited coverage for compiled languages"; all other workflows (build.yml, release.yml, scorecard.yml) SHA-pin every action.
+  Touches: `.github/workflows/codeql.yml`, `.github/workflows/build.yml` (add CodeQL build step sharing the existing cmake/make invocation).
+  Acceptance: CodeQL init and analyze actions are SHA-pinned to a specific v4 release; CodeQL runs with `build-mode: manual` using the existing Linux cmake build; C++ query results improve (visible in Security tab SARIF output); no unpinned action tags remain in any workflow file.
+  Complexity: S
+
+### P2
+
+- [ ] P2 — Add OpenSSF-recommended binary hardening flags
+  Why: Current build hardening covers stack protection and FORTIFY_SOURCE=2 on Linux/macOS and /GS on MSVC, but omits several flags recommended by the OpenSSF Compiler Hardening Guide that protect against control-flow hijacking and return-oriented programming.
+  Evidence: `src/CMakeLists.txt` lines 11-19, `CMakeLists.txt` lines 19-23; OpenSSF guide (best.openssf.org/Compiler-Hardening-Guides); cmake-hardening reference (stevenengelhardt.com/2024/11/12/cmake-implementation-of-openssf-compiler-hardening-options).
+  Touches: `CMakeLists.txt` (MSVC linker flags), `src/CMakeLists.txt` (GCC/Clang compile and link flags).
+  Acceptance: MSVC Release builds include `/guard:cf` (Control Flow Guard) and `/CETCOMPAT` (Intel CET Shadow Stack) linker flags; GCC/Clang builds include `-Wl,-z,relro,-z,now` (full RELRO) and `-fcf-protection=full` (control-flow enforcement); `_FORTIFY_SOURCE` raised to 3 where compiler supports it; build succeeds on all 4 CI platforms.
+  Complexity: S
+
+- [ ] P2 — Add clang-tidy static analysis to Linux CI
+  Why: No static analysis tool beyond CodeQL runs on the codebase. clang-tidy catches use-after-free patterns, uninitialized variables, modernization opportunities, and Qt-specific issues that extractionless CodeQL and MSVC /W4 miss.
+  Evidence: No `.clang-tidy` or `CMAKE_CXX_CLANG_TIDY` in the repo; `src/main_window.cpp` is 4517 lines of complex control flow; OpenSSF recommends multiple overlapping analyzers; Qt moc-generated files need suppression.
+  Touches: `.clang-tidy` (new config file), `CMakeLists.txt` or `.github/workflows/build.yml` (enable in Linux CI job).
+  Acceptance: clang-tidy runs on the Linux CI build with `bugprone-*`, `cppcoreguidelines-*`, `performance-*`, and `modernize-*` checks enabled; moc/uic generated files are excluded via header-filter; findings are zero or explicitly suppressed with rationale; CI fails on new clang-tidy warnings.
+  Complexity: S
+
+- [ ] P2 — Embed AppImage zsync update metadata for delta updates
+  Why: Users must download the full AppImage (~30MB) for each release. The AppImage ecosystem supports zsync-based delta updates that transfer only changed blocks, but the release pipeline does not embed `UPDATE_INFORMATION`.
+  Evidence: No `UPDATE_INFORMATION` in `.github/workflows/release.yml` or `scripts/release_AppImage.sh`; docs.appimage.org/packaging-guide/optional/updates.html; linuxdeploy supports `LDAI_UPDATE_INFORMATION` env var.
+  Touches: `.github/workflows/release.yml` (linux-appimage job), `scripts/release_AppImage.sh`.
+  Acceptance: Released AppImages contain embedded zsync update information pointing to the GitHub releases URL pattern; `readelf` or `appimagetool --appimage-updateinformation` on the built AppImage returns a valid gh-releases-zsync URL; AppImageUpdate clients can find and apply delta updates.
+  Complexity: S
+
+- [ ] P2 — Migrate test harness to QTest framework
+  Why: All 13 test targets use a custom `require()` function that calls `std::exit(1)` on failure, providing no assertion line numbers, no expected-vs-actual comparison output, and no CTest XML reporting integration. QTest provides all of these plus `QSignalSpy` for async signal verification, `QTEST_MAIN` for proper Qt event loop setup, and `QT_QPA_PLATFORM=offscreen` for headless widget tests.
+  Evidence: `tests/interface_polish_test.cpp`, `tests/dryrun_contract_test.cpp`, and all other test files define `require()` + `std::exit(1)`; no `QTest` or `QTEST_MAIN` usage anywhere in the repo.
+  Touches: All 13 files in `tests/`, `CMakeLists.txt` (link `Qt6::Test`).
+  Acceptance: All existing test assertions use `QVERIFY`/`QCOMPARE` with descriptive messages; test binaries report pass/fail with assertion locations; `ctest --output-on-failure` produces clear diagnostic output on failures; no behavioral change in what is tested.
+  Complexity: M
+
+### P3
+
+- [ ] P3 — Add remote-type icons for post-v1.68 rclone backends
+  Why: Remote provider icons in `src/images/` cover only 18 services. Backends added since rclone v1.69 (iCloud Drive, iCloud Photos, Archive, Filen, Internxt, Huawei Drive, Cloudinary, FileLu, DOI, Shade, Drime) all display as `unknown.png`, making the remotes list visually unhelpful for users of newer providers.
+  Evidence: `src/images/` contains 18 service icon pairs (normal + _inv); rclone v1.69-v1.74 changelogs list 11+ new backends; `src/resources.qrc` embeds the icon files.
+  Touches: `src/images/` (new PNG pairs), `src/resources.qrc`, `src/main_window.cpp` (icon-name-to-type mapping if not already dynamic).
+  Acceptance: At minimum iCloud Drive, Proton Drive, pCloud, Box, Nextcloud/WebDAV, Backblaze B2 (already has), and Filen have dedicated icons with `_inv` dark variants; icons are palette-aware; `resources.qrc` includes all new files.
+  Complexity: S
+
+- [ ] P3 — Expose rclone `core/disks` endpoint in Remote Health panel
+  Why: rclone v1.74 added a `core/disks` RC endpoint that returns local disk information. The Remote Health panel currently shows rclone version, mount backend, and per-remote connectivity/quota, but has no local disk status for local remotes or mount points.
+  Evidence: rclone v1.74 changelog (`core/disks` endpoint); `src/rclone_capabilities.h` and Remote Health dialog in `src/main_window.cpp`.
+  Touches: `src/main_window.cpp` (Remote Health dialog), `src/rclone_rc_engine.cpp` (query helper), `src/rclone_capabilities.h` (version gate for v1.74+).
+  Acceptance: Remote Health panel shows local disk free/total/usage for local remotes and mount destination drives when rclone >= 1.74; gracefully omitted on older rclone; Copy Report includes disk info.
+  Complexity: S
+
+- [ ] P3 — Update AppStream metainfo with release entries for each tagged version
+  Why: The AppStream metainfo file contains only the initial v2.0.0 release entry. Flathub and Linux distribution app stores use `<releases>` data to show version history, update recency, and release notes. A stale single entry makes the app look unmaintained.
+  Evidence: `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml` has one `<release>` for v2.0.0; Flathub metainfo guidelines require current release data; `appstreamcli validate` in CI already checks this file.
+  Touches: `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml`, potentially `.github/workflows/release.yml` (auto-insert release entry on tag).
+  Acceptance: Each tagged release has a corresponding `<release>` entry with version, date, and brief description; entries are ordered newest-first; `appstreamcli validate` passes; at least the 3 most recent releases are present.
+  Complexity: S
