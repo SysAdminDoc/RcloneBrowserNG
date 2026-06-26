@@ -213,3 +213,46 @@ All items trace back to public GitHub issues/PRs:
   Touches: `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml`, potentially `.github/workflows/release.yml` (auto-insert release entry on tag).
   Acceptance: Each tagged release has a corresponding `<release>` entry with version, date, and brief description; entries are ordered newest-first; `appstreamcli validate` passes; at least the 3 most recent releases are present.
   Complexity: S
+
+## Research-Driven Additions
+
+### P0
+
+- [ ] P0 — Reconcile release/security docs with local-build-only delivery
+  Why: Current public docs claim GitHub Actions, CodeQL, release workflows, SHA256/SLSA attestations, and workflow-managed metadata that no longer exist after `.github/` was removed.
+  Evidence: `5f722b9`, missing `.github/`, `README.md:6`, `SECURITY.md:35`, `SECURITY.md:36`, `SECURITY.md:37`, `scripts/release_windows.cmd:5`, `scripts/release_AppImage.sh:5`, `scripts/release_macOS.sh:5`, `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml:17`.
+  Touches: `README.md`, `SECURITY.md`, `CHANGELOG.md`, `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml`, `scripts/release_windows.cmd`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`.
+  Acceptance: README badges, security policy, changelog unreleased claims, release-script comments, and AppStream text describe only guarantees present in the current repo; nonexistent workflow/CI/attestation claims are removed or replaced with local verification instructions.
+  Complexity: S
+
+- [ ] P0 — Audit ROADMAP.md down to incomplete work only
+  Why: The current roadmap still contains entries that are implemented in source and recent commits, which creates duplicate research and contradictory agent handoffs.
+  Evidence: `ROADMAP.md`, `CHANGELOG.md`, commits `19348d9`, `9073c24`, `80cf5d7`, `8b76d49`, `0b0a421`, `d3719b2`, `ae3c0d6`, `985973d`.
+  Touches: `ROADMAP.md`, `Roadmap_Blocked.md` if blocked status changes are discovered.
+  Acceptance: `ROADMAP.md` contains only incomplete actionable work; shipped entries are removed or represented only in changelog/history; remaining items do not duplicate current source behavior.
+  Complexity: S
+
+### P1
+
+- [ ] P1 — Add a local release verification harness
+  Why: After workflow removal, the repo lacks one local entry point that tells maintainers which release guarantees still run, which former CI guarantees are absent, and whether artifacts are safe to publish.
+  Evidence: `5f722b9`, missing `.github/`, `scripts/release_windows.cmd`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, rclone-ui v3.6.0 release assets, RClone Manager v0.2.8 release assets, GitHub artifact attestation docs.
+  Touches: `scripts/`, `CMakeLists.txt`, `src/CMakeLists.txt`, `README.md`, `SECURITY.md`, release artifact staging.
+  Acceptance: One documented local command orchestrates the existing build/test/release-script checks that still apply without GitHub Actions, emits a pass/fail release readiness report, fails when a claimed guarantee is not actually performed, and explicitly lists any CI-only guarantees that must be restored or removed from public docs.
+  Complexity: M
+
+- [ ] P1 — Add version-2 staged-transfer schema for execution metadata
+  Why: `staged.json` persists basic queued transfers but drops heartbeat URL, webhook URL, post-command, task label, and verify-after-transfer state even though the runtime queue can execute those fields.
+  Evidence: `src/main_window.cpp:2707`, `src/main_window.h:76`, `src/main_window.h:77`, `src/main_window.h:78`, `src/main_window.h:79`, `src/main_window.h:127`, `src/main_window.cpp:3975`, WinSCP transfer queue, GoodSync recovery patterns.
+  Touches: `src/main_window.cpp`, `src/main_window.h`, staged-transfer schema/tests.
+  Acceptance: Staged transfers round-trip all execution-affecting fields across app restart; schema migration handles existing version-1 staged files; tests prove notifications, post hooks, task labels, backup retention, and verification settings survive restore without cleartext leakage beyond the chosen secret-storage policy.
+  Complexity: M
+
+### P2
+
+- [ ] P2 — Add safe mount presets and stale-mount recovery probes
+  Why: Mount users need clearer VFS cache defaults and recovery when a mounted process survives but the mount becomes unusable after sleep/wake or backend disruption.
+  Evidence: `src/remote_widget.cpp:1213`, `src/preferences_dialog.cpp:63`, `src/main_window.cpp:4478`, `src/main_window.cpp:4555`, RClone Manager issue #225, RClone Manager issue #5, Mountain Duck sync/cache docs.
+  Touches: `src/remote_widget.cpp`, `src/preferences_dialog.*`, `src/main_window.*`, `src/mount_widget.*`, mount option tests.
+  Acceptance: Mount UI offers named presets that show the exact rclone flags, preserves expert custom flags, validates incompatible options before starting rclone, and periodically probes keep-mounted mount points after wake/interval so stale-but-running mounts notify the user and offer remount.
+  Complexity: M
