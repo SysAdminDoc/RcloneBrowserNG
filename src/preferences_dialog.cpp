@@ -8,7 +8,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     layout()->setSpacing(12);
     layout()->setContentsMargins(12, 12, 12, 12);
   }
-  UiPolish::SetWindowDefaults(this, QSize(760, 560));
+  UiPolish::SetWindowDefaults(this, QSize(760, 620));
+  resize(820, 680);
   ui.tabWidget->setDocumentMode(true);
   UiPolish::SetDialogButtonBox(ui.buttonBox);
   if (auto ok = ui.buttonBox->button(QDialogButtonBox::Ok)) {
@@ -34,6 +35,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.defaultUploadDirBrowse->setIcon(style->standardIcon(QStyle::SP_DirIcon));
   UiPolish::SetMuted(ui.info);
   UiPolish::SetMuted(ui.darkMode_info);
+  // The stylesheet gives checkboxes a 26 px minimum height. Reserve enough
+  // room so the Interface controls and help text cannot overlap.
+  ui.groupBox->setMinimumHeight(230);
   UiPolish::SetMuted(ui.info_4);
   UiPolish::SetPathField(ui.rclone, "rclone executable path");
   UiPolish::SetPathField(ui.rcloneConf, "rclone configuration path");
@@ -67,65 +71,98 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.defaultUploadOptions->setPlaceholderText("Extra flags for uploads");
   ui.defaultRcloneOptions->setPlaceholderText("--fast-list");
 
-  auto *concurrentLabel = new QLabel("Max concurrent transfers:", this);
+  // Transfer defaults previously shared the General grid, which made the page
+  // too tall and prone to clipping at larger font and display scales. Move the
+  // existing controls into a dedicated tab without changing their object names
+  // or settings keys.
+  auto *transfersTab = new QWidget(ui.tabWidget);
+  transfersTab->setObjectName("transfersTab");
+  auto *transfersPageLayout = new QVBoxLayout(transfersTab);
+  transfersPageLayout->setContentsMargins(12, 12, 12, 12);
+  transfersPageLayout->setSpacing(12);
+
+  auto *transferDefaultsGroup = new QGroupBox(
+      tr("Transfer defaults"), transfersTab);
+  auto *transfersLayout = new QGridLayout(transferDefaultsGroup);
+  transfersLayout->setContentsMargins(12, 18, 12, 12);
+  transfersLayout->setHorizontalSpacing(10);
+  transfersLayout->setVerticalSpacing(8);
+  transfersLayout->setColumnStretch(1, 1);
+
+  const QList<QWidget *> transferWidgets = {
+      ui.label_d, ui.defaultDownloadDir, ui.defaultDownloadDirBrowse,
+      ui.label_u, ui.defaultUploadDir, ui.defaultUploadDirBrowse,
+      ui.label_10, ui.defaultDownloadOptions,
+      ui.label_11, ui.defaultUploadOptions,
+      ui.label_12, ui.defaultRcloneOptions};
+  for (QWidget *widget : transferWidgets) {
+    ui.gridLayout_3->removeWidget(widget);
+  }
+
+  transfersLayout->addWidget(ui.label_d, 0, 0);
+  transfersLayout->addWidget(ui.defaultDownloadDir, 0, 1);
+  transfersLayout->addWidget(ui.defaultDownloadDirBrowse, 0, 2);
+  transfersLayout->addWidget(ui.label_u, 1, 0);
+  transfersLayout->addWidget(ui.defaultUploadDir, 1, 1);
+  transfersLayout->addWidget(ui.defaultUploadDirBrowse, 1, 2);
+  transfersLayout->addWidget(ui.label_10, 2, 0);
+  transfersLayout->addWidget(ui.defaultDownloadOptions, 2, 1, 1, 2);
+  transfersLayout->addWidget(ui.label_11, 3, 0);
+  transfersLayout->addWidget(ui.defaultUploadOptions, 3, 1, 1, 2);
+  transfersLayout->addWidget(ui.label_12, 4, 0);
+  transfersLayout->addWidget(ui.defaultRcloneOptions, 4, 1, 1, 2);
+
+  transfersPageLayout->addWidget(transferDefaultsGroup);
+  transfersPageLayout->addStretch();
+  ui.tabWidget->insertTab(1, transfersTab, tr("Transfers"));
+
+  auto *concurrentLabel =
+      new QLabel(tr("Max concurrent transfers:"), transferDefaultsGroup);
   concurrentLabel->setToolTip(
       "Maximum number of transfers that run simultaneously. "
       "0 = unlimited (all run at once). "
       "Excess jobs are queued and start when a slot frees up.");
-  mMaxConcurrent = new QSpinBox(this);
+  mMaxConcurrent = new QSpinBox(transferDefaultsGroup);
   mMaxConcurrent->setMinimum(0);
   mMaxConcurrent->setMaximum(99);
   mMaxConcurrent->setSpecialValueText("Unlimited");
   mMaxConcurrent->setToolTip(concurrentLabel->toolTip());
   mMaxConcurrent->setAccessibleName("Max concurrent transfers");
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.defaultRcloneOptions->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
-    if (row >= 0) {
-      form->insertRow(row + 1, concurrentLabel, mMaxConcurrent);
-    }
-  }
+  transfersLayout->addWidget(concurrentLabel, 5, 0);
+  transfersLayout->addWidget(mMaxConcurrent, 5, 1, 1, 2);
 
-  auto *excludeLabel = new QLabel("Default exclude patterns:", this);
+  auto *excludeLabel =
+      new QLabel(tr("Default exclude patterns:"), transferDefaultsGroup);
   excludeLabel->setToolTip(
       "One --exclude pattern per line. Applied to all transfers globally.");
-  mDefaultExclude = new QPlainTextEdit(this);
-  mDefaultExclude->setMaximumHeight(80);
+  mDefaultExclude = new QPlainTextEdit(transferDefaultsGroup);
+  mDefaultExclude->setMinimumHeight(150);
+  mDefaultExclude->setMaximumHeight(260);
+  mDefaultExclude->setSizePolicy(QSizePolicy::Expanding,
+                                 QSizePolicy::MinimumExpanding);
   mDefaultExclude->setPlaceholderText(
       "*.tmp\n.DS_Store\nThumbs.db\n*.partial");
   mDefaultExclude->setAccessibleName("Default exclude patterns");
   UiPolish::SetOutputView(mDefaultExclude, "Default exclude patterns");
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.defaultRcloneOptions->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
-    if (row >= 0) {
-      form->insertRow(row + 1, excludeLabel, mDefaultExclude);
-    }
-  }
+  transfersLayout->addWidget(excludeLabel, 6, 0, Qt::AlignTop);
+  transfersLayout->addWidget(mDefaultExclude, 6, 1, 1, 2);
+  transfersLayout->setRowStretch(6, 1);
 
   ui.http_proxy->setPlaceholderText("http://127.0.0.1:1087");
   ui.https_proxy->setPlaceholderText("https://127.0.0.1:1087");
   ui.no_proxy->setPlaceholderText("localhost,127.0.0.0/8");
 
-  mSocksProxy = new QLineEdit(this);
+  mSocksProxy = new QLineEdit(ui.groupBox_8);
   mSocksProxy->setPlaceholderText("socks5://127.0.0.1:1080");
   mSocksProxy->setClearButtonEnabled(true);
   mSocksProxy->setAccessibleName("SOCKS proxy");
   UiPolish::SetPathField(mSocksProxy, "SOCKS proxy");
-  auto *socksLabel = new QLabel("SOCKS proxy:", this);
+  auto *socksLabel = new QLabel(tr("SOCKS proxy:"), ui.groupBox_8);
   socksLabel->setBuddy(mSocksProxy);
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.no_proxy->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.no_proxy, &row, &role);
-    if (row >= 0)
-      form->insertRow(row + 1, socksLabel, mSocksProxy);
-  }
+  ui.gridLayout_5->removeWidget(ui.info_2);
+  ui.gridLayout_5->addWidget(socksLabel, 3, 0);
+  ui.gridLayout_5->addWidget(mSocksProxy, 3, 1);
+  ui.gridLayout_5->addWidget(ui.info_2, 4, 0, 1, 2);
 
   QObject::connect(ui.rcloneBrowse, &QPushButton::clicked, this, [=]() {
     QString rclone = QFileDialog::getOpenFileName(
@@ -162,27 +199,24 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     ui.rcloneConf->setText(rcloneConf);
   });
 
-  auto *backupBtn = new QPushButton("Backup Config...", this);
+  auto *backupBtn =
+      new QPushButton(tr("Backup Config..."), ui.groupBox_2);
   backupBtn->setToolTip("Save a copy of the current rclone configuration file.");
   backupBtn->setAccessibleName("Backup rclone config");
-  auto *restoreBtn = new QPushButton("Restore Config...", this);
+  auto *restoreBtn =
+      new QPushButton(tr("Restore Config..."), ui.groupBox_2);
   restoreBtn->setToolTip(
       "Restore a previously backed up rclone configuration file.");
   restoreBtn->setAccessibleName("Restore rclone config");
 
-  if (auto *layout = qobject_cast<QFormLayout *>(
-          ui.rcloneConf->parentWidget()->layout())) {
-    auto *row = new QHBoxLayout();
-    row->addWidget(backupBtn);
-    row->addWidget(restoreBtn);
-    row->addStretch();
-    int confRow = -1;
-    QFormLayout::ItemRole confRole;
-    layout->getWidgetPosition(ui.rcloneConfBrowse, &confRow, &confRole);
-    if (confRow >= 0) {
-      layout->insertRow(confRow + 1, "", row);
-    }
-  }
+  auto *configButtons = new QWidget(ui.groupBox_2);
+  auto *configButtonsLayout = new QHBoxLayout(configButtons);
+  configButtonsLayout->setContentsMargins(0, 0, 0, 0);
+  configButtonsLayout->setSpacing(8);
+  configButtonsLayout->addWidget(backupBtn);
+  configButtonsLayout->addWidget(restoreBtn);
+  configButtonsLayout->addStretch();
+  ui.gridLayout_3->addWidget(configButtons, 8, 1, 1, 2);
 
   QObject::connect(backupBtn, &QPushButton::clicked, this, [this]() {
     QStringList confArgs = GetRcloneConf();
@@ -341,16 +375,13 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.checkRcloneUpdates->setChecked(
       settings->value("Settings/checkRcloneUpdates", true).toBool());
 
-  mStartMinimized = new QCheckBox("Start minimized to system tray", this);
+  mStartMinimized = new QCheckBox(
+      tr("Start minimized to system tray"), ui.groupBox_3);
   mStartMinimized->setToolTip(
-      "Launch the app hidden in the system tray instead of showing the window.");
-  mStartMinimized->setAccessibleName("Start minimized to system tray");
-  if (auto *layout =
-          qobject_cast<QVBoxLayout *>(ui.notifyFinishedTransfers->parentWidget()->layout())) {
-    int idx = layout->indexOf(ui.notifyFinishedTransfers);
-    if (idx >= 0)
-      layout->insertWidget(idx + 1, mStartMinimized);
-  }
+      tr("Launch the app hidden in the system tray instead of showing the window."));
+  mStartMinimized->setAccessibleName(
+      tr("Start minimized to system tray"));
+  ui.gridLayout_4->addWidget(mStartMinimized, 3, 0);
 
   if (QSystemTrayIcon::isSystemTrayAvailable()) {
     ui.alwaysShowInTray->setChecked(
@@ -361,6 +392,19 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
         settings->value("Settings/notifyFinishedTransfers", true).toBool());
     mStartMinimized->setChecked(
         settings->value("Settings/startMinimized", false).toBool());
+
+    // Starting hidden without a persistent tray icon makes the application
+    // difficult to recover. Enforce the dependency in the UI as well as in
+    // the value returned to MainWindow.
+    const auto updateStartMinimizedDependency = [this](bool startMinimized) {
+      if (startMinimized) {
+        ui.alwaysShowInTray->setChecked(true);
+      }
+      ui.alwaysShowInTray->setEnabled(!startMinimized);
+    };
+    QObject::connect(mStartMinimized, &QCheckBox::toggled, this,
+                     updateStartMinimizedDependency);
+    updateStartMinimizedDependency(mStartMinimized->isChecked());
   } else {
     const QString trayUnavailable =
         "System tray controls are unavailable in this desktop session.";
@@ -493,7 +537,8 @@ bool PreferencesDialog::getCheckRcloneUpdates() const {
 }
 
 bool PreferencesDialog::getAlwaysShowInTray() const {
-  return ui.alwaysShowInTray->isChecked();
+  // Starting minimized must always leave a visible way to restore the window.
+  return mStartMinimized->isChecked() || ui.alwaysShowInTray->isChecked();
 }
 
 bool PreferencesDialog::getCloseToTray() const {
