@@ -48,11 +48,12 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   UiPolish::SetPathField(ui.http_proxy, "HTTP proxy");
   UiPolish::SetPathField(ui.https_proxy, "HTTPS proxy");
   UiPolish::SetPathField(ui.no_proxy, "No proxy list");
+  UiPolish::SetPathField(ui.socks_proxy, "SOCKS proxy");
   const QList<QLineEdit *> editableFields = {
       ui.rclone, ui.rcloneConf, ui.stream, ui.mount, ui.defaultDownloadDir,
       ui.defaultUploadDir, ui.defaultDownloadOptions,
       ui.defaultUploadOptions, ui.defaultRcloneOptions, ui.http_proxy,
-      ui.https_proxy, ui.no_proxy};
+      ui.https_proxy, ui.no_proxy, ui.socks_proxy};
   for (QLineEdit *field : editableFields) {
     field->setClearButtonEnabled(true);
   }
@@ -67,65 +68,32 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.defaultUploadOptions->setPlaceholderText("Extra flags for uploads");
   ui.defaultRcloneOptions->setPlaceholderText("--fast-list");
 
-  auto *concurrentLabel = new QLabel("Max concurrent transfers:", this);
-  concurrentLabel->setToolTip(
+  // Issue #13: these controls used to be created at runtime and inserted
+  // through qobject_cast<QFormLayout*>/<QVBoxLayout*> on layouts that are
+  // QGridLayouts in the .ui, so every cast failed and the controls -- all
+  // parented to the dialog itself -- painted over the tab bar at the
+  // top-left corner. They are now regular .ui widgets in managed layouts;
+  // this code only configures behaviour.
+  const QString concurrentTip =
       "Maximum number of transfers that run simultaneously. "
       "0 = unlimited (all run at once). "
-      "Excess jobs are queued and start when a slot frees up.");
-  mMaxConcurrent = new QSpinBox(this);
-  mMaxConcurrent->setMinimum(0);
-  mMaxConcurrent->setMaximum(99);
-  mMaxConcurrent->setSpecialValueText("Unlimited");
-  mMaxConcurrent->setToolTip(concurrentLabel->toolTip());
-  mMaxConcurrent->setAccessibleName("Max concurrent transfers");
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.defaultRcloneOptions->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
-    if (row >= 0) {
-      form->insertRow(row + 1, concurrentLabel, mMaxConcurrent);
-    }
-  }
+      "Excess jobs are queued and start when a slot frees up.";
+  ui.maxConcurrentLabel->setToolTip(concurrentTip);
+  ui.maxConcurrentTransfers->setToolTip(concurrentTip);
+  ui.maxConcurrentTransfers->setAccessibleName("Max concurrent transfers");
 
-  auto *excludeLabel = new QLabel("Default exclude patterns:", this);
-  excludeLabel->setToolTip(
+  ui.defaultExcludeLabel->setToolTip(
       "One --exclude pattern per line. Applied to all transfers globally.");
-  mDefaultExclude = new QPlainTextEdit(this);
-  mDefaultExclude->setMaximumHeight(80);
-  mDefaultExclude->setPlaceholderText(
+  ui.defaultExclude->setPlaceholderText(
       "*.tmp\n.DS_Store\nThumbs.db\n*.partial");
-  mDefaultExclude->setAccessibleName("Default exclude patterns");
-  UiPolish::SetOutputView(mDefaultExclude, "Default exclude patterns");
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.defaultRcloneOptions->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.defaultRcloneOptions, &row, &role);
-    if (row >= 0) {
-      form->insertRow(row + 1, excludeLabel, mDefaultExclude);
-    }
-  }
+  ui.defaultExclude->setAccessibleName("Default exclude patterns");
+  UiPolish::SetOutputView(ui.defaultExclude, "Default exclude patterns");
 
   ui.http_proxy->setPlaceholderText("http://127.0.0.1:1087");
   ui.https_proxy->setPlaceholderText("https://127.0.0.1:1087");
   ui.no_proxy->setPlaceholderText("localhost,127.0.0.0/8");
-
-  mSocksProxy = new QLineEdit(this);
-  mSocksProxy->setPlaceholderText("socks5://127.0.0.1:1080");
-  mSocksProxy->setClearButtonEnabled(true);
-  mSocksProxy->setAccessibleName("SOCKS proxy");
-  UiPolish::SetPathField(mSocksProxy, "SOCKS proxy");
-  auto *socksLabel = new QLabel("SOCKS proxy:", this);
-  socksLabel->setBuddy(mSocksProxy);
-  if (auto *form = qobject_cast<QFormLayout *>(
-          ui.no_proxy->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.no_proxy, &row, &role);
-    if (row >= 0)
-      form->insertRow(row + 1, socksLabel, mSocksProxy);
-  }
+  ui.socks_proxy->setPlaceholderText("socks5://127.0.0.1:1080");
+  ui.socks_proxy->setAccessibleName("SOCKS proxy");
 
   QObject::connect(ui.rcloneBrowse, &QPushButton::clicked, this, [=]() {
     QString rclone = QFileDialog::getOpenFileName(
@@ -162,29 +130,10 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     ui.rcloneConf->setText(rcloneConf);
   });
 
-  auto *backupBtn = new QPushButton("Backup Config...", this);
-  backupBtn->setToolTip("Save a copy of the current rclone configuration file.");
-  backupBtn->setAccessibleName("Backup rclone config");
-  auto *restoreBtn = new QPushButton("Restore Config...", this);
-  restoreBtn->setToolTip(
-      "Restore a previously backed up rclone configuration file.");
-  restoreBtn->setAccessibleName("Restore rclone config");
+  ui.backupConfig->setAccessibleName("Backup rclone config");
+  ui.restoreConfig->setAccessibleName("Restore rclone config");
 
-  if (auto *layout = qobject_cast<QFormLayout *>(
-          ui.rcloneConf->parentWidget()->layout())) {
-    auto *row = new QHBoxLayout();
-    row->addWidget(backupBtn);
-    row->addWidget(restoreBtn);
-    row->addStretch();
-    int confRow = -1;
-    QFormLayout::ItemRole confRole;
-    layout->getWidgetPosition(ui.rcloneConfBrowse, &confRow, &confRole);
-    if (confRow >= 0) {
-      layout->insertRow(confRow + 1, "", row);
-    }
-  }
-
-  QObject::connect(backupBtn, &QPushButton::clicked, this, [this]() {
+  QObject::connect(ui.backupConfig, &QPushButton::clicked, this, [this]() {
     QStringList confArgs = GetRcloneConf();
     QString confPath;
     for (int i = 0; i < confArgs.size(); ++i) {
@@ -220,7 +169,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     }
   });
 
-  QObject::connect(restoreBtn, &QPushButton::clicked, this, [this]() {
+  QObject::connect(ui.restoreConfig, &QPushButton::clicked, this, [this]() {
     QStringList confArgs = GetRcloneConf();
     QString confPath;
     for (int i = 0; i < confArgs.size(); ++i) {
@@ -331,9 +280,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       settings->value("Settings/defaultUploadOptions").toString());
   ui.defaultRcloneOptions->setText(
       settings->value("Settings/defaultRcloneOptions").toString());
-  mDefaultExclude->setPlainText(
+  ui.defaultExclude->setPlainText(
       settings->value("Settings/defaultExclude").toString());
-  mMaxConcurrent->setValue(
+  ui.maxConcurrentTransfers->setValue(
       settings->value("Settings/maxConcurrentTransfers", 0).toInt());
 
   ui.checkRcloneBrowserUpdates->setChecked(
@@ -341,16 +290,21 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.checkRcloneUpdates->setChecked(
       settings->value("Settings/checkRcloneUpdates", true).toBool());
 
-  mStartMinimized = new QCheckBox("Start minimized to system tray", this);
-  mStartMinimized->setToolTip(
-      "Launch the app hidden in the system tray instead of showing the window.");
-  mStartMinimized->setAccessibleName("Start minimized to system tray");
-  if (auto *layout =
-          qobject_cast<QVBoxLayout *>(ui.notifyFinishedTransfers->parentWidget()->layout())) {
-    int idx = layout->indexOf(ui.notifyFinishedTransfers);
-    if (idx >= 0)
-      layout->insertWidget(idx + 1, mStartMinimized);
-  }
+  ui.startMinimized->setAccessibleName("Start minimized to system tray");
+  // Starting hidden only makes sense when a tray icon exists to bring the
+  // window back, so Start Minimized implies Always Show in Tray.
+  QObject::connect(ui.startMinimized, &QCheckBox::toggled, this,
+                   [this](bool checked) {
+                     if (checked) {
+                       ui.alwaysShowInTray->setChecked(true);
+                     }
+                   });
+  QObject::connect(ui.alwaysShowInTray, &QCheckBox::toggled, this,
+                   [this](bool checked) {
+                     if (!checked) {
+                       ui.startMinimized->setChecked(false);
+                     }
+                   });
 
   if (QSystemTrayIcon::isSystemTrayAvailable()) {
     ui.alwaysShowInTray->setChecked(
@@ -359,7 +313,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
         settings->value("Settings/closeToTray", false).toBool());
     ui.notifyFinishedTransfers->setChecked(
         settings->value("Settings/notifyFinishedTransfers", true).toBool());
-    mStartMinimized->setChecked(
+    ui.startMinimized->setChecked(
         settings->value("Settings/startMinimized", false).toBool());
   } else {
     const QString trayUnavailable =
@@ -373,9 +327,9 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     ui.notifyFinishedTransfers->setChecked(false);
     ui.notifyFinishedTransfers->setDisabled(true);
     ui.notifyFinishedTransfers->setToolTip(trayUnavailable);
-    mStartMinimized->setChecked(false);
-    mStartMinimized->setDisabled(true);
-    mStartMinimized->setToolTip(trayUnavailable);
+    ui.startMinimized->setChecked(false);
+    ui.startMinimized->setDisabled(true);
+    ui.startMinimized->setToolTip(trayUnavailable);
   }
 
   ui.showFolderIcons->setChecked(
@@ -424,7 +378,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.http_proxy->setText(settings->value("Settings/http_proxy").toString());
   ui.https_proxy->setText(settings->value("Settings/https_proxy").toString());
   ui.no_proxy->setText(settings->value("Settings/no_proxy").toString());
-  mSocksProxy->setText(settings->value("Settings/socksProxy").toString());
+  ui.socks_proxy->setText(settings->value("Settings/socksProxy").toString());
 
   auto updateProxyFields = [=]() {
     const bool manual = ui.useProxy->isChecked();
@@ -436,6 +390,15 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   QObject::connect(ui.useProxy, &QRadioButton::toggled, this,
                    [=](bool) { updateProxyFields(); });
   updateProxyFields();
+
+  // Issue #13: the fixed 760x560 minimum can sit below the tab content's
+  // real minimum once the application stylesheet (dark theme) or larger
+  // fonts inflate control metrics; the Interface page then gets compressed
+  // until its checkboxes and help labels overlap. Track the layout's
+  // computed minimum instead of trusting the constant.
+  layout()->activate();
+  setMinimumSize(QSize(760, 560).expandedTo(minimumSizeHint()));
+  resize(minimumSize());
 }
 
 PreferencesDialog::~PreferencesDialog() {}
@@ -473,15 +436,15 @@ QString PreferencesDialog::getDefaultRcloneOptions() const {
 }
 
 QString PreferencesDialog::getDefaultExclude() const {
-  return mDefaultExclude->toPlainText().trimmed();
+  return ui.defaultExclude->toPlainText().trimmed();
 }
 
 bool PreferencesDialog::getStartMinimized() const {
-  return mStartMinimized->isChecked();
+  return ui.startMinimized->isChecked();
 }
 
 int PreferencesDialog::getMaxConcurrentTransfers() const {
-  return mMaxConcurrent->value();
+  return ui.maxConcurrentTransfers->value();
 }
 
 bool PreferencesDialog::getCheckRcloneBrowserUpdates() const {
@@ -545,7 +508,7 @@ QString PreferencesDialog::getHttpsProxy() const {
 QString PreferencesDialog::getNoProxy() const { return ui.no_proxy->text(); }
 
 QString PreferencesDialog::getSocksProxy() const {
-  return mSocksProxy->text();
+  return ui.socks_proxy->text();
 }
 
 bool PreferencesDialog::getUseProxy() const {

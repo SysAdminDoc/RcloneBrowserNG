@@ -1,5 +1,11 @@
 # Change Log
 ## [Unreleased]
+### Bug Fixes
+-   FIX: Preferences dialog layout on Qt 6 (#13) — dynamically created controls (max concurrent transfers, exclude patterns, SOCKS proxy, Backup/Restore Config, Start minimized) were inserted via layout casts that fail against the .ui's QGridLayouts, leaving them floating over the tab bar and the SOCKS field effectively missing; they are now regular .ui widgets in managed layouts, covered by a layout regression test
+-   FIX: Transfer defaults moved from the overcrowded General page to a new Transfers tab, so the exclude-pattern editor and Backup/Restore buttons no longer clip on shorter screens
+-   FIX: Preferences minimum size now tracks the layout's computed minimum, so dark-theme/large-font metrics can no longer compress the Interface page until checkboxes and help labels overlap
+-   NEW: Start minimized to system tray now implies Always show in system tray (and unchecking the latter clears it), since starting hidden without a tray icon left no way to bring the window back
+
 ### Security
 -   SECURITY: Saved-task webhook tokens, heartbeat URLs, and shell hook commands are now protected at rest using Windows DPAPI encryption (base64 obfuscation on other platforms); no representative secret appears in plaintext in the JSON task store
 -   SECURITY: Saved-task shell hooks (preCommand/postCommand) are now trust-gated — imported or migrated tasks with hooks prompt for user review before execution; hooks set directly in the transfer dialog are trusted implicitly

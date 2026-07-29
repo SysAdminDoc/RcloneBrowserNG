@@ -46,8 +46,4 @@ public:
 
 private:
   Ui::PreferencesDialog ui;
-  QPlainTextEdit *mDefaultExclude = nullptr;
-  QCheckBox *mStartMinimized = nullptr;
-  QSpinBox *mMaxConcurrent = nullptr;
-  QLineEdit *mSocksProxy = nullptr;
 };

@@ -169,4 +169,22 @@ if(BUILD_TESTING)
   target_include_directories(rc_auth_regression_test PRIVATE src)
   target_link_libraries(rc_auth_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME rc_auth_regression_test COMMAND rc_auth_regression_test)
+
+  add_executable(preferences_layout_test
+    tests/preferences_layout_test.cpp
+    src/preferences_dialog.cpp
+    src/preferences_dialog.ui
+    src/interface_polish.cpp
+    src/utils.cpp
+  )
+  # AUTOUIC is enabled directory-scoped in src/; this target compiles the
+  # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.
+  set_target_properties(preferences_layout_test PROPERTIES AUTOUIC ON)
+  target_include_directories(preferences_layout_test PRIVATE src)
+  target_link_libraries(preferences_layout_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(preferences_layout_test advapi32)
+  endif()
+  add_test(NAME preferences_layout_test COMMAND preferences_layout_test)
 endif()
+
