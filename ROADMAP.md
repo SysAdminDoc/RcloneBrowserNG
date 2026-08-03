@@ -41,13 +41,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P1
 
-- [ ] P1 — Protect sensitive saved-task fields at rest
-  Why: Saved-task JSON can expose webhook tokens, heartbeat URLs, and shell hook commands to anyone who can read the task store.
-  Evidence: `src/job_options_store.cpp`, `src/job_options.h`, H4R1B0/rclone-gui Keychain app-lock pattern, rclone RC auth guidance.
-  Touches: `src/job_options_store.cpp`, `src/job_options_store.h`, `src/job_options.h`, `src/transfer_dialog.cpp`, `src/utils.cpp`, `tests/job_options_store_test.cpp`.
-  Acceptance: New and migrated tasks store sensitive URL tokens and hook secrets through an OS credential/vault abstraction or a clearly warned plaintext fallback; JSON exports and support bundles redact secrets; tests prove no representative token is written in clear text.
-  Complexity: L
-
 - [ ] P1 — Remove remaining GUI-thread process waits from user-triggered helper operations
   Why: Search cancellation, mount backend checks/unmount, and native scheduler operations still block on helper processes and can freeze the desktop shell.
   Evidence: `src/cross_remote_search.cpp:255`, `src/mount_backend.cpp`, `src/mount_widget.cpp`, `src/schedule_manager.cpp`, Mountain Duck mount UX, GoodSync scheduling UX.

@@ -1,4 +1,5 @@
 #include "job_history.h"
+#include "rclone_capabilities.h"
 
 #include <QBuffer>
 #include <QTest>
@@ -53,6 +54,18 @@ private slots:
     QVector<JobHistoryEntry> loaded = ReadJobHistory(&bad, &error);
     QVERIFY(loaded.isEmpty());
     QVERIFY(error.contains("Failed to parse job history"));
+  }
+
+  void redactsSensitiveOutput() {
+    const QString input =
+        "--rc-pass rc-secret token=token-secret client_secret=client-secret "
+        "Authorization: Bearer bearer-secret";
+    const QString redacted = Diagnostics::redactSecrets(input);
+    QVERIFY(!redacted.contains("rc-secret"));
+    QVERIFY(!redacted.contains("token-secret"));
+    QVERIFY(!redacted.contains("client-secret"));
+    QVERIFY(!redacted.contains("bearer-secret"));
+    QVERIFY(redacted.count("<redacted>") >= 4);
   }
 };
 

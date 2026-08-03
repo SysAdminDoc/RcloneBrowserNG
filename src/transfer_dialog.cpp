@@ -1,5 +1,6 @@
 #include "transfer_dialog.h"
 #include "list_of_job_options.h"
+#include "job_options_store.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
@@ -24,6 +25,10 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   UiPolish::SetPathField(ui.textSource, "Transfer source");
   UiPolish::SetPathField(ui.textDest, "Transfer destination");
   UiPolish::SetOutputView(ui.textExclude, "Exclude patterns");
+  auto *securityNotice = new QLabel(this);
+  UiPolish::SetNotice(securityNotice, JobOptionsStoreSecurityNotice());
+  securityNotice->setAccessibleName("Saved task security notice");
+  ui.gridLayout->addWidget(securityNotice, 2, 0, 1, 2);
   ui.textSource->setPlaceholderText(isDownload ? "remote:path" : "Local file or folder");
   ui.textDest->setPlaceholderText(isDownload ? "Local destination folder"
                                              : "remote:path");

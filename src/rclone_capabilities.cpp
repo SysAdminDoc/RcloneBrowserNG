@@ -240,7 +240,8 @@ QString redactSecrets(const QString &text) {
   QString out = text;
   static const QRegularExpression patterns[] = {
       QRegularExpression(R"((--rc-pass)\s+\S+)"),
-      QRegularExpression(R"((pass|password|token|secret|key|credential)[\s=:]+\S+)",
+      QRegularExpression(
+          R"(((?:api[-_]?key|client[-_]?secret|access[-_]?key|pass(?:word)?|token|secret|credential|key))\s*[:=]\s*\S+)",
                          QRegularExpression::CaseInsensitiveOption),
       QRegularExpression(R"((RCLONE_CONFIG_PASS)=\S+)"),
       QRegularExpression(R"((Authorization:\s*(?:Basic|Bearer))\s+\S+)",

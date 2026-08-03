@@ -8,6 +8,7 @@
 
 ### Security
 -   SECURITY: Saved-task webhook tokens, heartbeat URLs, and shell hook commands are now protected at rest using Windows DPAPI encryption (base64 obfuscation on other platforms); no representative secret appears in plaintext in the JSON task store
+-   SECURITY: Transfer dialogs now disclose the reversible non-encrypted fallback used for saved-task sensitive fields when platform encryption is unavailable, and diagnostics redaction covers named API/client/access key forms
 -   SECURITY: Saved-task shell hooks (preCommand/postCommand) are now trust-gated — imported or migrated tasks with hooks prompt for user review before execution; hooks set directly in the transfer dialog are trusted implicitly
 -   SECURITY: OpenSSF-recommended binary hardening flags added — MSVC `/guard:cf` (Control Flow Guard), `/CETCOMPAT` (Intel CET), `/DYNAMICBASE`; GCC/Clang `-fcf-protection=full`, `-Wl,-z,relro,-z,now` (full RELRO), `_FORTIFY_SOURCE` raised from 2 to 3
 -   SECURITY: RC auth regression test gate — automated test scans all source files for RC command construction and fails if any path lacks `--rc-user`/`--rc-pass` or introduces `--rc-no-auth`

@@ -18,4 +18,6 @@ bool WriteJobOptionsStoreJson(QIODevice *device,
                               const QList<JobOptions *> &tasks,
                               QString *error = nullptr);
 
+QString JobOptionsStoreSecurityNotice();
+
 void ClearJobOptionsList(QList<JobOptions *> *tasks);

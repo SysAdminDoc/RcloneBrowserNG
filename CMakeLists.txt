@@ -187,4 +187,3 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME preferences_layout_test COMMAND preferences_layout_test)
 endif()
-

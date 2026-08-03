@@ -254,6 +254,17 @@ private slots:
     ClearJobOptionsList(&sensitiveLoaded.tasks);
     ClearJobOptionsList(&sensitiveList);
   }
+
+  void sensitiveStorageNotice() {
+    const QString notice = JobOptionsStoreSecurityNotice();
+    QVERIFY2(!notice.isEmpty(), "saved-task security notice must be visible");
+    QVERIFY2(notice.contains("reversible", Qt::CaseInsensitive),
+             "notice must identify reversible fallback storage");
+    QVERIFY2(notice.contains("not encryption", Qt::CaseInsensitive),
+             "notice must distinguish fallback storage from encryption");
+    QVERIFY2(notice.contains("tasks.json"),
+             "notice must identify the file users must protect");
+  }
 };
 
 QTEST_MAIN(JobOptionsStoreTest)
