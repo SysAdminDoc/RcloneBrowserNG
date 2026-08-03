@@ -49,6 +49,16 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 
 Build from source using the instructions below. Maintainer-published artifacts, when available, are linked from the [releases](https://github.com/SysAdminDoc/RcloneBrowserNG/releases) page; this repository does not provide a CI build or artifact-attestation service.
 
+### Local release verification
+
+Before publishing a locally built artifact, run:
+
+```text
+python scripts/release_check.py
+```
+
+The harness validates version and release disclosures, parses AppStream metadata, checks the local release scripts, builds the selected Release configuration, runs the offscreen CTest suite, and smoke-tests the built executable with `--version`. It prints the CI-only guarantees that are intentionally unavailable here; platform packaging remains an explicit step through the matching script in `scripts/`.
+
 ## Build instructions
 
 ### Linux

@@ -100,15 +100,6 @@ All items trace back to public GitHub issues/PRs:
 
 ## Research-Driven Additions
 
-### P1
-
-- [ ] P1 — Add a local release verification harness
-  Why: After workflow removal, the repo lacks one local entry point that tells maintainers which release guarantees still run, which former CI guarantees are absent, and whether artifacts are safe to publish.
-  Evidence: `5f722b9`, missing `.github/`, `scripts/release_windows.cmd`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, rclone-ui v3.6.0 release assets, RClone Manager v0.2.8 release assets, GitHub artifact attestation docs.
-  Touches: `scripts/`, `CMakeLists.txt`, `src/CMakeLists.txt`, `README.md`, `SECURITY.md`, release artifact staging.
-  Acceptance: One documented local command orchestrates the existing build/test/release-script checks that still apply without GitHub Actions, emits a pass/fail release readiness report, fails when a claimed guarantee is not actually performed, and explicitly lists any CI-only guarantees that must be restored or removed from public docs.
-  Complexity: M
-
 - [ ] P1 — Add version-2 staged-transfer schema for execution metadata
   Why: `staged.json` persists basic queued transfers but drops heartbeat URL, webhook URL, post-command, task label, and verify-after-transfer state even though the runtime queue can execute those fields.
   Evidence: `src/main_window.cpp:2707`, `src/main_window.h:76`, `src/main_window.h:77`, `src/main_window.h:78`, `src/main_window.h:79`, `src/main_window.h:127`, `src/main_window.cpp:3975`, WinSCP transfer queue, GoodSync recovery patterns.

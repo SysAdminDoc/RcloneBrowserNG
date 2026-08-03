@@ -25,6 +25,7 @@
 
 ### Build & Compatibility
 -   CHANGED: Release documentation now describes the repository's local build and release scripts; GitHub Actions, CI-only checks, artifact attestations, and automated publication are not provided here
+-   NEW: `scripts/release_check.py` now provides one local release-readiness command for metadata, script, Release build, offscreen tests, and executable version checks
 -   FIXED: Mount backend probes, VFS unmount safety checks, and native schedule/status operations now use asynchronous or worker-backed helpers instead of blocking the GUI thread
 -   NEW: AppStream metainfo release entry updated with detailed v2.0.0 description
 -   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)
