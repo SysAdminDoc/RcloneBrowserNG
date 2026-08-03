@@ -30,6 +30,7 @@
 -   NEW: `scripts/release_check.py` now provides one local release-readiness command for metadata, script, Release build, offscreen tests, and executable version checks
 -   NEW: Auxiliary release scripts now have Bash syntax coverage, and `release_windows.cmd --dry-run` validates its artifact/build plan without touching the toolchain or release directory
 -   NEW: Local Windows deployment and platform release scripts now run the packaged executable's non-GUI `--version` smoke before release handoff
+-   NEW: AppImage releases now embed `gh-releases-zsync` metadata, emit a matching `.zsync` delta file, and verify the update section before handoff
 -   FIXED: Mount backend probes, VFS unmount safety checks, and native schedule/status operations now use asynchronous or worker-backed helpers instead of blocking the GUI thread
 -   NEW: AppStream metainfo release entry updated with detailed v2.0.0 description
 -   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)

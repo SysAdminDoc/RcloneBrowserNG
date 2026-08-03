@@ -54,13 +54,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2
 
-- [ ] P2 — Embed AppImage zsync update metadata for delta updates
-  Why: Users must download the full AppImage (~30MB) for each release. The AppImage ecosystem supports zsync-based delta updates that transfer only changed blocks, but the release pipeline does not embed `UPDATE_INFORMATION`.
-  Evidence: No `UPDATE_INFORMATION` in `.github/workflows/release.yml` or `scripts/release_AppImage.sh`; docs.appimage.org/packaging-guide/optional/updates.html; linuxdeploy supports `LDAI_UPDATE_INFORMATION` env var.
-  Touches: `.github/workflows/release.yml` (linux-appimage job), `scripts/release_AppImage.sh`.
-  Acceptance: Released AppImages contain embedded zsync update information pointing to the GitHub releases URL pattern; `readelf` or `appimagetool --appimage-updateinformation` on the built AppImage returns a valid gh-releases-zsync URL; AppImageUpdate clients can find and apply delta updates.
-  Complexity: S
-
 - [ ] P2 — Migrate test harness to QTest framework
   Why: All 13 test targets use a custom `require()` function that calls `std::exit(1)` on failure, providing no assertion line numbers, no expected-vs-actual comparison output, and no CTest XML reporting integration. QTest provides all of these plus `QSignalSpy` for async signal verification, `QTEST_MAIN` for proper Qt event loop setup, and `QT_QPA_PLATFORM=offscreen` for headless widget tests.
   Evidence: `tests/interface_polish_test.cpp`, `tests/dryrun_contract_test.cpp`, and all other test files define `require()` + `std::exit(1)`; no `QTest` or `QTEST_MAIN` usage anywhere in the repo.

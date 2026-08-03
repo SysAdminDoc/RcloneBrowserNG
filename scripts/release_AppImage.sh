@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # Requirements:
 #   - Ubuntu 22.04+ or equivalent (glibc 2.35+)
-#   - cmake, g++, make, patchelf, sha256sum, curl or wget
+#   - cmake, g++, make, patchelf, sha256sum, zsyncmake, python3, curl or wget
 #   - Qt 6 development packages (qt6-base-dev, qt6-base-dev-tools, qt6-qmake)
 #   - desktop-file-utils, appstream (for validation)
 #   - linuxdeploy, linuxdeploy-plugin-qt, linuxdeploy-plugin-appimage (auto-downloaded)
@@ -24,7 +24,7 @@ case "$ARCH" in
     ;;
 esac
 
-for cmd in cmake g++ patchelf sha256sum; do
+for cmd in cmake g++ patchelf sha256sum zsyncmake python3; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "ERROR: '$cmd' not found. Install it first."
     exit 1
@@ -88,6 +88,7 @@ TOOLS_DIR="$APPDIR/tools"
 cd "$APPDIR"
 export APPIMAGE_EXTRACT_AND_RUN=1
 export PATH="$TOOLS_DIR:$PATH"
+export LDAI_UPDATE_INFORMATION="gh-releases-zsync|SysAdminDoc|RcloneBrowserNG|latest|RcloneBrowserNG-*linux-${ARCH}.AppImage.zsync"
 
 # Keep the offscreen platform available for the packaged --version smoke. It
 # never opens a window, so release verification remains safe on headless hosts.
@@ -116,6 +117,12 @@ fi
 
 ARTIFACT_NAME="RcloneBrowserNG-${FULLVER}-linux-${ARCH}.AppImage"
 mv "$APPIMAGE" "$RELEASE/$ARTIFACT_NAME"
+
+zsyncmake "$RELEASE/$ARTIFACT_NAME" \
+  -o "$RELEASE/$ARTIFACT_NAME.zsync"
+python3 "$ROOT/scripts/verify_appimage_update.py" \
+  --artifact "$RELEASE/$ARTIFACT_NAME" \
+  --expected "$LDAI_UPDATE_INFORMATION"
 
 if command -v python3 >/dev/null 2>&1; then
   python3 "$ROOT/scripts/smoke_package.py" \

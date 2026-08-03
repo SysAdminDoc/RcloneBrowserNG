@@ -256,6 +256,20 @@ def check_package_manifest_generator(report: Report, root: Path) -> None:
     )
 
 
+def check_appimage_update_verifier(report: Report, root: Path) -> None:
+    test = root / "tests" / "appimage_update_test.py"
+    if not test.is_file():
+        report.failed_check("AppImage update metadata test", "test file is missing")
+        return
+    run_checked(
+        report,
+        "AppImage update metadata contract",
+        [sys.executable, str(test)],
+        root,
+        timeout=60,
+    )
+
+
 def smoke_packaged_windows_binary(
     report: Report,
     root: Path,
@@ -462,6 +476,7 @@ def main() -> int:
     check_metadata(report, root)
     check_release_scripts(report, root)
     check_package_manifest_generator(report, root)
+    check_appimage_update_verifier(report, root)
     if version is not None:
         build_and_test(report, root, build_dir, args.config)
     else:
