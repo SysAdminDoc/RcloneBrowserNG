@@ -52,15 +52,6 @@ All items trace back to public GitHub issues/PRs:
 
 ## Research-Driven Additions (2026-06-20)
 
-### P2
-
-- [ ] P2 — Migrate test harness to QTest framework
-  Why: All 13 test targets use a custom `require()` function that calls `std::exit(1)` on failure, providing no assertion line numbers, no expected-vs-actual comparison output, and no CTest XML reporting integration. QTest provides all of these plus `QSignalSpy` for async signal verification, `QTEST_MAIN` for proper Qt event loop setup, and `QT_QPA_PLATFORM=offscreen` for headless widget tests.
-  Evidence: `tests/interface_polish_test.cpp`, `tests/dryrun_contract_test.cpp`, and all other test files define `require()` + `std::exit(1)`; no `QTest` or `QTEST_MAIN` usage anywhere in the repo.
-  Touches: All 13 files in `tests/`, `CMakeLists.txt` (link `Qt6::Test`).
-  Acceptance: All existing test assertions use `QVERIFY`/`QCOMPARE` with descriptive messages; test binaries report pass/fail with assertion locations; `ctest --output-on-failure` produces clear diagnostic output on failures; no behavioral change in what is tested.
-  Complexity: M
-
 ### P3
 
 - [ ] P3 — Update AppStream metainfo with release entries for each tagged version

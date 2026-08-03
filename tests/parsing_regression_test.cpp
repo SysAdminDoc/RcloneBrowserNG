@@ -1,18 +1,12 @@
+#include "parsing_regression_test.h"
+
 #include <QByteArray>
-#include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <cstdlib>
+#include <QTest>
 
 namespace {
-void require(bool condition, const QString &message) {
-  if (!condition) {
-    qCritical().noquote() << message;
-    std::exit(1);
-  }
-}
-
 struct ParsedItem {
   QString name;
   bool isDir;
@@ -83,87 +77,86 @@ StatsResult parseStatsLine(const QByteArray &line) {
 }
 } // namespace
 
-int main() {
-  {
+void ParsingRegressionTest::extractsStandardListing() {
     QByteArray data = R"([
 {"Path":"documents","Name":"documents","Size":-1,"MimeType":"inode/directory","ModTime":"2024-01-15T10:30:00.000Z","IsDir":true},
 {"Path":"photo.jpg","Name":"photo.jpg","Size":1234567,"MimeType":"image/jpeg","ModTime":"2024-03-20T14:22:33.456Z","IsDir":false},
 {"Path":"notes.txt","Name":"notes.txt","Size":42,"MimeType":"text/plain","ModTime":"2023-12-01T08:00:00.000Z","IsDir":false}
 ])";
     auto items = extractItems(data);
-    require(items.size() == 3, "lsjson standard: wrong count");
-    require(items[0].name == "documents", "item 0 name");
-    require(items[0].isDir, "item 0 should be dir");
-    require(items[1].size == 1234567, "item 1 size");
-    require(items[2].size == 42, "item 2 size");
-  }
+    QCOMPARE(items.size(), 3);
+    QCOMPARE(items.at(0).name, QStringLiteral("documents"));
+    QVERIFY(items.at(0).isDir);
+    QCOMPARE(items.at(1).size, quint64(1234567));
+    QCOMPARE(items.at(2).size, quint64(42));
+}
 
-  {
+void ParsingRegressionTest::extractsChunkedListing() {
     QByteArray chunk1 = R"([{"Path":"file1.txt","Name":"file1.txt","Si)";
     QByteArray chunk2 = R"(ze":100,"IsDir":false,"ModTime":"2024-01-01T00:00:00Z"},{"Pa)";
     QByteArray chunk3 = R"(th":"file2.txt","Name":"file2.txt","Size":200,"IsDir":false,"ModTime":"2024-01-02T00:00:00Z"}])";
     auto items = extractItems(chunk1 + chunk2 + chunk3);
-    require(items.size() == 2, "chunked: wrong count");
-    require(items[0].size == 100, "chunked item 0 size");
-    require(items[1].size == 200, "chunked item 1 size");
-  }
+    QCOMPARE(items.size(), 2);
+    QCOMPARE(items.at(0).size, quint64(100));
+    QCOMPARE(items.at(1).size, quint64(200));
+}
 
-  {
+void ParsingRegressionTest::extractsEmptyListing() {
     auto items = extractItems("[]");
-    require(items.isEmpty(), "empty dir should have 0 items");
-  }
+    QVERIFY(items.isEmpty());
+}
 
-  {
+void ParsingRegressionTest::extractsNestedMetadata() {
     QByteArray data = R"([
 {"Path":"test.bin","Name":"test.bin","Size":0,"IsDir":false,"ModTime":"2024-06-01T00:00:00Z","Metadata":{"key":"value"}}
 ])";
     auto items = extractItems(data);
-    require(items.size() == 1, "nested metadata: wrong count");
-    require(items[0].name == "test.bin", "nested metadata item name");
-  }
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.at(0).name, QStringLiteral("test.bin"));
+}
 
-  {
+void ParsingRegressionTest::parsesTransferStats() {
     QByteArray line = R"({"level":"info","msg":"","source":"","time":"2024-01-15T10:30:00Z","stats":{"bytes":5242880,"totalBytes":10485760,"speed":1048576.0,"errors":0,"checks":10,"totalChecks":20,"transfers":3,"totalTransfers":5,"elapsedTime":5.0,"eta":5.0}})";
     StatsResult stats = parseStatsLine(line);
-    require(stats.bytes == 5242880.0, "stats bytes");
-    require(stats.totalBytes == 10485760.0, "stats totalBytes");
-    require(stats.transfers == 3, "stats transfers");
-    require(stats.totalTransfers == 5, "stats totalTransfers");
-  }
+    QCOMPARE(stats.bytes, 5242880.0);
+    QCOMPARE(stats.totalBytes, 10485760.0);
+    QCOMPARE(stats.transfers, 3);
+    QCOMPARE(stats.totalTransfers, 5);
+}
 
-  {
+void ParsingRegressionTest::parsesErrorStats() {
     QByteArray line = R"({"level":"error","msg":"file.txt: permission denied","time":"2024-01-15T10:30:00Z","stats":{"bytes":0,"totalBytes":1000,"speed":0,"errors":2,"transfers":0,"totalTransfers":1}})";
     StatsResult stats = parseStatsLine(line);
-    require(stats.errors == 2, "error stats: errors");
-  }
+    QCOMPARE(stats.errors, 2);
+}
 
-  {
+void ParsingRegressionTest::ignoresNonStatsLine() {
     QByteArray line = R"({"level":"info","msg":"Transferred: 1 file, 5.0 MiB","time":"2024-01-15T10:30:00Z"})";
     StatsResult stats = parseStatsLine(line);
-    require(stats.bytes == 0, "non-stats line should have 0 bytes");
-  }
+    QCOMPARE(stats.bytes, 0.0);
+}
 
-  {
+void ParsingRegressionTest::preservesLargeSizes() {
     QByteArray data = R"([{"Path":"bigfile.iso","Name":"bigfile.iso","Size":8589934592,"IsDir":false,"ModTime":"2024-01-01T00:00:00Z"}])";
     auto items = extractItems(data);
-    require(items.size() == 1, "large file: wrong count");
-    require(items[0].size == 8589934592ULL, "large file: wrong size");
-  }
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.at(0).size, quint64(8589934592ULL));
+}
 
-  {
+void ParsingRegressionTest::preservesUnicodeNames() {
     QByteArray data = R"([{"Path":"日本語ファイル.txt","Name":"日本語ファイル.txt","Size":10,"IsDir":false,"ModTime":"2024-01-01T00:00:00Z"}])";
     auto items = extractItems(data);
-    require(items.size() == 1, "unicode: wrong count");
-    require(items[0].name.contains(QString::fromUtf8("日本語")), "unicode filename");
-  }
+    QCOMPARE(items.size(), 1);
+    QVERIFY(items.at(0).name.contains(QString::fromUtf8("日本語")));
+}
 
-  {
+void ParsingRegressionTest::preservesSpecialPaths() {
     QByteArray data = R"([{"Path":"path with spaces/file (1).txt","Name":"file (1).txt","Size":1,"IsDir":false,"ModTime":"2024-01-01T00:00:00Z"}])";
     auto items = extractItems(data);
-    require(items.size() == 1, "special chars: wrong count");
-    require(items[0].name == "file (1).txt", "special chars name");
-    require(items[0].path == "path with spaces/file (1).txt", "special chars path");
-  }
-
-  return 0;
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.at(0).name, QStringLiteral("file (1).txt"));
+    QCOMPARE(items.at(0).path,
+             QStringLiteral("path with spaces/file (1).txt"));
 }
+
+QTEST_MAIN(ParsingRegressionTest)

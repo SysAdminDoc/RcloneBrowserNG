@@ -34,7 +34,7 @@
 -   FIXED: Mount backend probes, VFS unmount safety checks, and native schedule/status operations now use asynchronous or worker-backed helpers instead of blocking the GUI thread
 -   NEW: AppStream metainfo release entry updated with detailed v2.0.0 description
 -   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)
--   CHANGED: 13 of 14 test targets migrated from custom `require()`/`std::exit(1)` harness to Qt QTest framework with QVERIFY/QCOMPARE assertions and proper test reporting
+-   CHANGED: All 17 C++ test targets now use the Qt QTest framework with QVERIFY/QCOMPARE assertions and proper test reporting
 -   FIXED: Cross-remote search cancel now uses async process termination instead of blocking `waitForFinished()`
 
 ### Security

@@ -123,10 +123,10 @@ if(BUILD_TESTING)
 
   add_executable(parsing_regression_test
     tests/parsing_regression_test.cpp
+    tests/parsing_regression_test.h
   )
-  set_target_properties(parsing_regression_test PROPERTIES AUTOMOC OFF)
   target_include_directories(parsing_regression_test PRIVATE src)
-  target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME parsing_regression_test COMMAND parsing_regression_test)
 
   add_executable(schedule_golden_test
