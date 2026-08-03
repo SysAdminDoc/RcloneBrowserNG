@@ -45,6 +45,38 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
 
 ---
 
+## P1 — CI-dependent analysis
+
+- [ ] P1 — Strengthen CodeQL to traced build and SHA-pin its actions
+  Blocked: Requires restoring maintainer-owned GitHub Actions/CodeQL infrastructure; the repository intentionally has no `.github` workflows after `5f722b9`, so the CI/Security-tab acceptance cannot be completed locally.
+  Why: `build-mode: none` performs extractionless C++ analysis that misses interprocedural dataflow, taint tracking, and most vulnerability classes. The CodeQL init and analyze actions use unpinned `@v4` tags while every other workflow action is SHA-pinned, violating the project's own supply-chain security policy.
+  Evidence: `.github/workflows/codeql.yml` lines 21/28 use `@v4` not SHA pins; `build-mode: none` per CodeQL docs provides "limited coverage for compiled languages"; all other workflows (build.yml, release.yml, scorecard.yml) SHA-pin every action.
+  Touches: `.github/workflows/codeql.yml`, `.github/workflows/build.yml` (add CodeQL build step sharing the existing Linux cmake/make invocation).
+  Acceptance: CodeQL init and analyze actions are SHA-pinned to a specific v4 release; CodeQL runs with `build-mode: manual` using the existing Linux cmake build; C++ query results improve (visible in Security tab SARIF output); no unpinned action tags remain in any workflow file.
+  Complexity: S
+
+- [ ] P2 — Add clang-tidy static analysis to Linux CI
+  Blocked: Acceptance requires a Linux CI runner and workflow, which are not present in the local-build-only repository; `clang-tidy` is also unavailable on this workstation.
+  Why: No static analysis tool beyond CodeQL runs on the codebase. clang-tidy catches use-after-free patterns, uninitialized variables, modernization opportunities, and Qt-specific issues that extractionless CodeQL and MSVC /W4 miss.
+  Evidence: No `.clang-tidy` or `CMAKE_CXX_CLANG_TIDY` in the repo; `src/main_window.cpp` is 4517 lines of complex control flow; OpenSSF recommends multiple overlapping analyzers; Qt moc-generated files need suppression.
+  Touches: `.clang-tidy` (new config file), `CMakeLists.txt` or `.github/workflows/build.yml` (enable in Linux CI job).
+  Acceptance: clang-tidy runs on the Linux CI build with `bugprone-*`, `cppcoreguidelines-*`, `performance-*`, and `modernize-*` checks enabled; moc/uic generated files are excluded via header-filter; findings are zero or explicitly suppressed with rationale; CI fails on new clang-tidy warnings.
+  Complexity: S
+
+---
+
+## P3 — Visual design
+
+- [ ] P3 — Add remote-type icons for post-v1.68 rclone backends
+  Blocked: Requires maintainer-approved visual/icon design decisions before new provider artwork can be accepted.
+  Why: Remote provider icons in `src/images/` cover only 18 services. Backends added since rclone v1.69 (iCloud Drive, iCloud Photos, Archive, Filen, Internxt, Huawei Drive, Cloudinary, FileLu, DOI, Shade, Drime) all display as `unknown.png`, making the remotes list visually unhelpful for users of newer providers.
+  Evidence: `src/images/` contains 18 service icon pairs (normal + _inv); rclone v1.69-v1.74 changelogs list 11+ new backends; `src/resources.qrc` embeds the icon files.
+  Touches: `src/images/` (new PNG pairs), `src/resources.qrc`, `src/main_window.cpp` (icon-name-to-type mapping if not already dynamic).
+  Acceptance: At minimum iCloud Drive, Proton Drive, pCloud, Box, Nextcloud/WebDAV, Backblaze B2 (already has), and Filen have dedicated icons with `_inv` dark variants; icons are palette-aware; `resources.qrc` includes all new files.
+  Complexity: S
+
+---
+
 ## P4 — Platform & Compatibility
 
 - [ ] **Code signing for releases** — Sign binaries and provide checksums.
