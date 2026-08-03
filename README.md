@@ -59,6 +59,16 @@ python scripts/release_check.py
 
 The harness validates version and release disclosures, parses AppStream metadata, checks the local release scripts, builds the selected Release configuration, runs the offscreen CTest suite, and smoke-tests the built executable with `--version`. It prints the CI-only guarantees that are intentionally unavailable here; platform packaging remains an explicit step through the matching script in `scripts/`.
 
+### Package-manager manifest artifacts
+
+After the platform artifacts and a source archive are present in `release/`, generate reviewable, non-submitted package-manager manifests with:
+
+```text
+python scripts/generate_package_manifests.py --release-dir release --output release/package-manifests --require windows --require macos --require flatpak
+```
+
+The generator emits validated Winget, Chocolatey, Homebrew Cask, and Flatpak files with the exact artifact URLs and SHA256 values. It writes `manifest-index.json` with `"submitted": false`; publishing or submitting those files remains an explicit maintainer action.
+
 ## Build instructions
 
 ### Linux
