@@ -3,6 +3,8 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QLineEdit>
+#include <QLabel>
+#include <QComboBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
@@ -58,6 +60,10 @@ private slots:
                   "defaultExclude");
     verifyManaged(dialog, dialog.findChild<QLineEdit *>("socks_proxy"),
                   "socks_proxy");
+    verifyManaged(dialog, dialog.findChild<QComboBox *>("mountPreset"),
+                  "mountPreset");
+    verifyManaged(dialog, dialog.findChild<QLabel *>("mountPresetFlags"),
+                  "mountPresetFlags");
     verifyManaged(dialog, dialog.findChild<QCheckBox *>("startMinimized"),
                   "startMinimized");
     verifyManaged(dialog, dialog.findChild<QPushButton *>("backupConfig"),
@@ -95,6 +101,18 @@ private slots:
     QVERIFY(alwaysShowInTray->isChecked());
     alwaysShowInTray->setChecked(false);
     QVERIFY(!startMinimized->isChecked());
+  }
+
+  void mountPresetShowsExactFlags() {
+    PreferencesDialog dialog;
+    auto *preset = dialog.findChild<QComboBox *>("mountPreset");
+    auto *flags = dialog.findChild<QLabel *>("mountPresetFlags");
+    QVERIFY(preset != nullptr);
+    QVERIFY(flags != nullptr);
+    QVERIFY(preset->count() >= 4);
+    preset->setCurrentIndex(1);
+    QVERIFY(flags->text().contains("--vfs-cache-mode off"));
+    QVERIFY(flags->text().contains("--poll-interval 1m"));
   }
 };
 

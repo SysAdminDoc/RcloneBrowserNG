@@ -2,6 +2,7 @@
 #include "job_options.h"
 #include "job_widget.h"
 #include "mount_backend.h"
+#include "mount_options.h"
 #include "list_of_job_options.h"
 #include "mount_widget.h"
 #include "preferences_dialog.h"
@@ -561,6 +562,7 @@ MainWindow::MainWindow(bool initializeRuntime)
       settings->setValue("Settings/rcloneConf", newRcloneConf);
       settings->setValue("Settings/stream", dialog.getStream());
       settings->setValue("Settings/mount", dialog.getMount());
+      settings->setValue("Settings/mountPreset", dialog.getMountPreset());
       settings->setValue("Settings/defaultDownloadDir",
                          dialog.getDefaultDownloadDir().trimmed());
       settings->setValue("Settings/defaultUploadDir",
@@ -4478,8 +4480,24 @@ void MainWindow::addMount(const QString &remote, const QString &folder) {
 void MainWindow::startMount(const QString &remote, const QString &folder,
                             bool keepMounted, int restartAttempt) {
   auto settings = GetSettings();
-  const QString opt = settings->value("Settings/mount").toString();
+  const MountOptionState mountState = LoadMountOptionState(*settings);
   const bool driveShared = settings->value("Settings/driveShared").toBool();
+  bool readOnly = settings->value("Settings/mountReadOnly").toBool();
+  // The pre-preset dialog stored --read-only directly in Settings/mount. Keep
+  // that legacy command intact instead of reporting a duplicate managed flag.
+  if (!settings->contains("Settings/mountPreset") &&
+      SplitRcloneOptions(mountState.expertOptions).contains(
+          QStringLiteral("--read-only"))) {
+    readOnly = false;
+  }
+  QString mountOptionError;
+  const QStringList mountOptions = BuildMountOptions(
+      mountState.presetId, mountState.expertOptions, readOnly, driveShared,
+      &mountOptionError);
+  if (!mountOptionError.isEmpty()) {
+    QMessageBox::warning(this, "Invalid mount options", mountOptionError);
+    return;
+  }
 
 #if defined(Q_OS_WIN32)
   const QString winFspDll = findWinFspDll();
@@ -4517,12 +4535,10 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   macMountFacts.fuseTInstalled = DetectFuseTInstalled();
   macMountFacts.macOsMajorVersion =
       IsMacOs26OrNewer() ? 26 : QOperatingSystemVersion::current().majorVersion();
-  if (!opt.isEmpty()) {
-    macMountFacts.userMountOptions = SplitRcloneOptions(opt);
-  }
+  macMountFacts.userMountOptions = mountOptions;
   RcloneCommandSupportedAsync(
       GetRclone(), "nfsmount", this,
-      [this, remote, folder, keepMounted, restartAttempt, opt, driveShared,
+      [this, remote, folder, keepMounted, restartAttempt, mountOptions,
        macMountFacts](bool supported) mutable {
         macMountFacts.nfsMountSupported = supported;
         const MountBackendPlan macMountPlan =
@@ -4536,20 +4552,20 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
           QMessageBox::warning(this, macMountPlan.warningTitle,
                                macMountPlan.warningText);
         }
-        launchMount(remote, folder, keepMounted, restartAttempt, opt,
-                    driveShared, macMountPlan.command,
+        launchMount(remote, folder, keepMounted, restartAttempt, mountOptions,
+                    macMountPlan.command,
                     macMountPlan.argsBeforeRemote);
       });
   return;
 #endif
 
-  launchMount(remote, folder, keepMounted, restartAttempt, opt, driveShared,
+  launchMount(remote, folder, keepMounted, restartAttempt, mountOptions,
               QStringLiteral("mount"), QStringList());
 }
 
 void MainWindow::launchMount(const QString &remote, const QString &folder,
                              bool keepMounted, int restartAttempt,
-                             const QString &opt, bool driveShared,
+                             const QStringList &mountOptions,
                              const QString &mountCommand,
                              const QStringList &mountBackendArgs) {
   QProcess *mount = new QProcess(this);
@@ -4586,6 +4602,23 @@ void MainWindow::launchMount(const QString &remote, const QString &folder,
 
   QObject::connect(widget, &MountWidget::stopped, this,
                    [=](bool requestedUnmount, bool) {
+                     if (widget->remountRequested()) {
+                       QPointer<MountWidget> widgetGuard(widget);
+                       QTimer::singleShot(0, this, [=]() {
+                         if (widgetGuard) {
+                           ui.jobs->removeWidget(widgetGuard.data());
+                           widgetGuard->deleteLater();
+                         }
+                         ui.jobs->removeWidget(line);
+                         delete line;
+                         if (ui.jobs->count() == 2) {
+                           ui.noJobsAvailable->show();
+                         }
+                         startMount(remote, folder, true, 0);
+                       });
+                       return;
+                     }
+
                      if (requestedUnmount || !widget->keepMounted()) {
                        return;
                      }
@@ -4618,6 +4651,27 @@ void MainWindow::launchMount(const QString &remote, const QString &folder,
                      });
                    });
 
+  QObject::connect(widget, &MountWidget::staleDetected, this,
+                   [=](const QString &detail) {
+                     if (!widget || widget->remountRequested()) {
+                       return;
+                     }
+                     QMessageBox box(
+                         QMessageBox::Warning, "Mount needs attention",
+                         QString("The mount %1 on %2 is still running, but its "
+                                 "mount point did not respond to two health "
+                                 "probes.\n\n%3")
+                             .arg(remote, folder, detail),
+                         QMessageBox::NoButton, this);
+                     QPushButton *remount =
+                         box.addButton("Remount", QMessageBox::AcceptRole);
+                     box.addButton("Keep mounted", QMessageBox::RejectRole);
+                     box.exec();
+                     if (box.clickedButton() == remount) {
+                       widget->requestRemount();
+                     }
+                   });
+
   QObject::connect(widget, &MountWidget::closed, this, [=]() {
     ui.jobs->removeWidget(widget);
     ui.jobs->removeWidget(line);
@@ -4646,23 +4700,8 @@ void MainWindow::launchMount(const QString &remote, const QString &folder,
   args << "--rc-pass" << rcPass;
 #endif
 
-  // for google drive "shared with me" without --read-only writes go created in
-  // main google drive it is more logical to mount it as read only so there is
-  // no confusion
-  if (driveShared) {
-    args << "--drive-shared-with-me";
-    args << "--read-only";
-  };
-
-  //	 default mount is now more generic. all options can be passed via
-  // preferences mount field
-  //       args << "--vfs-cache-mode";
-  //       args << "writes";
-
   args.append(GetRcloneConf());
-  if (!opt.isEmpty()) {
-    args.append(SplitRcloneOptions(opt));
-  }
+  args.append(mountOptions);
   args.append(mountBackendArgs);
   args << remote << folder;
 

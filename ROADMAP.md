@@ -53,12 +53,3 @@ All items trace back to public GitHub issues/PRs:
   Complexity: S
 
 ## Research-Driven Additions
-
-### P2
-
-- [ ] P2 — Add safe mount presets and stale-mount recovery probes
-  Why: Mount users need clearer VFS cache defaults and recovery when a mounted process survives but the mount becomes unusable after sleep/wake or backend disruption.
-  Evidence: `src/remote_widget.cpp:1213`, `src/preferences_dialog.cpp:63`, `src/main_window.cpp:4478`, `src/main_window.cpp:4555`, RClone Manager issue #225, RClone Manager issue #5, Mountain Duck sync/cache docs.
-  Touches: `src/remote_widget.cpp`, `src/preferences_dialog.*`, `src/main_window.*`, `src/mount_widget.*`, mount option tests.
-  Acceptance: Mount UI offers named presets that show the exact rclone flags, preserves expert custom flags, validates incompatible options before starting rclone, and periodically probes keep-mounted mount points after wake/interval so stale-but-running mounts notify the user and offer remount.
-  Complexity: M

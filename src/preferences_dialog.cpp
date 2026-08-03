@@ -1,5 +1,6 @@
 #include "preferences_dialog.h"
 #include "interface_polish.h"
+#include "mount_options.h"
 #include "utils.h"
 
 PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
@@ -38,7 +39,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   UiPolish::SetPathField(ui.rclone, "rclone executable path");
   UiPolish::SetPathField(ui.rcloneConf, "rclone configuration path");
   UiPolish::SetPathField(ui.stream, "Stream player command");
-  UiPolish::SetPathField(ui.mount, "Mount options");
+  UiPolish::SetPathField(ui.mount, "Expert mount options");
   UiPolish::SetPathField(ui.defaultDownloadDir, "Default download folder");
   UiPolish::SetPathField(ui.defaultUploadDir, "Default upload folder");
   UiPolish::SetPathField(ui.defaultDownloadOptions,
@@ -61,7 +62,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   ui.rclone->setPlaceholderText("Use PATH lookup when empty");
   ui.rcloneConf->setPlaceholderText("Use rclone's default config path");
   ui.stream->setPlaceholderText("mpv -");
-  ui.mount->setPlaceholderText("--vfs-cache-mode writes");
+  ui.mount->setPlaceholderText("Additional flags, for example --network-mode");
   ui.defaultDownloadDir->setPlaceholderText("Ask each time when empty");
   ui.defaultUploadDir->setPlaceholderText("Ask each time when empty");
   ui.defaultDownloadOptions->setPlaceholderText("Extra flags for downloads");
@@ -241,6 +242,27 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
         ui.defaultUploadDir->setText(defaultUploadDir);
       });
 
+  const QVector<MountPreset> mountPresets = MountPresets();
+  for (const MountPreset &preset : mountPresets) {
+    ui.mountPreset->addItem(preset.label, preset.id);
+  }
+  ui.mountPreset->setAccessibleName("Mount preset");
+  ui.mountPresetFlags->setAccessibleName("Mount preset flags");
+  auto updateMountPresetFlags = [this]() {
+    ui.mountPresetFlags->setText(
+        QString("Exact preset flags: %1")
+            .arg(MountPresetFlags(ui.mountPreset->currentData().toString())
+                     .isEmpty()
+                 ? QStringLiteral("(none)")
+                 : MountPresetFlags(ui.mountPreset->currentData().toString())));
+    ui.mountPresetFlags->setToolTip(ui.mountPresetFlags->text());
+  };
+  QObject::connect(ui.mountPreset,
+                   QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                   [updateMountPresetFlags](int) {
+                     updateMountPresetFlags();
+                   });
+
   auto settings = GetSettings();
   ui.rclone->setText(
       QDir::toNativeSeparators(settings->value("Settings/rclone").toString()));
@@ -255,16 +277,17 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
 #endif
   ui.stream->setText(settings->value("Settings/stream").toString());
 
+  const MountOptionState mountState = LoadMountOptionState(*settings);
+  ui.mount->setText(mountState.expertOptions);
+  const int mountPresetIndex =
+      ui.mountPreset->findData(mountState.presetId);
+  if (mountPresetIndex >= 0) {
+    ui.mountPreset->setCurrentIndex(mountPresetIndex);
+  }
+  updateMountPresetFlags();
 #if defined(Q_OS_OPENBSD) || defined(Q_OS_NETBSD)
-  ui.mount->setText(
-      settings
-          ->value("Settings/mount",
-                  "* mount is not supported by rclone on this system *")
-          .toString());
   ui.mount->setDisabled(true);
-#else
-  ui.mount->setText(
-      settings->value("Settings/mount", "--vfs-cache-mode writes").toString());
+  ui.mountPreset->setDisabled(true);
 #endif
 #if defined(Q_OS_OPENBSD) || defined(Q_OS_NETBSD)
   ui.mount->setToolTip("Mount is not supported by rclone on this system.");
@@ -414,6 +437,10 @@ QString PreferencesDialog::getRcloneConf() const {
 QString PreferencesDialog::getStream() const { return ui.stream->text(); }
 
 QString PreferencesDialog::getMount() const { return ui.mount->text(); }
+
+QString PreferencesDialog::getMountPreset() const {
+  return ui.mountPreset->currentData().toString();
+}
 
 QString PreferencesDialog::getDefaultDownloadDir() const {
   return QDir::fromNativeSeparators(ui.defaultDownloadDir->text());

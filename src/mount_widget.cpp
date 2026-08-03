@@ -103,6 +103,7 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
                    this, [=](int status, QProcess::ExitStatus exitStatus) {
+                     mHealthTimer->stop();
                      mProcess->deleteLater();
                      mRunning = false;
                      ui.cancel->setEnabled(true);
@@ -124,12 +125,23 @@ MountWidget::MountWidget(QProcess *process, const QString &remote,
                      emit stopped(mUserRequestedUnmount, cleanExit);
                    });
 
+  mHealthTimer = new QTimer(this);
+  mHealthTimer->setInterval(60000);
+  mHealthTimer->setSingleShot(false);
+  QObject::connect(mHealthTimer, &QTimer::timeout, this,
+                   &MountWidget::startHealthProbe);
+  // The mount needs time to establish its filesystem before the first probe.
+  QTimer::singleShot(15000, this, &MountWidget::startHealthProbe);
+  mHealthTimer->start();
+
   UiPolish::SetStatus(ui.showDetails, "success", "Mounted");
 }
 
 MountWidget::~MountWidget() {}
 
 bool MountWidget::keepMounted() const { return ui.keepMounted->isChecked(); }
+
+bool MountWidget::remountRequested() const { return mRemountRequested; }
 
 void MountWidget::setRemountScheduled(int delayMs, int attempt) {
   ui.keepMounted->setEnabled(false);
@@ -143,6 +155,55 @@ void MountWidget::setRemountScheduled(int delayMs, int attempt) {
               "scheduled in %2 seconds.")
           .arg(attempt)
           .arg((delayMs + 999) / 1000));
+}
+
+void MountWidget::startHealthProbe() {
+  if (!mRunning || mHealthProbeInFlight ||
+      mProcess->state() != QProcess::Running) {
+    return;
+  }
+
+  mHealthProbeInFlight = true;
+  const QString folder = ui.folder->text();
+  QPointer<MountWidget> widgetGuard(this);
+  QCoreApplication *application = QCoreApplication::instance();
+  QThread *thread = QThread::create(
+      [widgetGuard, application, folder]() {
+        const MountHealthProbeResult result = ProbeMountPoint(folder);
+        if (!application) {
+          return;
+        }
+        QMetaObject::invokeMethod(
+            application,
+            [widgetGuard, result]() {
+              if (widgetGuard) {
+                widgetGuard->finishHealthProbe(result);
+              }
+            },
+            Qt::QueuedConnection);
+      });
+  QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+  thread->start();
+}
+
+void MountWidget::finishHealthProbe(const MountHealthProbeResult &result) {
+  mHealthProbeInFlight = false;
+  if (result.healthy) {
+    mHealthFailures = 0;
+    return;
+  }
+
+  ++mHealthFailures;
+  if (mHealthFailures < 2 || mStaleNotified || !mRunning) {
+    return;
+  }
+
+  mStaleNotified = true;
+  ui.output->appendPlainText("Mount health probe failed: " + result.detail);
+  UiPolish::SetStatus(ui.showDetails, "warning", "Mount needs attention");
+  ui.showDetails->setChecked(true);
+  ui.showOutput->setChecked(true);
+  emit staleDetected(result.detail);
 }
 
 QString MountWidget::rcAddr() const {
@@ -298,6 +359,7 @@ void MountWidget::beginUnmount() {
   }
 
   mUserRequestedUnmount = true;
+  mHealthTimer->stop();
   ui.keepMounted->setEnabled(false);
   ui.cancel->setEnabled(false);
   ui.cancel->setToolTip("Unmounting...");
@@ -363,6 +425,7 @@ void MountWidget::cancel() {
       return;
     }
     if (!allowUnmount) {
+      mRemountRequested = false;
       mStopping = false;
       ui.keepMounted->setEnabled(true);
       ui.cancel->setEnabled(true);
@@ -378,4 +441,12 @@ void MountWidget::cancel() {
   mStopping = true;
   beginUnmount();
 #endif
+}
+
+void MountWidget::requestRemount() {
+  if (!mRunning || mRemountRequested) {
+    return;
+  }
+  mRemountRequested = true;
+  cancel();
 }

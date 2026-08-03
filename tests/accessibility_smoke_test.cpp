@@ -117,8 +117,9 @@ private slots:
 
   void preferencesDialogControls() {
     PreferencesDialog dialog;
-    verifySurface(&dialog,
-                  {"Max concurrent transfers", "Default exclude patterns",
+        verifySurface(&dialog,
+                  {"Max concurrent transfers", "Mount preset",
+                   "Mount preset flags", "Default exclude patterns",
                    "SOCKS proxy", "Backup rclone config",
                    "Restore rclone config", "Start minimized to system tray"});
     dialog.close();

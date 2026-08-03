@@ -1,5 +1,9 @@
 #include "mount_backend.h"
+#include "mount_health.h"
+#include "mount_options.h"
 
+#include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QTest>
 
 class MountBackendTest : public QObject {
@@ -83,6 +87,75 @@ private slots:
              "missing backend without nfsmount should still attempt mount");
     QVERIFY2(!plan.warningText.isEmpty(),
              "missing backend without nfsmount should warn");
+  }
+
+  void mountPresetsExposeExactFlags() {
+    const QVector<MountPreset> presets = MountPresets();
+    QCOMPARE(presets.size(), 4);
+    QCOMPARE(presets.at(0).id, QStringLiteral("balanced"));
+    QCOMPARE(MountPresetFlags(QStringLiteral("streaming")),
+             QStringLiteral("--vfs-cache-mode off --dir-cache-time 5m "
+                            "--poll-interval 1m"));
+    QVERIFY(MountPresetArguments(QStringLiteral("offline"))
+                .contains(QStringLiteral("--vfs-cache-max-size")));
+  }
+
+  void legacyDefaultMigratesToBalanced() {
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QSettings settings(file.fileName(), QSettings::IniFormat);
+    settings.setValue("Settings/mount", "--vfs-cache-mode writes");
+    const MountOptionState state = LoadMountOptionState(settings);
+    QCOMPARE(state.presetId, QStringLiteral("balanced"));
+    QVERIFY(state.expertOptions.isEmpty());
+  }
+
+  void legacyCustomOptionsArePreserved() {
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QSettings settings(file.fileName(), QSettings::IniFormat);
+    const QString custom = "--network-mode --dir-cache-time 30s";
+    settings.setValue("Settings/mount", custom);
+    const MountOptionState state = LoadMountOptionState(settings);
+    QCOMPARE(state.presetId, QStringLiteral("custom"));
+    QCOMPARE(state.expertOptions, custom);
+  }
+
+  void incompatibleExpertFlagsAreRejected() {
+    const MountOptionValidation validation = ValidateMountOptions(
+        QStringLiteral("balanced"), "--vfs-cache-mode full", false, false);
+    QVERIFY(!validation.valid);
+    QVERIFY(validation.error.contains("--vfs-cache-mode"));
+
+    const MountOptionValidation cacheValidation = ValidateMountOptions(
+        QStringLiteral("streaming"), "--vfs-cache-max-size 5G", false,
+        false);
+    QVERIFY(!cacheValidation.valid);
+    QVERIFY(cacheValidation.error.contains("incompatible"));
+  }
+
+  void mountOptionsPreserveExpertFlags() {
+    QString error;
+    const QStringList options = BuildMountOptions(
+        QStringLiteral("balanced"), "--network-mode", true, false, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(options.contains(QStringLiteral("--vfs-cache-mode")));
+    QVERIFY(options.contains(QStringLiteral("--network-mode")));
+    QVERIFY(options.contains(QStringLiteral("--read-only")));
+  }
+
+  void mountHealthRejectsMissingPoint() {
+    const MountHealthProbeResult result =
+        ProbeMountPoint(QDir::temp().filePath("rclone-browser-ng-missing"));
+    QVERIFY(!result.healthy);
+    QVERIFY(!result.detail.isEmpty());
+  }
+
+  void mountHealthAcceptsReadyDirectory() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const MountHealthProbeResult result = ProbeMountPoint(directory.path());
+    QVERIFY2(result.healthy, qPrintable(result.detail));
   }
 };
 

@@ -5,6 +5,7 @@
 #include "icon_cache.h"
 #include "item_model.h"
 #include "list_of_job_options.h"
+#include "mount_options.h"
 #include "progress_dialog.h"
 #include "rclone_capabilities.h"
 #include "remote_path.h"
@@ -1176,7 +1177,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
     QDialog dlg(this);
     dlg.setWindowTitle(QString("Mount %1").arg(remote));
-    UiPolish::SetWindowDefaults(&dlg, QSize(460, 220));
+    UiPolish::SetWindowDefaults(&dlg, QSize(540, 360));
     auto *layout = new QFormLayout(&dlg);
     layout->setSpacing(10);
     layout->setContentsMargins(12, 12, 12, 12);
@@ -1206,13 +1207,45 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     layout->addRow("", browseBtn);
 #endif
 
-    auto *cacheMode = new QComboBox(&dlg);
-    cacheMode->addItems({"off", "minimal", "writes", "full"});
-    cacheMode->setCurrentText(
-        settings->value("Settings/mountCacheMode", "writes").toString());
-    cacheMode->setToolTip("--vfs-cache-mode setting for the mount.");
-    cacheMode->setAccessibleName("VFS cache mode");
-    layout->addRow("Cache mode:", cacheMode);
+    const MountOptionState mountState = LoadMountOptionState(*settings);
+    auto *preset = new QComboBox(&dlg);
+    for (const MountPreset &mountPreset : MountPresets()) {
+      preset->addItem(mountPreset.label, mountPreset.id);
+    }
+    const int presetIndex = preset->findData(mountState.presetId);
+    if (presetIndex >= 0) {
+      preset->setCurrentIndex(presetIndex);
+    }
+    preset->setAccessibleName("Mount preset");
+    preset->setToolTip("Choose a tested group of VFS and directory-cache flags.");
+    layout->addRow("Preset:", preset);
+
+    auto *presetFlags = new QLabel(&dlg);
+    presetFlags->setWordWrap(true);
+    presetFlags->setAccessibleName("Mount preset flags");
+    auto updatePresetFlags = [=]() {
+      const QString flags = MountPresetFlags(preset->currentData().toString());
+      presetFlags->setText(
+          QString("Exact flags: %1")
+              .arg(flags.isEmpty() ? QStringLiteral("(none)") : flags));
+      presetFlags->setToolTip(presetFlags->text());
+    };
+    QObject::connect(preset, &QComboBox::currentTextChanged, &dlg,
+                     [updatePresetFlags](const QString &) {
+                       updatePresetFlags();
+                     });
+    updatePresetFlags();
+    layout->addRow("Preset flags:", presetFlags);
+
+    auto *expertOptions = new QLineEdit(&dlg);
+    expertOptions->setText(mountState.expertOptions);
+    expertOptions->setPlaceholderText(
+        "Additional flags, for example --network-mode");
+    expertOptions->setAccessibleName("Expert mount options");
+    expertOptions->setToolTip(
+        "Additional rclone mount flags appended after the selected preset.");
+    UiPolish::SetPathField(expertOptions, "Expert mount options");
+    layout->addRow("Expert options:", expertOptions);
 
     auto *readOnly = new QCheckBox("Read-only mount", &dlg);
     readOnly->setChecked(
@@ -1227,8 +1260,18 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
       UiPolish::SetPrimaryButton(ok);
     }
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
-                     &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, [&]() {
+      const QString presetId = preset->currentData().toString();
+      const MountOptionValidation validation = ValidateMountOptions(
+          presetId, expertOptions->text(), readOnly->isChecked(),
+          ui.checkBoxShared->isChecked());
+      if (!validation.valid) {
+        QMessageBox::warning(&dlg, "Invalid mount options", validation.error);
+        expertOptions->setFocus();
+        return;
+      }
+      dlg.accept();
+    });
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
                      &QDialog::reject);
     layout->addRow(buttons);
@@ -1237,15 +1280,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       return;
 
     QString folder = mountPoint->text();
+    const QString presetId = preset->currentData().toString();
     settings->setValue("Settings/lastMountPoint", folder);
-    settings->setValue("Settings/mountCacheMode", cacheMode->currentText());
     settings->setValue("Settings/mountReadOnly", readOnly->isChecked());
     settings->setValue("Settings/driveShared", ui.checkBoxShared->isChecked());
-
-    QString mountOpts = "--vfs-cache-mode " + cacheMode->currentText();
-    if (readOnly->isChecked())
-      mountOpts += " --read-only";
-    settings->setValue("Settings/mount", mountOpts);
+    settings->setValue("Settings/mountPreset", presetId);
+    settings->setValue("Settings/mount", expertOptions->text().trimmed());
 
     emit addMount(remote + ":" + path, folder);
   });

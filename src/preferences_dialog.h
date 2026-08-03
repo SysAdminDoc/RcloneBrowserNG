@@ -14,6 +14,7 @@ public:
   QString getRcloneConf() const;
   QString getStream() const;
   QString getMount() const;
+  QString getMountPreset() const;
   QString getDefaultDownloadDir() const;
   QString getDefaultUploadDir() const;
   QString getDefaultDownloadOptions() const;

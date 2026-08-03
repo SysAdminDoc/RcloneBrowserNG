@@ -59,6 +59,8 @@ set(SOURCE
   folder_compare.cpp
   remote_provider.cpp
   mount_backend.cpp
+  mount_health.cpp
+  mount_options.cpp
   rclone_rc_engine.cpp
   rclone_capabilities.cpp
   rc_job_widget.cpp
@@ -96,6 +98,8 @@ set(OTHER
   folder_compare.h
   remote_provider.h
   mount_backend.h
+  mount_health.h
+  mount_options.h
   rclone_rc_engine.h
   rclone_capabilities.h
   rc_job_widget.h

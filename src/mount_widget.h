@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "mount_health.h"
 #include "ui_mount_widget.h"
 #include <functional>
 
@@ -16,14 +17,17 @@ public:
   ~MountWidget();
 
   bool keepMounted() const;
+  bool remountRequested() const;
   void setRemountScheduled(int delayMs, int attempt);
 
 public slots:
   void cancel();
+  void requestRemount();
 
 signals:
   void finished();
   void stopped(bool requestedUnmount, bool cleanExit);
+  void staleDetected(const QString &detail);
   void closed();
 
 private:
@@ -32,7 +36,12 @@ private:
   bool mRunning = true;
   bool mStopping = false;
   bool mUserRequestedUnmount = false;
+  bool mRemountRequested = false;
+  bool mHealthProbeInFlight = false;
+  bool mStaleNotified = false;
+  int mHealthFailures = 0;
   QProcess *mProcess;
+  QTimer *mHealthTimer = nullptr;
 
   // Windows remote-control endpoint + per-mount credentials used to issue an
   // authenticated unmount (empty on other platforms)
@@ -46,4 +55,6 @@ private:
   void runRcCommandAsync(const QString &command, RcCommandCallback callback);
   void confirmNoPendingVfsUploads(std::function<void(bool)> callback);
   void beginUnmount();
+  void startHealthProbe();
+  void finishHealthProbe(const MountHealthProbeResult &result);
 };

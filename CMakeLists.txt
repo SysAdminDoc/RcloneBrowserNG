@@ -116,6 +116,9 @@ if(BUILD_TESTING)
   add_executable(mount_backend_test
     tests/mount_backend_test.cpp
     src/mount_backend.cpp
+    src/mount_health.cpp
+    src/mount_options.cpp
+    src/utils.cpp
   )
   target_include_directories(mount_backend_test PRIVATE src)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
@@ -189,6 +192,7 @@ if(BUILD_TESTING)
     src/preferences_dialog.cpp
     src/preferences_dialog.ui
     src/interface_polish.cpp
+    src/mount_options.cpp
     src/utils.cpp
   )
   # AUTOUIC is enabled directory-scoped in src/; this target compiles the
@@ -212,6 +216,8 @@ if(BUILD_TESTING)
     src/folder_compare.cpp
     src/remote_provider.cpp
     src/mount_backend.cpp
+    src/mount_health.cpp
+    src/mount_options.cpp
     src/rclone_rc_engine.cpp
     src/rclone_capabilities.cpp
     src/rc_job_widget.cpp
