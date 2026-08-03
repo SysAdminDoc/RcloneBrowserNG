@@ -148,11 +148,41 @@ def check_metadata(report: Report, root: Path) -> None:
         report.failed_check("AppStream metadata parse", "metainfo file is missing")
         return
     try:
-        ET.parse(metainfo)
+        document = ET.parse(metainfo)
     except (ET.ParseError, OSError) as exc:
         report.failed_check("AppStream metadata parse", str(exc))
         return
     report.passed("AppStream metadata parse")
+
+    release_nodes = document.getroot().findall("./releases/release")
+    source_version = read_text(root / "VERSION").strip()
+    release_versions = [node.attrib.get("version", "") for node in release_nodes]
+    release_dates = [node.attrib.get("date", "") for node in release_nodes]
+    if len(release_nodes) < 3:
+        report.failed_check(
+            "AppStream release history",
+            "at least three release entries are required",
+        )
+    elif release_versions[0] != source_version:
+        report.failed_check(
+            "AppStream release history",
+            f"newest entry {release_versions[0]!r} does not match VERSION {source_version!r}",
+        )
+    elif len(set(release_versions)) != len(release_versions):
+        report.failed_check(
+            "AppStream release history", "release versions must be unique"
+        )
+    elif any(not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
+             for date in release_dates):
+        report.failed_check(
+            "AppStream release history", "every release entry needs an ISO date"
+        )
+    elif release_dates != sorted(release_dates, reverse=True):
+        report.failed_check(
+            "AppStream release history", "release entries must be newest-first"
+        )
+    else:
+        report.passed("AppStream release history")
 
     appstreamcli = shutil.which("appstreamcli")
     if not appstreamcli:

@@ -43,13 +43,4 @@ All items trace back to public GitHub issues/PRs:
 
 ## Research-Driven Additions (2026-06-20)
 
-### P3
-
-- [ ] P3 — Update AppStream metainfo with release entries for each tagged version
-  Why: The AppStream metainfo file contains only the initial v2.0.0 release entry. Flathub and Linux distribution app stores use `<releases>` data to show version history, update recency, and release notes. A stale single entry makes the app look unmaintained.
-  Evidence: `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml` has one `<release>` for v2.0.0; Flathub metainfo guidelines require current release data; `appstreamcli validate` in CI already checks this file.
-  Touches: `assets/io.github.sysadmindoc.rclonebrowserng.metainfo.xml`, potentially `.github/workflows/release.yml` (auto-insert release entry on tag).
-  Acceptance: Each tagged release has a corresponding `<release>` entry with version, date, and brief description; entries are ordered newest-first; `appstreamcli validate` passes; at least the 3 most recent releases are present.
-  Complexity: S
-
 ## Research-Driven Additions

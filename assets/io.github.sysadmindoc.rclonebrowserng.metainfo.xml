@@ -20,6 +20,16 @@
         <p>First NG release: Qt 6 port, modern rclone parsing, async delete, authenticated mount RC, dark-mode polish, and many reliability fixes. Over 80 features added since the abandoned upstream including saved tasks, scheduling, dual-pane view, file preview, version browser, cross-remote search, and cloud trash support.</p>
       </description>
     </release>
+    <release version="1.8.0" date="2020-02-17">
+      <description>
+        <p>Upstream release with proxy configuration, larger remote icon choices, directory trees, default rclone options, and public-link support.</p>
+      </description>
+    </release>
+    <release version="1.7.0" date="2019-11-27">
+      <description>
+        <p>Upstream release with AppImage and Windows packaging, portable mode, dark mode, high-DPI support, and broader terminal compatibility.</p>
+      </description>
+    </release>
   </releases>
   <developer id="io.github.sysadmindoc">
     <name>SysAdminDoc</name>
