@@ -13,6 +13,32 @@ rem   - CMake on PATH
 rem   - Inno Setup 6 (for installer, optional)
 rem   - 7-Zip (for zip archive, optional)
 
+set "DRY_RUN=0"
+if /I "%~1"=="--dry-run" set "DRY_RUN=1"
+if not "%~1"=="" if /I not "%~1"=="--dry-run" (
+  echo ERROR: Unknown argument "%~1". Use --dry-run or no arguments.
+  exit /b 2
+)
+
+rem --- Version and paths ------------------------------------------------------
+set "ROOT=%~dp0.."
+set /p VERSION=<"%ROOT%\VERSION"
+if "%VERSION%"=="" (
+  echo ERROR: VERSION is missing or empty.
+  exit /b 1
+)
+for /f "tokens=*" %%t in ('git -C "%ROOT%" rev-parse --short HEAD 2^>nul') do set "COMMIT=%%t"
+if defined COMMIT (
+  set "FULLVER=%VERSION%-!COMMIT!"
+) else (
+  set "FULLVER=%VERSION%"
+)
+set "NAME=RcloneBrowserNG-%FULLVER%-windows-x64"
+set "TARGET=%ROOT%\release\%NAME%"
+set "BUILD=%ROOT%\build\build\Release"
+
+if "%DRY_RUN%"=="1" goto :dry_run
+
 rem --- Locate Visual Studio ---------------------------------------------------
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
@@ -50,20 +76,6 @@ if errorlevel 1 (
   echo ERROR: cmake.exe not found on PATH.
   exit /b 1
 )
-
-rem --- Version and paths ------------------------------------------------------
-set ROOT="%~dp0.."
-set /p VERSION=<"%ROOT%\VERSION"
-for /f "tokens=*" %%t in ('git rev-parse --short HEAD 2^>nul') do set "COMMIT=%%t"
-if defined COMMIT (
-  set "FULLVER=%VERSION%-!COMMIT!"
-) else (
-  set "FULLVER=%VERSION%"
-)
-
-set "NAME=RcloneBrowserNG-%FULLVER%-windows-x64"
-set "TARGET=%~dp0..\release\%NAME%"
-set BUILD="%~dp0..\build\build\Release"
 
 pushd "%ROOT%"
 
@@ -129,4 +141,15 @@ if exist "%ISCC%" (
 
 echo.
 echo Release artifacts:
-dir /b "%~dp0..\release\%NAME%*"
+dir /b "%ROOT%\release\%NAME%*"
+exit /b 0
+
+:dry_run
+echo [DRY-RUN] release_windows.cmd would build version %VERSION%.
+echo [DRY-RUN] Release directory: %ROOT%\release
+echo [DRY-RUN] CMake configure: cmake -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="%%QT%%" ..
+echo [DRY-RUN] CMake build: cmake --build . --config Release
+echo [DRY-RUN] Qt deployment: windeployqt.exe --no-translations "%TARGET%\RcloneBrowser.exe"
+echo [DRY-RUN] Zip artifact: "%TARGET%.zip"
+echo [DRY-RUN] Installer artifact: "%ROOT%\release\%NAME%-setup.exe"
+exit /b 0

@@ -50,13 +50,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: Release workflow emits non-submitted Winget, Homebrew Cask, Chocolatey, and Flatpak manifest artifacts with current version, URLs, and SHA256 values; generated manifests are syntax-validated where tooling is available.
   Complexity: M
 
-- [ ] P2 — Add release-script smoke tests for auxiliary tooling
-  Why: Small script defects can silently break packaging maintenance, including the Bash-array usage under a `/bin/sh` shebang in `scripts/prepare_icons.sh`.
-  Evidence: `scripts/prepare_icons.sh`, `scripts/release_AppImage.sh`, `scripts/release_windows.cmd`.
-  Touches: `scripts/prepare_icons.sh`, release scripts, `.github/workflows/build.yml` or a script-test workflow step.
-  Acceptance: Shell scripts pass `bash -n` or compatible checks, Windows batch has a dry-run validation path, icon preparation uses a matching Bash shebang or POSIX syntax, and CI fails on script syntax drift.
-  Complexity: S
-
 - [ ] P2 — Add packaged-artifact launch smoke tests before release publish
   Why: Release jobs build, deploy, checksum, and attest artifacts, but package regressions can still ship if the packaged binary is never executed after `linuxdeploy`, `macdeployqt`, `windeployqt`, zip, or installer staging.
   Evidence: `.github/workflows/release.yml`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, `scripts/release_windows.cmd`, GitHub artifact attestation guidance.

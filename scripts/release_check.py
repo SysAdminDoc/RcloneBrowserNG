@@ -171,6 +171,7 @@ def check_release_scripts(report: Report, root: Path) -> None:
         root / "scripts" / "prepare_icons.sh",
         root / "scripts" / "release_AppImage.sh",
         root / "scripts" / "release_macOS.sh",
+        root / "scripts" / "fetch_linuxdeploy_tools.sh",
     ]
     bash = shutil.which("bash")
     if bash:
@@ -213,6 +214,18 @@ def check_release_scripts(report: Report, root: Path) -> None:
         )
     else:
         report.passed("Windows release-script contract")
+
+    cmd = shutil.which("cmd.exe") or shutil.which("cmd")
+    if cmd:
+        run_checked(
+            report,
+            "Windows release-script dry-run",
+            [cmd, "/d", "/c", "call", str(batch), "--dry-run"],
+            root,
+            timeout=30,
+        )
+    else:
+        report.skipped_check("Windows release-script dry-run", "cmd.exe is not available")
 
     qt_validator = root / "scripts" / "validate_qt_version.ps1"
     if not qt_validator.is_file():
