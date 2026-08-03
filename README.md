@@ -3,7 +3,6 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/SysAdminDoc/RcloneBrowserNG/releases)
 [![License](https://img.shields.io/github/license/SysAdminDoc/RcloneBrowserNG.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20BSD-lightgrey.svg)](#build-instructions)
-[![Build](https://github.com/SysAdminDoc/RcloneBrowserNG/actions/workflows/build.yml/badge.svg)](https://github.com/SysAdminDoc/RcloneBrowserNG/actions/workflows/build.yml)
 [![Qt](https://img.shields.io/badge/Qt-6.4%2B-green.svg)](https://www.qt.io/)
 
 Simple cross-platform GUI for the [rclone](https://rclone.org/) command line tool.
@@ -48,7 +47,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 
 ## How to get it
 
-Download binaries for Windows, macOS and Linux from the [releases](https://github.com/SysAdminDoc/RcloneBrowserNG/releases) page, or build from source (below).
+Build from source using the instructions below. Maintainer-published artifacts, when available, are linked from the [releases](https://github.com/SysAdminDoc/RcloneBrowserNG/releases) page; this repository does not provide a CI build or artifact-attestation service.
 
 ## Build instructions
 

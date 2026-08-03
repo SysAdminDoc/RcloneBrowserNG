@@ -22,7 +22,7 @@ This allows private discussion and coordinated disclosure. You will receive an a
 - Vulnerabilities in Rclone Browser NG code (C++/Qt)
 - Unsafe handling of rclone output or user input
 - Credential exposure or insecure storage
-- CI/CD supply chain issues in this repository
+- Build and release tooling or artifact-integrity issues in this repository
 
 ## What Not to Report Here
 
@@ -32,7 +32,6 @@ This allows private discussion and coordinated disclosure. You will receive an a
 
 ## Security Measures
 
-- Release artifacts include SHA256 checksums and [SLSA provenance attestations](https://slsa.dev/)
-- CI workflows use SHA-pinned GitHub Actions
-- CodeQL static analysis runs on every push
+- Release builds are produced by the maintainer's local release scripts; this repository does not provide CI builds, checksums, provenance attestations, or CodeQL/Scorecard results.
+- The local Windows release script validates the configured Qt version against the documented security floor.
 - The app warns when the detected rclone version has known CVEs

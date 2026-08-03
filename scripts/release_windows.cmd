@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 rem Rclone Browser NG — local Windows x64 release build script.
-rem Matches the CI release workflow; see .github/workflows/release.yml.
+rem This is the local Windows release path; no CI release workflow is included.
 rem
 rem Usage: release_windows.cmd
 rem

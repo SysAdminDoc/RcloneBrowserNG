@@ -9,7 +9,6 @@
 ### Security
 -   SECURITY: Saved-task webhook tokens, heartbeat URLs, and shell hook commands are now protected at rest using Windows DPAPI encryption (base64 obfuscation on other platforms); no representative secret appears in plaintext in the JSON task store
 -   SECURITY: Saved-task shell hooks (preCommand/postCommand) are now trust-gated — imported or migrated tasks with hooks prompt for user review before execution; hooks set directly in the transfer dialog are trusted implicitly
--   SECURITY: CodeQL analysis upgraded from extractionless (`build-mode: none`) to traced build (`build-mode: manual`) for proper interprocedural C++ vulnerability detection; all CodeQL and Scorecard actions SHA-pinned
 -   SECURITY: OpenSSF-recommended binary hardening flags added — MSVC `/guard:cf` (Control Flow Guard), `/CETCOMPAT` (Intel CET), `/DYNAMICBASE`; GCC/Clang `-fcf-protection=full`, `-Wl,-z,relro,-z,now` (full RELRO), `_FORTIFY_SOURCE` raised from 2 to 3
 -   SECURITY: RC auth regression test gate — automated test scans all source files for RC command construction and fails if any path lacks `--rc-user`/`--rc-pass` or introduces `--rc-no-auth`
 
@@ -24,22 +23,19 @@
 -   NEW: Qt Linguist i18n scaffolding — QTranslator loading from bundled and external translation files; Qt LinguistTools CMake integration
 
 ### Build & Compatibility
--   NEW: clang-tidy static analysis runs on every Linux CI build with bugprone, performance, and modernize checks
--   NEW: AppImage delta updates — release AppImages embed zsync UPDATE_INFORMATION for efficient incremental updates via AppImageUpdate
--   NEW: Release artifact smoke tests — Linux AppImage, Windows x64, and Windows ARM64 packages are verified with `--version` before release publication
--   NEW: Package-manager manifest generation — release workflow produces WinGet, Homebrew Cask, and Scoop manifests with correct versions and checksums
+-   CHANGED: Release documentation now describes the repository's local build and release scripts; GitHub Actions, CI-only checks, artifact attestations, and automated publication are not provided here
 -   NEW: AppStream metainfo release entry updated with detailed v2.0.0 description
 -   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)
 -   CHANGED: 13 of 14 test targets migrated from custom `require()`/`std::exit(1)` harness to Qt QTest framework with QVERIFY/QCOMPARE assertions and proper test reporting
 -   FIXED: Cross-remote search cancel now uses async process termination instead of blocking `waitForFinished()`
 
 ### Security
--   SECURITY: Release packaging now uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and local/CI Windows release paths share the same Qt CVE floor check.
+-   SECURITY: Local release packaging uses pinned, SHA256-verified linuxdeploy AppImages instead of mutable `continuous` downloads, and the local Windows release path validates the Qt CVE floor.
 -   SECURITY: Preview download errors now render remote `rclone` output as plain text, preventing backend error text from being interpreted as rich text.
 -   SECURITY: File Properties now escapes remote-provided filenames, hashes, and metadata before rendering rich-text details.
 -   SECURITY: Transfer, mount, stream, and notice summaries now force plain-text rendering for path and remote-derived labels.
 -   SECURITY: Heartbeat, webhook, and copyurl inputs now reject malformed or non-http(s) URLs before creating network requests
--   SECURITY: Windows x64 CI/release Qt baseline raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); build and release workflows validate the Qt version and fail on vulnerable ranges
+-   SECURITY: The local Windows release Qt baseline was raised from 6.7.* to 6.8.* to avoid CVE-2026-6210 (Qt SVG); the release script validates the Qt version and fails on vulnerable ranges
 -   SECURITY: Preview temp files now use sanitized filenames (`QFileInfo::fileName()`) preventing path-traversal via malicious remote filenames
 -   SECURITY: Schedule XML temp files now use `QTemporaryFile` with random names instead of predictable paths, preventing symlink/replacement attacks
 -   FIXED: Use-after-free in backend feature query — `QPointer` guard prevents callback from accessing destroyed RemoteWidget
@@ -76,7 +72,6 @@
 -   NEW: Scheduler golden tests — 20+ tests cover Windows XML, systemd timers, and macOS plists for every interval type
 -   NEW: Per-file job audit detail — completed jobs record per-file transfer events (transferred, deleted, skipped, error) with timestamps; viewable and exportable (secrets redacted) from Job History
 -   NEW: Remote Health diagnostics panel (Help > Remote Health) — shows rclone version, mount backend, per-remote connectivity and quota status with Copy Report
--   NEW: SPDX SBOM generation in release pipeline alongside checksums and attestations
 -   NEW: High-contrast palette support — UI colors derive from system palette when contrast ratio exceeds 12:1 (Windows High Contrast, GNOME High Contrast)
 -   NEW: Parsing/serialization regression tests — 10 golden-file tests covering lsjson streaming parser (chunked, Unicode, >4GB, nested metadata) and JSON stats parser
 -   NEW: Generalized cloud trash — delete operations use backend-specific trash flags for all supporting providers (Drive, OneDrive, Dropbox); non-Google backends get a Clean Up button for `rclone cleanup`
@@ -104,11 +99,7 @@
 -   NEW: Linux scheduler now generates systemd user timers with `Persistent=true` on systems with systemd, falling back to crontab when systemd is unavailable
 
 ### Build & Compatibility
--   NEW: CI tests — the linux-qt6 build job now runs `ctest --output-on-failure` after building, gating the build on all 8 test targets
--   NEW: Windows ARM64 release artifact — tagged releases now include a Windows ARM64 zip alongside the x64 zip and installer
--   NEW: macOS x86_64 CI migrated from deprecated macos-13 to macos-15 with `-DCMAKE_OSX_ARCHITECTURES=x86_64` cross-compilation
 -   NEW: SECURITY.md vulnerability disclosure policy
--   NEW: OpenSSF Scorecard weekly analysis with SARIF upload
 -   CHANGED: Top-level CMakeLists.txt cleaned up — removed dead Qt5/Qt5WinExtras/Qt5MacExtras fallback code
 -   SECURITY: Schedule manager task name sanitizer now allowlists alphanumeric, dash, underscore, dot, and space only — blocks crontab newline injection, XML injection in macOS plists, and shell metachar injection across all platforms
 -   SECURITY: Linux crontab entries now use single-quote shell escaping for task names, preventing command injection through task names containing `$(...)` or backticks
@@ -176,7 +167,7 @@
 -   NEW: Remote browser paths now render as clickable breadcrumbs with sibling-folder dropdowns, plus an editable path mode via Ctrl+L, empty-bar click, Enter, and Escape
 -   NEW: Folder comparison view runs `rclone check --combined`, filters matched/different/missing/error rows, and queues selected copy/delete repair jobs from the results
 -   NEW: Job history now records completed transfer runs with timing, bytes, files, errors, and exit status; File and tray menus expose the history, and the tray icon distinguishes idle, active, and failed states
--   CHANGED: Dropped Qt 5 dual support — Qt 6.4 is now the minimum; all Qt5 ifdefs, QtWinExtras/QtMacExtras imports, High-DPI scaling workarounds, and the CI Qt5 matrix leg are removed
+-   CHANGED: Dropped Qt 5 dual support — Qt 6.4 is now the minimum; all Qt5 ifdefs, QtWinExtras/QtMacExtras imports, High-DPI scaling workarounds, and the former Qt5 build-matrix leg are removed
 -   NEW: Notification webhooks — saved tasks can POST a JSON status payload (task name, status, error) to Discord, Gotify, or any webhook URL on job completion; includes a Discord-compatible `content` field
 -   NEW: Remote context menu with "Test Connection" (bounded lsjson probe) and "Duplicate Remote" (rclone config copy); right-click a remote in the list to access both
 -   NEW: OAuth token-expiry detection — when a remote listing fails with a token-expired or unauthorized error, the app offers a one-click "Reconnect" button that runs `rclone config reconnect` in a terminal to re-authenticate
@@ -236,18 +227,13 @@
 -   SECURITY: Deleting a saved task now asks for confirmation
 
 ### Build & Compatibility
--   NEW: Windows ARM64 CI build matrix leg (windows-11-arm runner with Qt 6.8)
--   NEW: Linux ARM64 (aarch64) AppImage release artifact — tagged releases now include a native aarch64 AppImage built on GitHub's ARM64 Ubuntu runner
--   NEW: REUSE 3.3 compliance via `REUSE.toml` with glob-pattern annotations and `LICENSES/MIT.txt` — machine-verifiable SPDX licensing for distro packaging and OpenSSF Scorecard
+-   NEW: REUSE 3.3 compliance via `REUSE.toml` with glob-pattern annotations and `LICENSES/MIT.txt` — machine-verifiable SPDX licensing for distro packaging and license checks
 -   CHANGED: Manual release scripts modernized — Windows targets VS 2022+/Qt 6/x64-only with fail-fast dependency checks; Linux drops CentOS 7/OpenSSL 1.1/i686/armhf assumptions and supports x86_64 and aarch64 with distro Qt 6; macOS supports Apple Silicon Homebrew paths and uses `macdeployqt -dmg`
 -   CHANGED: Desktop file, metainfo, and installed icons now use the reverse-DNS app ID (`io.github.sysadmindoc.rclonebrowserng`) required by Flatpak/Flathub; `setDesktopFileName` updated for Wayland focus-stealing compliance
--   CHANGED: macOS CI and release workflows now build both ARM64 (macos-14) and x86_64 (macos-13) artifacts
--   CHANGED: CodeQL workflow upgraded from pinned v3 to v4
 -   CHANGED: Consolidated duplicate `getNiceSize()` helper from item_model.cpp, job_widget.cpp, and rc_job_widget.cpp into a single `GetNiceSize()` in utils
 -   CHANGED: Removed dead macOS 10.9-10.13 code paths (dark mode and icon sizing) — deployment target has been macOS 11.0 since the Qt 6 port
--   NEW: Added a tag-triggered GitHub release workflow that builds Windows zip/installer, macOS DMG/app zip, Linux AppImage, SHA256 sums, and GitHub provenance attestations
 -   NEW: macOS mount startup now detects FSKit-capable macFUSE, fuse-t, and rclone `nfsmount`; it prefers userspace-capable backends and only warns when no modern backend is available
--   FIXED: Installed identity now consistently uses Rclone Browser NG across the app display name, main window, Linux desktop entry, macOS bundle display name, Windows installer metadata, and CI metadata validation
+-   FIXED: Installed identity now consistently uses Rclone Browser NG across the app display name, main window, Linux desktop entry, macOS bundle display name, Windows installer metadata, and local metadata validation
 -   NEW: WinFsp detection — mounting on Windows now checks for WinFsp and offers a download link if missing, instead of failing with a cryptic rclone error
 -   FIXED: AppStream metainfo rewritten for NG identity (`io.github.sysadmindoc.rclonebrowserng`), installed to `share/metainfo/`, and embedded in AppImage — unblocks Flathub and distro packaging
 -   FIXED: Qt 6 Windows/macOS builds did not compile — QtWinExtras `QtWin::fromHICON` replaced with `QImage::fromHICON`, missing Windows shell/COM headers included, `QFileInfo` explicit-constructor errors fixed, COM initialized on the icon worker thread

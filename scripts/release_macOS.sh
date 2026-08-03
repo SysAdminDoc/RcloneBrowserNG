@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Rclone Browser NG — local macOS release build script.
-# Matches the CI release workflow; see .github/workflows/release.yml.
+# This is the local macOS release path; no CI release workflow is included.
 #
 # Usage: ./scripts/release_macOS.sh
 #

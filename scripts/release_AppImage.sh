@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Rclone Browser NG — local Linux AppImage build script.
-# Matches the CI release workflow; see .github/workflows/release.yml.
+# This is the local Linux release path; no CI release workflow is included.
 #
 # Usage: ./scripts/release_AppImage.sh
 #
