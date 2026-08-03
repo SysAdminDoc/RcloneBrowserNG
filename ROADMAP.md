@@ -41,15 +41,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P1
 
-### P2
-
-- [ ] P2 — Generate validated package-manager manifests from release artifacts
-  Why: Active competitors are easier to install through package managers, and the old upstream Homebrew cask was disabled for being unmaintained.
-  Evidence: Rclone UI package-manager list, Homebrew disabled `kapitainsky-rclone-browser` cask, rclone forum/winget install requests.
-  Touches: `.github/workflows/release.yml`, `scripts/`, `assets/`, release artifact naming/checksum logic.
-  Acceptance: Release workflow emits non-submitted Winget, Homebrew Cask, Chocolatey, and Flatpak manifest artifacts with current version, URLs, and SHA256 values; generated manifests are syntax-validated where tooling is available.
-  Complexity: M
-
 ## Research-Driven Additions (2026-06-20)
 
 ### P3
