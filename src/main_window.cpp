@@ -17,6 +17,7 @@
 #include "job_history.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
+#include "schedule_dialog.h"
 #ifdef Q_OS_MACOS
 #include "osx_helper.h"
 #endif
@@ -167,7 +168,8 @@ static void applyDarkTheme() {
   UiPolish::ApplyApplicationStyle(true);
 }
 
-MainWindow::MainWindow() {
+MainWindow::MainWindow(bool initializeRuntime)
+    : mInitializeRuntime(initializeRuntime) {
   ui.setupUi(this);
 
   if (IsPortableMode()) {
@@ -1152,7 +1154,9 @@ MainWindow::MainWindow() {
     layout->insertWidget(2, mStagingEmptyState);
     layout->insertWidget(3, mStagingBar);
   }
-  restoreStagedTransfers();
+  if (mInitializeRuntime) {
+    restoreStagedTransfers();
+  }
   updateStagingEmptyState();
 
   mTasksFilter = new QLineEdit(this);
@@ -1407,11 +1411,13 @@ MainWindow::MainWindow() {
 
   if (ScheduleManager::isSupported()) {
     auto *scheduleBtn = new QPushButton("Schedule", this);
+    scheduleBtn->setObjectName("scheduleTask");
     scheduleBtn->setIcon(style->standardIcon(QStyle::SP_FileDialogDetailedView));
     scheduleBtn->setToolTip("Install a native OS scheduled task for the selected saved task.");
     scheduleBtn->setAccessibleName("Schedule selected task");
     scheduleBtn->setEnabled(false);
     auto *unscheduleBtn = new QPushButton("Unschedule", this);
+    unscheduleBtn->setObjectName("unscheduleTask");
     unscheduleBtn->setIcon(style->standardIcon(QStyle::SP_DialogDiscardButton));
     unscheduleBtn->setToolTip("Remove the OS scheduled task for the selected saved task.");
     unscheduleBtn->setAccessibleName("Unschedule selected task");
@@ -1444,104 +1450,17 @@ MainWindow::MainWindow() {
                      [this, scheduleBtn, unscheduleBtn]() {
       auto *item = static_cast<JobOptionsListWidgetItem *>(
           ui.tasksListWidget->currentItem());
-      if (!item || !item->GetData())
+      if (!item || !item->GetData()) {
         return;
-      QString taskName = item->GetData()->description;
-
-      QDialog dlg(this);
-      dlg.setWindowTitle(QString("Schedule: %1").arg(taskName));
-      dlg.resize(480, 320);
-      UiPolish::SetWindowDefaults(&dlg, QSize(400, 260));
-      auto *layout = new QVBoxLayout(&dlg);
-
-      auto *intervalCombo = new QComboBox(&dlg);
-      intervalCombo->addItems(
-          QStringList() << "Every 15 minutes" << "Every 30 minutes"
-                        << "Hourly" << "Daily" << "Weekly"
-                        << "Custom (cron expression)");
-      intervalCombo->setCurrentIndex(3);
-      layout->addWidget(new QLabel("Interval:", &dlg));
-      layout->addWidget(intervalCombo);
-
-      auto *timeEdit = new QLineEdit("02:00", &dlg);
-      timeEdit->setPlaceholderText("HH:MM (24h)");
-      UiPolish::SetAccessibleFormField(timeEdit, "Start time");
-      auto *timeLabel = new QLabel("Start time:", &dlg);
-      layout->addWidget(timeLabel);
-      layout->addWidget(timeEdit);
-
-      auto *cronEdit = new QLineEdit(&dlg);
-      cronEdit->setPlaceholderText("min hour dom mon dow (e.g. 0 2 * * 1-5)");
-      UiPolish::SetAccessibleFormField(cronEdit, "Cron expression");
-      auto *cronLabel = new QLabel("Cron expression:", &dlg);
-      cronLabel->hide();
-      cronEdit->hide();
-      layout->addWidget(cronLabel);
-      layout->addWidget(cronEdit);
-
-      auto *preview = new QLabel(&dlg);
-      preview->setWordWrap(true);
-      UiPolish::SetMuted(preview);
-      layout->addWidget(preview);
-      layout->addStretch();
-
-      auto updatePreview = [&]() {
-        int idx = intervalCombo->currentIndex();
-        bool isCron = (idx == 5);
-        timeLabel->setVisible(!isCron && idx >= 3);
-        timeEdit->setVisible(!isCron && idx >= 3);
-        cronLabel->setVisible(isCron);
-        cronEdit->setVisible(isCron);
-
-        if (isCron) {
-          QString expr = cronEdit->text().trimmed();
-          if (expr.isEmpty()) {
-            preview->setText("Enter a 5-field cron expression.");
-            return;
-          }
-          if (!ScheduleManager::isValidCronExpr(expr)) {
-            preview->setText("Invalid cron expression (need 5 fields: min hour dom mon dow).");
-            return;
-          }
-          auto runs = ScheduleManager::nextCronRuns(expr, 5);
-          if (runs.isEmpty()) {
-            preview->setText("No upcoming runs found (check expression).");
-            return;
-          }
-          QStringList lines;
-          lines << "Next runs:";
-          for (const auto &dt : runs) {
-            lines << "  " + dt.toString("ddd yyyy-MM-dd HH:mm");
-          }
-          preview->setText(lines.join('\n'));
-        } else {
-          preview->clear();
-        }
-      };
-
-      QObject::connect(intervalCombo,
-                       static_cast<void (QComboBox::*)(int)>(
-                           &QComboBox::currentIndexChanged),
-                       &dlg, updatePreview);
-      QObject::connect(cronEdit, &QLineEdit::textChanged, &dlg, updatePreview);
-      updatePreview();
-
-      auto *buttons = new QDialogButtonBox(
-          QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-      UiPolish::SetDialogButtonBox(buttons);
-      QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
-                       &QDialog::accept);
-      QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
-                       &QDialog::reject);
-      layout->addWidget(buttons);
-
-      if (dlg.exec() != QDialog::Accepted)
+      }
+      const QString taskName = item->GetData()->description;
+      ScheduleDialog dialog(taskName, this);
+      if (dialog.exec() != QDialog::Accepted) {
         return;
+      }
 
-      int idx = intervalCombo->currentIndex();
-      QStringList intervalMap = {"15m", "30m", "hourly", "daily", "weekly"};
-      QString interval = idx < 5 ? intervalMap[idx] : cronEdit->text().trimmed();
-      QString time = (idx == 3 || idx == 4) ? timeEdit->text().trimmed() : "";
+      const QString interval = dialog.interval();
+      const QString time = dialog.time();
 
       scheduleBtn->setEnabled(false);
       unscheduleBtn->setEnabled(false);
@@ -1924,6 +1843,10 @@ MainWindow::MainWindow() {
           appendBackgroundError(source, line);
         }
       });
+
+  if (!mInitializeRuntime) {
+    return;
+  }
 
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
   refreshTaskWatchers();

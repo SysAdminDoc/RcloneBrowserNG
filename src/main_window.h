@@ -18,7 +18,7 @@ class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
-  MainWindow();
+  explicit MainWindow(bool initializeRuntime = true);
   ~MainWindow();
 
 public slots:
@@ -64,6 +64,7 @@ private:
   IconCache mIcons;
 
   bool mFirstTime = true;
+  bool mInitializeRuntime = true;
   bool mTabsRestored = false;
   int mJobCount = 0;
   int mRunningTransfers = 0;

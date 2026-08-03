@@ -200,4 +200,68 @@ if(BUILD_TESTING)
     target_link_libraries(preferences_layout_test advapi32)
   endif()
   add_test(NAME preferences_layout_test COMMAND preferences_layout_test)
+
+  set(ACCESSIBILITY_SMOKE_SOURCES
+    src/pch.cpp
+    src/main_window.cpp
+    src/remote_widget.cpp
+    src/transfer_dialog.cpp
+    src/interface_polish.cpp
+    src/export_dialog.cpp
+    src/export_list_writer.cpp
+    src/folder_compare.cpp
+    src/remote_provider.cpp
+    src/mount_backend.cpp
+    src/rclone_rc_engine.cpp
+    src/rclone_capabilities.cpp
+    src/rc_job_widget.cpp
+    src/remote_path.cpp
+    src/vfs_upload_state.cpp
+    src/progress_dialog.cpp
+    src/job_widget.cpp
+    src/mount_widget.cpp
+    src/stream_widget.cpp
+    src/preferences_dialog.cpp
+    src/icon_cache.cpp
+    src/job_history.cpp
+    src/item_model.cpp
+    src/utils.cpp
+    src/job_options.cpp
+    src/job_options_store.cpp
+    src/list_of_job_options.cpp
+    src/schedule_manager.cpp
+    src/schedule_dialog.cpp
+    src/staged_transfer.cpp
+    src/cross_remote_search.cpp
+    src/main_window.ui
+    src/remote_widget.ui
+    src/transfer_dialog.ui
+    src/export_dialog.ui
+    src/progress_dialog.ui
+    src/job_widget.ui
+    src/mount_widget.ui
+    src/stream_widget.ui
+    src/preferences_dialog.ui
+    src/resources.qrc
+  )
+  if(APPLE)
+    list(APPEND ACCESSIBILITY_SMOKE_SOURCES src/osx_helper.mm)
+  endif()
+  add_executable(accessibility_smoke_test
+    tests/accessibility_smoke_test.cpp
+    ${ACCESSIBILITY_SMOKE_SOURCES}
+  )
+  set_target_properties(accessibility_smoke_test PROPERTIES AUTOUIC ON)
+  target_include_directories(accessibility_smoke_test PRIVATE src)
+  target_compile_definitions(accessibility_smoke_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(accessibility_smoke_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(accessibility_smoke_test version advapi32)
+  elseif(APPLE)
+    find_library(ACCESSIBILITY_COCOA_LIBRARY Cocoa REQUIRED)
+    target_link_libraries(accessibility_smoke_test ${ACCESSIBILITY_COCOA_LIBRARY})
+  endif()
+  add_test(NAME accessibility_smoke_test COMMAND accessibility_smoke_test)
+  set_tests_properties(accessibility_smoke_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

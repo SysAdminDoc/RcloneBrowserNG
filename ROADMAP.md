@@ -43,13 +43,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P2
 
-- [ ] P2 — Add automated keyboard/accessibility smoke tests
-  Why: Accessible names and high-contrast styling exist, but no test proves core dialogs remain keyboard navigable or screen-reader describable as UI changes.
-  Evidence: `src/interface_polish.cpp`, `tests/interface_polish_test.cpp`, Qt 6.10 accessibility/high-contrast notes.
-  Touches: `tests/interface_polish_test.cpp`, `tests/`, `src/interface_polish.*`, core dialog constructors as needed.
-  Acceptance: Headless/offscreen tests instantiate main, transfer, preferences, schedule, and remote-action dialogs; assert non-empty accessible names/descriptions for interactive controls, usable tab order/focus, visible focus styling hooks, and no zero-size critical controls.
-  Complexity: M
-
 - [ ] P2 — Generate validated package-manager manifests from release artifacts
   Why: Active competitors are easier to install through package managers, and the old upstream Homebrew cask was disabled for being unmaintained.
   Evidence: Rclone UI package-manager list, Homebrew disabled `kapitainsky-rclone-browser` cask, rclone forum/winget install requests.

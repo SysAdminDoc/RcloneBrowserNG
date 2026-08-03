@@ -63,6 +63,7 @@ set(SOURCE
   rclone_capabilities.cpp
   rc_job_widget.cpp
   remote_path.cpp
+  schedule_dialog.cpp
   vfs_upload_state.cpp
   progress_dialog.cpp
   job_widget.cpp
@@ -99,6 +100,7 @@ set(OTHER
   rclone_capabilities.h
   rc_job_widget.h
   remote_path.h
+  schedule_dialog.h
   vfs_upload_state.h
   progress_dialog.h
   job_widget.h
