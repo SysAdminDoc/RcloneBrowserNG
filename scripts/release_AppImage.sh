@@ -89,6 +89,18 @@ cd "$APPDIR"
 export APPIMAGE_EXTRACT_AND_RUN=1
 export PATH="$TOOLS_DIR:$PATH"
 
+# Keep the offscreen platform available for the packaged --version smoke. It
+# never opens a window, so release verification remains safe on headless hosts.
+QMAKE_TOOL="$(command -v qmake6 || command -v qmake || true)"
+if [ -n "$QMAKE_TOOL" ]; then
+  QT_PLUGINS="$($QMAKE_TOOL -query QT_INSTALL_PLUGINS 2>/dev/null || true)"
+  OFFSCREEN_PLUGIN="$QT_PLUGINS/platforms/libqoffscreen.so"
+  PLATFORM_DIR="$(find "$APPDIR/AppDir" -type d -name platforms -print -quit)"
+  if [ -f "$OFFSCREEN_PLUGIN" ] && [ -n "$PLATFORM_DIR" ]; then
+    cp "$OFFSCREEN_PLUGIN" "$PLATFORM_DIR/"
+  fi
+fi
+
 "$TOOLS_DIR/linuxdeploy-${ARCH}.AppImage" \
   --appdir AppDir \
   --desktop-file "AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop" \
@@ -104,6 +116,13 @@ fi
 
 ARTIFACT_NAME="RcloneBrowserNG-${FULLVER}-linux-${ARCH}.AppImage"
 mv "$APPIMAGE" "$RELEASE/$ARTIFACT_NAME"
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$ROOT/scripts/smoke_package.py" \
+    --artifact "$RELEASE/$ARTIFACT_NAME" --version "$VERSION"
+else
+  echo "NOTE: python3 not found — skipping packaged AppImage smoke."
+fi
 
 # Clean up temp directory
 cd "$ROOT"

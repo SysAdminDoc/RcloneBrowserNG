@@ -50,13 +50,6 @@ All items trace back to public GitHub issues/PRs:
   Acceptance: Release workflow emits non-submitted Winget, Homebrew Cask, Chocolatey, and Flatpak manifest artifacts with current version, URLs, and SHA256 values; generated manifests are syntax-validated where tooling is available.
   Complexity: M
 
-- [ ] P2 — Add packaged-artifact launch smoke tests before release publish
-  Why: Release jobs build, deploy, checksum, and attest artifacts, but package regressions can still ship if the packaged binary is never executed after `linuxdeploy`, `macdeployqt`, `windeployqt`, zip, or installer staging.
-  Evidence: `.github/workflows/release.yml`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, `scripts/release_windows.cmd`, GitHub artifact attestation guidance.
-  Touches: `.github/workflows/release.yml`, `scripts/`, app startup/version flag handling if a dedicated smoke flag is needed.
-  Acceptance: Linux AppImage, macOS app/DMG staging, Windows x64 zip/installer staging, and Windows ARM64 zip each run a non-GUI packaged-binary smoke such as `--version` or an equivalent release-smoke flag on compatible runners; publish depends on the smoke result; failures identify missing runtime/deployment files.
-  Complexity: M
-
 ## Research-Driven Additions (2026-06-20)
 
 ### P2

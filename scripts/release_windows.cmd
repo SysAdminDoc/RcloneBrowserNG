@@ -113,6 +113,11 @@ if exist %BUILD%\RcloneBrowserPassword.exe (
 
 windeployqt.exe --no-translations "%TARGET%\RcloneBrowser.exe"
 
+if exist "%QT%\plugins\platforms\qoffscreen.dll" (
+  if not exist "%TARGET%\platforms" mkdir "%TARGET%\platforms"
+  copy /y "%QT%\plugins\platforms\qoffscreen.dll" "%TARGET%\platforms\qoffscreen.dll" >nul
+)
+
 rem --- Qt conf ----------------------------------------------------------------
 (
 echo [Paths]
@@ -127,6 +132,19 @@ if not errorlevel 1 (
   "7z.exe" a -mx=9 -r -tzip "%TARGET%.zip" "%TARGET%"
 ) else (
   echo NOTE: 7-Zip not found — skipping zip archive. Install from https://www.7-zip.org/
+)
+
+if exist "%TARGET%.zip" (
+  where /q python.exe
+  if not errorlevel 1 (
+    python.exe "%ROOT%\scripts\smoke_package.py" --artifact "%TARGET%.zip" --version "%VERSION%"
+    if errorlevel 1 (
+      echo ERROR: Packaged Windows zip smoke failed.
+      exit /b 1
+    )
+  ) else (
+    echo NOTE: Python not found — skipping packaged zip smoke.
+  )
 )
 
 rem --- Create installer -------------------------------------------------------

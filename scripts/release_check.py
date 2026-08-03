@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 
 
@@ -255,6 +256,81 @@ def check_package_manifest_generator(report: Report, root: Path) -> None:
     )
 
 
+def smoke_packaged_windows_binary(
+    report: Report,
+    root: Path,
+    build_dir: Path,
+    artifact: Path,
+    version: str,
+    env: dict[str, str],
+) -> None:
+    if os.name != "nt":
+        report.skipped_check(
+            "packaged Windows launch smoke", "Windows deployment is unavailable on this host"
+        )
+        return
+    qt_bin = qt_bin_from_cache(build_dir)
+    windeployqt = qt_bin / "windeployqt.exe" if qt_bin else None
+    if not windeployqt or not windeployqt.is_file():
+        report.skipped_check(
+            "packaged Windows launch smoke", "windeployqt is unavailable in the selected Qt"
+        )
+        return
+    smoke_script = root / "scripts" / "smoke_package.py"
+    with tempfile.TemporaryDirectory(prefix="rclone-browser-deploy-") as temp:
+        deployed = Path(temp)
+        staged_binary = deployed / artifact.name
+        try:
+            shutil.copy2(artifact, staged_binary)
+        except OSError as exc:
+            report.failed_check("Windows packaged staging", str(exc))
+            return
+        if not run_checked(
+            report,
+            "Windows packaged staging",
+            [
+                str(windeployqt),
+                "--no-translations",
+                "--dir",
+                str(deployed),
+                str(staged_binary),
+            ],
+            root,
+            env=env,
+            timeout=180,
+        ):
+            return
+        offscreen_plugin = qt_bin.parent / "plugins" / "platforms" / "qoffscreen.dll"
+        if offscreen_plugin.is_file():
+            try:
+                (deployed / "platforms").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(offscreen_plugin, deployed / "platforms" / offscreen_plugin.name)
+            except OSError as exc:
+                report.failed_check("Windows packaged staging", str(exc))
+                return
+        else:
+            report.failed_check(
+                "Windows packaged staging",
+                f"Qt offscreen platform plugin is missing: {offscreen_plugin}",
+            )
+            return
+        run_checked(
+            report,
+            "Windows packaged --version smoke",
+            [
+                sys.executable,
+                str(smoke_script),
+                "--artifact",
+                str(deployed),
+                "--version",
+                version,
+            ],
+            root,
+            env=env,
+            timeout=60,
+        )
+
+
 def qt_bin_from_cache(build_dir: Path) -> Path | None:
     candidates: list[Path] = []
     for variable in ("QT", "QT_PREFIX", "CMAKE_PREFIX_PATH"):
@@ -348,7 +424,8 @@ def build_and_test(report: Report, root: Path, build_dir: Path, config: str) -> 
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     output = version_result.stdout or ""
-    expected = f"Rclone Browser NG {read_text(root / 'VERSION').strip()}"
+    version = read_text(root / "VERSION").strip()
+    expected = f"Rclone Browser NG {version}"
     if version_result.returncode != 0 or expected not in output:
         report.failed_check(
             "built binary --version smoke",
@@ -356,6 +433,7 @@ def build_and_test(report: Report, root: Path, build_dir: Path, config: str) -> 
         )
     else:
         report.passed(f"built binary --version smoke ({artifact.relative_to(root)})")
+    smoke_packaged_windows_binary(report, root, build_dir, artifact, version, env)
     return artifact
 
 

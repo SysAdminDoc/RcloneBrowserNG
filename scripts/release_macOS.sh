@@ -56,6 +56,12 @@ if [ ! -d "$APP" ]; then
   exit 1
 fi
 
+if [ -f "$QT_PREFIX/plugins/platforms/libqoffscreen.dylib" ]; then
+  mkdir -p "$APP/Contents/PlugIns/platforms"
+  cp "$QT_PREFIX/plugins/platforms/libqoffscreen.dylib" \
+    "$APP/Contents/PlugIns/platforms/"
+fi
+
 # Deploy Qt frameworks and create DMG
 "$QT_PREFIX/bin/macdeployqt" "$APP" -dmg -verbose=2
 
@@ -68,6 +74,13 @@ fi
 # Create compressed app zip
 ditto -c -k --keepParent "$APP" "$RELEASE/${NAME}.app.zip"
 echo "ZIP: $RELEASE/${NAME}.app.zip"
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$ROOT/scripts/smoke_package.py" \
+    --artifact "$RELEASE/${NAME}.app.zip" --version "$VERSION"
+else
+  echo "NOTE: python3 not found — skipping packaged macOS smoke."
+fi
 
 echo
 echo "Release artifacts in $RELEASE:"
