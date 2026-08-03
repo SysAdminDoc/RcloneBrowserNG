@@ -137,6 +137,20 @@ if(BUILD_TESTING)
   target_link_libraries(schedule_golden_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME schedule_golden_test COMMAND schedule_golden_test)
 
+  add_executable(staged_transfer_test
+    tests/staged_transfer_test.cpp
+    src/staged_transfer.cpp
+    src/job_options_store.cpp
+    src/job_options.cpp
+    src/utils.cpp
+  )
+  target_include_directories(staged_transfer_test PRIVATE src)
+  target_link_libraries(staged_transfer_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(staged_transfer_test advapi32)
+  endif()
+  add_test(NAME staged_transfer_test COMMAND staged_transfer_test)
+
   add_executable(backend_features_test
     tests/backend_features_test.cpp
     src/rclone_capabilities.cpp

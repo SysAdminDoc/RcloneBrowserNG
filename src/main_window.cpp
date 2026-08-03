@@ -73,6 +73,62 @@ QString shellQuote(QString arg) {
   return "'" + arg.replace("'", "'\"'\"'") + "'";
 }
 
+constexpr int kStagedSourceRole = Qt::UserRole + 1;
+constexpr int kStagedDestRole = Qt::UserRole + 2;
+constexpr int kStagedArgsRole = Qt::UserRole + 3;
+constexpr int kStagedBackupDirRole = Qt::UserRole + 4;
+constexpr int kStagedBackupRetainRole = Qt::UserRole + 5;
+constexpr int kStagedHeartbeatRole = Qt::UserRole + 6;
+constexpr int kStagedPreCommandRole = Qt::UserRole + 7;
+constexpr int kStagedPostCommandRole = Qt::UserRole + 8;
+constexpr int kStagedWebhookRole = Qt::UserRole + 9;
+constexpr int kStagedTaskNameRole = Qt::UserRole + 10;
+constexpr int kStagedVerifyRole = Qt::UserRole + 11;
+constexpr int kStagedHooksTrustedRole = Qt::UserRole + 12;
+
+StagedTransfer stagedTransferFromItem(const QListWidgetItem *item) {
+  StagedTransfer transfer;
+  if (!item) {
+    return transfer;
+  }
+  transfer.message = item->data(Qt::UserRole).toString();
+  transfer.source = item->data(kStagedSourceRole).toString();
+  transfer.dest = item->data(kStagedDestRole).toString();
+  transfer.args = item->data(kStagedArgsRole).toStringList();
+  transfer.backupDirTemplate = item->data(kStagedBackupDirRole).toString();
+  transfer.backupRetainCount = item->data(kStagedBackupRetainRole).toInt();
+  transfer.heartbeatUrl = item->data(kStagedHeartbeatRole).toString();
+  transfer.preCommand = item->data(kStagedPreCommandRole).toString();
+  transfer.postCommand = item->data(kStagedPostCommandRole).toString();
+  transfer.webhookUrl = item->data(kStagedWebhookRole).toString();
+  transfer.taskName = item->data(kStagedTaskNameRole).toString();
+  transfer.verifyAfterTransfer = item->data(kStagedVerifyRole).toBool();
+  transfer.hooksTrusted = item->data(kStagedHooksTrustedRole).toBool();
+  return transfer;
+}
+
+void setStagedTransferItem(QListWidgetItem *item,
+                           const StagedTransfer &transfer) {
+  if (!item) {
+    return;
+  }
+  item->setText(transfer.message);
+  item->setData(Qt::UserRole, transfer.message);
+  item->setData(kStagedSourceRole, transfer.source);
+  item->setData(kStagedDestRole, transfer.dest);
+  item->setData(kStagedArgsRole, transfer.args);
+  item->setData(kStagedBackupDirRole, transfer.backupDirTemplate);
+  item->setData(kStagedBackupRetainRole, transfer.backupRetainCount);
+  item->setData(kStagedHeartbeatRole, transfer.heartbeatUrl);
+  item->setData(kStagedPreCommandRole, transfer.preCommand);
+  item->setData(kStagedPostCommandRole, transfer.postCommand);
+  item->setData(kStagedWebhookRole, transfer.webhookUrl);
+  item->setData(kStagedTaskNameRole, transfer.taskName);
+  item->setData(kStagedVerifyRole, transfer.verifyAfterTransfer);
+  item->setData(kStagedHooksTrustedRole, transfer.hooksTrusted);
+  item->setToolTip(QString("%1 -> %2").arg(transfer.source, transfer.dest));
+}
+
 } // namespace
 
 // Fusion-based dark theme used on Windows, Linux and older macOS.
@@ -1074,13 +1130,7 @@ MainWindow::MainWindow() {
     int count = mStagingList->count();
     while (mStagingList->count() > 0) {
       auto *item = mStagingList->item(0);
-      QString msg = item->data(Qt::UserRole).toString();
-      QString src = item->data(Qt::UserRole + 1).toString();
-      QString dst = item->data(Qt::UserRole + 2).toString();
-      QStringList args = item->data(Qt::UserRole + 3).toStringList();
-      QString backupDirTemplate = item->data(Qt::UserRole + 4).toString();
-      int backupRetainCount = item->data(Qt::UserRole + 5).toInt();
-      addTransfer(msg, src, dst, args, backupDirTemplate, backupRetainCount);
+      runStagedTransfer(stagedTransferFromItem(item));
       delete mStagingList->takeItem(0);
     }
     setStatusMessage(
@@ -2190,15 +2240,26 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
       remote, &RemoteWidget::enqueueTransfer, this,
       [this](const QString &msg, const QString &src, const QString &dst,
              const QStringList &args, const QString &backupDirTemplate,
-             int backupRetainCount) {
-        auto *item = new QListWidgetItem(msg, mStagingList);
-        item->setData(Qt::UserRole, msg);
-        item->setData(Qt::UserRole + 1, src);
-        item->setData(Qt::UserRole + 2, dst);
-        item->setData(Qt::UserRole + 3, args);
-        item->setData(Qt::UserRole + 4, backupDirTemplate);
-        item->setData(Qt::UserRole + 5, backupRetainCount);
-        item->setToolTip(QString("%1 -> %2").arg(src, dst));
+             int backupRetainCount, const QString &heartbeatUrl,
+             const QString &preCommand, const QString &postCommand,
+             const QString &webhookUrl, const QString &taskName,
+             bool verifyAfterTransfer, bool hooksTrusted) {
+        StagedTransfer transfer;
+        transfer.message = msg;
+        transfer.source = src;
+        transfer.dest = dst;
+        transfer.args = args;
+        transfer.heartbeatUrl = heartbeatUrl;
+        transfer.preCommand = preCommand;
+        transfer.postCommand = postCommand;
+        transfer.webhookUrl = webhookUrl;
+        transfer.taskName = taskName;
+        transfer.backupDirTemplate = backupDirTemplate;
+        transfer.backupRetainCount = backupRetainCount;
+        transfer.verifyAfterTransfer = verifyAfterTransfer;
+        transfer.hooksTrusted = hooksTrusted;
+        auto *item = new QListWidgetItem(mStagingList);
+        setStagedTransferItem(item, transfer);
         setStatusMessage(QString("Enqueued: %1 (%2 staged)")
                              .arg(msg)
                              .arg(mStagingList->count()));
@@ -2732,31 +2793,18 @@ void MainWindow::saveStagedTransfers() {
     QFile::remove(path);
     return;
   }
-  QJsonArray arr;
+  QList<StagedTransfer> transfers;
+  transfers.reserve(mStagingList->count());
   for (int i = 0; i < mStagingList->count(); ++i) {
-    auto *item = mStagingList->item(i);
-    QJsonObject obj;
-    obj["message"] = item->data(Qt::UserRole).toString();
-    obj["source"] = item->data(Qt::UserRole + 1).toString();
-    obj["dest"] = item->data(Qt::UserRole + 2).toString();
-    QJsonArray argsArr;
-    for (const QString &a : item->data(Qt::UserRole + 3).toStringList()) {
-      argsArr.append(a);
-    }
-    obj["args"] = argsArr;
-    obj["backupDirTemplate"] = item->data(Qt::UserRole + 4).toString();
-    obj["backupRetainCount"] = item->data(Qt::UserRole + 5).toInt();
-    arr.append(obj);
+    transfers.append(stagedTransferFromItem(mStagingList->item(i)));
   }
-  QJsonObject root;
-  root["version"] = 1;
-  root["staged"] = arr;
   QString path =
       QFileInfo(ListOfJobOptions::GetPersistenceFilePath()).absolutePath() +
       "/staged.json";
   QSaveFile file(path);
   if (file.open(QIODevice::WriteOnly)) {
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.write(StagedTransferStore::Serialize(transfers)
+                   .toJson(QJsonDocument::Indented));
     file.commit();
   }
 }
@@ -2775,34 +2823,23 @@ void MainWindow::restoreStagedTransfers() {
   if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
     return;
   }
-  QJsonObject root = doc.object();
-  if (root["version"].toInt() != 1) {
+  QList<StagedTransfer> transfers;
+  bool migratedFromV1 = false;
+  QString error;
+  if (!StagedTransferStore::Deserialize(doc, &transfers, &migratedFromV1,
+                                        &error)) {
+    qWarning() << "Could not restore staged transfers:" << error;
     return;
   }
-  QJsonArray arr = root["staged"].toArray();
-  for (int i = 0; i < arr.size(); ++i) {
-    QJsonObject obj = arr[i].toObject();
-    QString msg = obj["message"].toString();
-    if (msg.isEmpty()) {
-      continue;
-    }
-    auto *item = new QListWidgetItem(msg, mStagingList);
-    item->setData(Qt::UserRole, msg);
-    item->setData(Qt::UserRole + 1, obj["source"].toString());
-    item->setData(Qt::UserRole + 2, obj["dest"].toString());
-    QStringList args;
-    for (const auto &a : obj["args"].toArray()) {
-      args << a.toString();
-    }
-    item->setData(Qt::UserRole + 3, args);
-    item->setData(Qt::UserRole + 4, obj["backupDirTemplate"].toString());
-    item->setData(Qt::UserRole + 5, obj["backupRetainCount"].toInt());
-    item->setToolTip(
-        QString("%1 -> %2")
-            .arg(obj["source"].toString(), obj["dest"].toString()));
+  for (const StagedTransfer &transfer : transfers) {
+    auto *item = new QListWidgetItem(mStagingList);
+    setStagedTransferItem(item, transfer);
   }
   if (mStagingList->count() > 0) {
     updateStagingEmptyState();
+    if (migratedFromV1) {
+      saveStagedTransfers();
+    }
   }
 }
 
@@ -3395,6 +3432,99 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   }
 }
 
+void MainWindow::runStagedTransfer(const StagedTransfer &transfer) {
+  const bool hasShellHooks = !transfer.preCommand.isEmpty() ||
+                             !transfer.postCommand.isEmpty();
+  if (hasShellHooks && !transfer.hooksTrusted) {
+    QString hookSummary;
+    if (!transfer.preCommand.isEmpty()) {
+      hookSummary += "Pre-job: " + transfer.preCommand.left(200) + "\n";
+    }
+    if (!transfer.postCommand.isEmpty()) {
+      hookSummary += "Post-job: " + transfer.postCommand.left(200) + "\n";
+    }
+    const int button = QMessageBox::warning(
+        this, "Shell hooks need review",
+        "This staged transfer has shell commands that will run on your system:\n\n" +
+            hookSummary +
+            "\nThese commands execute with your user privileges. "
+            "Trust and run them?",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (button != QMessageBox::Yes) {
+      return;
+    }
+  }
+
+  const auto launchTransfer = [this, transfer]() {
+    addTransferViaProcess(
+        transfer.message, transfer.source, transfer.dest, transfer.args,
+        transfer.heartbeatUrl, transfer.postCommand, transfer.webhookUrl,
+        transfer.taskName, transfer.backupDirTemplate,
+        transfer.backupRetainCount, transfer.verifyAfterTransfer);
+  };
+
+  if (transfer.preCommand.isEmpty()) {
+    launchTransfer();
+    return;
+  }
+
+  setStatusMessage("Running pre-job command…");
+  auto *pre = new QProcess(this);
+  pre->setProcessChannelMode(QProcess::MergedChannels);
+  auto preCompleted = QSharedPointer<bool>::create(false);
+  connect(
+      pre,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [this, pre, launchTransfer, preCompleted](
+                int code, QProcess::ExitStatus) {
+        if (*preCompleted) {
+          return;
+        }
+        *preCompleted = true;
+        pre->deleteLater();
+        setStatusMessage(QString());
+        if (code != 0) {
+          const QString output = QString::fromUtf8(pre->readAll()).trimmed();
+          const int button = QMessageBox::warning(
+              this, "Pre-job command failed",
+              QString("The pre-job command exited with status %1.\n\n%2\n\n"
+                      "Run the staged transfer anyway?")
+                  .arg(code)
+                  .arg(output.left(500)),
+              QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+          if (button != QMessageBox::Yes) {
+            return;
+          }
+        }
+        launchTransfer();
+      });
+  connect(pre, &QProcess::errorOccurred, this,
+          [this, pre, launchTransfer, preCompleted](
+              QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart || *preCompleted) {
+              return;
+            }
+            *preCompleted = true;
+            pre->deleteLater();
+            setStatusMessage(QString());
+            const int button = QMessageBox::warning(
+                this, "Pre-job command failed",
+                QString("The pre-job command could not start.\n\n%1\n\n"
+                        "Run the staged transfer anyway?")
+                    .arg(pre->errorString()),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (button == QMessageBox::Yes) {
+              launchTransfer();
+            }
+          });
+#ifdef Q_OS_WIN
+  pre->start("cmd.exe", QStringList() << "/c" << transfer.preCommand);
+#else
+  pre->start("/bin/sh", QStringList() << "-c" << transfer.preCommand);
+#endif
+}
+
 void MainWindow::refreshTaskWatchers() {
   qDeleteAll(mWatchers);
   qDeleteAll(mWatchTimers);
@@ -3616,9 +3746,19 @@ void MainWindow::addTransferViaProcess(
   int maxConcurrent =
       settings->value("Settings/maxConcurrentTransfers", 0).toInt();
   if (maxConcurrent > 0 && mRunningTransfers >= maxConcurrent) {
-    mTransferQueue.enqueue(
-        {message, source, dest, args, heartbeatUrl, postCommand, webhookUrl,
-         taskName, backupDirTemplate, backupRetainCount});
+    StagedTransfer queued;
+    queued.message = message;
+    queued.source = source;
+    queued.dest = dest;
+    queued.args = args;
+    queued.heartbeatUrl = heartbeatUrl;
+    queued.postCommand = postCommand;
+    queued.webhookUrl = webhookUrl;
+    queued.taskName = taskName;
+    queued.backupDirTemplate = backupDirTemplate;
+    queued.backupRetainCount = backupRetainCount;
+    queued.verifyAfterTransfer = verifyAfterTransfer;
+    mTransferQueue.enqueue(queued);
     setStatusMessage(
         QString("Queued: %1 (%2 in queue)")
             .arg(message)
@@ -4003,7 +4143,8 @@ void MainWindow::drainTransferQueue() {
                           queued.args, queued.heartbeatUrl,
                           queued.postCommand, queued.webhookUrl,
                           queued.taskName, queued.backupDirTemplate,
-                          queued.backupRetainCount);
+                          queued.backupRetainCount,
+                          queued.verifyAfterTransfer);
   }
 }
 

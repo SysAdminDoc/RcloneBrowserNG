@@ -284,6 +284,14 @@ QString JobOptionsStoreSecurityNotice() {
 #endif
 }
 
+QString ProtectJobOptionSensitiveValue(const QString &value) {
+  return protectSensitiveValue(value);
+}
+
+QString UnprotectJobOptionSensitiveValue(const QString &value) {
+  return unprotectSensitiveValue(value);
+}
+
 namespace {
 QJsonObject jobOptionsToJson(const JobOptions &jo) {
   QJsonObject obj;

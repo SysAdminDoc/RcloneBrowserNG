@@ -100,13 +100,6 @@ All items trace back to public GitHub issues/PRs:
 
 ## Research-Driven Additions
 
-- [ ] P1 — Add version-2 staged-transfer schema for execution metadata
-  Why: `staged.json` persists basic queued transfers but drops heartbeat URL, webhook URL, post-command, task label, and verify-after-transfer state even though the runtime queue can execute those fields.
-  Evidence: `src/main_window.cpp:2707`, `src/main_window.h:76`, `src/main_window.h:77`, `src/main_window.h:78`, `src/main_window.h:79`, `src/main_window.h:127`, `src/main_window.cpp:3975`, WinSCP transfer queue, GoodSync recovery patterns.
-  Touches: `src/main_window.cpp`, `src/main_window.h`, staged-transfer schema/tests.
-  Acceptance: Staged transfers round-trip all execution-affecting fields across app restart; schema migration handles existing version-1 staged files; tests prove notifications, post hooks, task labels, backup retention, and verification settings survive restore without cleartext leakage beyond the chosen secret-storage policy.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — Add safe mount presets and stale-mount recovery probes

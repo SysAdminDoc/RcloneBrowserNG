@@ -6,6 +6,7 @@
 #include "pch.h"
 #include "remote_provider.h"
 #include <QQueue>
+#include "staged_transfer.h"
 #include "ui_main_window.h"
 
 class JobWidget;
@@ -69,19 +70,7 @@ private:
   bool mLastJobFailed = false;
   bool mScheduleCheckInFlight = false;
 
-  struct QueuedTransfer {
-    QString message;
-    QString source;
-    QString dest;
-    QStringList args;
-    QString heartbeatUrl;
-    QString postCommand;
-    QString webhookUrl;
-    QString taskName;
-    QString backupDirTemplate;
-    int backupRetainCount = 0;
-  };
-  QQueue<QueuedTransfer> mTransferQueue;
+  QQueue<StagedTransfer> mTransferQueue;
   QListWidget *mStagingList = nullptr;
   QLabel *mStagingEmptyState = nullptr;
   QToolButton *mStagingDisclosure = nullptr;
@@ -109,6 +98,7 @@ private:
   void showTasksEmptyState(const QString &title, const QString &detail);
   void hideTasksEmptyState();
   void updateStagingEmptyState();
+  void runStagedTransfer(const StagedTransfer &transfer);
   QString terminalRcloneConfigCommand(const QStringList &args) const;
   bool startDetachedTerminalCommand(const QStringList &args,
                                     const QDateTime &configBefore,

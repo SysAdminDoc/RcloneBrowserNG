@@ -1351,10 +1351,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       const QString backupDirTemplate = opts->backupDir;
       const int backupRetainCount =
           opts->dryRun ? 0 : opts->backupRetainCount;
+      const bool verifyAfterTransfer =
+          opts->verifyAfterTransfer && !opts->dryRun;
       QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
       if (t.wasEnqueued()) {
         emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
-                             backupRetainCount);
+                             backupRetainCount, opts->heartbeatUrl,
+                             opts->preCommand, opts->postCommand,
+                             opts->webhookUrl, opts->description,
+                             verifyAfterTransfer, opts->hooksTrusted);
       } else {
         emit addTransfer(msg, src, dst, args, backupDirTemplate,
                          backupRetainCount);
@@ -1389,6 +1394,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         const QString backupDirTemplate = opts->backupDir;
         const int backupRetainCount =
             opts->dryRun ? 0 : opts->backupRetainCount;
+        const bool verifyAfterTransfer =
+            opts->verifyAfterTransfer && !opts->dryRun;
         for (const QString &name : includeFilters) {
           args.prepend(name);
           args.prepend("--include");
@@ -1398,7 +1405,10 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QString msg = QString("%1 %2 (%3 items)").arg(t.getMode(), src).arg(rows.size());
         if (t.wasEnqueued()) {
           emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
-                               backupRetainCount);
+                               backupRetainCount, opts->heartbeatUrl,
+                               opts->preCommand, opts->postCommand,
+                               opts->webhookUrl, opts->description,
+                               verifyAfterTransfer, opts->hooksTrusted);
         } else {
           emit addTransfer(msg, src, dst, args, backupDirTemplate,
                            backupRetainCount);
@@ -1416,10 +1426,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         const QString backupDirTemplate = opts->backupDir;
         const int backupRetainCount =
             opts->dryRun ? 0 : opts->backupRetainCount;
+        const bool verifyAfterTransfer =
+            opts->verifyAfterTransfer && !opts->dryRun;
         QString msg = QString("%1 %2").arg(t.getMode()).arg(src);
         if (t.wasEnqueued()) {
           emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
-                               backupRetainCount);
+                               backupRetainCount, opts->heartbeatUrl,
+                               opts->preCommand, opts->postCommand,
+                               opts->webhookUrl, opts->description,
+                               verifyAfterTransfer, opts->hooksTrusted);
         } else {
           emit addTransfer(msg, src, dst, args, backupDirTemplate,
                            backupRetainCount);
@@ -1560,10 +1575,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           const QString backupDirTemplate = opts->backupDir;
           const int backupRetainCount =
               opts->dryRun ? 0 : opts->backupRetainCount;
+          const bool verifyAfterTransfer =
+              opts->verifyAfterTransfer && !opts->dryRun;
           const QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
           if (t.wasEnqueued()) {
             emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
-                                 backupRetainCount);
+                                 backupRetainCount, opts->heartbeatUrl,
+                                 opts->preCommand, opts->postCommand,
+                                 opts->webhookUrl, opts->description,
+                                 verifyAfterTransfer, opts->hooksTrusted);
           } else {
             emit addTransfer(msg, src, dst, args, backupDirTemplate,
                              backupRetainCount);

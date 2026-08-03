@@ -15,6 +15,7 @@
 
 ### Reliability & Data Safety
 -   NEW: Staged transfers now persist across restart — enqueued transfers are saved atomically to `staged.json` and restored on launch
+-   NEW: Staged transfer persistence now uses schema v2 and retains execution metadata, including protected hook and notification fields, across restart with automatic v1 migration
 -   NEW: Post-transfer verification — a "Verify integrity after transfer" checkbox in the transfer dialog runs `rclone check` (or `cryptcheck` for crypt remotes) after successful copy/sync operations
 -   NEW: Restartable job history — completed transfers now store their command arguments in history; failed or interrupted jobs can be restarted or dry-run previewed from the Job History dialog
 -   NEW: Operation option profiles — save, load, and delete named rclone flag profiles in the transfer dialog for repeatable per-remote configurations

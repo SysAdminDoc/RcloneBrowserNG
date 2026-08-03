@@ -19,5 +19,7 @@ bool WriteJobOptionsStoreJson(QIODevice *device,
                               QString *error = nullptr);
 
 QString JobOptionsStoreSecurityNotice();
+QString ProtectJobOptionSensitiveValue(const QString &value);
+QString UnprotectJobOptionSensitiveValue(const QString &value);
 
 void ClearJobOptionsList(QList<JobOptions *> *tasks);

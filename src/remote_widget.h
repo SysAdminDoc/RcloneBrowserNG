@@ -28,7 +28,14 @@ signals:
   void enqueueTransfer(const QString &message, const QString &source,
                        const QString &dest, const QStringList &args,
                        const QString &backupDirTemplate = QString(),
-                       int backupRetainCount = 0);
+                       int backupRetainCount = 0,
+                       const QString &heartbeatUrl = QString(),
+                       const QString &preCommand = QString(),
+                       const QString &postCommand = QString(),
+                       const QString &webhookUrl = QString(),
+                       const QString &taskName = QString(),
+                       bool verifyAfterTransfer = false,
+                       bool hooksTrusted = false);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
   void requestReconnect(const QString &remote);
