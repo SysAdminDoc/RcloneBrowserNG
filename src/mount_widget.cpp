@@ -152,13 +152,11 @@ QString MountWidget::rcAddr() const {
   return "localhost:" + QString::number(GetRcMountPort(ui.folder->text()));
 }
 
-bool MountWidget::runRcCommand(const QString &command, QByteArray *output,
-                               QString *error) const {
-  if (!output) {
-    return false;
-  }
+void MountWidget::runRcCommandAsync(const QString &command,
+                                    RcCommandCallback callback) {
+  auto *process = new QProcess(this);
+  process->setProperty("rcCommandFinished", false);
 
-  QProcess process;
   QStringList args;
   args << "rc" << command << "--rc-addr" << rcAddr();
   if (!mRcUser.isEmpty()) {
@@ -168,108 +166,138 @@ bool MountWidget::runRcCommand(const QString &command, QByteArray *output,
     args << "--rc-pass" << mRcPass;
   }
 
-  UseRclonePassword(&process);
-  process.start(GetRclone(), args, QIODevice::ReadOnly);
-  if (!process.waitForStarted(3000)) {
-    if (error) {
-      *error = "failed to start rclone rc";
+  auto complete = [process, callback = std::move(callback)](
+                      bool success, const QByteArray &output,
+                      const QString &error) mutable {
+    if (process->property("rcCommandFinished").toBool()) {
+      return;
     }
-    return false;
-  }
-  if (!process.waitForFinished(5000)) {
-    process.kill();
-    process.waitForFinished();
-    if (error) {
-      *error = "rclone rc timed out";
+    process->setProperty("rcCommandFinished", true);
+    if (callback) {
+      callback(success, output, error);
     }
-    return false;
-  }
+    process->deleteLater();
+  };
 
-  *output = process.readAllStandardOutput();
-  if (process.exitStatus() != QProcess::NormalExit ||
-      process.exitCode() != 0) {
-    const QString detail =
-        QString::fromUtf8(process.readAllStandardError()).trimmed();
-    if (error) {
-      *error = detail.isEmpty() ? QString("rclone rc exited with code %1")
-                                      .arg(process.exitCode())
-                                : detail;
+  QObject::connect(
+      process,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      process, [process, complete](int exitCode,
+                                   QProcess::ExitStatus exitStatus) mutable {
+        const QByteArray output = process->readAllStandardOutput();
+        const QString detail =
+            QString::fromUtf8(process->readAllStandardError()).trimmed();
+        const bool success = exitStatus == QProcess::NormalExit &&
+                             exitCode == 0;
+        complete(success, output,
+                 success ? QString()
+                         : (detail.isEmpty()
+                                ? QString("rclone rc exited with code %1")
+                                      .arg(exitCode)
+                                : detail));
+      });
+  QObject::connect(process, &QProcess::errorOccurred, process,
+                   [complete](QProcess::ProcessError error) mutable {
+                     if (error == QProcess::FailedToStart) {
+                       complete(false, QByteArray(),
+                                QStringLiteral("failed to start rclone rc"));
+                     }
+                   });
+  QTimer::singleShot(5000, process, [process, complete]() mutable {
+    if (process->state() != QProcess::NotRunning) {
+      process->kill();
+      complete(false, QByteArray(), QStringLiteral("rclone rc timed out"));
     }
-    return false;
-  }
+  });
 
-  return true;
+  UseRclonePassword(process);
+  process->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
-bool MountWidget::confirmNoPendingVfsUploads() {
-  QByteArray output;
-  QString error;
-
-  VfsUploadState state;
-  if (runRcCommand("vfs/queue", &output, &error)) {
-    state = ParseVfsQueueState(output);
+void MountWidget::confirmNoPendingVfsUploads(std::function<void(bool)> callback) {
+  auto showDecision = [this, callback = std::move(callback)](
+                          const VfsUploadState &state,
+                          const QString &error) mutable {
     if (!state.valid) {
-      error = state.error;
-    }
-  }
-
-  if (!state.valid) {
-    QByteArray statsOutput;
-    QString statsError;
-    if (runRcCommand("vfs/stats", &statsOutput, &statsError)) {
-      state = ParseVfsStatsUploadState(statsOutput);
-      if (!state.valid) {
-        error = state.error;
+      const int button = QMessageBox::warning(
+          this, "Unmount",
+          QString("Rclone Browser NG could not check whether the VFS cache has "
+                  "pending uploads.\n\n%1\n\nUnmount anyway?")
+              .arg(error.isEmpty() ? "The rc endpoint did not return usable data."
+                                   : error),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      if (callback) {
+        callback(button == QMessageBox::Yes);
       }
-    } else if (error.isEmpty()) {
-      error = statsError;
+      return;
     }
-  }
 
-  if (!state.valid) {
+    if (!state.hasPendingUploads()) {
+      if (callback) {
+        callback(true);
+      }
+      return;
+    }
+
+    const QString bytes =
+        state.bytesKnown ? FormatUploadByteSize(state.pendingBytes)
+                         : QString("unknown size");
     const int button = QMessageBox::warning(
-        this, "Unmount",
-        QString("Rclone Browser NG could not check whether the VFS cache has "
-                "pending uploads.\n\n%1\n\nUnmount anyway?")
-            .arg(error.isEmpty() ? "The rc endpoint did not return usable data."
-                                 : error),
+        this, "Pending uploads",
+        QString("The VFS cache still has %1 file(s) / %2 not yet uploaded.\n\n"
+                "Unmount anyway?")
+            .arg(state.pendingFiles)
+            .arg(bytes),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    return button == QMessageBox::Yes;
-  }
+    if (callback) {
+      callback(button == QMessageBox::Yes);
+    }
+  };
 
-  if (!state.hasPendingUploads()) {
-    return true;
-  }
+  runRcCommandAsync(
+      "vfs/queue",
+      [this, showDecision](bool success, const QByteArray &output,
+                           const QString &commandError) mutable {
+        VfsUploadState state;
+        QString error = commandError;
+        if (success) {
+          state = ParseVfsQueueState(output);
+          if (!state.valid) {
+            error = state.error;
+          }
+        }
+        if (state.valid) {
+          showDecision(state, error);
+          return;
+        }
 
-  const QString bytes =
-      state.bytesKnown ? FormatUploadByteSize(state.pendingBytes)
-                       : QString("unknown size");
-  const int button = QMessageBox::warning(
-      this, "Pending uploads",
-      QString("The VFS cache still has %1 file(s) / %2 not yet uploaded.\n\n"
-              "Unmount anyway?")
-          .arg(state.pendingFiles)
-          .arg(bytes),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  return button == QMessageBox::Yes;
+        runRcCommandAsync(
+            "vfs/stats",
+            [showDecision, error](bool statsSuccess,
+                                   const QByteArray &statsOutput,
+                                   const QString &statsError) mutable {
+              VfsUploadState statsState;
+              QString finalError = error;
+              if (statsSuccess) {
+                statsState = ParseVfsStatsUploadState(statsOutput);
+                if (!statsState.valid) {
+                  finalError = statsState.error;
+                }
+              } else if (finalError.isEmpty()) {
+                finalError = statsError;
+              }
+              showDecision(statsState, finalError);
+            });
+      });
 }
 
-void MountWidget::cancel() {
-  if (!mRunning) {
+void MountWidget::beginUnmount() {
+  if (!mRunning || !mStopping) {
     return;
   }
-  if (mStopping) {
-    return;
-  }
-
-#if defined(Q_OS_WIN32)
-  if (!confirmNoPendingVfsUploads()) {
-    return;
-  }
-#endif
 
   mUserRequestedUnmount = true;
-  mStopping = true;
   ui.keepMounted->setEnabled(false);
   ui.cancel->setEnabled(false);
   ui.cancel->setToolTip("Unmounting...");
@@ -314,4 +342,40 @@ void MountWidget::cancel() {
       });
     }
   });
+}
+
+void MountWidget::cancel() {
+  if (!mRunning) {
+    return;
+  }
+  if (mStopping) {
+    return;
+  }
+
+#if defined(Q_OS_WIN32)
+  mStopping = true;
+  ui.keepMounted->setEnabled(false);
+  ui.cancel->setEnabled(false);
+  ui.cancel->setToolTip("Checking pending uploads...");
+  UiPolish::SetStatus(ui.showDetails, "warning", "Checking uploads");
+  confirmNoPendingVfsUploads([this](bool allowUnmount) {
+    if (!mRunning) {
+      return;
+    }
+    if (!allowUnmount) {
+      mStopping = false;
+      ui.keepMounted->setEnabled(true);
+      ui.cancel->setEnabled(true);
+      UiPolish::SetCompactToolButton(ui.cancel, "Unmount",
+                                     "Unmount this remote.");
+      UiPolish::SetStatus(ui.showDetails, "success", "Mounted");
+      return;
+    }
+    beginUnmount();
+  });
+  return;
+#else
+  mStopping = true;
+  beginUnmount();
+#endif
 }

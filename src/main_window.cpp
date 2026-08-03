@@ -1390,7 +1390,8 @@ MainWindow::MainWindow() {
                        unscheduleBtn->setEnabled(hasOne);
                      });
 
-    QObject::connect(scheduleBtn, &QPushButton::clicked, this, [this]() {
+    QObject::connect(scheduleBtn, &QPushButton::clicked, this,
+                     [this, scheduleBtn, unscheduleBtn]() {
       auto *item = static_cast<JobOptionsListWidgetItem *>(
           ui.tasksListWidget->currentItem());
       if (!item || !item->GetData())
@@ -1492,32 +1493,51 @@ MainWindow::MainWindow() {
       QString interval = idx < 5 ? intervalMap[idx] : cronEdit->text().trimmed();
       QString time = (idx == 3 || idx == 4) ? timeEdit->text().trimmed() : "";
 
-      QString error;
-      if (ScheduleManager::installSchedule(taskName, interval, time, &error)) {
-        setStatusMessage(
-            QString("Scheduled \"%1\" (%2)").arg(taskName, interval));
-      } else {
-        QMessageBox::warning(this, "Schedule failed",
-                             QString("Could not schedule \"%1\":\n%2")
-                                 .arg(taskName, error));
-      }
+      scheduleBtn->setEnabled(false);
+      unscheduleBtn->setEnabled(false);
+      setStatusMessage(QString("Scheduling \"%1\"...").arg(taskName));
+      ScheduleManager::installScheduleAsync(
+          taskName, interval, time, this,
+          [this, scheduleBtn, unscheduleBtn, taskName,
+           interval](bool ok, const QString &error) {
+            scheduleBtn->setEnabled(true);
+            unscheduleBtn->setEnabled(true);
+            if (ok) {
+              setStatusMessage(
+                  QString("Scheduled \"%1\" (%2)").arg(taskName, interval));
+            } else {
+              QMessageBox::warning(this, "Schedule failed",
+                                   QString("Could not schedule \"%1\":\n%2")
+                                       .arg(taskName, error));
+            }
+          });
     });
 
-    QObject::connect(unscheduleBtn, &QPushButton::clicked, this, [this]() {
+    QObject::connect(unscheduleBtn, &QPushButton::clicked, this,
+                     [this, scheduleBtn, unscheduleBtn]() {
       auto *item = static_cast<JobOptionsListWidgetItem *>(
           ui.tasksListWidget->currentItem());
       if (!item || !item->GetData())
         return;
       QString taskName = item->GetData()->description;
-      QString error;
-      if (ScheduleManager::removeSchedule(taskName, &error)) {
-        setStatusMessage(
-            QString("Removed schedule for \"%1\"").arg(taskName));
-      } else {
-        QMessageBox::warning(this, "Unschedule failed",
-                             QString("Could not remove schedule:\n%1")
-                                 .arg(error));
-      }
+      scheduleBtn->setEnabled(false);
+      unscheduleBtn->setEnabled(false);
+      setStatusMessage(QString("Removing schedule for \"%1\"...").arg(taskName));
+      ScheduleManager::removeScheduleAsync(
+          taskName, this,
+          [this, scheduleBtn, unscheduleBtn,
+           taskName](bool ok, const QString &error) {
+            scheduleBtn->setEnabled(true);
+            unscheduleBtn->setEnabled(true);
+            if (ok) {
+              setStatusMessage(
+                  QString("Removed schedule for \"%1\"").arg(taskName));
+            } else {
+              QMessageBox::warning(this, "Unschedule failed",
+                                   QString("Could not remove schedule:\n%1")
+                                       .arg(error));
+            }
+          });
     });
   }
 
@@ -3920,48 +3940,56 @@ void MainWindow::noteJobFinished(bool success) {
 void MainWindow::checkStaleness() {
   if (!ScheduleManager::isSupported())
     return;
-  QString error;
-  auto schedules = ScheduleManager::listSchedules(&error);
-  if (schedules.isEmpty())
+  if (mScheduleCheckInFlight)
     return;
+  mScheduleCheckInFlight = true;
+  ScheduleManager::listSchedulesAsync(
+      this, [this](const QList<ScheduleEntry> &schedules,
+                   const QString &) {
+        mScheduleCheckInFlight = false;
+        if (schedules.isEmpty())
+          return;
 
-  auto history = JobHistoryStore::Load();
+        auto history = JobHistoryStore::Load();
 
-  QStringList overdue;
-  QDateTime now = QDateTime::currentDateTimeUtc();
-  for (const auto &sched : schedules) {
-    QDateTime lastRun;
-    for (int i = history.size() - 1; i >= 0; --i) {
-      if (history[i].name.contains(sched.taskName) && history[i].success) {
-        lastRun = history[i].finishedAt;
-        break;
-      }
-    }
-    if (!lastRun.isValid())
-      continue;
+        QStringList overdue;
+        QDateTime now = QDateTime::currentDateTimeUtc();
+        for (const auto &sched : schedules) {
+          QDateTime lastRun;
+          for (int i = history.size() - 1; i >= 0; --i) {
+            if (history[i].name.contains(sched.taskName) &&
+                history[i].success) {
+              lastRun = history[i].finishedAt;
+              break;
+            }
+          }
+          if (!lastRun.isValid())
+            continue;
 
-    int expectedIntervalSec = 86400;
-    if (sched.interval.contains("HOUR") || sched.interval == "hourly")
-      expectedIntervalSec = 3600;
-    else if (sched.interval.contains("WEEK") || sched.interval == "weekly")
-      expectedIntervalSec = 604800;
-    else if (sched.interval.contains("MINUTE"))
-      expectedIntervalSec = 900;
+          int expectedIntervalSec = 86400;
+          if (sched.interval.contains("HOUR") || sched.interval == "hourly")
+            expectedIntervalSec = 3600;
+          else if (sched.interval.contains("WEEK") ||
+                   sched.interval == "weekly")
+            expectedIntervalSec = 604800;
+          else if (sched.interval.contains("MINUTE"))
+            expectedIntervalSec = 900;
 
-    int margin = expectedIntervalSec / 2;
-    if (lastRun.secsTo(now) > expectedIntervalSec + margin) {
-      overdue << sched.taskName;
-    }
-  }
+          int margin = expectedIntervalSec / 2;
+          if (lastRun.secsTo(now) > expectedIntervalSec + margin) {
+            overdue << sched.taskName;
+          }
+        }
 
-  if (!overdue.isEmpty()) {
-    mSystemTray.showMessage(
-        "Overdue scheduled tasks",
-        QString("%1 scheduled task(s) haven't run on time:\n%2")
-            .arg(overdue.size())
-            .arg(overdue.join(", ")),
-        QSystemTrayIcon::Warning, 10000);
-  }
+        if (!overdue.isEmpty()) {
+          mSystemTray.showMessage(
+              "Overdue scheduled tasks",
+              QString("%1 scheduled task(s) haven't run on time:\n%2")
+                  .arg(overdue.size())
+                  .arg(overdue.join(", ")),
+              QSystemTrayIcon::Warning, 10000);
+        }
+      });
 }
 
 void MainWindow::drainTransferQueue() {
@@ -4423,24 +4451,43 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   MacMountBackendFacts macMountFacts;
   macMountFacts.macFuseVersion = DetectMacFuseVersion();
   macMountFacts.fuseTInstalled = DetectFuseTInstalled();
-  macMountFacts.nfsMountSupported =
-      RcloneCommandSupported(GetRclone(), "nfsmount");
   macMountFacts.macOsMajorVersion =
       IsMacOs26OrNewer() ? 26 : QOperatingSystemVersion::current().majorVersion();
   if (!opt.isEmpty()) {
     macMountFacts.userMountOptions = SplitRcloneOptions(opt);
   }
-  const MountBackendPlan macMountPlan = PlanMacMountBackend(macMountFacts);
-  if (!macMountPlan.warningText.isEmpty()) {
-    if (settings->value(macMountPlan.warningKey).toString() !=
-        macMountPlan.warningVersion) {
-      settings->setValue(macMountPlan.warningKey, macMountPlan.warningVersion);
-      QMessageBox::warning(this, macMountPlan.warningTitle,
-                           macMountPlan.warningText);
-    }
-  }
+  RcloneCommandSupportedAsync(
+      GetRclone(), "nfsmount", this,
+      [this, remote, folder, keepMounted, restartAttempt, opt, driveShared,
+       macMountFacts](bool supported) mutable {
+        macMountFacts.nfsMountSupported = supported;
+        const MountBackendPlan macMountPlan =
+            PlanMacMountBackend(macMountFacts);
+        auto settings = GetSettings();
+        if (!macMountPlan.warningText.isEmpty() &&
+            settings->value(macMountPlan.warningKey).toString() !=
+                macMountPlan.warningVersion) {
+          settings->setValue(macMountPlan.warningKey,
+                             macMountPlan.warningVersion);
+          QMessageBox::warning(this, macMountPlan.warningTitle,
+                               macMountPlan.warningText);
+        }
+        launchMount(remote, folder, keepMounted, restartAttempt, opt,
+                    driveShared, macMountPlan.command,
+                    macMountPlan.argsBeforeRemote);
+      });
+  return;
 #endif
 
+  launchMount(remote, folder, keepMounted, restartAttempt, opt, driveShared,
+              QStringLiteral("mount"), QStringList());
+}
+
+void MainWindow::launchMount(const QString &remote, const QString &folder,
+                             bool keepMounted, int restartAttempt,
+                             const QString &opt, bool driveShared,
+                             const QString &mountCommand,
+                             const QStringList &mountBackendArgs) {
   QProcess *mount = new QProcess(this);
   mount->setProcessChannelMode(QProcess::MergedChannels);
 
@@ -4526,13 +4573,6 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   ui.tabs->setTabText(1, QString("Jobs (%1)").arg(++mJobCount));
 
   QStringList args;
-  QString mountCommand = "mount";
-  QStringList mountBackendArgs;
-#if defined(Q_OS_MACOS)
-  mountCommand = macMountPlan.command;
-  mountBackendArgs = macMountPlan.argsBeforeRemote;
-#endif
-
   args << mountCommand;
 
 #if defined(Q_OS_WIN32)

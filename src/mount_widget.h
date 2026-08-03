@@ -2,6 +2,7 @@
 
 #include "pch.h"
 #include "ui_mount_widget.h"
+#include <functional>
 
 class MountWidget : public QWidget {
   Q_OBJECT
@@ -40,7 +41,9 @@ private:
   QString mRcPass;
 
   QString rcAddr() const;
-  bool runRcCommand(const QString &command, QByteArray *output,
-                    QString *error) const;
-  bool confirmNoPendingVfsUploads();
+  using RcCommandCallback =
+      std::function<void(bool, const QByteArray &, const QString &)>;
+  void runRcCommandAsync(const QString &command, RcCommandCallback callback);
+  void confirmNoPendingVfsUploads(std::function<void(bool)> callback);
+  void beginUnmount();
 };

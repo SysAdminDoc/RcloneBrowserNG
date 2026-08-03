@@ -27,6 +27,21 @@ QString xmlEscape(const QString &s) {
   out.replace('"', "&quot;");
   return out;
 }
+
+void dispatchScheduleCallback(QPointer<QObject> context,
+                              std::function<void()> callback) {
+  if (!context) {
+    return;
+  }
+  QMetaObject::invokeMethod(
+      context.data(),
+      [context, callback = std::move(callback)]() mutable {
+        if (context && callback) {
+          callback();
+        }
+      },
+      Qt::QueuedConnection);
+}
 }
 
 QString ScheduleManager::appPath() {
@@ -579,6 +594,60 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
 
   Q_UNUSED(error);
   return result;
+}
+
+void ScheduleManager::installScheduleAsync(
+    const QString &taskName, const QString &interval, const QString &time,
+    QObject *context, ScheduleOperationCallback callback) {
+  const QPointer<QObject> contextGuard(context);
+  QThreadPool::globalInstance()->start(
+      [taskName, interval, time, contextGuard,
+       callback = std::move(callback)]() mutable {
+        QString error;
+        const bool ok = installSchedule(taskName, interval, time, &error);
+        dispatchScheduleCallback(
+            contextGuard,
+            [ok, error, callback = std::move(callback)]() mutable {
+              if (callback) {
+                callback(ok, error);
+              }
+            });
+      });
+}
+
+void ScheduleManager::removeScheduleAsync(const QString &taskName,
+                                          QObject *context,
+                                          ScheduleOperationCallback callback) {
+  const QPointer<QObject> contextGuard(context);
+  QThreadPool::globalInstance()->start(
+      [taskName, contextGuard, callback = std::move(callback)]() mutable {
+        QString error;
+        const bool ok = removeSchedule(taskName, &error);
+        dispatchScheduleCallback(
+            contextGuard,
+            [ok, error, callback = std::move(callback)]() mutable {
+              if (callback) {
+                callback(ok, error);
+              }
+            });
+      });
+}
+
+void ScheduleManager::listSchedulesAsync(QObject *context,
+                                          ScheduleListCallback callback) {
+  const QPointer<QObject> contextGuard(context);
+  QThreadPool::globalInstance()->start(
+      [contextGuard, callback = std::move(callback)]() mutable {
+        QString error;
+        const QList<ScheduleEntry> entries = listSchedules(&error);
+        dispatchScheduleCallback(
+            contextGuard,
+            [entries, error, callback = std::move(callback)]() mutable {
+              if (callback) {
+                callback(entries, error);
+              }
+            });
+      });
 }
 
 namespace {

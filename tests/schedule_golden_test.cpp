@@ -181,6 +181,24 @@ private slots:
     auto runs = ScheduleManager::nextCronRuns("60 * * * *", 5);
     QVERIFY(runs.isEmpty());
   }
+
+  void scheduleListingCallbackIsAsync() {
+    bool called = false;
+    QThread *callbackThread = nullptr;
+    QEventLoop loop;
+    QTimer::singleShot(15000, &loop, &QEventLoop::quit);
+
+    ScheduleManager::listSchedulesAsync(
+        this, [&](const QList<ScheduleEntry> &, const QString &) {
+          called = true;
+          callbackThread = QThread::currentThread();
+          loop.quit();
+        });
+    loop.exec();
+
+    QVERIFY(called);
+    QCOMPARE(callbackThread, QThread::currentThread());
+  }
 };
 
 QTEST_MAIN(ScheduleGoldenTest)

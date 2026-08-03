@@ -18,7 +18,8 @@ RcloneRcEngine::~RcloneRcEngine() {
     postSync("core/quit", QJsonObject(), &ignored);
     if (!mProcess->waitForFinished(3000)) {
       mProcess->kill();
-      mProcess->waitForFinished();
+      // Destructor teardown remains bounded even if rclone ignores kill.
+      mProcess->waitForFinished(1000);
     }
   }
 }

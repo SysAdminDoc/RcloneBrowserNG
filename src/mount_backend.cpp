@@ -91,20 +91,45 @@ bool IsMacOs26OrNewer() {
 #endif
 }
 
-bool RcloneCommandSupported(const QString &rclone, const QString &command) {
-  QProcess process;
-  process.start(rclone, QStringList() << command << "--help",
-                QIODevice::ReadOnly);
-  if (!process.waitForStarted(3000)) {
-    return false;
-  }
-  if (!process.waitForFinished(5000)) {
-    process.kill();
-    process.waitForFinished(2000);
-    return false;
-  }
-  return process.exitStatus() == QProcess::NormalExit &&
-         process.exitCode() == 0;
+void RcloneCommandSupportedAsync(const QString &rclone, const QString &command,
+                                 QObject *context,
+                                 std::function<void(bool)> callback) {
+  auto *process = new QProcess(context);
+  process->setProperty("supportCheckFinished", false);
+
+  auto complete = [process, callback = std::move(callback)](bool supported) mutable {
+    if (process->property("supportCheckFinished").toBool()) {
+      return;
+    }
+    process->setProperty("supportCheckFinished", true);
+    if (callback) {
+      callback(supported);
+    }
+    process->deleteLater();
+  };
+
+  QObject::connect(
+      process,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      process, [complete](int exitCode, QProcess::ExitStatus exitStatus) mutable {
+        complete(exitStatus == QProcess::NormalExit && exitCode == 0);
+      });
+  QObject::connect(process, &QProcess::errorOccurred, process,
+                   [complete](QProcess::ProcessError error) mutable {
+                     if (error == QProcess::FailedToStart) {
+                       complete(false);
+                     }
+                   });
+  QTimer::singleShot(5000, process, [process, complete]() mutable {
+    if (process->state() != QProcess::NotRunning) {
+      process->kill();
+      complete(false);
+    }
+  });
+
+  process->start(rclone, QStringList() << command << "--help",
+                 QIODevice::ReadOnly);
 }
 
 bool MountOptionsContainFuseBackend(const QStringList &options) {

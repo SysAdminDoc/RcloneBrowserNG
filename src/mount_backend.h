@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include <functional>
 
 struct MacMountBackendFacts {
   QString macFuseVersion;
@@ -23,6 +24,8 @@ struct MountBackendPlan {
 QString DetectMacFuseVersion();
 bool DetectFuseTInstalled();
 bool IsMacOs26OrNewer();
-bool RcloneCommandSupported(const QString &rclone, const QString &command);
+void RcloneCommandSupportedAsync(const QString &rclone, const QString &command,
+                                 QObject *context,
+                                 std::function<void(bool)> callback);
 bool MountOptionsContainFuseBackend(const QStringList &options);
 MountBackendPlan PlanMacMountBackend(const MacMountBackendFacts &facts);

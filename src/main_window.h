@@ -67,6 +67,7 @@ private:
   int mJobCount = 0;
   int mRunningTransfers = 0;
   bool mLastJobFailed = false;
+  bool mScheduleCheckInFlight = false;
 
   struct QueuedTransfer {
     QString message;
@@ -114,6 +115,10 @@ private:
                                     const QString &errorTitle);
   void startMount(const QString &remote, const QString &folder,
                   bool keepMounted, int restartAttempt);
+  void launchMount(const QString &remote, const QString &folder,
+                   bool keepMounted, int restartAttempt, const QString &opt,
+                   bool driveShared, const QString &mountCommand,
+                   const QStringList &mountBackendArgs);
 
   void addEmptyJobsMessage();
   void addTransferViaProcess(const QString &message, const QString &source,

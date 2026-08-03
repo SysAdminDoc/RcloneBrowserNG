@@ -41,13 +41,6 @@ All items trace back to public GitHub issues/PRs:
 
 ### P1
 
-- [ ] P1 — Remove remaining GUI-thread process waits from user-triggered helper operations
-  Why: Search cancellation, mount backend checks/unmount, and native scheduler operations still block on helper processes and can freeze the desktop shell.
-  Evidence: `src/cross_remote_search.cpp:255`, `src/mount_backend.cpp`, `src/mount_widget.cpp`, `src/schedule_manager.cpp`, Mountain Duck mount UX, GoodSync scheduling UX.
-  Touches: `src/cross_remote_search.*`, `src/mount_backend.*`, `src/mount_widget.*`, `src/schedule_manager.*`, tests for process-helper behavior.
-  Acceptance: Cancel search, detect mount backend, unmount, schedule, unschedule, and schedule-status flows use async or worker-backed helpers with progress/error states; no user-triggered GUI path blocks on `waitForFinished()` except documented bounded teardown.
-  Complexity: L
-
 ### P2
 
 - [ ] P2 — Add automated keyboard/accessibility smoke tests
