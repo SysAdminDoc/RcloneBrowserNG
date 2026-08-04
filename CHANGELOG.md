@@ -1,5 +1,7 @@
 # Change Log
 ## [Unreleased]
+
+## [2.0.1] - 2026-08-03
 ### Bug Fixes
 -   FIX: Preferences dialog layout on Qt 6 (#13) — dynamically created controls (max concurrent transfers, exclude patterns, SOCKS proxy, Backup/Restore Config, Start minimized) were inserted via layout casts that fail against the .ui's QGridLayouts, leaving them floating over the tab bar and the SOCKS field effectively missing; they are now regular .ui widgets in managed layouts, covered by a layout regression test
 -   FIX: Transfer defaults moved from the overcrowded General page to a new Transfers tab, so the exclude-pattern editor and Backup/Restore buttons no longer clip on shorter screens
@@ -33,7 +35,7 @@
 -   NEW: Local Windows deployment and platform release scripts now run the packaged executable's non-GUI `--version` smoke before release handoff
 -   NEW: AppImage releases now embed `gh-releases-zsync` metadata, emit a matching `.zsync` delta file, and verify the update section before handoff
 -   FIXED: Mount backend probes, VFS unmount safety checks, and native schedule/status operations now use asynchronous or worker-backed helpers instead of blocking the GUI thread
--   NEW: AppStream metainfo now records the three newest releases with dated descriptions and local release-history validation
+-   NEW: AppStream metainfo now records release history with dated descriptions and local release-history validation
 -   NEW: Remote Health panel shows local disk free/total/usage via rclone `core/disks` (rclone >= 1.74)
 -   CHANGED: All 17 C++ test targets now use the Qt QTest framework with QVERIFY/QCOMPARE assertions and proper test reporting
 -   FIXED: Cross-remote search cancel now uses async process termination instead of blocking `waitForFinished()`

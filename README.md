@@ -1,6 +1,6 @@
 # Rclone Browser NG
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/SysAdminDoc/RcloneBrowserNG/releases)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/SysAdminDoc/RcloneBrowserNG/releases)
 [![License](https://img.shields.io/github/license/SysAdminDoc/RcloneBrowserNG.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20BSD-lightgrey.svg)](#build-instructions)
 [![Qt](https://img.shields.io/badge/Qt-6.4%2B-green.svg)](https://www.qt.io/)

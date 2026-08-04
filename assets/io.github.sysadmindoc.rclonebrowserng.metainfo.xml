@@ -15,6 +15,11 @@
   <url type="vcs-browser">https://github.com/SysAdminDoc/RcloneBrowserNG</url>
   <releases>
     <!-- Release entries are maintained with the local release process. -->
+    <release version="2.0.1" date="2026-08-03">
+      <description>
+        <p>Maintenance release with safer saved-task handling, non-blocking operations, staged-transfer recovery, accessibility coverage, local packaging checks, and mount preset and stale-mount recovery improvements.</p>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-06-10">
       <description>
         <p>First NG release: Qt 6 port, modern rclone parsing, async delete, authenticated mount RC, dark-mode polish, and many reliability fixes. Over 80 features added since the abandoned upstream including saved tasks, scheduling, dual-pane view, file preview, version browser, cross-remote search, and cloud trash support.</p>
