@@ -1,10 +1,11 @@
-name: Build Rclone Browser
+name: Build Rclone Browser NG
 
 on:
   push:
     branches:
       - main
       - master
+      - build_on_github
       
   workflow_dispatch:
 
