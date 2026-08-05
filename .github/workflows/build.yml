@@ -5,8 +5,7 @@ on:
     branches:
       - main
       - master
-      - build_on_github
-      
+            
   workflow_dispatch:
 
 env:
