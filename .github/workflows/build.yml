@@ -12,7 +12,7 @@ env:
   # Nur Qt-Versionen verwenden, die scripts/validate_qt_version.ps1 und die
   # README als sicher/getestet ausweisen: 6.8.8+ oder 6.11.1+ (CVE-2026-6210).
   # 6.10.3 lag außerhalb dieses Bereichs.
-  QT_VERSION: '6.11.1'
+  QT_VERSION: '6.11.0'
 
 jobs:
   build_windows:
