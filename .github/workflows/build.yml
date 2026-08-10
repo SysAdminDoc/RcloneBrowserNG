@@ -47,14 +47,15 @@ jobs:
           # (windows-latest ships VS 2026, not VS 2022).
           cmake -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
           cmake --build . --config Release
-          # FIX 3: Pfad korrigiert. Da wir bereits im 'build'-Verzeichnis sind,
-          # liegt das Executable unter .\Release\, nicht .\build\Release\.
-          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations ".\Release\RcloneBrowser.exe"
+          # HINWEIS: MSBuild legt die Outputs in .\build\Release\ ab (doppeltes
+          # build-Verzeichnis). Das ist korrekt so und kein Fehler.
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations ".\build\Release\RcloneBrowser.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          # FIX 4: Upload-Pfad korrigiert (war doppelt verschachtelt).
-          path: build\Release\*
+          # HINWEIS: Pfad ist bewusst doppelt verschachtelt, da CMake/MSBuild
+          # so arbeitet: build/build/Release/
+          path: build\build\Release\*
 
   build_linux:
     name: Linux Build
@@ -124,13 +125,11 @@ jobs:
   #         # Let CMake auto-detect the newest installed Visual Studio generator.
   #         cmake -A ARM64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
   #         cmake --build . --config Release
-  #         # FIX: Pfad korrigiert (wir sind bereits im build-Ordner).
-  #         & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations --no-compiler-runtime --no-svg ".\Release\RcloneBrowser.exe"
+  #         & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations --no-compiler-runtime --no-svg ".\build\Release\RcloneBrowser.exe"
   #     - uses: actions/upload-artifact@v4
   #       with:
   #         name: windows-arm64
-  #         # FIX: Upload-Pfad korrigiert.
-  #         path: build\Release\*
+  #         path: build\build\Release\*
 
   # build_macos:
   #   name: macOS Build (Apple Silicon)
@@ -223,4 +222,3 @@ jobs:
   #         prerelease: true
   #         skipIfReleaseExists: true
   #         tag: release-${{ env.SHORT_SHA }}
-  
