@@ -12,7 +12,7 @@ env:
   # Nur Qt-Versionen verwenden, die scripts/validate_qt_version.ps1 und die
   # README als sicher/getestet ausweisen: 6.8.8+ oder 6.11.1+ (CVE-2026-6210).
   # 6.10.3 lag außerhalb dieses Bereichs.
-  QT_VERSION: '6.11.0'
+  QT_VERSION: '6.11.1'
 
 jobs:
   build_windows:
@@ -21,7 +21,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -30,16 +29,16 @@ jobs:
           target: 'desktop'
           arch: 'win64_msvc2022_64'
           modules: 'qtmultimedia'
-          # FIX: 'mirror' ist kein gültiger Input für install-qt-action@v4.
-          # Der Parameter wurde ignoriert, wodurch aqtinstall über einen
-          # zufälligen Community-Mirror lief, der Qt 6.11.1 nicht kannte.
-          # 'extra' wird direkt an aqtinstall weitergereicht.
+          # FIX 1: 'mirror' ist kein gültiger Input für install-qt-action@v4
+          # und wurde ignoriert. 'extra' reicht --base direkt an aqtinstall durch.
           extra: '--base https://download.qt.io'
-
+          # FIX 2: aqtinstall 3.3.0 auf PyPI kann Qt 6.11+ nicht installieren,
+          # weil Qt die Verzeichnisstruktur geändert hat. Der Fix ist nur im
+          # GitHub-Repo verfügbar. aqtsource überschreibt aqtversion.
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
       - name: Validate Qt version
         shell: pwsh
         run: .\scripts\validate_qt_version.ps1 -QtDir "$env:QT_ROOT_DIR"
-
       - name: Build Rclone Browser
         run: |
           mkdir build
@@ -48,14 +47,13 @@ jobs:
           # (windows-latest ships VS 2026, not VS 2022).
           cmake -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
           cmake --build . --config Release
-          # FIX: Pfad korrigiert. Da wir bereits im 'build'-Verzeichnis sind,
+          # FIX 3: Pfad korrigiert. Da wir bereits im 'build'-Verzeichnis sind,
           # liegt das Executable unter .\Release\, nicht .\build\Release\.
           & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations ".\Release\RcloneBrowser.exe"
-
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          # FIX: Upload-Pfad ebenfalls korrigiert (war doppelt verschachtelt).
+          # FIX 4: Upload-Pfad korrigiert (war doppelt verschachtelt).
           path: build\Release\*
 
   build_linux:
@@ -64,12 +62,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Development Tools
         run: |
           sudo apt update
           sudo apt -y install git g++ cmake make qt6-base-dev libgl1-mesa-dev
-
       - name: Build Rclone Browser
         run: |
           mkdir build
@@ -89,7 +85,6 @@ jobs:
           # -Werror bleibt aktiv.
           cmake -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS="-Wno-error=unused-parameter -Wno-error=reorder -Wno-error=unused-function" ..
           make -j $(nproc)
-
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -119,6 +114,8 @@ jobs:
   #         target: 'desktop'
   #         arch: 'win64_msvc2022_arm64'
   #         modules: 'qtmultimedia'
+  #         extra: '--base https://download.qt.io'
+  #         aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
   #     - name: Build Rclone Browser
   #       shell: pwsh
   #       run: |
@@ -127,10 +124,12 @@ jobs:
   #         # Let CMake auto-detect the newest installed Visual Studio generator.
   #         cmake -A ARM64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
   #         cmake --build . --config Release
+  #         # FIX: Pfad korrigiert (wir sind bereits im build-Ordner).
   #         & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations --no-compiler-runtime --no-svg ".\Release\RcloneBrowser.exe"
   #     - uses: actions/upload-artifact@v4
   #       with:
   #         name: windows-arm64
+  #         # FIX: Upload-Pfad korrigiert.
   #         path: build\Release\*
 
   # build_macos:
@@ -147,6 +146,8 @@ jobs:
   #         target: 'desktop'
   #         arch: 'clang_64'
   #         modules: 'qtmultimedia'
+  #         extra: '--base https://download.qt.io'
+  #         aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
   #     - name: Build Rclone Browser
   #       run: |
   #         mkdir build
