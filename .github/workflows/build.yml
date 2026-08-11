@@ -1,0 +1,192 @@
+name: Build Rclone Browser NG
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - build_on_github
+  workflow_dispatch:
+
+env:
+  # HINWEIS: Qt 6.8.8 existiert NICHT im Open-Source Online-Repository
+  # (vermutlich nur kommerziell verfügbar). 6.12.0 ist die neueste
+  # verfügbare Version. Alternative: 6.11.1 oder 6.8.3.
+  QT_VERSION: '6.12.0'
+
+jobs:
+  build_windows:
+    name: Windows Build (x64)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtmultimedia'
+          extra: '--base https://download.qt.io'
+          # aqtinstall 3.3.0 auf PyPI kann Qt 6.11+ / 6.12+ nicht installieren,
+          # weil Qt die Verzeichnisstruktur geändert hat. Der Fix ist nur im
+          # GitHub-Repo verfügbar. aqtsource überschreibt aqtversion.
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
+      - name: Validate Qt version
+        shell: pwsh
+        run: .\scripts\validate_qt_version.ps1 -QtDir "$env:QT_ROOT_DIR"
+      - name: Build Rclone Browser
+        run: |
+          mkdir build
+          cd build
+          cmake -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
+          cmake --build . --config Release
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations ".\build\Release\RcloneBrowser.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build\build\Release\*
+
+  build_linux:
+    name: Linux Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Development Tools
+        run: |
+          sudo apt update
+          sudo apt -y install git g++ cmake make qt6-base-dev qt6-multimedia-dev libgl1-mesa-dev
+      - name: Build Rclone Browser
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS="-Wno-error=unused-parameter -Wno-error=reorder -Wno-error=unused-function" ..
+          make -j $(nproc)
+          make install DESTDIR=$PWD/install
+          tar czf ../rclone-browser-linux-x64.tar.gz -C install .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: rclone-browser-linux-x64.tar.gz
+
+  # ---------------------------------------------------------------------
+  # Vorerst deaktiviert (laut PR #15: "Currently failing due to missing
+  # system package dependencies or runner configuration differences").
+  # Bei Bedarf einzeln wieder einkommentieren und denselben Ansatz wie oben
+  # (BUILD_TESTING=OFF, vollständige Toolchain-Pakete) anwenden.
+  # ---------------------------------------------------------------------
+
+  # build_windows_arm64:
+  #   name: Windows Build (ARM64)
+  #   runs-on: windows-11-arm
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Qt (ARM64)
+  #       uses: jurplel/install-qt-action@v4
+  #       with:
+  #         version: ${{ env.QT_VERSION }}
+  #         host: 'windows_arm64'
+  #         target: 'desktop'
+  #         arch: 'win64_msvc2022_arm64'
+  #         modules: 'qtmultimedia'
+  #         extra: '--base https://download.qt.io'
+  #         aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
+  #     - name: Build Rclone Browser
+  #       shell: pwsh
+  #       run: |
+  #         mkdir build
+  #         cd build
+  #         cmake -A ARM64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" ..
+  #         cmake --build . --config Release
+  #         & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --no-translations --no-compiler-runtime --no-svg ".\build\Release\RcloneBrowser.exe"
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: windows-arm64
+  #         path: build\build\Release\*
+
+  # build_macos:
+  #   name: macOS Build (Apple Silicon)
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Qt
+  #       uses: jurplel/install-qt-action@v4
+  #       with:
+  #         version: ${{ env.QT_VERSION }}
+  #         host: 'mac'
+  #         target: 'desktop'
+  #         arch: 'clang_64'
+  #         modules: 'qtmultimedia'
+  #         extra: '--base https://download.qt.io'
+  #         aqtsource: 'git+https://github.com/miurahr/aqtinstall.git'
+  #     - name: Build Rclone Browser
+  #       run: |
+  #         mkdir build
+  #         cd build
+  #         cmake .. -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_OSX_ARCHITECTURES=arm64
+  #         make -j $(sysctl -n hw.ncpu)
+  #         cd build
+  #         "$QT_ROOT_DIR/bin/macdeployqt" rclone-browser.app -executable="rclone-browser.app/Contents/MacOS/rclone-browser"
+  #         mv rclone-browser.app Rclone\ Browser.app
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: macos
+  #         path: build/build/*
+
+  # build_freebsd:
+  #   name: FreeBSD Build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Development Tools and Build Rclone Browser
+  #       uses: vmactions/freebsd-vm@v1
+  #       with:
+  #         mem: 4096
+  #         usesh: true
+  #         prepare: |
+  #           env ASSUME_ALWAYS_YES=YES pkg update -f
+  #           env ASSUME_ALWAYS_YES=YES pkg install -y git cmake qt6-base qt6-multimedia
+  #         run: |
+  #           mkdir build
+  #           cd build
+  #           cmake ..
+  #           make
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: freebsd
+  #         path: build/build/*
+
+  # create_release:
+  #   name: Create GitHub Release
+  #   runs-on: ubuntu-latest
+  #   needs: [build_windows, build_windows_arm64, build_linux, build_macos, build_freebsd]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Create artifact directory
+  #       run: rm -rf /tmp/artifacts && mkdir /tmp/artifacts
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         path: /tmp/artifacts
+  #     - name: Compress artifacts
+  #       run: |
+  #         pushd /tmp/artifacts
+  #         for i in *;do zip -r -0 $i.zip $i;done
+  #         popd
+  #     - name: Get short commit
+  #       run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
+  #     - uses: rickstaa/action-create-tag@v1
+  #       with:
+  #         tag: release-${{ env.SHORT_SHA }}
+  #         tag_exists_error: false
+  #     - uses: ncipollo/release-action@v1
+  #       with:
+  #         artifacts: "/tmp/artifacts/*.zip"
+  #         name: Rclone Browser Autobuild For Commit ${{ env.SHORT_SHA }}
+  #         omitBody: true
+  #         generateReleaseNotes: true
+  #         prerelease: true
+  #         skipIfReleaseExists: true
+  #         tag: release-${{ env.SHORT_SHA }}
