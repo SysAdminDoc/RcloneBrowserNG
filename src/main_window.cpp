@@ -508,6 +508,16 @@ MainWindow::MainWindow(bool initializeRuntime)
     mNotifyFinishedTransfers =
         settings->value("Settings/notifyFinishedTransfers", true).toBool();
 
+    // Start minimized requires the tray icon, or the app starts hidden with
+    // no way to reach it. The Preferences dialog enforces this pair, but
+    // settings written by older builds or edited outside the dialog can
+    // still disagree, so normalize the stored values here as well.
+    if (!mAlwaysShowInTray && QSystemTrayIcon::isSystemTrayAvailable() &&
+        settings->value("Settings/startMinimized", false).toBool()) {
+      mAlwaysShowInTray = true;
+      settings->setValue("Settings/alwaysShowInTray", true);
+    }
+
     mSystemTray.setVisible(mAlwaysShowInTray);
 
     // during first run the lastUsed keys might not exist
@@ -1869,6 +1879,12 @@ MainWindow::MainWindow(bool initializeRuntime)
   } else {
     rcloneGetVersion();
   }
+}
+
+void MainWindow::ensureTrayIconVisible() {
+  // Covers the --minimized/--tray command-line flags, which hide the window
+  // regardless of the alwaysShowInTray setting.
+  mSystemTray.setVisible(true);
 }
 
 void MainWindow::bringToFront() {

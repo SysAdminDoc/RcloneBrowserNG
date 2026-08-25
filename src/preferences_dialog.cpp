@@ -483,7 +483,10 @@ bool PreferencesDialog::getCheckRcloneUpdates() const {
 }
 
 bool PreferencesDialog::getAlwaysShowInTray() const {
-  return ui.alwaysShowInTray->isChecked();
+  // Starting minimized must always leave a visible way to restore the
+  // window, so a checked Start Minimized implies the tray icon even if the
+  // two checkboxes ever get out of sync (PR #14).
+  return ui.startMinimized->isChecked() || ui.alwaysShowInTray->isChecked();
 }
 
 bool PreferencesDialog::getCloseToTray() const {

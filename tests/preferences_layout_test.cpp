@@ -101,6 +101,16 @@ private slots:
     QVERIFY(alwaysShowInTray->isChecked());
     alwaysShowInTray->setChecked(false);
     QVERIFY(!startMinimized->isChecked());
+
+    // Belt and braces (PR #14): even if the checkbox pair is forced out of
+    // sync (signals blocked, as programmatic code could do), the getter
+    // must still report the tray icon as required.
+    startMinimized->setChecked(true);
+    {
+      const QSignalBlocker blocker(alwaysShowInTray);
+      alwaysShowInTray->setChecked(false);
+    }
+    QVERIFY(dialog.getAlwaysShowInTray());
   }
 
   void mountPresetShowsExactFlags() {

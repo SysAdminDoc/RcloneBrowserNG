@@ -350,6 +350,9 @@ int main(int argc, char *argv[]) {
       app.arguments().contains("--tray") ||
       settings->value("Settings/startMinimized", false).toBool();
   if (startMinimized && QSystemTrayIcon::isSystemTrayAvailable()) {
+    // A hidden window with no tray icon would be unreachable, so make sure
+    // the icon is up before hiding (PR #14).
+    w.ensureTrayIconVisible();
     w.hide();
   } else {
     w.show();

@@ -21,6 +21,11 @@ public:
   explicit MainWindow(bool initializeRuntime = true);
   ~MainWindow();
 
+  // Shows the tray icon even when "Always show in tray" is off. Called
+  // before the window is hidden at startup so a minimized start always
+  // leaves a visible way to reach the application.
+  void ensureTrayIconVisible();
+
 public slots:
   void bringToFront();
   void handleSendToFiles(const QStringList &files);
