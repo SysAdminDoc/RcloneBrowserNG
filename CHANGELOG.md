@@ -1,6 +1,11 @@
 # Change Log
 ## [Unreleased]
 
+## [2.0.2] - 2026-08-24
+### Bug Fixes
+-   FIX: Starting minimized can no longer leave the app unreachable. The tray icon is now shown before the window hides at startup, even when launched with `--minimized` or `--tray`, and stored settings from older builds that combine start minimized with a hidden tray icon are repaired on launch (#14, thanks Dwgthomson)
+-   FIX: The Preferences dialog now reports "Always show in tray" as on whenever "Start minimized" is checked, so the two settings cannot be saved in a contradictory state
+
 ## [2.0.1] - 2026-08-03
 ### Bug Fixes
 -   FIX: Preferences dialog layout on Qt 6 (#13) — dynamically created controls (max concurrent transfers, exclude patterns, SOCKS proxy, Backup/Restore Config, Start minimized) were inserted via layout casts that fail against the .ui's QGridLayouts, leaving them floating over the tab bar and the SOCKS field effectively missing; they are now regular .ui widgets in managed layouts, covered by a layout regression test

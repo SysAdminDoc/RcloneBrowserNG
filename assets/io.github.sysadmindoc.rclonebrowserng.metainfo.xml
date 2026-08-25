@@ -15,6 +15,11 @@
   <url type="vcs-browser">https://github.com/SysAdminDoc/RcloneBrowserNG</url>
   <releases>
     <!-- Release entries are maintained with the local release process. -->
+    <release version="2.0.2" date="2026-08-24">
+      <description>
+        <p>Bug fix release: starting minimized now always shows the tray icon so the application stays reachable, including when launched with the minimized or tray command line flags or with settings written by older builds.</p>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-08-03">
       <description>
         <p>Maintenance release with safer saved-task handling, non-blocking operations, staged-transfer recovery, accessibility coverage, local packaging checks, and mount preset and stale-mount recovery improvements.</p>
