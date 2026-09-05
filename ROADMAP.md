@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P0
 
-- [ ] P0 — Build multi-file transfers from `--files-from` instead of `--include` globs
-  Why: rclone filter patterns are unanchored globs, so a multi-selection download silently transfers files the user did not select and skips ones they did; it also puts two arguments per file on one command line, which will exceed the Windows 32,767-character process limit on a large selection.
-  Evidence: `src/remote_widget.cpp:1441` prepends `--include <name>` per selected row. Reproduced against rclone v1.75.0: `--include "a.txt"` matched both `a.txt` and `sub/a.txt`; `--include "b[1].txt"` matched `b1.txt` and not `b[1].txt`; `--files-from` matched exactly the named path. Upstream `kapitainsky#130`.
-  Touches: `src/remote_widget.cpp`, new `src/selection_arguments.{h,cpp}`, `CMakeLists.txt`, new `tests/selection_arguments_test.cpp`
-  Acceptance: multi-selection download, upload and delete write the selected paths to a `QTemporaryFile` and pass `--files-from <file>`; a test covering names containing `[`, `]`, `*`, `?`, `{`, `}` and a same-named file in a subdirectory produces a file list with exactly the selected paths; the temp file is removed when the job ends.
-  Complexity: M
-
 - [ ] P0 — Make crypt-backing-remote hiding an unhideable-by-default preference
   Why: backing remotes are hidden permanently by an async callback with no toggle and no indication, which is the confirmed cause of the "only 8 of 15 remotes displayed, all 15 flash up on refresh" field report; upstream asked for this as an option, not as unconditional behaviour.
   Evidence: `src/main_window.cpp:2905-2937` sets `setHidden(true)` and `Qt::UserRole + 1` from the `rclone config dump` callback; `src/main_window.cpp:242` makes the filter skip those items so they can never be revealed; no `Settings/` key exists for it. Reported in PR #15; requested as an option in `kapitainsky#178` and `kapitainsky#206`.

@@ -1,6 +1,7 @@
 # Change Log
 ## [Unreleased]
 ### Bug Fixes
+-   FIX: Downloading a multi-file selection transferred the wrong files. Each selected name was passed as `--include <name>`, and rclone filter patterns are unanchored globs, so selecting `a.txt` also pulled `sub/a.txt`, selecting `b[1].txt` fetched `b1.txt` instead, and selecting a folder fetched nothing from inside it. The selection is now turned into anchored, escaped `--filter` rules that match exactly what was picked, with folders recursed. A selection too large for one command line is refused with an explanation rather than silently truncated
 -   FIX: Four features were built but unreachable because the code that placed their controls cast the parent's layout to a class the `.ui` does not use, so the cast returned null and the widget was never added to any layout. The **Bisync** transfer mode, the **bandwidth timetable editor** button, the **performance preset** picker and the Google Drive **Trash** button are now declared in their `.ui` files and appear where they belong. Same defect as #13, which had only been repaired inside the Preferences dialog
 -   FIX: The performance preset picker no longer overwrites restored transfer, checker and bandwidth values when the transfer dialog opens. The preset is an action rather than a remembered setting, so the dialog always opens on Custom
 -   NEW: A layout regression suite sweeps the main window, transfer dialog and remote browser for controls that exist outside every layout, so a future `.ui` change cannot silently orphan a feature again

@@ -9,6 +9,7 @@
 #include "progress_dialog.h"
 #include "rclone_capabilities.h"
 #include "remote_path.h"
+#include "selection_arguments.h"
 #include "stream_widget.h"
 #include "transfer_dialog.h"
 #include "interface_polish.h"
@@ -1415,12 +1416,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     if (rows.size() > 1) {
       QModelIndex parentIdx = rows.front().parent();
       QDir parentPath = model->path(parentIdx);
-      QStringList includeFilters;
+      QVector<SelectionArguments::SelectionEntry> entries;
+      entries.reserve(rows.size());
       for (const auto &idx : rows) {
         QString name = model->data(idx, Qt::DisplayRole).toString();
         if (!name.isEmpty()) {
-          includeFilters << name;
+          entries.append({name, model->isFolder(idx)});
         }
+      }
+      const SelectionArguments::FilterRules selectionFilter =
+          SelectionArguments::BuildSelectionFilter(entries);
+      if (!selectionFilter.valid) {
+        QMessageBox::warning(this, "Download", selectionFilter.error);
+        return;
       }
       TransferDialog t(true, false, remote, parentPath, true, this);
       if (t.exec() == QDialog::Accepted) {
@@ -1431,9 +1439,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
             opts->dryRun ? 0 : opts->backupRetainCount;
         const bool verifyAfterTransfer =
             opts->verifyAfterTransfer && !opts->dryRun;
-        for (const QString &name : includeFilters) {
-          args.prepend(name);
-          args.prepend("--include");
+        for (int i = selectionFilter.arguments.size() - 1; i >= 0; --i) {
+          args.prepend(selectionFilter.arguments.at(i));
         }
         QString src = t.getSource();
         QString dst = t.getDest();

@@ -57,6 +57,14 @@ if(BUILD_TESTING)
   target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME remote_path_test COMMAND remote_path_test)
 
+  add_executable(selection_arguments_test
+    tests/selection_arguments_test.cpp
+    src/selection_arguments.cpp
+  )
+  target_include_directories(selection_arguments_test PRIVATE src)
+  target_link_libraries(selection_arguments_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME selection_arguments_test COMMAND selection_arguments_test)
+
   add_executable(remote_provider_test
     tests/remote_provider_test.cpp
     src/remote_provider.cpp
@@ -222,6 +230,7 @@ if(BUILD_TESTING)
     src/rclone_capabilities.cpp
     src/rc_job_widget.cpp
     src/remote_path.cpp
+    src/selection_arguments.cpp
     src/vfs_upload_state.cpp
     src/progress_dialog.cpp
     src/job_widget.cpp
