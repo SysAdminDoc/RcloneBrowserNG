@@ -9,6 +9,7 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "app_log.h"
+#include "rclone_exit_code.h"
 #include "rclone_security_floor.h"
 #include "remote_list_parser.h"
 #include "remote_provider.h"
@@ -3880,7 +3881,11 @@ void MainWindow::showJobHistory() {
   table->setRowCount(entries.size());
   for (int row = 0; row < entries.size(); ++row) {
     const JobHistoryEntry &entry = entries.at(entries.size() - row - 1);
-    const QString status = entry.success ? "Success" : "Failed";
+    // "Failed" for every non-zero code hid the difference between a broken
+    // transfer and one that stopped at a limit the user set.
+    const RcloneExitCode::Meaning meaning =
+        RcloneExitCode::Describe(entry.exitCode);
+    const QString status = meaning.name;
     QString finished = entry.finishedAt.toLocalTime().toString("yyyy-MM-dd hh:mm:ss");
     const QStringList values = QStringList()
                                << finished
@@ -3894,7 +3899,8 @@ void MainWindow::showJobHistory() {
                                << QString::number(entry.exitCode);
     for (int col = 0; col < values.size(); ++col) {
       auto *item = new QTableWidgetItem(values.at(col));
-      item->setToolTip(values.at(col));
+      // The status column explains itself; the rest just repeat their value.
+      item->setToolTip(col == 1 ? meaning.explanation : values.at(col));
       table->setItem(row, col, item);
     }
   }

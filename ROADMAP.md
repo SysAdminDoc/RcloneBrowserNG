@@ -94,13 +94,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Acceptance: choosing a provider renders a form generated from its options, with the widget picked by `Type`, advanced options on a second tab, `Exclusive` options as a closed combo of `Examples`, `Sensitive` and `IsPassword` fields masked and excluded from the copy-command output, and options filtered by `MatchProvider` against the selected provider variant; simple backends (local, alias, crypt, S3, SFTP, WebDAV) are created entirely in-app; backends that need OAuth or extra steps fall into the `--continue` state loop and surface each question in the same form, still opening a browser for OAuth; the terminal handoff remains as the explicit fallback; a test drives the form against a recorded `config/providers` payload and asserts widget type, visibility and masking per option.
   Complexity: L
 
-- [ ] P2 — Map rclone exit codes to outcomes instead of treating every non-zero as failure
-  Why: rclone reserves specific exit codes for outcomes that are not errors, so a job stopped by a transfer or duration cap is reported to the user as a failure with no explanation.
-  Evidence: rclone.org/docs#exit-code defines 0 success, 1 syntax error, 2 uncategorised, 3 directory not found, 4 file not found, 5 temporary error, 6 less serious error, 7 fatal error, 8 `--max-transfer` reached, 9 no files transferred (`--error-on-no-transfer`), 10 `--max-duration` reached. `src/job_widget.cpp` records `mExitCode` and `mSuccess` with no code-to-meaning mapping. The v1.69.0 changelog states usage errors moved from 1 to 2 and bisync critical abort from 2 to 7, which disagrees with the current docs table, so the mapping must be verified against the pinned rclone rather than trusted.
-  Touches: `src/job_widget.{h,cpp}`, `src/job_history.{h,cpp}`, `src/rc_job_widget.cpp`, new `tests/exit_code_test.cpp`
-  Acceptance: each documented exit code renders a named outcome and a one-line explanation in the job card and in history; codes 8, 9 and 10 render as a completed-with-limit state rather than an error; codes 3, 4 and 5 offer Retry; the mapping is verified empirically against the rclone version the release pins and the test asserts every code has a distinct message.
-  Complexity: S
-
 ### P3
 
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow

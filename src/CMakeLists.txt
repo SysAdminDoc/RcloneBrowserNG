@@ -69,6 +69,7 @@ set(SOURCE
   app_log.cpp
   job_stats.cpp
   lsjson_parser.cpp
+  rclone_exit_code.cpp
   rclone_security_floor.cpp
   selection_arguments.cpp
   sync_preview.cpp

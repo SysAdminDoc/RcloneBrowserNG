@@ -1,5 +1,6 @@
 #include "job_widget.h"
 #include "job_stats.h"
+#include "rclone_exit_code.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
@@ -319,7 +320,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      mRunning = false;
                      mFinishedAt = QDateTime::currentDateTimeUtc();
                      mExitCode = status;
-                     mSuccess = (status == 0);
+                     // 8, 9 and 10 mean rclone stopped at a limit the user
+                     // asked for; the work it was allowed to do is done.
+                     mSuccess = RcloneExitCode::IsSuccessful(status);
 
                      for (int i = 0; i < ui.horizontalLayout->count(); ++i) {
                        auto *w = ui.horizontalLayout->itemAt(i)->widget();
@@ -335,15 +338,28 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                          ui.cancel, "Close transfer card",
                          "Remove this transfer from the jobs list.");
 
+                     const RcloneExitCode::Meaning meaning =
+                         RcloneExitCode::Describe(status);
                      if (mUserCancelled) {
                        UiPolish::SetStatus(ui.showDetails, "warning",
                                            "Cancelled");
                      } else if (status == 0) {
                        UiPolish::SetStatus(ui.showDetails, "success",
-                                           "Finished");
+                                           meaning.name);
+                       ui.showDetails->setToolTip(meaning.explanation);
+                     } else if (meaning.outcome ==
+                                RcloneExitCode::Outcome::CompletedWithLimit) {
+                       // Not a failure: say what stopped it and leave the
+                       // card calm rather than red.
+                       UiPolish::SetStatus(ui.showDetails, "warning",
+                                           meaning.name);
+                       ui.showDetails->setToolTip(meaning.explanation);
+                       ui.output->appendPlainText(meaning.explanation);
                      } else {
                        UiPolish::SetStatus(ui.showDetails, "error",
-                                           "Needs attention");
+                                           meaning.name);
+                       ui.showDetails->setToolTip(meaning.explanation);
+                       ui.output->appendPlainText(meaning.explanation);
                        ui.showDetails->setChecked(true);
                        ui.showOutput->setChecked(true);
 
@@ -352,8 +368,13 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                            QStyle::SP_BrowserReload));
                        retry->setToolTip("Retry this transfer");
                        retry->setAccessibleName("Retry transfer");
-                       UiPolish::SetCompactToolButton(retry, "Retry transfer",
-                           "Re-run this transfer with the same arguments.");
+                       UiPolish::SetCompactToolButton(
+                           retry, "Retry transfer",
+                           RcloneExitCode::IsRetryable(status)
+                               ? QString("%1 Retrying often helps here.")
+                                     .arg(meaning.explanation)
+                               : QString("Re-run this transfer with the same "
+                                         "arguments."));
                        ui.horizontalLayout->insertWidget(
                            ui.horizontalLayout->indexOf(ui.cancel), retry);
                        QObject::connect(retry, &QToolButton::clicked, this,
