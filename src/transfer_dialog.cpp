@@ -1,4 +1,5 @@
 #include "transfer_dialog.h"
+#include "sync_preview.h"
 #include "list_of_job_options.h"
 #include "job_options_store.h"
 #include "interface_polish.h"
@@ -640,7 +641,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   }
 
   QObject::connect(ui.buttonBox, &QDialogButtonBox::accepted, this,
-                   &QDialog::accept);
+                   &TransferDialog::acceptWithDeletionPreview);
   QObject::connect(ui.buttonBox, &QDialogButtonBox::rejected, this,
                    &QDialog::reject);
 
@@ -853,6 +854,142 @@ TransferDialog::~TransferDialog() {
 
 void TransferDialog::setSource(const QString &path) {
   ui.textSource->setText(QDir::toNativeSeparators(path));
+}
+
+bool TransferDialog::wouldDeleteAtDestination() const {
+  // rclone sync removes destination files the source no longer has, and
+  // --delete-excluded removes whatever a filter skipped. Everything else
+  // only adds or overwrites.
+  return ui.rbSync->isChecked() || ui.checkDeleteExcluded->isChecked();
+}
+
+void TransferDialog::acceptWithDeletionPreview() {
+  // A dry run changes nothing, an edit is not a run, and a queued transfer
+  // gets reviewed in the staging list before it goes anywhere.
+  if (mDryRun || mIsEditMode || mEnqueued || mPreviewInFlight ||
+      !wouldDeleteAtDestination()) {
+    accept();
+    return;
+  }
+
+  JobOptions *opts = getJobOptions();
+  const bool wasDryRun = opts->dryRun;
+  opts->dryRun = true;
+  QStringList args = GetRcloneConf() + opts->getOptions();
+  opts->dryRun = wasDryRun;
+  if (!args.contains("--use-json-log")) {
+    args << "--use-json-log";
+  }
+
+  mPreviewInFlight = true;
+  ui.buttonBox->setEnabled(false);
+
+  auto *proc = new QProcess(this);
+  proc->setProcessChannelMode(QProcess::MergedChannels);
+  UseRclonePassword(proc);
+
+  QObject::connect(proc, &QProcess::errorOccurred, this,
+                   [this, proc](QProcess::ProcessError error) {
+                     if (error != QProcess::FailedToStart) {
+                       return;
+                     }
+                     proc->deleteLater();
+                     mPreviewInFlight = false;
+                     ui.buttonBox->setEnabled(true);
+                     // Do not run a deleting sync we could not preview.
+                     showValidation(ui.textSource,
+                                    "Could not start rclone to check what "
+                                    "would be deleted.");
+                   });
+
+  QObject::connect(
+      proc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [this, proc](int code, QProcess::ExitStatus) {
+        const QByteArray raw = proc->readAll();
+        proc->deleteLater();
+        mPreviewInFlight = false;
+        ui.buttonBox->setEnabled(true);
+
+        const SyncPreview::Summary summary = SyncPreview::Parse(raw);
+        if (code != 0 && !summary.deletesAnything()) {
+          showValidation(ui.textSource,
+                         summary.error.isEmpty()
+                             ? QString("rclone could not check what would be "
+                                       "deleted (exit %1).").arg(code)
+                             : summary.error);
+          return;
+        }
+
+        // Nothing is being removed, so there is nothing to warn about.
+        if (!summary.deletesAnything()) {
+          accept();
+          return;
+        }
+
+        if (showDeletionSummary(summary)) {
+          accept();
+        }
+      });
+
+  proc->start(GetRclone(), args, QIODevice::ReadOnly);
+}
+
+bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
+  QDialog dialog(this);
+  dialog.setWindowTitle(QString("Sync will delete %1 file%2")
+                            .arg(summary.toDelete)
+                            .arg(summary.toDelete == 1 ? "" : "s"));
+  UiPolish::SetWindowDefaults(&dialog, QSize(560, 380));
+  auto *layout = new QVBoxLayout(&dialog);
+  layout->setContentsMargins(12, 12, 12, 12);
+  layout->setSpacing(8);
+
+  auto *headline = new QLabel(SyncPreview::Headline(summary), &dialog);
+  headline->setTextFormat(Qt::PlainText);
+  headline->setWordWrap(true);
+  layout->addWidget(headline);
+
+  auto *detail = new QLabel(&dialog);
+  detail->setTextFormat(Qt::PlainText);
+  detail->setWordWrap(true);
+  detail->setText(
+      QString("These files exist at the destination and not at the source, "
+              "so Sync removes them. Recovering them depends on whether the "
+              "remote keeps a trash or versions. Freed: %1.")
+          .arg(GetNiceSize(static_cast<quint64>(summary.deleteBytes))));
+  UiPolish::SetMuted(detail);
+  layout->addWidget(detail);
+
+  auto *list = new QPlainTextEdit(&dialog);
+  list->setReadOnly(true);
+  list->setPlainText(summary.deletions.join('\n'));
+  UiPolish::SetOutputView(list, "Files this sync will delete");
+  layout->addWidget(list, 1);
+
+  if (summary.moreDeletions > 0) {
+    auto *more = new QLabel(
+        QString("...and %1 more.").arg(summary.moreDeletions), &dialog);
+    UiPolish::SetMuted(more);
+    layout->addWidget(more);
+  }
+
+  auto *buttons = new QDialogButtonBox(&dialog);
+  QPushButton *cancel =
+      buttons->addButton("Cancel", QDialogButtonBox::RejectRole);
+  QPushButton *run = buttons->addButton("Run Sync", QDialogButtonBox::AcceptRole);
+  UiPolish::SetDialogButtonBox(buttons);
+  UiPolish::SetPrimaryButton(run);
+  cancel->setToolTip("Go back to the transfer options without running.");
+  run->setToolTip("Run the sync, deleting the files listed above.");
+  layout->addWidget(buttons);
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog,
+                   &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog,
+                   &QDialog::reject);
+
+  return dialog.exec() == QDialog::Accepted;
 }
 
 QString TransferDialog::getMode() const {

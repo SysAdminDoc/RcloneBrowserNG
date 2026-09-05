@@ -71,6 +71,7 @@ set(SOURCE
   lsjson_parser.cpp
   rclone_security_floor.cpp
   selection_arguments.cpp
+  sync_preview.cpp
   schedule_dialog.cpp
   vfs_upload_state.cpp
   progress_dialog.cpp

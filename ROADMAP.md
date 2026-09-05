@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Show a pre-run summary before a Sync deletes destination files
-  Why: `Sync` removes destination files that are absent at the source and today runs with no summary and no deletion count; a user on the upstream tracker lost already-uploaded data by combining a misunderstood exclude path with delete-excluded.
-  Evidence: no confirmation, warning or summary path exists in `src/transfer_dialog.cpp` for `ui.rbSync`; `kapitainsky#252`. Cyberduck shows a per-item reconciliation preview with direction arrows before executing; FreeFileSync states the create/update/delete counts.
-  Touches: `src/transfer_dialog.cpp`, `src/main_window.cpp`, new `src/sync_preview.{h,cpp}`
-  Acceptance: choosing Sync (or enabling `--delete-excluded`) runs `rclone check --combined` or a `--dry-run` pass first and shows counts for files to add, update and delete plus the first twenty deletions, with Run and Cancel; this is a summary panel, not a yes/no confirmation dialog; the preview is skipped when the destination has nothing to delete.
-  Complexity: M
-
 - [ ] P1 — Publish a maintainer-owned Homebrew tap
   Why: Homebrew disabled unsigned casks in the official repository on 2026-09-01, so the inherited `rclone-browser` cask is gone, but third-party taps are unrestricted and need only the maintainer's existing GitHub account. This is the one macOS distribution route that is not blocked on Apple enrolment.
   Evidence: workbrew.com/blog/homebrew-5-0-0 and Homebrew discussion #6482 confirm the 2026-09-01 cutoff applies to the official tap only; `scripts/generate_package_manifests.py` already emits a validated Homebrew Cask file.

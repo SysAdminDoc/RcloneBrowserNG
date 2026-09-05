@@ -104,6 +104,14 @@ if(BUILD_TESTING)
   target_link_libraries(selection_arguments_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME selection_arguments_test COMMAND selection_arguments_test)
 
+  add_executable(sync_preview_test
+    tests/sync_preview_test.cpp
+    src/sync_preview.cpp
+  )
+  target_include_directories(sync_preview_test PRIVATE src)
+  target_link_libraries(sync_preview_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME sync_preview_test COMMAND sync_preview_test)
+
   add_executable(remote_list_parser_test
     tests/remote_list_parser_test.cpp
     src/remote_list_parser.cpp
@@ -314,6 +322,7 @@ if(BUILD_TESTING)
     src/remote_list_parser.cpp
     src/remote_path.cpp
     src/selection_arguments.cpp
+    src/sync_preview.cpp
     src/vfs_upload_state.cpp
     src/progress_dialog.cpp
     src/job_widget.cpp

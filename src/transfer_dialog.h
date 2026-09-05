@@ -2,6 +2,7 @@
 
 #include "job_options.h"
 #include "pch.h"
+#include "sync_preview.h"
 #include "ui_transfer_dialog.h"
 
 class TransferDialog : public QDialog {
@@ -23,6 +24,12 @@ public:
   JobOptions *getJobOptions();
   bool wasEnqueued() const { return mEnqueued; }
 
+private slots:
+  // Sync and --delete-excluded remove files at the destination, so
+  // they get a dry-run pass and a summary of what goes before the
+  // transfer starts. Everything else accepts straight through.
+  void acceptWithDeletionPreview();
+
 private:
   Ui::TransferDialog ui;
   QLabel *mValidation = nullptr;
@@ -39,6 +46,10 @@ private:
   QCheckBox *mVerifyAfter = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
+  bool mPreviewInFlight = false;
+
+  bool wouldDeleteAtDestination() const;
+  bool showDeletionSummary(const SyncPreview::Summary &summary);
 
   bool mIsDownload;
   bool mDryRun = false;

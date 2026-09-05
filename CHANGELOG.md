@@ -15,6 +15,7 @@
 -   NEW: CMake states an explicit Qt 6.4 minimum for source builds, matching the README badge, and fails at configure time with a readable message instead of somewhere deep in the build
 
 ### Reliability
+-   NEW: Sync says what it is about to delete before it deletes it. Choosing Sync, or ticking "delete excluded", now runs the same command with `--dry-run` first and shows how many files will be transferred, timestamped and removed, with the first twenty deletions listed and how much space they free. Run and Cancel; nothing is a yes/no prompt, and the summary is skipped entirely when the destination has nothing to remove. An upstream reporter lost already-uploaded data to a misread exclude combined with delete-excluded (kapitainsky#252)
 -   NEW: A rotating diagnostic log is written to disk, so a scheduled transfer that fails overnight leaves evidence behind instead of only an in-memory list that dies with the process. It lives in `logs/rclonebrowser.log` under the application data folder, rotates at 5 MB keeping three older generations, and records job starts, exit codes, background errors and Qt messages. Secrets are redacted with the same rules the support bundle uses. Preferences has a log level and an Open Log Folder button (kapitainsky#134, kapitainsky#233, mmozeiko#148)
 
 ### Bug Fixes

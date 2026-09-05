@@ -5,9 +5,13 @@
 #include "remote_widget.h"
 #include "transfer_dialog.h"
 
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDir>
+#include <QLineEdit>
 #include <QMenuBar>
+#include <QSignalSpy>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSettings>
@@ -160,6 +164,37 @@ private slots:
     QVERIFY2(orphans.isEmpty(),
              qPrintable(surface + " has widgets outside every layout: " +
                         orphans.join(", ")));
+  }
+
+  void nonDeletingTransfersAcceptWithoutAPreview() {
+    // Sync and --delete-excluded get a dry-run pass before they run. Every
+    // other operation must still accept straight through: routing all of
+    // them through the preview would spawn an rclone process on every
+    // single transfer and stall the dialog.
+    TransferDialog dialog(false, false, "remote", QDir(), true);
+    // done() validates both paths before accepting, so fill them in or the
+    // dialog refuses for a reason that has nothing to do with the preview.
+    auto *source = dialog.findChild<QLineEdit *>("textSource");
+    auto *dest = dialog.findChild<QLineEdit *>("textDest");
+    QVERIFY(source != nullptr);
+    QVERIFY(dest != nullptr);
+    source->setText(QDir::tempPath());
+    dest->setText("remote:backup");
+
+    auto *copy = dialog.findChild<QRadioButton *>("rbCopy");
+    QVERIFY(copy != nullptr);
+    copy->setChecked(true);
+    auto *deleteExcluded =
+        dialog.findChild<QCheckBox *>("checkDeleteExcluded");
+    QVERIFY(deleteExcluded != nullptr);
+    deleteExcluded->setChecked(false);
+
+    auto *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(buttons != nullptr);
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    emit buttons->accepted();
+    QCOMPARE(accepted.count(), 1);
+    QVERIFY(!dialog.isVisible());
   }
 
   void presetSelectionStillAppliesItsValues() {
