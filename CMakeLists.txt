@@ -198,7 +198,7 @@ if(BUILD_TESTING)
   # AUTOUIC is enabled directory-scoped in src/; this target compiles the
   # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.
   set_target_properties(preferences_layout_test PROPERTIES AUTOUIC ON)
-  target_include_directories(preferences_layout_test PRIVATE src)
+  target_include_directories(preferences_layout_test PRIVATE src tests)
   target_link_libraries(preferences_layout_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(preferences_layout_test advapi32)
@@ -269,5 +269,23 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME accessibility_smoke_test COMMAND accessibility_smoke_test)
   set_tests_properties(accessibility_smoke_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+  add_executable(layout_regression_test
+    tests/layout_regression_test.cpp
+    ${ACCESSIBILITY_SMOKE_SOURCES}
+  )
+  set_target_properties(layout_regression_test PROPERTIES AUTOUIC ON)
+  target_include_directories(layout_regression_test PRIVATE src tests)
+  target_compile_definitions(layout_regression_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(layout_regression_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(layout_regression_test version advapi32)
+  elseif(APPLE)
+    find_library(LAYOUT_REGRESSION_COCOA_LIBRARY Cocoa REQUIRED)
+    target_link_libraries(layout_regression_test ${LAYOUT_REGRESSION_COCOA_LIBRARY})
+  endif()
+  add_test(NAME layout_regression_test COMMAND layout_regression_test)
+  set_tests_properties(layout_regression_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

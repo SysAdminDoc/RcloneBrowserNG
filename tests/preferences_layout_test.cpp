@@ -1,5 +1,7 @@
 #include "preferences_dialog.h"
 
+#include "layout_assertions.h"
+
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QLineEdit>
@@ -22,21 +24,6 @@ class PreferencesLayoutTest : public QObject {
   Q_OBJECT
 
 private:
-  // QLayout::indexOf only sees direct items, so widgets placed in a
-  // nested layout (e.g. the backup/restore QHBoxLayout row) need a
-  // recursive search.
-  static bool layoutContains(QLayout *layout, const QWidget *widget) {
-    for (int i = 0; i < layout->count(); ++i) {
-      QLayoutItem *item = layout->itemAt(i);
-      if (item->widget() == widget) {
-        return true;
-      }
-      if (item->layout() != nullptr && layoutContains(item->layout(), widget)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   static void verifyManaged(QDialog &dialog, QWidget *widget,
                             const char *name) {
@@ -45,9 +32,9 @@ private:
              "widget must not be a stray child of the dialog");
     QVERIFY2(qobject_cast<QGroupBox *>(widget->parentWidget()) != nullptr,
              "widget must be inside a group box");
-    QLayout *layout = widget->parentWidget()->layout();
-    QVERIFY2(layout != nullptr, "group box must have a layout");
-    QVERIFY2(layoutContains(layout, widget),
+    QVERIFY2(widget->parentWidget()->layout() != nullptr,
+             "group box must have a layout");
+    QVERIFY2(LayoutAssertions::IsManagedByParentLayout(widget),
              "widget must participate in the group box layout");
   }
 

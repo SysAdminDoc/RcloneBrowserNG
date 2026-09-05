@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P0
 
-- [ ] P0 — Insert the four stray dialog controls into real layouts and assert it in tests
-  Why: `qobject_cast` to the wrong layout class returns null, so the Bisync radio, bandwidth timetable button, performance preset combo and Google Drive trash button are constructed, parented to the dialog, and never added to any layout — the same defect as issue #13, which was repaired only in `preferences_dialog.cpp`.
-  Evidence: `src/transfer_dialog.cpp:313` casts `modeGroup` to `QHBoxLayout` but `src/transfer_dialog.ui` gives it a `QGridLayout`; `src/transfer_dialog.cpp:47` and `:166` cast `tab3` to `QFormLayout`, also a `QGridLayout`; `src/remote_widget.cpp:427` casts `buttons` to `QHBoxLayout`, also a `QGridLayout`. `src/transfer_dialog.cpp:941` reads `mRbBisync->isChecked()` on the unreachable radio. The other eight cast sites resolve correctly today.
-  Touches: `src/transfer_dialog.cpp`, `src/remote_widget.cpp`, `src/transfer_dialog.ui`, `src/remote_widget.ui`, `tests/preferences_layout_test.cpp`, `tests/accessibility_smoke_test.cpp`, `CMakeLists.txt`
-  Acceptance: no `qobject_cast<Q*Layout *>(...->layout())` remains in `src/`; every previously dynamic control is declared in its `.ui` or added through a layout obtained without a downcast; `verifyManaged` is promoted to a shared test helper and applied to `TransferDialog` (Bisync radio, bandwidth edit button, preset combo) and `RemoteWidget` (trash button); each new assertion fails when reverted to the cast-based insertion.
-  Complexity: M
-
 - [ ] P0 — Build multi-file transfers from `--files-from` instead of `--include` globs
   Why: rclone filter patterns are unanchored globs, so a multi-selection download silently transfers files the user did not select and skips ones they did; it also puts two arguments per file on one command line, which will exceed the Windows 32,767-character process limit on a large selection.
   Evidence: `src/remote_widget.cpp:1441` prepends `--include <name>` per selected row. Reproduced against rclone v1.75.0: `--include "a.txt"` matched both `a.txt` and `sub/a.txt`; `--include "b[1].txt"` matched `b1.txt` and not `b[1].txt`; `--files-from` matched exactly the named path. Upstream `kapitainsky#130`.

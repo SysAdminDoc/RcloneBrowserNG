@@ -35,27 +35,12 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.textExtra->setPlaceholderText("Additional rclone flags for this transfer");
   ui.textDescription->setPlaceholderText("Name this task if you want to save it");
   ui.textBandwidth->setPlaceholderText("off, 10M, or timetable syntax");
-  auto *bwEditBtn = new QToolButton(this);
+  auto *bwEditBtn = ui.buttonBandwidthEdit;
   bwEditBtn->setIcon(
       qApp->style()->standardIcon(QStyle::SP_FileDialogDetailedView));
   bwEditBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
   bwEditBtn->setToolTip("Open the bandwidth timetable editor.");
   bwEditBtn->setAccessibleName("Edit bandwidth timetable");
-  bwEditBtn->setMinimumSize(QSize(32, 30));
-  bwEditBtn->setMaximumWidth(34);
-  if (auto *form =
-          qobject_cast<QFormLayout *>(ui.textBandwidth->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.textBandwidth, &row, &role);
-    if (row >= 0) {
-      auto *bwRow = new QHBoxLayout();
-      form->removeWidget(ui.textBandwidth);
-      bwRow->addWidget(ui.textBandwidth, 1);
-      bwRow->addWidget(bwEditBtn);
-      form->setLayout(row, QFormLayout::FieldRole, bwRow);
-    }
-  }
   QObject::connect(bwEditBtn, &QToolButton::clicked, this, [this]() {
     QDialog dlg(this);
     dlg.setWindowTitle("Bandwidth Timetable");
@@ -153,7 +138,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     }
   });
 
-  auto *presetCombo = new QComboBox(this);
+  auto *presetCombo = ui.cbPreset;
   presetCombo->addItem("Custom");
   presetCombo->addItem("Default (4 transfers, 8 checkers)");
   presetCombo->addItem("Large files (2 transfers, 4 checkers, 256M buffer)");
@@ -162,15 +147,6 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   presetCombo->setToolTip("Apply a performance preset to auto-fill transfers, "
                           "checkers, and bandwidth settings.");
   presetCombo->setAccessibleName("Performance preset");
-  if (auto *form =
-          qobject_cast<QFormLayout *>(ui.spinTransfers->parentWidget()->layout())) {
-    int row = -1;
-    QFormLayout::ItemRole role;
-    form->getWidgetPosition(ui.spinTransfers, &row, &role);
-    if (row >= 0) {
-      form->insertRow(row, "Preset", presetCombo);
-    }
-  }
   QObject::connect(presetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                    this, [this, presetCombo](int idx) {
     if (idx == 0) return;
@@ -299,7 +275,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   ui.gridLayout->addWidget(postCommandLabel, 12, 0);
   ui.gridLayout->addWidget(mPostCommand, 12, 1);
 
-  mRbBisync = new QRadioButton("Bisync", this);
+  mRbBisync = ui.rbBisync;
   mRbBisync->setToolTip("Bidirectional sync between source and destination.");
   mRbBisync->setAccessibleName("Bisync operation");
   {
@@ -309,13 +285,6 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       mRbBisync->setToolTip("Requires rclone >= 1.58 with bisync support.");
     }
   }
-  if (auto *layout =
-          qobject_cast<QHBoxLayout *>(ui.rbSync->parentWidget()->layout())) {
-    int idx = layout->indexOf(ui.rbSync);
-    if (idx >= 0)
-      layout->insertWidget(idx + 1, mRbBisync);
-  }
-
   auto *conflictLabel = new QLabel("Conflict resolution:", this);
   conflictLabel->setToolTip(
       "How bisync should resolve conflicts when the same file changed "
@@ -753,7 +722,13 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   auto settings = GetSettings();
   settings->beginGroup("Transfer");
+  // The performance preset is an action, not a remembered setting: restoring a
+  // stored index would fire the handler and overwrite the transfers, checkers
+  // and bandwidth values ReadSettings is putting back.
+  const bool presetBlocked = ui.cbPreset->blockSignals(true);
   ReadSettings(settings.get(), this);
+  ui.cbPreset->setCurrentIndex(0);
+  ui.cbPreset->blockSignals(presetBlocked);
   settings->endGroup();
 
   ui.buttonSourceFile->setVisible(!isDownload);

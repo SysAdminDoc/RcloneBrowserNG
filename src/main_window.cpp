@@ -1435,8 +1435,7 @@ MainWindow::MainWindow(bool initializeRuntime)
     unscheduleBtn->setAccessibleName("Unschedule selected task");
     unscheduleBtn->setEnabled(false);
 
-    if (auto *layout = qobject_cast<QHBoxLayout *>(
-            ui.buttonDeleteTask->parentWidget()->layout())) {
+    if (QLayout *layout = ui.buttonDeleteTask->parentWidget()->layout()) {
       layout->addWidget(scheduleBtn);
       layout->addWidget(unscheduleBtn);
     }
@@ -1831,8 +1830,7 @@ MainWindow::MainWindow(bool initializeRuntime)
                      mErrorLogToggle->setArrowType(
                          checked ? Qt::DownArrow : Qt::RightArrow);
                    });
-  if (auto *layout =
-          qobject_cast<QVBoxLayout *>(ui.jobsArea->parentWidget()->layout())) {
+  if (QLayout *layout = ui.jobsArea->parentWidget()->layout()) {
     layout->addWidget(mErrorLogToggle);
     layout->addWidget(mErrorLog);
   }

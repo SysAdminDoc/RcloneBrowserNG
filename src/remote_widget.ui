@@ -197,6 +197,19 @@
             </property>
            </widget>
           </item>
+          <item row="1" column="6">
+           <widget class="QPushButton" name="buttonTrash">
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>28</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Trash</string>
+            </property>
+           </widget>
+          </item>
           <item row="1" column="7" alignment="Qt::AlignRight">
            <widget class="QCheckBox" name="checkBoxShared">
             <property name="toolTip">

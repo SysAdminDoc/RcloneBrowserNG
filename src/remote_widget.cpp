@@ -409,9 +409,8 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     ui.checkBoxShared->hide();
   }
   {
-    auto *trashButton = new QPushButton("Trash", this);
+    auto *trashButton = ui.buttonTrash;
     trashButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
-    trashButton->setMaximumHeight(28);
     if (isGoogle) {
       trashButton->setToolTip("List trashed files in this Google Drive remote.");
       trashButton->setAccessibleName("Browse Google Drive trash");
@@ -422,10 +421,6 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
     }
     if (!isGoogle) {
       trashButton->hide();
-    }
-    if (auto *layout =
-            qobject_cast<QHBoxLayout *>(ui.checkBoxShared->parentWidget()->layout())) {
-      layout->addWidget(trashButton);
     }
     QObject::connect(trashButton, &QPushButton::clicked, this, [this, remote, trashButton, isGoogle]() {
       if (isGoogle) {
