@@ -1,3 +1,4 @@
+#include "app_log.h"
 #include "list_of_job_options.h"
 #include "main_window.h"
 #include "utils.h"
@@ -39,6 +40,9 @@ int main(int argc, char *argv[]) {
   app.setOrganizationName("rclone-browser");
   QGuiApplication::setDesktopFileName("io.github.sysadmindoc.rclonebrowserng");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
+
+  // Before anything that can fail, so a startup problem is on disk too.
+  AppLog::Install();
 
   QTranslator translator;
   const QStringList uiLanguages = QLocale::system().uiLanguages();

@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Write a rotating diagnostic log to disk
-  Why: three independent upstream reports ask for it, and a scheduled overnight run that fails currently leaves no evidence at all; the in-session error panel and the redacted support bundle both die with the process.
-  Evidence: `qInstallMessageHandler` appears nowhere in `src/`; `kapitainsky#134`, `kapitainsky#233`, `mmozeiko#148`. rclone gained `--log-file` rotation in v1.71 and can write to the same directory.
-  Touches: new `src/app_log.{h,cpp}`, `src/main.cpp`, `src/preferences_dialog.{ui,cpp}`, `src/main_window.cpp`
-  Acceptance: a `qInstallMessageHandler` writes timestamped lines to `<AppLocalDataLocation>/logs/rclonebrowser.log`, rotating at 5 MB with three generations kept; every job start, exit code and error-queue entry is logged; Preferences exposes the log level and an "Open log folder" action; the existing diagnostics redaction is applied to log lines; a crash handler flushes before exit.
-  Complexity: M
-
 - [ ] P1 — Settle and enforce the Qt branch policy before 2026-09-22
   Why: Qt 6.11 leaves open-source support on 2026-09-22 and `validate_qt_version.ps1` still accepts it with no upper bound; the CVE gate runs on Windows only; and CMake declares no Qt minimum at all despite the README badge claiming 6.4+.
   Evidence: endoflife.date/qt gives Qt 6.11 OSS end 2026-09-22, 6.10 ended 2026-04-07, 6.8 LTS commercial to 2029-10-08 with its OSS window closed 2025-04-02 and the highest public patch at 6.8.3, while the CVE-2026-6210 fix needs 6.8.8; Qt 6.12 LTS is targeted for 2026-09-22 (Beta 1 June 2026, wiki.qt.io/Qt_6.12_Release). `CMakeLists.txt:10` calls `find_package(QT NAMES Qt6 REQUIRED ...)` with no version; `scripts/release_windows.cmd:67` is the only caller of `scripts/validate_qt_version.ps1`; `scripts/release_AppImage.sh` and `scripts/release_macOS.sh` have no Qt check; the gate cites CVE-2026-6210 but not CVE-2026-9499, which shares the 6.8.8+/6.11.1+ boundary.

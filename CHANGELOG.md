@@ -9,7 +9,11 @@
 -   SECURITY: The rclone version the app warns about was raised from 1.74.3 to 1.75.1. The old floor was three releases behind and was itself an affected version (GHSA-fqj9-69pf-6pjg, patched in 1.74.4); rclone 1.75.1 closes eleven further advisories, two of them critical. The warning now names them, including the one that exposes the remote-control daemon's command line — and so its credentials — to anything that can reach the port
 -   SECURITY: The floor lives in one place with the date it was last checked, and the local release harness refuses to publish once that review is more than 180 days old
 
+### Reliability
+-   NEW: A rotating diagnostic log is written to disk, so a scheduled transfer that fails overnight leaves evidence behind instead of only an in-memory list that dies with the process. It lives in `logs/rclonebrowser.log` under the application data folder, rotates at 5 MB keeping three older generations, and records job starts, exit codes, background errors and Qt messages. Secrets are redacted with the same rules the support bundle uses. Preferences has a log level and an Open Log Folder button (kapitainsky#134, kapitainsky#233, mmozeiko#148)
+
 ### Bug Fixes
+-   FIX: A failed unmount no longer force-kills the mount ten seconds later. The fallback that stops rclone when the unmount helper does not take effect now stands down once the helper has reported a failure, and a second Unmount click works instead of doing nothing
 -   FIX: A post-transfer command that fails is no longer silent. Hooks ran detached, so a command that could not start or exited non-zero looked exactly like one that worked; the exit code and the last line of output now reach the background error list and the job history
 -   FIX: A failed unmount no longer leaves the mount card stuck on "Unmounting" with the remote still mounted. `umount` and `fusermount` ran detached with nothing reading their result; the card now says "Unmount failed" with the reason, gives the controls back, and raises a background error
 -   FIX: Starting a transfer no longer freezes the window while the rclone remote-control daemon comes up. The startup ran on the window thread and could hold it for up to fifteen seconds with no progress and nothing to cancel; it now polls on the event loop, and two transfers started together share one daemon instead of racing two

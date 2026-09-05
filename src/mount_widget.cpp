@@ -396,11 +396,17 @@ void MountWidget::runUnmountHelper(const QString &program,
 }
 
 void MountWidget::reportUnmountFailure(const QString &reason) {
+  // Stand the force-stop fallback down before anything else: the mount is
+  // still up and must stay up.
+  ++mUnmountAttempt;
+  mStopping = false;
   mUserRequestedUnmount = false;
+  mHealthTimer->start();
   ui.output->appendPlainText("Unmount failed: " + reason);
   UiPolish::SetStatus(ui.showDetails, "error", "Unmount failed");
-  // The mount is still up, so give the controls back rather than leaving the
-  // card stuck mid-unmount.
+  // Give the controls back rather than leaving the card stuck mid-unmount.
+  // mStopping above is what makes a second Unmount click work; without it
+  // cancel() returns early and the button does nothing.
   ui.keepMounted->setEnabled(true);
   ui.cancel->setEnabled(true);
   ui.cancel->setToolTip("Unmount this remote.");
@@ -447,11 +453,22 @@ void MountWidget::beginUnmount() {
                    QStringList() << "-u" << ui.folder->text());
 #endif
 
+  // The fallback that force-stops rclone if the helper never takes effect.
+  // It stands down when the helper reports a failure, because killing the
+  // mount there would contradict the message telling the user it is still up
+  // and would look like an unexpected drop to the auto-remount logic.
+  const int attempt = ++mUnmountAttempt;
   QPointer<QProcess> processGuard(mProcess);
-  QTimer::singleShot(10000, this, [processGuard]() {
+  QTimer::singleShot(10000, this, [this, processGuard, attempt]() {
+    if (attempt != mUnmountAttempt || !mStopping) {
+      return;
+    }
     if (processGuard && processGuard->state() != QProcess::NotRunning) {
       processGuard->terminate();
-      QTimer::singleShot(5000, processGuard, [processGuard]() {
+      QTimer::singleShot(5000, this, [this, processGuard, attempt]() {
+        if (attempt != mUnmountAttempt || !mStopping) {
+          return;
+        }
         if (processGuard && processGuard->state() != QProcess::NotRunning) {
           processGuard->kill();
         }

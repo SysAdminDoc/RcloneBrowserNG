@@ -41,6 +41,9 @@ private:
   bool mHealthProbeInFlight = false;
   bool mStaleNotified = false;
   int mHealthFailures = 0;
+  // Bumped per unmount attempt so a stale force-stop timer from an
+  // attempt that already failed cannot kill a mount that is still up.
+  int mUnmountAttempt = 0;
   QProcess *mProcess;
   QTimer *mHealthTimer = nullptr;
 

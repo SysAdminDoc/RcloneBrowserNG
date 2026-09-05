@@ -8,6 +8,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 
 // Starting an RC-backed transfer used to run rclone rcd synchronously on the
 // window thread: waitForStarted for five seconds, then a QThread::msleep spin
@@ -72,21 +73,34 @@ private slots:
     QTRY_COMPARE_WITH_TIMEOUT(resolutions, 2, 30000);
   }
 
-  void scheduleListingReturnsBeforeTheHelperDoes() {
+  void scheduleListingIsAsynchronous() {
     // ScheduleManager shells out to schtasks/launchctl/systemctl, which took
-    // 38 seconds on a cold run here. The GUI must never wait on it.
+    // 38 seconds on a cold run here. Its program is not injectable, so this
+    // cannot use the sleepy stub; what it can prove is that the call is
+    // genuinely deferred. A regression that made listSchedulesAsync run its
+    // worker inline would resolve before the call returns and fail here, and
+    // one that dispatched the callback from the pool thread instead of the
+    // caller's would fail the thread check.
     bool resolved = false;
+    QThread *callbackThread = nullptr;
     QElapsedTimer timer;
     timer.start();
     ScheduleManager::listSchedulesAsync(
-        this, [&resolved](const QList<ScheduleEntry> &, const QString &) {
+        this, [&resolved, &callbackThread](const QList<ScheduleEntry> &,
+                                           const QString &) {
           resolved = true;
+          callbackThread = QThread::currentThread();
         });
     const qint64 returnedAfterMs = timer.elapsed();
+
+    QVERIFY2(!resolved,
+             "listSchedulesAsync must not run its helper on the caller's stack");
     QVERIFY2(returnedAfterMs < 1000,
              qPrintable(QString("listSchedulesAsync blocked for %1 ms")
                             .arg(returnedAfterMs)));
+
     QTRY_VERIFY_WITH_TIMEOUT(resolved, 120000);
+    QCOMPARE(callbackThread, QThread::currentThread());
   }
 };
 

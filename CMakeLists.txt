@@ -57,6 +57,22 @@ if(BUILD_TESTING)
   target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME remote_path_test COMMAND remote_path_test)
 
+  add_executable(app_log_test
+    tests/app_log_test.cpp
+    src/app_log.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  target_include_directories(app_log_test PRIVATE src)
+  target_compile_definitions(app_log_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(app_log_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(app_log_test advapi32)
+  endif()
+  add_test(NAME app_log_test COMMAND app_log_test)
+  set_tests_properties(app_log_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
   add_executable(rclone_security_floor_test
     tests/rclone_security_floor_test.cpp
     src/rclone_security_floor.cpp
@@ -238,6 +254,8 @@ if(BUILD_TESTING)
   add_executable(preferences_layout_test
     tests/preferences_layout_test.cpp
     src/preferences_dialog.cpp
+    src/app_log.cpp
+    src/rclone_capabilities.cpp
     src/preferences_dialog.ui
     src/interface_polish.cpp
     src/mount_options.cpp
@@ -247,6 +265,7 @@ if(BUILD_TESTING)
   # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.
   set_target_properties(preferences_layout_test PROPERTIES AUTOUIC ON)
   target_include_directories(preferences_layout_test PRIVATE src tests)
+  target_compile_definitions(preferences_layout_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(preferences_layout_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
     target_link_libraries(preferences_layout_test advapi32)
@@ -267,6 +286,7 @@ if(BUILD_TESTING)
     src/mount_health.cpp
     src/mount_options.cpp
     src/rclone_rc_engine.cpp
+    src/app_log.cpp
     src/job_stats.cpp
     src/lsjson_parser.cpp
     src/rclone_capabilities.cpp

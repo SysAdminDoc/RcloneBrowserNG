@@ -34,6 +34,7 @@ public:
   bool getRowColors() const;
   bool getShowHidden() const;
   bool getHideCryptBackends() const;
+  QString getLogLevel() const;
   bool getDarkMode() const;
   QString getIconSize() const;
 

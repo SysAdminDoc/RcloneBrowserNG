@@ -26,12 +26,21 @@ RcloneRcEngine::~RcloneRcEngine() {
 
 void RcloneRcEngine::ensureStartedAsync(QObject *context,
                                         StartCallback callback) {
+  // Track the context only when the caller gave us one. A null context is the
+  // Qt idiom for "no lifetime to follow, always call me", and guarding on a
+  // null QPointer would drop that caller's callback forever.
+  const bool tracksContext = context != nullptr;
   const QPointer<QObject> contextGuard(context);
-  auto guarded = [contextGuard, callback = std::move(callback)](
-                     bool ok, const QString &error) mutable {
-    if (callback && (contextGuard || !contextGuard.isNull())) {
-      callback(ok, error);
+  auto guarded = [tracksContext, contextGuard,
+                  callback = std::move(callback)](bool ok,
+                                                  const QString &error) mutable {
+    if (!callback) {
+      return;
     }
+    if (tracksContext && contextGuard.isNull()) {
+      return; // the caller went away while the daemon was coming up
+    }
+    callback(ok, error);
   };
 
   if (mStarting) {

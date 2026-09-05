@@ -1,4 +1,5 @@
 #include "preferences_dialog.h"
+#include "app_log.h"
 #include "interface_polish.h"
 #include "mount_options.h"
 #include "utils.h"
@@ -370,6 +371,16 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   // listed" report.
   ui.hideCryptBackends->setChecked(
       settings->value("Settings/hideCryptBackends", false).toBool());
+
+  ui.logLevel->addItems(AppLog::LevelNames());
+  ui.logLevel->setCurrentText(AppLog::LevelName(AppLog::LevelFromName(
+      settings->value("Settings/logLevel", "Info").toString())));
+  ui.openLogFolder->setToolTip(
+      QString("Open %1").arg(QDir::toNativeSeparators(AppLog::LogDirectory())));
+  QObject::connect(ui.openLogFolder, &QPushButton::clicked, this, []() {
+    QDesktopServices::openUrl(
+        QUrl::fromLocalFile(AppLog::LogDirectory()));
+  });
   ui.darkMode->setChecked(
       settings->value("Settings/darkMode", false).toBool());
 
@@ -520,6 +531,10 @@ bool PreferencesDialog::getShowHidden() const {
 
 bool PreferencesDialog::getHideCryptBackends() const {
   return ui.hideCryptBackends->isChecked();
+}
+
+QString PreferencesDialog::getLogLevel() const {
+  return ui.logLevel->currentText();
 }
 
 bool PreferencesDialog::getDarkMode() const { return ui.darkMode->isChecked(); }

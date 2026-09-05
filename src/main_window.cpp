@@ -8,6 +8,7 @@
 #include "preferences_dialog.h"
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
+#include "app_log.h"
 #include "rclone_security_floor.h"
 #include "remote_provider.h"
 #include "cross_remote_search.h"
@@ -616,6 +617,8 @@ MainWindow::MainWindow(bool initializeRuntime)
       settings->setValue("Settings/showHidden", dialog.getShowHidden());
       settings->setValue("Settings/hideCryptBackends",
                          dialog.getHideCryptBackends());
+      settings->setValue("Settings/logLevel", dialog.getLogLevel());
+      AppLog::SetLevel(AppLog::LevelFromName(dialog.getLogLevel()));
       settings->setValue("Settings/darkMode", dialog.getDarkMode());
       settings->setValue("Settings/iconSize", dialog.getIconSize().trimmed());
 
@@ -3745,6 +3748,8 @@ void MainWindow::addTransferViaProcess(
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
 
+  AppLog::Write(AppLog::Level::Info, "job",
+                QString("started: %1 (%2 -> %3)").arg(message, source, dest));
   auto *widget = new JobWidget(transfer, message, args, source, dest);
 
   auto *line = new QFrame();
@@ -4220,6 +4225,14 @@ void MainWindow::recordHookFailure(const QString &taskLabel,
 }
 
 void MainWindow::persistJobHistory(const JobHistoryEntry &entry) {
+  AppLog::Write(entry.success ? AppLog::Level::Info : AppLog::Level::Error,
+                "job",
+                QString("finished: %1 (%2 -> %3) exit %4, %5 file(s), "
+                        "%6 error(s)")
+                    .arg(entry.name, entry.source, entry.dest)
+                    .arg(entry.exitCode)
+                    .arg(entry.files)
+                    .arg(entry.errors));
   QString error;
   if (!JobHistoryStore::Append(entry, &error)) {
     setStatusMessage("Job history could not be saved: " + error);
@@ -4995,6 +5008,7 @@ void MainWindow::appendBackgroundError(const QString &jobName,
   err.jobName = jobName;
   err.message = message;
   mErrorQueue.append(err);
+  AppLog::Write(AppLog::Level::Error, jobName, message);
   while (mErrorQueue.size() > kMaxQueueSize)
     mErrorQueue.removeFirst();
 
