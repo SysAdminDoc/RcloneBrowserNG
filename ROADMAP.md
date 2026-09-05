@@ -66,13 +66,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Acceptance: a mounted remote's panel offers "Refresh listing" (posting `vfs/refresh` with `recursive`) and shows the pending-upload count and cache size from `vfs/queue` and `vfs/stats`, refreshed on a timer; the existing dirty-cache unmount warning quotes the same numbers.
   Complexity: M
 
-- [ ] P2 — Explain filter anchoring and warn on delete-excluded
-  Why: rclone filter patterns are unanchored and users read them as paths; one upstream reporter deleted already-uploaded data by combining a wrong exclude with delete-excluded.
-  Evidence: `kapitainsky#252` including the reporter's follow-up ("Checking the 'delete excluded' option also deleted the already uploaded folder"); the exclude builder in `src/transfer_dialog.cpp` offers quick-add buttons but no anchoring explanation and no warning on `--delete-excluded`.
-  Touches: `src/transfer_dialog.{ui,cpp}`
-  Acceptance: the exclude builder shows, for each entered pattern, whether it is anchored and one example of what it will and will not match; enabling delete-excluded turns the exclude list into a warning-styled panel naming what will be removed at the destination.
-  Complexity: S
-
 - [ ] P2 — Fan a saved task out to several destinations
   Why: one source to many destinations is a paid feature in the closest direct competitor and maps cleanly onto the existing saved-task and staged-queue model.
   Evidence: rcloneview.com lists "1:N cloud synchronization" in its paid tier; `src/job_options.h` carries a single `dest`; `src/staged_transfer.cpp` already sequences multiple queued transfers.
