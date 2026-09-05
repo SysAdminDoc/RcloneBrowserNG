@@ -1,5 +1,6 @@
 #include "item_model.h"
 #include "icon_cache.h"
+#include "lsjson_parser.h"
 #include "remote_path.h"
 #include "utils.h"
 #include <algorithm>
@@ -418,79 +419,27 @@ Item *ItemModel::get(const QModelIndex &index) const {
 void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   auto proc = new QProcess(this);
 
+  // Thin adapter over LsjsonParser so the splitting and field decoding live
+  // somewhere a test can reach them.
   struct StreamParser {
-    QByteArray buf;
-    int braceDepth = 0;
-    int objStart = -1;
-    bool inString = false;
-    bool hadData = false;
+    LsjsonParser::StreamSplitter splitter;
     QVector<Item *> items;
 
+    bool hadData() const { return splitter.hadData(); }
+
     void feed(const QByteArray &data, Item *p) {
-      const int prevSize = buf.size();
-      buf.append(data);
-      hadData = true;
-
-      for (int i = prevSize; i < buf.size(); i++) {
-        const char c = buf.at(i);
-
-        if (inString) {
-          if (c == '\\') {
-            i++;
-          } else if (c == '"') {
-            inString = false;
-          }
-          continue;
-        }
-
-        if (c == '"') {
-          inString = true;
-          continue;
-        }
-        if (c == '{') {
-          if (braceDepth == 0) {
-            objStart = i;
-          }
-          braceDepth++;
-        } else if (c == '}') {
-          braceDepth--;
-          if (braceDepth == 0 && objStart >= 0) {
-            QByteArray objBytes = buf.mid(objStart, i - objStart + 1);
-            QJsonParseError err;
-            QJsonDocument doc = QJsonDocument::fromJson(objBytes, &err);
-            if (doc.isObject()) {
-              parseItem(doc.object(), p);
-            }
-            objStart = -1;
-          }
-        }
+      for (const QJsonObject &object : splitter.feed(data)) {
+        const LsjsonParser::Entry entry =
+            LsjsonParser::DecodeEntry(object, p->path.path());
+        Item *child = new Item();
+        child->parent = p;
+        child->isFolder = entry.isFolder;
+        child->name = entry.name;
+        child->path.setPath(entry.path);
+        child->size = entry.size;
+        child->modified = entry.modified;
+        items.append(child);
       }
-
-      if (objStart > 0) {
-        buf = buf.mid(objStart);
-        objStart = 0;
-      } else if (objStart < 0) {
-        buf.clear();
-      }
-    }
-
-    void parseItem(const QJsonObject &obj, Item *p) {
-      Item *child = new Item();
-      child->parent = p;
-      child->isFolder = obj.value("IsDir").toBool();
-      child->name = obj.value("Name").toString();
-      child->path.setPath(ChildRemotePathFromLsjson(p->path.path(), obj));
-      if (!child->isFolder)
-        child->size = static_cast<quint64>(obj.value("Size").toDouble());
-
-      QString modTime = obj.value("ModTime").toString();
-      QDateTime dt = QDateTime::fromString(modTime, Qt::ISODateWithMs);
-      if (dt.isValid())
-        child->modified = dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
-      else if (modTime.length() >= 19)
-        child->modified = modTime.left(19).replace('T', ' ');
-
-      items.append(child);
     }
   };
 
@@ -530,7 +479,7 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
                                 : error);
         }
 
-        if (parser->items.isEmpty() && code == 0 && parser->hadData) {
+        if (parser->items.isEmpty() && code == 0 && parser->hadData()) {
           loadErrors.append("Failed to parse listing");
         }
 

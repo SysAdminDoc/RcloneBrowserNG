@@ -10,10 +10,12 @@ private slots:
   void extractsChunkedListing();
   void extractsEmptyListing();
   void extractsNestedMetadata();
-  void parsesTransferStats();
-  void parsesErrorStats();
-  void ignoresNonStatsLine();
   void preservesLargeSizes();
   void preservesUnicodeNames();
   void preservesSpecialPaths();
+  void parsesModTimeVariants();
+  void parsesTransferStats();
+  void parsesErrorStats();
+  void ignoresNonStatsLine();
+  void clampsProgressAndFormatsCounts();
 };

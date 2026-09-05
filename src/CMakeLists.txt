@@ -65,6 +65,8 @@ set(SOURCE
   rclone_capabilities.cpp
   rc_job_widget.cpp
   remote_path.cpp
+  job_stats.cpp
+  lsjson_parser.cpp
   rclone_security_floor.cpp
   selection_arguments.cpp
   schedule_dialog.cpp

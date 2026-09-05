@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Make `parsing_regression_test` exercise the shipped parser
-  Why: the target links no `src/` source and reimplements the `lsjson` scanner, so mutating the real parser leaves the suite green; the same is true for the stats parser, which has no test at all.
-  Evidence: `CMakeLists.txt:127-133` builds `parsing_regression_test` from `tests/parsing_regression_test.cpp` and `.h` only; `tests/parsing_regression_test.cpp` contains its own balanced-brace scanner rather than including `src/item_model.cpp`.
-  Touches: `src/item_model.{h,cpp}` (extract `StreamParser` and the record decoder into a free function), `src/job_widget.cpp` (extract the JSON-log stats decoder), `tests/parsing_regression_test.cpp`, `CMakeLists.txt`
-  Acceptance: the test links the extracted parser sources; the recorded `lsjson` and `--use-json-log` fixtures run through the production code path; deleting the `ModTime` fallback branch in `src/item_model.cpp` or the `transferring` array handling in `src/job_widget.cpp` makes the suite fail.
-  Complexity: M
-
 - [ ] P1 — Remove GUI-thread blocking from scheduling, Open/Edit and the RC engine
   Why: clicking Save in the Schedule dialog can freeze the UI for up to 15 seconds per shell-out, Open/Edit runs a 30-second nested event loop, and starting an RC-backed transfer spins on `msleep` with `processEvents`.
   Evidence: seventeen `waitForFinished(3000..15000)` calls in `src/schedule_manager.cpp` (including lines 270, 310, 360, 416, 459, 492, 561); `QEventLoop loop; ... loop.exec()` with a 30s timer at `src/remote_widget.cpp:210`; `waitForStarted(5000)` plus a `QThread::msleep(50)` + `processEvents` loop at `src/rclone_rc_engine.cpp:55-71`.

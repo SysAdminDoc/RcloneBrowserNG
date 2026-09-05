@@ -144,9 +144,14 @@ if(BUILD_TESTING)
   target_link_libraries(mount_backend_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME mount_backend_test COMMAND mount_backend_test)
 
+  # Links the shipped decoders. This target used to compile only its own copy
+  # of both parsers, so a regression in src/ could not turn it red.
   add_executable(parsing_regression_test
     tests/parsing_regression_test.cpp
     tests/parsing_regression_test.h
+    src/lsjson_parser.cpp
+    src/job_stats.cpp
+    src/remote_path.cpp
   )
   target_include_directories(parsing_regression_test PRIVATE src)
   target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
@@ -239,6 +244,8 @@ if(BUILD_TESTING)
     src/mount_health.cpp
     src/mount_options.cpp
     src/rclone_rc_engine.cpp
+    src/job_stats.cpp
+    src/lsjson_parser.cpp
     src/rclone_capabilities.cpp
     src/rclone_security_floor.cpp
     src/rc_job_widget.cpp

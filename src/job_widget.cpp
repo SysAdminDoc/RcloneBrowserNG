@@ -1,4 +1,5 @@
 #include "job_widget.h"
+#include "job_stats.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
@@ -183,17 +184,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       if (raw.isEmpty())
         continue;
 
-      QJsonDocument doc = QJsonDocument::fromJson(raw);
-      if (!doc.isObject()) {
+      const JobStats::LogLine parsed = JobStats::ParseLogLine(raw);
+      if (!parsed.isJson) {
         QString line = QString::fromUtf8(raw);
         ui.output->appendPlainText(line);
         Diagnostics::appendLog("job", line);
         continue;
       }
 
-      QJsonObject obj = doc.object();
-      QString msg = obj.value("msg").toString();
-      QString level = obj.value("level").toString();
+      const QString msg = parsed.message;
+      const QString level = parsed.level;
 
       if (!msg.isEmpty()) {
         ui.output->appendPlainText(msg);
@@ -201,9 +201,9 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
           Diagnostics::appendLog("job", msg);
         }
         if (mTransferDetail.size() < 10000) {
-          QString objectName = obj.value("object").toString();
+          const QString objectName = parsed.object;
           if (!objectName.isEmpty()) {
-            QString ts = obj.value("time").toString();
+            QString ts = parsed.time;
             if (ts.isEmpty())
               ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
             mTransferDetail.append(
@@ -213,104 +213,61 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         }
       }
 
-      if (!obj.contains("stats"))
+      if (!parsed.stats.present)
         continue;
 
-      QJsonObject stats = obj.value("stats").toObject();
+      const JobStats::Stats &stats = parsed.stats;
 
       // overall transfer progress
-      double bytes = stats.value("bytes").toDouble();
-      double totalBytes = stats.value("totalBytes").toDouble();
-      double speed = stats.value("speed").toDouble();
-      mBytes = static_cast<qint64>(bytes);
-      int pct = totalBytes > 0
-                    ? static_cast<int>(bytes / totalBytes * 100)
-                    : 0;
-      ui.size->setText(QString("%1, %2%")
-                           .arg(GetNiceSize(static_cast<quint64>(bytes)))
-                           .arg(pct));
+      mBytes = static_cast<qint64>(stats.bytes);
+      ui.size->setText(
+          QString("%1, %2%")
+              .arg(GetNiceSize(static_cast<quint64>(stats.bytes)))
+              .arg(JobStats::PercentComplete(stats.bytes, stats.totalBytes)));
       ui.totalsize->setText(
-          GetNiceSize(static_cast<quint64>(totalBytes)));
+          GetNiceSize(static_cast<quint64>(stats.totalBytes)));
       ui.bandwidth->setText(
-          GetNiceSize(static_cast<quint64>(speed)) + "/s");
-      mSparkline->addSample(speed);
+          GetNiceSize(static_cast<quint64>(stats.speed)) + "/s");
+      mSparkline->addSample(stats.speed);
 
-      double eta = stats.value("eta").toDouble();
-      if (eta > 0) {
-        int h = static_cast<int>(eta) / 3600;
-        int m = (static_cast<int>(eta) % 3600) / 60;
-        int s = static_cast<int>(eta) % 60;
-        if (h > 0)
-          ui.eta->setText(
-              QString("%1h%2m%3s").arg(h).arg(m).arg(s));
-        else if (m > 0)
-          ui.eta->setText(QString("%1m%2s").arg(m).arg(s));
-        else
-          ui.eta->setText(QString("%1s").arg(s));
-      } else {
-        ui.eta->setText("-");
-      }
+      const QString etaText = JobStats::FormatDuration(stats.eta);
+      ui.eta->setText(etaText.isEmpty() ? QString("-") : etaText);
 
-      int errors = stats.value("errors").toInt();
-      mErrors = errors;
-      ui.errors->setText(QString::number(errors));
+      mErrors = stats.errors;
+      ui.errors->setText(QString::number(stats.errors));
 
-      int checks = stats.value("checks").toInt();
-      int totalChecks = stats.value("totalChecks").toInt();
-      if (totalChecks > 0)
-        ui.checks->setText(
-            QString("%1 / %2").arg(checks).arg(totalChecks));
-      else if (checks > 0)
-        ui.checks->setText(QString::number(checks));
+      const QString checksText =
+          JobStats::FormatCount(stats.checks, stats.totalChecks);
+      if (!checksText.isEmpty())
+        ui.checks->setText(checksText);
 
-      int transfers = stats.value("transfers").toInt();
-      int totalTransfers = stats.value("totalTransfers").toInt();
-      mFiles = qMax(transfers, totalTransfers);
-      if (totalTransfers > 0)
-        ui.transferred->setText(
-            QString("%1 / %2").arg(transfers).arg(totalTransfers));
-      else if (transfers > 0)
-        ui.transferred->setText(QString::number(transfers));
+      mFiles = qMax(stats.transfers, stats.totalTransfers);
+      const QString transferredText =
+          JobStats::FormatCount(stats.transfers, stats.totalTransfers);
+      if (!transferredText.isEmpty())
+        ui.transferred->setText(transferredText);
 
-      double elapsed = stats.value("elapsedTime").toDouble();
-      if (elapsed > 0) {
-        int eh = static_cast<int>(elapsed) / 3600;
-        int em = (static_cast<int>(elapsed) % 3600) / 60;
-        int es = static_cast<int>(elapsed) % 60;
-        if (eh > 0)
-          ui.elapsed->setText(
-              QString("%1h%2m%3s").arg(eh).arg(em).arg(es));
-        else if (em > 0)
-          ui.elapsed->setText(QString("%1m%2s").arg(em).arg(es));
-        else
-          ui.elapsed->setText(QString("%1s").arg(es));
-      }
+      const QString elapsedText = JobStats::FormatDuration(stats.elapsedTime);
+      if (!elapsedText.isEmpty())
+        ui.elapsed->setText(elapsedText);
 
       // per-file progress from the "transferring" array
-      QJsonArray xferring = stats.value("transferring").toArray();
       QSet<QLabel *> updated;
       int visibleRows = 0;
       int hiddenRows = 0;
-      for (const QJsonValue &val : xferring) {
-        QJsonObject f = val.toObject();
-        QString name = f.value("name").toString();
-        if (name.isEmpty())
-          continue;
+      for (const JobStats::TransferringFile &file : stats.transferring) {
         if (visibleRows >= kMaxVisibleFileProgress) {
           hiddenRows++;
           continue;
         }
         visibleRows++;
 
-        auto it = mActive.find(name);
+        auto it = mActive.find(file.name);
         QLabel *label;
         QProgressBar *bar;
         if (it == mActive.end()) {
           label = new QLabel();
-          QString display = name.length() > 47
-                                ? name.left(25) + "..." + name.right(19)
-                                : name;
-          label->setText(display);
+          label->setText(JobStats::ElideTransferName(file.name));
 
           bar = new QProgressBar();
           bar->setMinimum(0);
@@ -319,20 +276,18 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
           label->setBuddy(bar);
 
           ui.progress->addRow(label, bar);
-          mActive.insert(name, label);
+          mActive.insert(file.name, label);
         } else {
           label = it.value();
           bar = static_cast<QProgressBar *>(label->buddy());
         }
 
-        bar->setValue(f.value("percentage").toInt());
-        double fSpeed = f.value("speed").toDouble();
-        double fEta = f.value("eta").toDouble();
+        bar->setValue(file.percentage);
         bar->setToolTip(
             QString("File: %1\nSpeed: %2/s  ETA: %3s")
-                .arg(name,
-                     GetNiceSize(static_cast<quint64>(fSpeed)),
-                     QString::number(static_cast<int>(fEta))));
+                .arg(file.name,
+                     GetNiceSize(static_cast<quint64>(file.speed)),
+                     QString::number(static_cast<int>(file.eta))));
 
         updated.insert(label);
       }
