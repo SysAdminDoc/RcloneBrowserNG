@@ -32,6 +32,10 @@ private slots:
   // Shows the server-side option only when both paths name remotes
   // of the same backend type.
   void refreshServerSideOption();
+  // rclone patterns match at any depth unless anchored, which is
+  // the mistake that cost an upstream reporter data when combined
+  // with --delete-excluded.
+  void refreshExcludeExplanation();
 
 private:
   Ui::TransferDialog ui;
@@ -49,6 +53,7 @@ private:
   QCheckBox *mVerifyAfter = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
+  QLabel *mExcludeExplanation = nullptr;
   bool mPreviewInFlight = false;
 
   bool wouldDeleteAtDestination() const;

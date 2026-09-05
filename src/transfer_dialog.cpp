@@ -1,6 +1,7 @@
 #include "transfer_dialog.h"
 #include "sync_preview.h"
 #include "remote_list_parser.h"
+#include "filter_pattern.h"
 #include "list_of_job_options.h"
 #include "job_options_store.h"
 #include "interface_polish.h"
@@ -228,12 +229,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     quickLayout->addWidget(btn);
   }
   quickLayout->addStretch();
+  mExcludeExplanation = new QLabel(this);
+  mExcludeExplanation->setObjectName("excludeExplanation");
+  mExcludeExplanation->setWordWrap(true);
+  mExcludeExplanation->setTextFormat(Qt::PlainText);
+  mExcludeExplanation->setAccessibleName("Exclude pattern explanation");
+  UiPolish::SetMuted(mExcludeExplanation);
   if (auto *parentLayout =
           qobject_cast<QVBoxLayout *>(ui.textExclude->parentWidget()->layout())) {
     int idx = parentLayout->indexOf(ui.textExclude);
-    if (idx >= 0)
+    if (idx >= 0) {
       parentLayout->insertWidget(idx + 1, excludeQuickBar);
+      parentLayout->insertWidget(idx + 2, mExcludeExplanation);
+    }
   }
+  QObject::connect(ui.textExclude, &QPlainTextEdit::textChanged, this,
+                   &TransferDialog::refreshExcludeExplanation);
+  QObject::connect(ui.checkDeleteExcluded, &QCheckBox::toggled, this,
+                   &TransferDialog::refreshExcludeExplanation);
+  refreshExcludeExplanation();
 
   auto *heartbeatLabel = new QLabel("Heartbeat URL:", this);
   heartbeatLabel->setToolTip(
@@ -1070,6 +1084,41 @@ QHash<QString, QString> TransferDialog::RemoteTypes() {
     cache.insert(remote.name, remote.type);
   }
   return cache;
+}
+
+void TransferDialog::refreshExcludeExplanation() {
+  if (!mExcludeExplanation) {
+    return;
+  }
+
+  const QStringList lines =
+      FilterPattern::DescribeAll(ui.textExclude->toPlainText());
+  const bool deleting = ui.checkDeleteExcluded->isChecked();
+
+  if (lines.isEmpty()) {
+    mExcludeExplanation->setText(
+        deleting ? QString("Delete excluded is on, but no patterns are set, "
+                           "so nothing extra will be removed.")
+                 : QString("Patterns match at any depth unless they start "
+                           "with a slash."));
+    UiPolish::SetMuted(mExcludeExplanation);
+    return;
+  }
+
+  QString text;
+  if (deleting) {
+    // Not a warning about the exclude itself: about what it now deletes.
+    text = QString("Delete excluded is on, so anything these patterns match "
+                   "is REMOVED from the destination, not just skipped:\n");
+  }
+  text += lines.join(QChar('\n'));
+
+  mExcludeExplanation->setText(text);
+  if (deleting) {
+    UiPolish::SetNotice(mExcludeExplanation, text);
+  } else {
+    UiPolish::SetMuted(mExcludeExplanation);
+  }
 }
 
 QString TransferDialog::getMode() const {

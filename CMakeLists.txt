@@ -112,6 +112,14 @@ if(BUILD_TESTING)
   target_link_libraries(exit_code_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME exit_code_test COMMAND exit_code_test)
 
+  add_executable(filter_pattern_test
+    tests/filter_pattern_test.cpp
+    src/filter_pattern.cpp
+  )
+  target_include_directories(filter_pattern_test PRIVATE src)
+  target_link_libraries(filter_pattern_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME filter_pattern_test COMMAND filter_pattern_test)
+
   add_executable(sync_preview_test
     tests/sync_preview_test.cpp
     src/sync_preview.cpp
@@ -322,6 +330,7 @@ if(BUILD_TESTING)
     src/mount_options.cpp
     src/rclone_rc_engine.cpp
     src/app_log.cpp
+    src/filter_pattern.cpp
     src/job_stats.cpp
     src/lsjson_parser.cpp
     src/rclone_capabilities.cpp

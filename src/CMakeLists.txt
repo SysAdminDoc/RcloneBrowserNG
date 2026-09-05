@@ -67,6 +67,7 @@ set(SOURCE
   remote_list_parser.cpp
   remote_path.cpp
   app_log.cpp
+  filter_pattern.cpp
   job_stats.cpp
   lsjson_parser.cpp
   rclone_exit_code.cpp
