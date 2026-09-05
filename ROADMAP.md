@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Publish a maintainer-owned Homebrew tap
-  Why: Homebrew disabled unsigned casks in the official repository on 2026-09-01, so the inherited `rclone-browser` cask is gone, but third-party taps are unrestricted and need only the maintainer's existing GitHub account. This is the one macOS distribution route that is not blocked on Apple enrolment.
-  Evidence: workbrew.com/blog/homebrew-5-0-0 and Homebrew discussion #6482 confirm the 2026-09-01 cutoff applies to the official tap only; `scripts/generate_package_manifests.py` already emits a validated Homebrew Cask file.
-  Touches: `scripts/generate_package_manifests.py`, `README.md`, new repository `SysAdminDoc/homebrew-rclonebrowserng`
-  Acceptance: `brew tap SysAdminDoc/rclonebrowserng && brew install --cask rclone-browser-ng` installs the published macOS artifact; the cask's `sha256` matches the release asset; the README documents the tap and states plainly that the build is unsigned.
-  Complexity: S
-
 ### P2
 
 - [ ] P2 — Run RC transfers through `sync/*` with `_async` and `_group` instead of `core/command`
