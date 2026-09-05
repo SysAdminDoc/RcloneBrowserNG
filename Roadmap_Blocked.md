@@ -6,14 +6,14 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
 
 ## P1 — Distribution
 
-- [ ] P1 — Code signing before Homebrew September 2026 deadline
-  Blocked: Requires SignPath approval/service access plus Apple Developer enrollment/notarization credentials.
-  Why: Homebrew will remove unsigned casks after September 1, 2026; missing this deadline kills the Homebrew distribution channel. SignPath Foundation provides free OV code signing for OSS (private key on HSM, CI-integrated). Apple notarization requires $99/yr developer account.
-  Evidence: workbrew.com/blog/homebrew-5-0-0; signpath.io/solutions/open-source-community; Homebrew discussion #6482
-  Touches: .github/workflows/release.yml, code-signing policy, README
-  Acceptance: Windows binaries Authenticode-signed via SignPath; macOS DMG notarized and stapled; Homebrew cask installable after September 2026.
+- [ ] P1 — Code signing (Windows Authenticode + Apple notarization)
+  Blocked: Requires an external signing identity — SignPath Foundation approval, an Azure Artifact Signing subscription, or a Certum OV certificate — plus Apple Developer enrollment for notarization.
+  Why (revised 2026-09-04): the Homebrew cutoff has PASSED, not approaching. Homebrew disabled unsigned casks in the official repository on 2026-09-01, so the inherited cask is already gone; a maintainer-owned third-party tap is the unblocked interim route and is tracked in ROADMAP.md. macOS got harder in the same window: macOS Sequoia removed the Control-click "Open Anyway" Gatekeeper bypass, so an unnotarized DMG needs a trip through System Settings. Windows got cheaper and less exclusive: Azure Artifact Signing is $9.99/month, FIPS 140-3, and explicitly available to individuals in the US, Canada, EU and UK, so SignPath is no longer the only option; note also that EV certificates no longer grant instant SmartScreen reputation and certificate lifetimes are capped at 460 days from 2026-03-01.
+  Evidence: workbrew.com/blog/homebrew-5-0-0; Homebrew discussion #6482; azure.microsoft.com/pricing/details/trusted-signing; CA/B Forum Code Signing BRs v3.7; signpath.io/solutions/open-source-community
+  Touches: local release scripts, code-signing policy, README
+  Acceptance: Windows artifacts are Authenticode-signed with a timestamp; the macOS DMG is notarized and stapled; both are produced by the local release scripts, since the repository has no CI.
   Complexity: L
-  Note: Supersedes/elevates the existing P2 code-signing item with a hard deadline.
+  Note: Supersedes the two P2 code-signing entries below.
 
 ---
 
@@ -56,9 +56,9 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
   Complexity: S
 
 - [ ] P2 — Add clang-tidy static analysis to Linux CI
-  Blocked: Acceptance requires a Linux CI runner and workflow, which are not present in the local-build-only repository; `clang-tidy` is also unavailable on this workstation.
-  Why: No static analysis tool beyond CodeQL runs on the codebase. clang-tidy catches use-after-free patterns, uninitialized variables, modernization opportunities, and Qt-specific issues that extractionless CodeQL and MSVC /W4 miss.
-  Evidence: No `.clang-tidy` or `CMAKE_CXX_CLANG_TIDY` in the repo; `src/main_window.cpp` is 4517 lines of complex control flow; OpenSSF recommends multiple overlapping analyzers; Qt moc-generated files need suppression.
+  Blocked: Only the CI enforcement remains blocked. The `.clang-tidy` config landed at the repo root in `24798bb` and the workflow that ran it was removed with `.github/` in `5f722b9`; there is no Linux runner to re-enable it on, and `clang-tidy` is not installed on this workstation.
+  Why: No static analysis tool runs on the codebase today. clang-tidy catches use-after-free patterns, uninitialized variables, modernization opportunities, and Qt-specific issues that MSVC /W4 misses.
+  Evidence: `.clang-tidy` exists but no `CMAKE_CXX_CLANG_TIDY` wires it into the build; `src/main_window.cpp` is 4517 lines of complex control flow; OpenSSF recommends multiple overlapping analyzers; Qt moc-generated files need suppression.
   Touches: `.clang-tidy` (new config file), `CMakeLists.txt` or `.github/workflows/build.yml` (enable in Linux CI job).
   Acceptance: clang-tidy runs on the Linux CI build with `bugprone-*`, `cppcoreguidelines-*`, `performance-*`, and `modernize-*` checks enabled; moc/uic generated files are excluded via header-filter; findings are zero or explicitly suppressed with rationale; CI fails on new clang-tidy warnings.
   Complexity: S
@@ -108,26 +108,12 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
 
 ---
 
-## P3 — Depends on rcd engine (not yet implemented)
+## P3 — Depends on the RC engine leaving the core/command shim
 
-- [ ] P3 — Graceful stop: finish in-flight files, then stop
-  Blocked: Depends on rcd engine item which hasn't landed yet. The graceful stop requires rc job semantics to finish current files.
-  Why: the only stop today is kill; finishing current files avoids partial-transfer waste.
-  Evidence: github.com/rclone/rclone/issues/966
-  Touches: job_widget.cpp, engine (depends on rcd engine item)
-  Acceptance: jobs offer Stop (immediate) and Finish current files; the latter completes active transfers and skips queued ones.
-  Complexity: M
-
-- [ ] P3 — Live tuning of running jobs (bwlimit / transfers / checkers)
-  Blocked: Depends on rcd engine item. rc exposes `core/bwlimit` on running daemons; natural once the rcd engine lands.
-  Why: no GUI surfaces live tuning of running jobs.
-  Evidence: github.com/rclone/rclone/issues/3898; rclone.org/rc
-  Touches: job_widget.cpp, engine (depends on rcd engine item)
-  Acceptance: a running job's panel lets the user change bandwidth limit and transfer concurrency without restarting.
-  Complexity: M
+Correction (2026-09-04): the rcd engine IS implemented (`src/rclone_rc_engine.cpp`, wired at `src/main_window.cpp:3256`). What these items actually depend on is the migration off `core/command` onto native `sync/*` calls with `_async` and `_group`, which is now tracked as an actionable item in ROADMAP.md. The other two entries that were parked here (live bandwidth tuning, graceful stop) have been moved back to ROADMAP.md.
 
 - [ ] P3 — Leverage job/batch RC endpoint for multi-command operations
-  Blocked: Depends on rcd engine maturity. rclone v1.72 added `job/batch` for concurrent RC command batches.
+  Blocked: Depends on the `sync/*` migration in ROADMAP.md landing first. rclone v1.72 added `job/batch` for concurrent RC command batches.
   Why: multi-file operations (delete multiple, move multiple) could use a single round-trip instead of sequential spawns.
   Evidence: rclone.org/rc (job/batch endpoint, v1.72); existing rcd engine roadmap
   Touches: `src/rclone_rc_engine.cpp` (depends on rcd engine maturity)
@@ -154,25 +140,17 @@ Items in this file are blocked on maintainer identity, credentials, paid enrollm
   Acceptance: "Adaptive" mode monitors outbound traffic; throttles when other apps use bandwidth; user configures floor/ceiling.
   Complexity: L
 
-- [ ] P3 — Fuzz the three parsers with ClusterFuzzLite
-  Blocked: Depends on parsing-regression-tests item for harness extraction (test infrastructure must exist first).
-  Why: listing parser, stats/json-log parser, and tasks.bin loader are historically-broken surfaces.
-  Evidence: google.github.io/clusterfuzzlite; item_model.cpp/job_widget.cpp/list_of_job_options.cpp
-  Touches: new fuzz targets dir, CMake option, .clusterfuzzlite/ config
-  Acceptance: three fuzz targets build and run in PR CI; seed corpora from recorded rclone outputs.
-  Complexity: M
-
 ---
 
 ## P3 — i18n (external service enrollment)
 
-- [ ] P3 — i18n retrofit (wrap strings in tr(), Weblate integration)
-  Blocked: Requires Weblate account registration (external service) and translator community. Zero tr() calls today.
-  Why: prerequisite for i18n support; Weblate natively supports Qt .ts, free for OSS.
-  Evidence: RESEARCH.md i18n; docs.weblate.org Qt format
-  Touches: all UI strings, CMake (lupdate/lrelease), Weblate config
-  Acceptance: UI strings translatable; a .ts workflow exists; English template generated in CI.
-  Complexity: L
+- [ ] P3 — Weblate enrollment and translator onboarding
+  Blocked: Requires a Weblate account (external service) and a translator community. Split 2026-09-04 — the `tr()` retrofit and English `.ts` generation need no external service and moved to ROADMAP.md; only the hosting and contributor half is blocked.
+  Why: Weblate natively supports Qt `.ts` and is free for open source, but it needs an account and people willing to translate.
+  Evidence: docs.weblate.org Qt format; kapitainsky#138, kapitainsky#47
+  Touches: Weblate project config, `translations/`, CONTRIBUTING
+  Acceptance: the Weblate project is live against `translations/rclonebrowser_en.ts`, at least one non-English locale reaches usable coverage, and the generated `.qm` files ship in the release artifacts.
+  Complexity: M
 
 - [ ] P3 — i18n / multi-language support
   Blocked: Depends on i18n retrofit above + needs translation contributors.
