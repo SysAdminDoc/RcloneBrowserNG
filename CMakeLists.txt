@@ -157,6 +157,29 @@ if(BUILD_TESTING)
   target_link_libraries(parsing_regression_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME parsing_regression_test COMMAND parsing_regression_test)
 
+  # Stands in for the rclone binary: starts, ignores its arguments, sleeps
+  # past the RC startup budget. A blocking implementation cannot pass.
+  add_executable(sleepy_stub tests/sleepy_stub.cpp)
+  set_target_properties(sleepy_stub PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+
+  add_executable(async_helpers_test
+    tests/async_helpers_test.cpp
+    src/rclone_rc_engine.cpp
+    src/schedule_manager.cpp
+    src/utils.cpp
+  )
+  add_dependencies(async_helpers_test sleepy_stub)
+  target_compile_definitions(async_helpers_test PRIVATE
+    SLEEPY_STUB_PATH="$<TARGET_FILE:sleepy_stub>")
+  target_include_directories(async_helpers_test PRIVATE src)
+  target_link_libraries(async_helpers_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(async_helpers_test advapi32)
+  endif()
+  add_test(NAME async_helpers_test COMMAND async_helpers_test)
+  set_tests_properties(async_helpers_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+
   add_executable(schedule_golden_test
     tests/schedule_golden_test.cpp
     src/schedule_manager.cpp

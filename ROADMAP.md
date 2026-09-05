@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Remove GUI-thread blocking from scheduling, Open/Edit and the RC engine
-  Why: clicking Save in the Schedule dialog can freeze the UI for up to 15 seconds per shell-out, Open/Edit runs a 30-second nested event loop, and starting an RC-backed transfer spins on `msleep` with `processEvents`.
-  Evidence: seventeen `waitForFinished(3000..15000)` calls in `src/schedule_manager.cpp` (including lines 270, 310, 360, 416, 459, 492, 561); `QEventLoop loop; ... loop.exec()` with a 30s timer at `src/remote_widget.cpp:210`; `waitForStarted(5000)` plus a `QThread::msleep(50)` + `processEvents` loop at `src/rclone_rc_engine.cpp:55-71`.
-  Touches: `src/schedule_manager.{h,cpp}`, `src/schedule_dialog.cpp`, `src/remote_widget.cpp`, `src/rclone_rc_engine.{h,cpp}`, `src/main_window.cpp`
-  Acceptance: no `waitForFinished`, `waitForStarted` or `QEventLoop::exec` remains on any path reachable from a user click; scheduling, Open/Edit and RC startup report progress through callbacks with a visible cancel; a test drives `ScheduleManager` against a stub program that sleeps 5s and asserts the call returns before the program exits.
-  Complexity: L
-
 - [ ] P1 — Report failures from post-transfer hooks and unmount instead of discarding them
   Why: both run through `QProcess::startDetached`, which captures no output and no exit code, so a broken user hook or a failed unmount is indistinguishable from success, including in job history.
   Evidence: `src/main_window.cpp:3270`, `:3273`, `:3737`, `:3740` (post-command hooks); `src/mount_widget.cpp:370` (`umount`), `:392` (`fusermount -u`).
@@ -152,6 +145,13 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Complexity: S
 
 ### P3
+
+- [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
+  Why: `remoteFingerprint()` spins a nested `QEventLoop` on the Open/Edit path. It is window-modal with a working Cancel and a 30-second timeout, so the window stays responsive and this is not a freeze, but a nested loop still re-enters the stack and is the last one left on a user-click path.
+  Evidence: `src/remote_widget.cpp:211` (`QEventLoop loop; ... loop.exec()`), reached from `src/remote_widget.cpp:174`, `:297` and `:333`. Assessed and deliberately deferred on 2026-09-05 when the rest of the blocking work landed: the RC engine freeze it was grouped with is fixed, and converting this one changes three call sites into continuations for no user-visible gain. Everything else left in `src/` is destructor teardown (`folder_compare.cpp:271`, `rclone_rc_engine.cpp:19`) or the headless `--run-task` CLI (`main.cpp:324`).
+  Touches: `src/remote_widget.cpp`
+  Acceptance: `remoteFingerprint` takes a completion callback and returns immediately; the three call sites continue from that callback; the progress dialog, its Cancel and the 30-second timeout still behave as they do now; no `QEventLoop::exec` remains in `src/remote_widget.cpp`.
+  Complexity: M
 
 - [ ] P3 — Kill immediately on Windows instead of waiting out a terminate that cannot arrive
   Why: `QProcess::terminate()` posts `WM_CLOSE` to top-level windows and the main thread, which a console child such as rclone never receives, so every cancel on Windows sits through the full five-second fallback before anything happens.

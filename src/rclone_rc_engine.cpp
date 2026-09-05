@@ -24,15 +24,43 @@ RcloneRcEngine::~RcloneRcEngine() {
   }
 }
 
-bool RcloneRcEngine::ensureStarted(QString *error) {
-  if (mProcess && mProcess->state() != QProcess::NotRunning) {
-    QString pingError;
-    postSync("rc/noopauth", QJsonObject(), &pingError);
-    if (pingError.isEmpty()) {
-      return true;
+void RcloneRcEngine::ensureStartedAsync(QObject *context,
+                                        StartCallback callback) {
+  const QPointer<QObject> contextGuard(context);
+  auto guarded = [contextGuard, callback = std::move(callback)](
+                     bool ok, const QString &error) mutable {
+    if (callback && (contextGuard || !contextGuard.isNull())) {
+      callback(ok, error);
     }
+  };
+
+  if (mStarting) {
+    // A start is already in flight; ride along with it.
+    mPendingStarts.append(std::move(guarded));
+    return;
   }
 
+  mPendingStarts.append(std::move(guarded));
+  mStarting = true;
+
+  if (mProcess && mProcess->state() != QProcess::NotRunning) {
+    // The daemon looks alive. Confirm it still answers before reusing it,
+    // and only respawn if the ping fails.
+    postAsync("rc/noopauth", QJsonObject(), this,
+              [this](const QJsonObject &, const QString &pingError) {
+                if (pingError.isEmpty()) {
+                  finishStart(true, QString());
+                  return;
+                }
+                spawnDaemon();
+              });
+    return;
+  }
+
+  spawnDaemon();
+}
+
+void RcloneRcEngine::spawnDaemon() {
   if (mProcess) {
     mProcess->deleteLater();
     mProcess = nullptr;
@@ -51,31 +79,76 @@ bool RcloneRcEngine::ensureStarted(QString *error) {
        << QString("localhost:%1").arg(port) << "--rc-user" << mUser
        << "--rc-pass" << mPass << "--rc-job-expire-duration" << "1h";
   UseRclonePassword(mProcess);
+
+  QPointer<QProcess> processGuard(mProcess);
+  QObject::connect(mProcess, &QProcess::errorOccurred, this,
+                   [this, processGuard](QProcess::ProcessError processError) {
+                     if (processError != QProcess::FailedToStart) {
+                       return;
+                     }
+                     if (processGuard != mProcess) {
+                       return; // a later spawn has replaced this one
+                     }
+                     finishStart(false, "failed to start rclone rcd");
+                   });
+
   mProcess->start(GetRclone(), args, QIODevice::ReadOnly);
-  if (!mProcess->waitForStarted(kRcStartTimeoutMs)) {
-    if (error) {
-      *error = "failed to start rclone rcd";
+
+  QElapsedTimer deadline;
+  deadline.start();
+  pollUntilReady(deadline);
+}
+
+void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline) {
+  if (!mStarting) {
+    return;
+  }
+  if (deadline.elapsed() >= kRcStartTimeoutMs) {
+    QString output;
+    if (mProcess) {
+      output = QString::fromUtf8(mProcess->readAll()).trimmed();
     }
-    return false;
+    finishStart(false, output.isEmpty() ? QString("rclone rcd did not become "
+                                                  "ready")
+                                        : output);
+    return;
   }
 
-  QElapsedTimer timer;
-  timer.start();
-  while (timer.elapsed() < kRcStartTimeoutMs) {
-    QString pingError;
-    postSync("rc/noopauth", QJsonObject(), &pingError);
-    if (pingError.isEmpty()) {
-      return true;
-    }
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    QThread::msleep(50);
-  }
+  postAsync("rc/noopauth", QJsonObject(), this,
+            [this, deadline](const QJsonObject &, const QString &pingError) {
+              if (!mStarting) {
+                return;
+              }
+              if (pingError.isEmpty()) {
+                finishStart(true, QString());
+                return;
+              }
+              // Not up yet. Come back on the event loop rather than sleeping
+              // on the thread that has to paint the window.
+              QTimer::singleShot(50, this,
+                                 [this, deadline]() { pollUntilReady(deadline); });
+            });
+}
 
-  if (error) {
-    const QString output = QString::fromUtf8(mProcess->readAll()).trimmed();
-    *error = output.isEmpty() ? "rclone rcd did not become ready" : output;
+void RcloneRcEngine::finishStart(bool ok, const QString &error) {
+  if (!mStarting) {
+    return;
   }
-  return false;
+  mStarting = false;
+  QVector<StartCallback> waiting;
+  waiting.swap(mPendingStarts);
+
+  // QProcess::start emits errorOccurred synchronously when the program cannot
+  // be launched at all, so without this a caller could be re-entered from
+  // inside its own call to ensureStartedAsync. Callers always resume on the
+  // event loop instead.
+  QTimer::singleShot(0, this, [waiting = std::move(waiting), ok, error]() {
+    for (const StartCallback &callback : waiting) {
+      if (callback) {
+        callback(ok, error);
+      }
+    }
+  });
 }
 
 void RcloneRcEngine::runCommand(
@@ -88,14 +161,23 @@ void RcloneRcEngine::runCommand(
     return;
   }
 
-  QString startError;
-  if (!ensureStarted(&startError)) {
-    if (callback) {
-      callback(-1, startError);
-    }
-    return;
-  }
+  const QPointer<QObject> contextGuard(context);
+  ensureStartedAsync(
+      context, [this, args, contextGuard, callback = std::move(callback)](
+                   bool ok, const QString &startError) mutable {
+        if (!ok) {
+          if (callback) {
+            callback(-1, startError);
+          }
+          return;
+        }
+        startCommand(args, contextGuard, std::move(callback));
+      });
+}
 
+void RcloneRcEngine::startCommand(
+    const QStringList &args, QObject *context,
+    std::function<void(int jobId, const QString &error)> callback) {
   QJsonArray commandArgs;
   for (int i = 1; i < args.size(); i++) {
     commandArgs.append(args[i]);

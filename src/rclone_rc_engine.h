@@ -13,7 +13,13 @@ public:
   explicit RcloneRcEngine(QObject *parent = nullptr);
   ~RcloneRcEngine();
 
-  bool ensureStarted(QString *error);
+  using StartCallback = std::function<void(bool ok, const QString &error)>;
+
+  // Brings the rcd daemon up, or confirms the running one still answers, then
+  // calls back. Never blocks: this runs on the click that starts a transfer,
+  // and the old synchronous version could hold the window for fifteen seconds
+  // with no progress and nothing to cancel.
+  void ensureStartedAsync(QObject *context, StartCallback callback);
 
   void runCommand(
       const QStringList &args, QObject *context,
@@ -31,7 +37,20 @@ private:
   QString mUrl;
   QString mUser;
   QString mPass;
+  // Callers that arrive while the daemon is still coming up wait here rather
+  // than each starting one of their own.
+  QVector<StartCallback> mPendingStarts;
+  bool mStarting = false;
 
+  void startCommand(const QStringList &args, QObject *context,
+                    std::function<void(int jobId, const QString &error)>
+                        callback);
+  void spawnDaemon();
+  void pollUntilReady(const QElapsedTimer &deadline);
+  void finishStart(bool ok, const QString &error);
+
+  // Only for destructor teardown, where there is no event loop left to
+  // return to. Never call this from a path a user click can reach.
   QJsonObject postSync(const QString &path, const QJsonObject &payload,
                        QString *error);
   void postAsync(const QString &path, const QJsonObject &payload,
