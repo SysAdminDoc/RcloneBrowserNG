@@ -50,6 +50,7 @@ struct RcloneCapabilities {
   bool hasBisync() const;
   bool hasJobBatch() const;
   bool hasCoreDisks() const;
+  bool hasListRemotesJson() const;
 
   QString summary() const;
 

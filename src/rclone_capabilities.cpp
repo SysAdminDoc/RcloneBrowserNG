@@ -184,6 +184,10 @@ bool RcloneCapabilities::hasJobBatch() const {
   return versionAtLeast(rcloneVersion, "1.72");
 }
 
+bool RcloneCapabilities::hasListRemotesJson() const {
+  return versionAtLeast(rcloneVersion, "1.68");
+}
+
 bool RcloneCapabilities::hasCoreDisks() const {
   return versionAtLeast(rcloneVersion, "1.74");
 }

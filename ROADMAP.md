@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Parse `rclone listremotes --json` instead of splitting on `:`
-  Why: the current parser requires exactly two colon-separated parts, but rclone emits `name: type description` when a remote has a description, which yields a garbage type, a failed icon lookup and a misleading tooltip.
-  Evidence: `src/main_window.cpp:2802-2822`. Verified against rclone v1.75.0: `listremotes --long` printed `localdisk: alias My main disk: backup`; `listremotes --json` returned `{"name","type","source","description"}` per remote. Likely residue of `mmozeiko#83`.
-  Touches: `src/main_window.cpp`, `src/rclone_capabilities.{h,cpp}`, `CMakeLists.txt`, new test fixture
-  Acceptance: remotes are read from `listremotes --json` when the detected rclone supports it, falling back to `--long` otherwise; the remote description is shown in the tooltip and the type still drives the icon; a fixture with a description containing a colon lists the remote with the correct type.
-  Complexity: S
-
 - [ ] P1 — Show a pre-run summary before a Sync deletes destination files
   Why: `Sync` removes destination files that are absent at the source and today runs with no summary and no deletion count; a user on the upstream tracker lost already-uploaded data by combining a misunderstood exclude path with delete-excluded.
   Evidence: no confirmation, warning or summary path exists in `src/transfer_dialog.cpp` for `ui.rbSync`; `kapitainsky#252`. Cyberduck shows a per-item reconciliation preview with direction arrows before executing; FreeFileSync states the create/update/delete counts.

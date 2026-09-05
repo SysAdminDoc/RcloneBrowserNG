@@ -80,9 +80,12 @@ private slots:
     mConfigPath = QDir(mConfigDir.path()).filePath("rclone.conf");
     QFile config(mConfigPath);
     QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    // The description carries a colon on purpose: `listremotes --long`
+    // prints `localdisk: alias My main disk: backup`, which the old
+    // split-on-colon parser threw away, dropping the remote from the list.
     config.write("[localdisk]\ntype = alias\nremote = " +
                  mConfigDir.path().toUtf8() +
-                 "\n\n"
+                 "\ndescription = My main disk: backup\n\n"
                  "[secret]\ntype = crypt\nremote = localdisk:\n"
                  "password = 3AXGGH8DsHTe5-vwtLbAOA\n");
     config.close();
@@ -118,6 +121,19 @@ private slots:
     auto *notice = window->findChild<QLabel *>("remotesHiddenNotice");
     QVERIFY(notice != nullptr);
     QVERIFY(!notice->isVisible());
+
+    // A remote whose description contains a colon keeps its type, so the
+    // icon still resolves, and the description reaches the tooltip.
+    QListWidgetItem *localdisk = nullptr;
+    for (int i = 0; i < remotes->count(); ++i) {
+      if (remotes->item(i)->text() == QLatin1String("localdisk")) {
+        localdisk = remotes->item(i);
+      }
+    }
+    QVERIFY2(localdisk != nullptr, "the described remote must still be listed");
+    QCOMPARE(localdisk->data(Qt::UserRole).toString(), QStringLiteral("alias"));
+    QVERIFY2(localdisk->toolTip().contains(QLatin1String("My main disk: backup")),
+             qPrintable(localdisk->toolTip()));
   }
 
   void backingRemoteIsHiddenAndCountedWhenAskedFor() {

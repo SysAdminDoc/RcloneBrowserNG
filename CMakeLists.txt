@@ -104,6 +104,14 @@ if(BUILD_TESTING)
   target_link_libraries(selection_arguments_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME selection_arguments_test COMMAND selection_arguments_test)
 
+  add_executable(remote_list_parser_test
+    tests/remote_list_parser_test.cpp
+    src/remote_list_parser.cpp
+  )
+  target_include_directories(remote_list_parser_test PRIVATE src)
+  target_link_libraries(remote_list_parser_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME remote_list_parser_test COMMAND remote_list_parser_test)
+
   add_executable(remote_provider_test
     tests/remote_provider_test.cpp
     src/remote_provider.cpp
@@ -303,6 +311,7 @@ if(BUILD_TESTING)
     src/rclone_capabilities.cpp
     src/rclone_security_floor.cpp
     src/rc_job_widget.cpp
+    src/remote_list_parser.cpp
     src/remote_path.cpp
     src/selection_arguments.cpp
     src/vfs_upload_state.cpp

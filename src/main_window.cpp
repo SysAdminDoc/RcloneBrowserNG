@@ -10,6 +10,7 @@
 #include "rclone_rc_engine.h"
 #include "app_log.h"
 #include "rclone_security_floor.h"
+#include "remote_list_parser.h"
 #include "remote_provider.h"
 #include "cross_remote_search.h"
 #include "schedule_manager.h"
@@ -2831,26 +2832,29 @@ void MainWindow::rcloneListRemotes() {
         if (code == 0) {
           QStyle *style = qApp->style();
 
-          QString bytes = p->readAllStandardOutput().trimmed();
-          QStringList items = bytes.split('\n');
+          const QByteArray bytes = p->readAllStandardOutput();
+          QVector<RemoteListParser::Remote> parsed;
+          if (mListRemotesJson) {
+            QString parseError;
+            parsed = RemoteListParser::ParseJson(bytes, &parseError);
+            if (!parseError.isEmpty()) {
+              AppLog::Write(AppLog::Level::Warning, "remotes",
+                            "listremotes --json could not be read (" +
+                                parseError + "); falling back to --long");
+              parsed = RemoteListParser::ParseLong(bytes);
+            }
+          } else {
+            parsed = RemoteListParser::ParseLong(bytes);
+          }
 
           auto settings = GetSettings();
           bool darkModeIni = settings->value("Settings/darkModeIni").toBool();
           QString iconSize = settings->value("Settings/iconSize").toString();
 
-          for (const QString &line : items) {
-            if (line.isEmpty()) {
-              continue;
-            }
-
-            QStringList parts = line.split(':');
-            if (parts.count() != 2) {
-              continue;
-            }
-
-            QString name = parts[0].trimmed();
-            QString type = parts[1].trimmed();
-            QString tooltip = type;
+          for (const RemoteListParser::Remote &remote : parsed) {
+            const QString name = remote.name;
+            const QString type = remote.type;
+            const QString tooltip = RemoteListParser::TooltipFor(remote);
 
             int size;
 
@@ -3056,10 +3060,14 @@ void MainWindow::rcloneListRemotes() {
       });
 
   UseRclonePassword(p);
-  p->start(GetRclone(),
-           QStringList() << "listremotes" << GetRcloneConf() << "--long"
-                         << "--ask-password=false",
-           QIODevice::ReadOnly);
+  // --json has been available since rclone v1.68.0 and reports the type and
+  // description as separate fields, which --long only pads into columns.
+  mListRemotesJson = RcloneCapabilities::detect().hasListRemotesJson();
+  QStringList listArgs;
+  listArgs << "listremotes" << GetRcloneConf()
+           << (mListRemotesJson ? "--json" : "--long")
+           << "--ask-password=false";
+  p->start(GetRclone(), listArgs, QIODevice::ReadOnly);
 }
 
 bool MainWindow::getConfigPassword(QProcess *p) {

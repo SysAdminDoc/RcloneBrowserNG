@@ -77,6 +77,7 @@ private:
   QLabel *mRemotesEmptyState = nullptr;
   QLabel *mRemotesHiddenNotice = nullptr;
   int mHiddenCryptBackends = 0;
+  bool mListRemotesJson = false;
   QLineEdit *mTasksFilter = nullptr;
   QLabel *mTasksEmptyState = nullptr;
 

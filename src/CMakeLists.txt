@@ -64,6 +64,7 @@ set(SOURCE
   rclone_rc_engine.cpp
   rclone_capabilities.cpp
   rc_job_widget.cpp
+  remote_list_parser.cpp
   remote_path.cpp
   app_log.cpp
   job_stats.cpp
