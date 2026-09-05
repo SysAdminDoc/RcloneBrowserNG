@@ -353,6 +353,60 @@ void MountWidget::confirmNoPendingVfsUploads(std::function<void(bool)> callback)
       });
 }
 
+void MountWidget::runUnmountHelper(const QString &program,
+                                   const QStringList &arguments) {
+  // startDetached told us nothing: a umount that refused because the volume
+  // was busy left the mount up with the card still saying "Unmounting".
+  auto *process = new QProcess(this);
+  process->setProcessChannelMode(QProcess::MergedChannels);
+
+  QObject::connect(
+      process, &QProcess::errorOccurred, this,
+      [this, process, program](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) {
+          return;
+        }
+        process->deleteLater();
+        reportUnmountFailure(
+            QString("%1 could not be started: %2")
+                .arg(program, process->errorString()));
+      });
+
+  QObject::connect(
+      process,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this,
+      [this, process, program](int exitCode, QProcess::ExitStatus status) {
+        const QString output = QString::fromUtf8(process->readAll()).trimmed();
+        process->deleteLater();
+        if (status == QProcess::NormalExit && exitCode == 0) {
+          return;
+        }
+        const QStringList lines = output.split(QChar(0x0a), Qt::SkipEmptyParts);
+        const QString reason =
+            lines.isEmpty() ? QString("no output") : lines.last().trimmed();
+        reportUnmountFailure(QString("%1 exited %2: %3")
+                                 .arg(program)
+                                 .arg(exitCode)
+                                 .arg(reason));
+      });
+
+  process->start(program, arguments, QIODevice::ReadOnly);
+}
+
+void MountWidget::reportUnmountFailure(const QString &reason) {
+  mUserRequestedUnmount = false;
+  ui.output->appendPlainText("Unmount failed: " + reason);
+  UiPolish::SetStatus(ui.showDetails, "error", "Unmount failed");
+  // The mount is still up, so give the controls back rather than leaving the
+  // card stuck mid-unmount.
+  ui.keepMounted->setEnabled(true);
+  ui.cancel->setEnabled(true);
+  ui.cancel->setToolTip("Unmount this remote.");
+  emit unmountFailed(reason);
+}
+
 void MountWidget::beginUnmount() {
   if (!mRunning || !mStopping) {
     return;
@@ -367,7 +421,7 @@ void MountWidget::beginUnmount() {
   ui.output->appendPlainText("Unmount requested; stopping rclone mount...");
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD)
-  QProcess::startDetached("umount", QStringList() << ui.folder->text());
+  runUnmountHelper("umount", QStringList() << ui.folder->text());
 #elif defined(Q_OS_WIN32)
   QProcess *p = new QProcess();
   QStringList args;
@@ -389,8 +443,8 @@ void MountWidget::beginUnmount() {
   UseRclonePassword(p);
   p->start(GetRclone(), args, QIODevice::ReadOnly);
 #else
-  QProcess::startDetached("fusermount", QStringList()
-                                            << "-u" << ui.folder->text());
+  runUnmountHelper("fusermount",
+                   QStringList() << "-u" << ui.folder->text());
 #endif
 
   QPointer<QProcess> processGuard(mProcess);

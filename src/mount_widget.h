@@ -28,6 +28,7 @@ signals:
   void finished();
   void stopped(bool requestedUnmount, bool cleanExit);
   void staleDetected(const QString &detail);
+  void unmountFailed(const QString &reason);
   void closed();
 
 private:
@@ -55,6 +56,8 @@ private:
   void runRcCommandAsync(const QString &command, RcCommandCallback callback);
   void confirmNoPendingVfsUploads(std::function<void(bool)> callback);
   void beginUnmount();
+  void runUnmountHelper(const QString &program, const QStringList &arguments);
+  void reportUnmountFailure(const QString &reason);
   void startHealthProbe();
   void finishHealthProbe(const MountHealthProbeResult &result);
 };

@@ -26,6 +26,18 @@ public:
   // leaves a visible way to reach the application.
   void ensureTrayIconVisible();
 
+  // Runs a saved task's post-transfer command. Public so the failure
+  // path can be driven directly by tests: it used to be a detached
+  // process whose exit code nobody looked at.
+  void runPostCommand(const QString &command, const QString &taskLabel);
+  void recordHookFailure(const QString &taskLabel, const QString &command,
+                         const QString &message, int exitCode,
+                         const QDateTime &startedAt);
+  int backgroundErrorCount() const { return mErrorQueue.size(); }
+  QString lastBackgroundErrorMessage() const {
+    return mErrorQueue.isEmpty() ? QString() : mErrorQueue.last().message;
+  }
+
 public slots:
   void bringToFront();
   void handleSendToFiles(const QStringList &files);

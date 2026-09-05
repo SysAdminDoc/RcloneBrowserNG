@@ -3304,16 +3304,9 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                            backupDirTemplate, backupRetainCount);
             if (!postCommand.isEmpty()) {
-              QObject::connect(
-                  widget, &RcJobWidget::finished, this, [=]() {
-#ifdef Q_OS_WIN
-                    QProcess::startDetached("cmd.exe",
-                                            QStringList() << "/c" << postCommand);
-#else
-                    QProcess::startDetached("/bin/sh",
-                                            QStringList() << "-c" << postCommand);
-#endif
-                  });
+              QObject::connect(widget, &RcJobWidget::finished, this, [=]() {
+                runPostCommand(postCommand, taskName);
+              });
             }
             return;
           }
@@ -3773,13 +3766,7 @@ void MainWindow::addTransferViaProcess(
           sendWebhook(webhookUrl, taskName, widget->wasSuccessful());
         }
         if (!postCommand.isEmpty()) {
-#ifdef Q_OS_WIN
-          QProcess::startDetached("cmd.exe",
-                                  QStringList() << "/c" << postCommand);
-#else
-          QProcess::startDetached("/bin/sh",
-                                  QStringList() << "-c" << postCommand);
-#endif
+          runPostCommand(postCommand, taskName);
         }
 
         persistJobHistory(widget->historyEntry());
@@ -4146,6 +4133,90 @@ void MainWindow::updateJobIndicators() {
     mSystemTray.setIcon(qApp->windowIcon());
     mSystemTray.setToolTip("Rclone Browser NG");
   }
+}
+
+void MainWindow::runPostCommand(const QString &command,
+                                const QString &taskLabel) {
+  if (command.trimmed().isEmpty()) {
+    return;
+  }
+
+  // This used to be QProcess::startDetached, which captures no output and no
+  // exit code: a post-transfer hook that failed to launch, or exited
+  // non-zero, was indistinguishable from one that worked.
+  auto *process = new QProcess(this);
+  process->setProcessChannelMode(QProcess::MergedChannels);
+  const QString label =
+      taskLabel.isEmpty() ? QStringLiteral("post-transfer command") : taskLabel;
+  const QDateTime startedAt = QDateTime::currentDateTimeUtc();
+
+  QObject::connect(
+      process, &QProcess::errorOccurred, this,
+      [this, process, label, command](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) {
+          return;
+        }
+        process->deleteLater();
+        const QString message =
+            QString("Post-transfer command could not be started: %1")
+                .arg(process->errorString());
+        appendBackgroundError(label, message);
+        recordHookFailure(label, command, message, -1,
+                          QDateTime::currentDateTimeUtc());
+      });
+
+  QObject::connect(
+      process,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this,
+      [this, process, label, command, startedAt](int exitCode,
+                                                 QProcess::ExitStatus status) {
+        const QString output =
+            QString::fromUtf8(process->readAll()).trimmed();
+        process->deleteLater();
+        if (status == QProcess::NormalExit && exitCode == 0) {
+          return;
+        }
+        // The last line is the one that usually says why.
+        const QStringList lines =
+            output.split('\n', Qt::SkipEmptyParts);
+        const QString reason =
+            lines.isEmpty() ? QString("no output") : lines.last().trimmed();
+        const QString message =
+            status == QProcess::CrashExit
+                ? QString("Post-transfer command crashed: %1").arg(reason)
+                : QString("Post-transfer command exited %1: %2")
+                      .arg(exitCode)
+                      .arg(reason);
+        appendBackgroundError(label, message);
+        recordHookFailure(label, command, message, exitCode, startedAt);
+      });
+
+#ifdef Q_OS_WIN
+  process->start("cmd.exe", QStringList() << "/c" << command);
+#else
+  process->start("/bin/sh", QStringList() << "-c" << command);
+#endif
+}
+
+void MainWindow::recordHookFailure(const QString &taskLabel,
+                                   const QString &command,
+                                   const QString &message, int exitCode,
+                                   const QDateTime &startedAt) {
+  // A separate history record rather than mutating the transfer's own: the
+  // transfer entry is written when the transfer ends, and the hook outlives
+  // it.
+  JobHistoryEntry entry;
+  entry.startedAt = startedAt;
+  entry.finishedAt = QDateTime::currentDateTimeUtc();
+  entry.name = QString("%1 (post-transfer command)").arg(taskLabel);
+  entry.source = command;
+  entry.success = false;
+  entry.errors = 1;
+  entry.exitCode = exitCode;
+  entry.transferDetail = QStringList{message};
+  persistJobHistory(entry);
 }
 
 void MainWindow::persistJobHistory(const JobHistoryEntry &entry) {
@@ -4705,6 +4776,14 @@ void MainWindow::launchMount(const QString &remote, const QString &folder,
                        }
                        startMount(remote, folder, true, nextAttempt);
                      });
+                   });
+
+  QObject::connect(widget, &MountWidget::unmountFailed, this,
+                   [=](const QString &reason) {
+                     appendBackgroundError(
+                         QString("mount %1").arg(remote),
+                         QString("Unmount of %1 failed: %2")
+                             .arg(folder, reason));
                    });
 
   QObject::connect(widget, &MountWidget::staleDetected, this,

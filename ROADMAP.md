@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Report failures from post-transfer hooks and unmount instead of discarding them
-  Why: both run through `QProcess::startDetached`, which captures no output and no exit code, so a broken user hook or a failed unmount is indistinguishable from success, including in job history.
-  Evidence: `src/main_window.cpp:3270`, `:3273`, `:3737`, `:3740` (post-command hooks); `src/mount_widget.cpp:370` (`umount`), `:392` (`fusermount -u`).
-  Touches: `src/main_window.cpp`, `src/mount_widget.cpp`, `src/job_history.{h,cpp}`
-  Acceptance: hooks and unmount use a parented `QProcess` with merged channels; a non-zero exit records the exit code and the last stderr line in job history and raises a background error-queue entry; the mount widget shows "Unmount failed" with the reason rather than silently staying mounted.
-  Complexity: M
-
 - [ ] P1 — Write a rotating diagnostic log to disk
   Why: three independent upstream reports ask for it, and a scheduled overnight run that fails currently leaves no evidence at all; the in-session error panel and the redacted support bundle both die with the process.
   Evidence: `qInstallMessageHandler` appears nowhere in `src/`; `kapitainsky#134`, `kapitainsky#233`, `mmozeiko#148`. rclone gained `--log-file` rotation in v1.71 and can write to the same directory.

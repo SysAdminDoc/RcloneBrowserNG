@@ -1,3 +1,4 @@
+#include "job_history.h"
 #include "main_window.h"
 #include "utils.h"
 
@@ -146,6 +147,56 @@ private slots:
     QVERIFY(notice->text().contains(QLatin1String("Preferences")));
 
     setHideCryptBackends(false);
+  }
+
+  void failingPostCommandIsReportedRatherThanSwallowed() {
+    // The post-transfer hook used to run through QProcess::startDetached, so
+    // a command that failed to launch or exited non-zero looked exactly like
+    // one that worked.
+    std::unique_ptr<MainWindow> window(new MainWindow(false));
+    const int errorsBefore = window->backgroundErrorCount();
+    const int historyBefore = JobHistoryStore::Load().size();
+
+#if defined(Q_OS_WIN)
+    const QString command = "echo disk full 1>&2 & exit /b 3";
+#else
+    const QString command = "echo disk full >&2; exit 3";
+#endif
+    window->runPostCommand(command, "nightly backup");
+
+    QTRY_VERIFY_WITH_TIMEOUT(window->backgroundErrorCount() > errorsBefore,
+                             30000);
+    const QString message = window->lastBackgroundErrorMessage();
+    QVERIFY2(message.contains(QLatin1String("exited 3")), qPrintable(message));
+    // The last line of output is the one that says why.
+    QVERIFY2(message.contains(QLatin1String("disk full")), qPrintable(message));
+
+    QTRY_VERIFY_WITH_TIMEOUT(JobHistoryStore::Load().size() > historyBefore,
+                             30000);
+    const QVector<JobHistoryEntry> history = JobHistoryStore::Load();
+    const JobHistoryEntry &entry = history.last();
+    QCOMPARE(entry.exitCode, 3);
+    QVERIFY(!entry.success);
+    QVERIFY2(entry.name.contains(QLatin1String("nightly backup")),
+             qPrintable(entry.name));
+    QVERIFY(entry.source.contains(QLatin1String("exit")));
+  }
+
+  void successfulPostCommandStaysQuiet() {
+    std::unique_ptr<MainWindow> window(new MainWindow(false));
+    const int errorsBefore = window->backgroundErrorCount();
+    const int historyBefore = JobHistoryStore::Load().size();
+
+#if defined(Q_OS_WIN)
+    const QString command = "exit /b 0";
+#else
+    const QString command = "exit 0";
+#endif
+    window->runPostCommand(command, "nightly backup");
+
+    QTest::qWait(3000);
+    QCOMPARE(window->backgroundErrorCount(), errorsBefore);
+    QCOMPARE(JobHistoryStore::Load().size(), historyBefore);
   }
 };
 
