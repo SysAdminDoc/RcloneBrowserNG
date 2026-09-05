@@ -3308,11 +3308,11 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
       mRcEngine = new RcloneRcEngine(this);
     }
     mRcEngine->runCommand(
-        args, this, [=](int jobId, const QString &) {
-          if (jobId >= 0) {
-            auto *widget = new RcJobWidget(
-                mRcEngine, jobId, message,
-                mRcEngine->rcCommandForDisplay(args), source, dest);
+        args, this, [=](const RcloneRcEngine::StartedJob &job) {
+          if (job.jobId >= 0) {
+            auto *widget =
+                new RcJobWidget(mRcEngine, job.jobId, job.group, message,
+                                job.displayCommand, source, dest);
             addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                            backupDirTemplate, backupRetainCount);
             if (!postCommand.isEmpty()) {
@@ -3645,11 +3645,11 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
     }
 
     mRcEngine->runCommand(
-        args, this, [=](int jobId, const QString &) {
-          if (jobId >= 0) {
-            auto *widget = new RcJobWidget(
-                mRcEngine, jobId, message,
-                mRcEngine->rcCommandForDisplay(args), source, dest);
+        args, this, [=](const RcloneRcEngine::StartedJob &job) {
+          if (job.jobId >= 0) {
+            auto *widget =
+                new RcJobWidget(mRcEngine, job.jobId, job.group, message,
+                                job.displayCommand, source, dest);
             addRcJobWidget(widget, QString(), QString(), QString(),
                            backupDirTemplate, backupRetainCount);
             return;

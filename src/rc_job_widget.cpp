@@ -5,10 +5,12 @@
 #include "utils.h"
 
 
-RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
+RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId,
+                         const QString &group, const QString &info,
                          const QStringList &displayArgs, const QString &source,
                          const QString &dest, QWidget *parent)
-    : QWidget(parent), mEngine(engine), mJobId(jobId), mGroup("job/" + QString::number(jobId)),
+    : QWidget(parent), mEngine(engine), mJobId(jobId),
+      mGroup(group.isEmpty() ? QString("job/%1").arg(jobId) : group),
       mDisplayArgs(displayArgs), mInfo(info), mSource(source), mDest(dest) {
   mStartedAt = QDateTime::currentDateTimeUtc();
   ui.setupUi(this);

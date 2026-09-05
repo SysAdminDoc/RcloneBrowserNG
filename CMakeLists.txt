@@ -120,6 +120,14 @@ if(BUILD_TESTING)
   target_link_libraries(filter_pattern_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME filter_pattern_test COMMAND filter_pattern_test)
 
+  add_executable(rc_sync_request_test
+    tests/rc_sync_request_test.cpp
+    src/rc_sync_request.cpp
+  )
+  target_include_directories(rc_sync_request_test PRIVATE src)
+  target_link_libraries(rc_sync_request_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME rc_sync_request_test COMMAND rc_sync_request_test)
+
   add_executable(sync_preview_test
     tests/sync_preview_test.cpp
     src/sync_preview.cpp
@@ -221,15 +229,35 @@ if(BUILD_TESTING)
   add_executable(sleepy_stub tests/sleepy_stub.cpp)
   set_target_properties(sleepy_stub PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 
+  add_executable(rc_route_test
+    tests/rc_route_test.cpp
+    src/rclone_rc_engine.cpp
+    src/rc_sync_request.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  target_include_directories(rc_route_test PRIVATE src tests)
+  target_compile_definitions(rc_route_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(rc_route_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(rc_route_test advapi32)
+  endif()
+  add_test(NAME rc_route_test COMMAND rc_route_test)
+  set_tests_properties(rc_route_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+
   add_executable(async_helpers_test
     tests/async_helpers_test.cpp
     src/rclone_rc_engine.cpp
+    src/rc_sync_request.cpp
+    src/rclone_capabilities.cpp
     src/schedule_manager.cpp
     src/utils.cpp
   )
   add_dependencies(async_helpers_test sleepy_stub)
   target_compile_definitions(async_helpers_test PRIVATE
-    SLEEPY_STUB_PATH="$<TARGET_FILE:sleepy_stub>")
+    SLEEPY_STUB_PATH="$<TARGET_FILE:sleepy_stub>"
+    RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_include_directories(async_helpers_test PRIVATE src)
   target_link_libraries(async_helpers_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
@@ -332,6 +360,7 @@ if(BUILD_TESTING)
     src/app_log.cpp
     src/filter_pattern.cpp
     src/job_stats.cpp
+    src/rc_sync_request.cpp
     src/lsjson_parser.cpp
     src/rclone_capabilities.cpp
     src/rclone_exit_code.cpp

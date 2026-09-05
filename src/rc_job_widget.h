@@ -10,9 +10,12 @@ class RcJobWidget : public QWidget {
   Q_OBJECT
 
 public:
-  RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &info,
-              const QStringList &displayArgs, const QString &source,
-              const QString &dest, QWidget *parent = nullptr);
+  // The group is supplied rather than derived: a sync/* job is given an
+  // explicit one, so "job/<id>" is only right for the core/command route.
+  RcJobWidget(RcloneRcEngine *engine, int jobId, const QString &group,
+              const QString &info, const QStringList &displayArgs,
+              const QString &source, const QString &dest,
+              QWidget *parent = nullptr);
   ~RcJobWidget();
 
   void showDetails();

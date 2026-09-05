@@ -10,13 +10,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P2
 
-- [ ] P2 — Run RC transfers through `sync/*` with `_async` and `_group` instead of `core/command`
-  Why: the engine shells the CLI inside the daemon, so there are no per-job stats groups, which is the actual reason live bandwidth tuning, graceful stop and batched operations cannot be built; the three items filed in Roadmap_Blocked.md as "depends on rcd engine (not yet implemented)" are mis-diagnosed — the engine exists, the shim is the blocker.
-  Evidence: `src/rclone_rc_engine.cpp:110` posts to `core/command`; the engine only ever calls `rc/noopauth`, `core/command`, `job/status`, `core/stats`, `job/stop`, `core/quit`. rclone.org/rc documents `sync/copy`, `sync/move`, `sync/sync`, `sync/bisync` with `_async` and `_group`, and `core/stats` filtered by group.
-  Touches: `src/rclone_rc_engine.{h,cpp}`, `src/main_window.cpp`, `src/rc_job_widget.cpp`, `tests/rc_auth_regression_test.cpp`
-  Acceptance: copy, move, sync and bisync jobs started through the engine use the matching `sync/*` endpoint with `_async: true` and a unique `_group`; `RcJobWidget` reads progress from `core/stats?group=<group>`; the existing RC auth gate still passes; falls back to `core/command` when the detected rclone lacks the endpoint.
-  Complexity: L
-
 - [ ] P2 — Add live bandwidth and concurrency tuning to running RC jobs
   Why: a running job can only be killed, not slowed; `core/bwlimit` changes it on the live daemon. Moved from Roadmap_Blocked.md — its stated blocker ("depends on rcd engine which hasn't landed") is void; the real prerequisite is the `sync/*` migration above.
   Evidence: rclone.org/rc `core/bwlimit`; `src/rc_job_widget.cpp` has no tuning controls; upstream request rclone#3898.
