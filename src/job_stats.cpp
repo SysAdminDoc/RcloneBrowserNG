@@ -32,6 +32,9 @@ LogLine ParseLogLine(const QByteArray &raw) {
   line.stats.totalChecks = stats.value("totalChecks").toInt();
   line.stats.transfers = stats.value("transfers").toInt();
   line.stats.totalTransfers = stats.value("totalTransfers").toInt();
+  line.stats.serverSideCopies = stats.value("serverSideCopies").toInt();
+  line.stats.serverSideCopyBytes =
+      static_cast<qint64>(stats.value("serverSideCopyBytes").toDouble());
 
   const QJsonArray transferring = stats.value("transferring").toArray();
   line.stats.transferring.reserve(transferring.size());

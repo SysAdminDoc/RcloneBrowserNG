@@ -34,6 +34,21 @@ class DryRunContractTest : public QObject {
   Q_OBJECT
 
 private slots:
+  void serverSideFlagIsOffByDefaultAndOptIn() {
+    // Streaming every byte through this machine is the safe
+    // default; the flag only appears when asked for.
+    JobOptions options;
+    options.operation = JobOptions::Copy;
+    options.source = "a:src";
+    options.dest = "b:dst";
+    QVERIFY(!options.getOptions().contains(
+        QStringLiteral("--server-side-across-configs")));
+
+    options.serverSideAcrossConfigs = true;
+    QVERIFY(options.getOptions().contains(
+        QStringLiteral("--server-side-across-configs")));
+  }
+
   void dryRunDefaultsFalse() {
     JobOptions jo;
     QVERIFY2(!jo.dryRun, "dryRun must default to false");

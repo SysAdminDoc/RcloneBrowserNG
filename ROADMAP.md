@@ -45,13 +45,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Acceptance: each flag has a control on the transfer dialog's performance tab, round-trips through the saved-task store with a schema bump and migration, and appears in the copy-command-to-clipboard output; the dry-run contract test covers the new flags.
   Complexity: M
 
-- [ ] P2 — Offer server-side copy for remote-to-remote transfers
-  Why: copying between two remotes on the same provider currently streams every byte through the local machine; `--server-side-across-configs` lets the provider do it, which is the single largest speed win available to this app's remote-to-remote feature.
-  Evidence: `src/remote_widget.cpp` remote-to-remote transfer path (commit `b36f753`) passes no such flag; rclone.org/docs documents `--server-side-across-configs` for same-provider config pairs.
-  Touches: `src/transfer_dialog.{ui,cpp}`, `src/job_options.{h,cpp}`, `src/rclone_capabilities.cpp`
-  Acceptance: when source and destination remotes report the same backend type, the transfer dialog offers "Copy on the server where possible" and adds `--server-side-across-configs`; the option is hidden when the types differ; the job panel notes when a transfer completed server-side.
-  Complexity: S
-
 - [ ] P2 — Preserve metadata on transfers
   Why: without `--metadata`, permissions, ownership and extended timestamps are dropped on backends that support them, which quietly breaks backup-and-restore use.
   Evidence: no `--metadata` or `--metadata-set` in `src/job_options.cpp`; `rclone lsjson --metadata` and the `--metadata` transfer flag are supported by the backends this app already lists; `operations/fsinfo` reports per-backend metadata capability.

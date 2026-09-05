@@ -29,6 +29,9 @@ private slots:
   // they get a dry-run pass and a summary of what goes before the
   // transfer starts. Everything else accepts straight through.
   void acceptWithDeletionPreview();
+  // Shows the server-side option only when both paths name remotes
+  // of the same backend type.
+  void refreshServerSideOption();
 
 private:
   Ui::TransferDialog ui;
@@ -50,6 +53,7 @@ private:
 
   bool wouldDeleteAtDestination() const;
   bool showDeletionSummary(const SyncPreview::Summary &summary);
+  static QHash<QString, QString> RemoteTypes();
 
   bool mIsDownload;
   bool mDryRun = false;

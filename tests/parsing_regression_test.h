@@ -18,4 +18,5 @@ private slots:
   void parsesErrorStats();
   void ignoresNonStatsLine();
   void clampsProgressAndFormatsCounts();
+  void readsServerSideCopyStats();
 };

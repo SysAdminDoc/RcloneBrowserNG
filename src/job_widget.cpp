@@ -243,6 +243,16 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         ui.checks->setText(checksText);
 
       mFiles = qMax(stats.transfers, stats.totalTransfers);
+      // Say when the provider did the work: it is the difference
+      // between a copy that used the network and one that did not.
+      if (stats.serverSideCopies > mServerSideCopies) {
+        mServerSideCopies = stats.serverSideCopies;
+        ui.output->appendPlainText(
+            QString("%1 file(s) copied server-side (%2), without passing through this machine.")
+                .arg(stats.serverSideCopies)
+                .arg(GetNiceSize(static_cast<quint64>(
+                    stats.serverSideCopyBytes))));
+      }
       const QString transferredText =
           JobStats::FormatCount(stats.transfers, stats.totalTransfers);
       if (!transferredText.isEmpty())

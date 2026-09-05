@@ -27,6 +27,11 @@ struct Stats {
   int totalChecks = 0;
   int transfers = 0;
   int totalTransfers = 0;
+  // Bytes the provider moved between its own remotes, which never
+  // crossed this machine. Only non-zero with
+  // --server-side-across-configs or a same-remote copy.
+  int serverSideCopies = 0;
+  qint64 serverSideCopyBytes = 0;
   QVector<TransferringFile> transferring;
 };
 

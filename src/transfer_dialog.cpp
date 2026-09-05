@@ -1,5 +1,6 @@
 #include "transfer_dialog.h"
 #include "sync_preview.h"
+#include "remote_list_parser.h"
 #include "list_of_job_options.h"
 #include "job_options_store.h"
 #include "interface_polish.h"
@@ -138,6 +139,17 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       ui.textBandwidth->setText(parts.join(' '));
     }
   });
+
+  // Only worth offering when both ends live on the same provider:
+  // --server-side-across-configs is what lets it move the bytes
+  // itself instead of streaming them through this machine.
+  ui.checkServerSide->setVisible(false);
+  ui.checkServerSide->setAccessibleName(
+      "Copy on the server where possible");
+  QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
+                   &TransferDialog::refreshServerSideOption);
+  QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
+                   &TransferDialog::refreshServerSideOption);
 
   auto *presetCombo = ui.cbPreset;
   presetCombo->addItem("Custom");
@@ -992,6 +1004,74 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   return dialog.exec() == QDialog::Accepted;
 }
 
+namespace {
+// "remote:path" -> "remote". Empty for a local path, which can never be a
+// server-side copy.
+QString RemoteNameOf(const QString &path) {
+  const QString trimmed = path.trimmed();
+  const int colon = trimmed.indexOf(QChar(':'));
+  if (colon <= 0) {
+    return QString();
+  }
+  // A Windows drive letter is not a remote.
+  if (colon == 1) {
+    return QString();
+  }
+  return trimmed.left(colon);
+}
+} // namespace
+
+void TransferDialog::refreshServerSideOption() {
+  const QString sourceRemote = RemoteNameOf(ui.textSource->text());
+  const QString destRemote = RemoteNameOf(ui.textDest->text());
+  if (sourceRemote.isEmpty() || destRemote.isEmpty() ||
+      sourceRemote == destRemote) {
+    // One end is local, or both are the same remote: rclone handles that
+    // server-side already without the flag.
+    ui.checkServerSide->setVisible(false);
+    return;
+  }
+
+  const QHash<QString, QString> types = RemoteTypes();
+  const QString sourceType = types.value(sourceRemote);
+  const QString destType = types.value(destRemote);
+  const bool sameProvider = !sourceType.isEmpty() && sourceType == destType;
+  ui.checkServerSide->setVisible(sameProvider);
+  if (sameProvider) {
+    ui.checkServerSide->setToolTip(
+        QString("Both ends are %1 remotes, so the provider can copy between "
+                "them directly instead of pulling every byte through this "
+                "machine.")
+            .arg(sourceType));
+  }
+}
+
+QHash<QString, QString> TransferDialog::RemoteTypes() {
+  // Read once per dialog: the config does not change while it is open, and
+  // this runs on every keystroke in the path fields.
+  static QHash<QString, QString> cache;
+  static bool loaded = false;
+  if (loaded) {
+    return cache;
+  }
+  loaded = true;
+
+  QProcess probe;
+  UseRclonePassword(&probe);
+  QStringList args;
+  args << "listremotes" << GetRcloneConf() << "--json"
+       << "--ask-password=false";
+  probe.start(GetRclone(), args, QIODevice::ReadOnly);
+  if (!probe.waitForFinished(5000) || probe.exitCode() != 0) {
+    return cache;
+  }
+  for (const RemoteListParser::Remote &remote :
+       RemoteListParser::ParseJson(probe.readAllStandardOutput())) {
+    cache.insert(remote.name, remote.type);
+  }
+  return cache;
+}
+
 QString TransferDialog::getMode() const {
   if (ui.rbCopy->isChecked()) {
     return "Copy";
@@ -1115,6 +1195,9 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->retries = ui.spinRetries->text();
   mJobOptions->lowLevelRetries = ui.spinLowLevelRetries->text();
   mJobOptions->deleteExcluded = ui.checkDeleteExcluded->isChecked();
+  mJobOptions->serverSideAcrossConfigs =
+      ui.checkServerSide->isVisible() &&
+      ui.checkServerSide->isChecked();
 
   mJobOptions->excluded = ui.textExclude->toPlainText().trimmed();
   mJobOptions->extra = ui.textExtra->text().trimmed();
@@ -1202,6 +1285,8 @@ void TransferDialog::putJobOptions() {
   ui.spinRetries->setValue(mJobOptions->retries.toInt());
   ui.spinLowLevelRetries->setValue(mJobOptions->lowLevelRetries.toInt());
   ui.checkDeleteExcluded->setChecked(mJobOptions->deleteExcluded);
+  ui.checkServerSide->setChecked(mJobOptions->serverSideAcrossConfigs);
+  refreshServerSideOption();
 
   ui.textExclude->setPlainText(mJobOptions->excluded);
   ui.textExtra->setText(mJobOptions->extra);

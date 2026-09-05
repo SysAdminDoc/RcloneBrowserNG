@@ -30,6 +30,7 @@ public:
   void showDetails();
   bool wasSuccessful() const { return mSuccess; }
   JobHistoryEntry historyEntry() const;
+  int serverSideCopies() const { return mServerSideCopies; }
 
 public slots:
   void cancel();
@@ -66,6 +67,7 @@ private:
   qint64 mBytes = 0;
   int mFiles = 0;
   int mErrors = 0;
+  int mServerSideCopies = 0;
   int mExitCode = 0;
   QStringList mTransferDetail;
   QHash<QString, QLabel *> mActive;

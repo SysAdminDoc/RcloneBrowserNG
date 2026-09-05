@@ -30,6 +30,7 @@ JobOptions::JobOptions()
       syncTiming(UnknownTiming), skipNewer(false), skipExisting(false),
       compare(false), compareOption(), verbose(false), sameFilesystem(false),
       dontUpdateModified(false), maxDepth(0), deleteExcluded(false),
+      serverSideAcrossConfigs(false),
       isFolder(false), watchFolder(false) {}
 
 const qint32 JobOptions::classVersion = 9;
@@ -147,6 +148,10 @@ QStringList JobOptions::getOptions() const {
 
   if (deleteExcluded) {
     list << "--delete-excluded";
+  }
+
+  if (serverSideAcrossConfigs) {
+    list << "--server-side-across-configs";
   }
 
   if (!excluded.isEmpty()) {

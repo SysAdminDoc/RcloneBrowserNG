@@ -52,6 +52,9 @@ public:
   QString retries;
   QString lowLevelRetries;
   bool deleteExcluded;
+  // --server-side-across-configs: let the provider move the bytes between
+  // two of its own remotes instead of pulling them through this machine.
+  bool serverSideAcrossConfigs;
   QString excluded;
   QString extra;
   QString source;

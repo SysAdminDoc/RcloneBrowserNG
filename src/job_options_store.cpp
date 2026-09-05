@@ -319,6 +319,7 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["retries"] = jo.retries;
   obj["lowLevelRetries"] = jo.lowLevelRetries;
   obj["deleteExcluded"] = jo.deleteExcluded;
+  obj["serverSideAcrossConfigs"] = jo.serverSideAcrossConfigs;
   obj["excluded"] = jo.excluded;
   obj["extra"] = jo.extra;
   obj["source"] = jo.source;
@@ -375,6 +376,10 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   jo->retries = obj["retries"].toString();
   jo->lowLevelRetries = obj["lowLevelRetries"].toString();
   jo->deleteExcluded = obj["deleteExcluded"].toBool();
+  // Absent in tasks saved before this option existed, which
+  // toBool() reads as false: the safe default.
+  jo->serverSideAcrossConfigs =
+      obj["serverSideAcrossConfigs"].toBool();
   jo->excluded = obj["excluded"].toString();
   jo->extra = obj["extra"].toString();
   jo->source = obj["source"].toString();

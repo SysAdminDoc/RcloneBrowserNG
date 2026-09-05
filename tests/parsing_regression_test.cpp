@@ -233,5 +233,24 @@ void ParsingRegressionTest::clampsProgressAndFormatsCounts() {
   QVERIFY(elided.contains("..."));
 }
 
+void ParsingRegressionTest::readsServerSideCopyStats() {
+  // rclone reports these alongside the ordinary counters; they are
+  // how the job card can say the provider did the copying and no
+  // bytes crossed this machine.
+  const QByteArray line =
+      R"JSON({"level":"info","msg":"stats","stats":{"bytes":0,"totalBytes":0,"serverSideCopies":3,"serverSideCopyBytes":4096}})JSON";
+  const JobStats::LogLine parsed = JobStats::ParseLogLine(line);
+  QVERIFY(parsed.stats.present);
+  QCOMPARE(parsed.stats.serverSideCopies, 3);
+  QCOMPARE(parsed.stats.serverSideCopyBytes,
+           static_cast<qint64>(4096));
+
+  // Absent for an ordinary local transfer, so the card stays quiet.
+  const JobStats::LogLine plain = JobStats::ParseLogLine(
+      R"JSON({"level":"info","msg":"stats","stats":{"bytes":10}})JSON");
+  QCOMPARE(plain.stats.serverSideCopies, 0);
+  QCOMPARE(plain.stats.serverSideCopyBytes, static_cast<qint64>(0));
+}
+
 QTEST_APPLESS_MAIN(ParsingRegressionTest)
 #include "parsing_regression_test.moc"

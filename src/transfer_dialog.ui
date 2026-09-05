@@ -623,7 +623,17 @@
        <item row="11" column="2">
         <widget class="QComboBox" name="cbPreset"/>
        </item>
-       <item row="12" column="4">
+       <item row="12" column="0" colspan="3">
+        <widget class="QCheckBox" name="checkServerSide">
+         <property name="toolTip">
+          <string>Adds --server-side-across-configs so the provider copies between its own remotes directly, instead of pulling every byte through this machine. Only offered when both ends are the same backend type.</string>
+         </property>
+         <property name="text">
+          <string>Copy on the server where possible</string>
+         </property>
+        </widget>
+       </item>
+       <item row="13" column="4">
         <spacer name="verticalSpacer_4">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
