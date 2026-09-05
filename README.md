@@ -47,7 +47,15 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 
 ## How to get it
 
-Build from source using the instructions below. Maintainer-published artifacts, when available, are linked from the [releases](https://github.com/SysAdminDoc/RcloneBrowserNG/releases) page; this repository does not provide a CI build or artifact-attestation service.
+Windows builds are on the [releases](https://github.com/SysAdminDoc/RcloneBrowserNG/releases/latest) page: an installer, a portable zip, and a source archive. Every release ships a `SHA256SUMS` file, so check your download before running it:
+
+```text
+sha256sum -c SHA256SUMS
+```
+
+The Windows binaries are **not code-signed**, so SmartScreen warns on first run. Verify the checksum, then choose More info and Run anyway. Signing needs a certificate the project does not have yet.
+
+For macOS, Linux and BSD, build from source with the instructions below. Artifacts are built and published by the maintainer from a local machine; this repository does not provide a CI build or artifact-attestation service.
 
 ### Local release verification
 

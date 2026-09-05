@@ -6,15 +6,6 @@ Actionable work only. Historical and completed roadmap material is archived in C
 
 Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
-### P0
-
-- [ ] P0 — Tag and publish 2.0.0, 2.0.1 and 2.0.2 as GitHub Releases with checksums
-  Why: CHANGELOG.md records three releases but the repository has no `2.x` git tag and no GitHub Release, so the only install route is a source build; the built 2.0.2 Windows artifacts already exist unpublished in `release/`.
-  Evidence: `gh api repos/SysAdminDoc/RcloneBrowserNG/releases` returns `0`; `git ls-remote --tags origin` shows no `2.x` tag; `release/RcloneBrowserNG-2.0.2-2d87d92-windows-x64-setup.exe` and the matching `.zip` are on disk. Competing GUIs ship through six package managers each.
-  Touches: `scripts/release_check.py`, `README.md`, git tags
-  Acceptance: annotated tags `v2.0.0`, `v2.0.1`, `v2.0.2` exist on origin; a GitHub Release for `v2.0.2` carries the Windows installer, zip, a source archive and a `SHA256SUMS` file whose hashes verify; the README's "How to get it" section links the release instead of describing it as conditional; `release_check.py` emits the `SHA256SUMS` file as part of its run.
-  Complexity: S
-
 ### P1
 
 - [ ] P1 — Make `parsing_regression_test` exercise the shipped parser

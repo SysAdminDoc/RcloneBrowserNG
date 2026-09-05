@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import date
 import os
 from pathlib import Path
@@ -327,6 +328,43 @@ def check_rclone_security_floor(report: Report, root: Path) -> None:
         )
 
 
+def write_release_checksums(report: Report, root: Path) -> None:
+    """Emit release/SHA256SUMS over the artifacts sitting in release/.
+
+    Nothing verifies an unsigned download without this, and the file has to be
+    generated from whatever is actually there rather than maintained by hand.
+    """
+    release_dir = root / "release"
+    if not release_dir.is_dir():
+        report.skipped_check("release checksums", "release/ does not exist yet")
+        return
+
+    artifacts = sorted(
+        path
+        for path in release_dir.iterdir()
+        if path.is_file() and path.name != "SHA256SUMS"
+    )
+    if not artifacts:
+        report.skipped_check("release checksums", "release/ holds no artifacts")
+        return
+
+    lines = []
+    for artifact in artifacts:
+        digest = hashlib.sha256()
+        with artifact.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        # sha256sum's own format, so `sha256sum -c SHA256SUMS` just works.
+        lines.append(f"{digest.hexdigest()}  {artifact.name}")
+
+    # LF only. sha256sum reads the filename to the end of the line, so a CRLF
+    # file makes every entry fail with "No such file or directory" on the
+    # trailing carriage return.
+    with (release_dir / "SHA256SUMS").open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("\n".join(lines) + "\n")
+    report.passed(f"release checksums written for {len(artifacts)} artifact(s)")
+
+
 def check_package_manifest_generator(report: Report, root: Path) -> None:
     test = root / "tests" / "package_manifest_test.py"
     if not test.is_file():
@@ -561,6 +599,7 @@ def main() -> int:
     check_metadata(report, root)
     check_release_scripts(report, root)
     check_rclone_security_floor(report, root)
+    write_release_checksums(report, root)
     check_package_manifest_generator(report, root)
     check_appimage_update_verifier(report, root)
     if version is not None:

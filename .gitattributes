@@ -1,0 +1,6 @@
+# Keep internal working notes out of `git archive` source tarballs. These are
+# tracked so agents and the maintainer share one copy, but they are planning
+# material, not part of a release.
+ROADMAP.md export-ignore
+RESEARCH.md export-ignore
+Roadmap_Blocked.md export-ignore
