@@ -8,6 +8,7 @@
 #include "preferences_dialog.h"
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
+#include "rclone_security_floor.h"
 #include "remote_provider.h"
 #include "cross_remote_search.h"
 #include "schedule_manager.h"
@@ -2026,29 +2027,24 @@ void MainWindow::rcloneGetVersion() {
 #endif
 #endif
 
-          // warn (non-blocking) when the detected rclone is old enough to be
-          // affected by the unauthenticated remote-control advisories
-          // (CVE-2026-41176 fixed in 1.73.5, CVE-2026-49980 in 1.74.3) that
-          // Rclone Browser NG's Windows mount feature relies on
-          if (!rclone_version_no.isEmpty() &&
-              compareVersion(rclone_version_no.toStdString(), "1.74.3") == 2) {
+          // warn (non-blocking) when the detected rclone is older than the
+          // reviewed security floor in rclone_security_floor.cpp
+          if (RcloneSecurityFloor::IsBelowFloor(rclone_version_no)) {
             setStatusMessage(
                 mStatusMessage->text() + "  -  WARNING: rclone " +
-                rclone_version_no +
-                " has security fixes available (update to 1.74.3+)");
+                rclone_version_no + " has security fixes available (update to " +
+                RcloneSecurityFloor::kMinimumVersion + "+)");
             if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
                 rclone_version_no) {
               settings->setValue("Settings/rcloneCveWarnedVersion",
                                  rclone_version_no);
               QMessageBox::warning(
                   this, "rclone update recommended",
-                  QString(
-                      "You are running rclone %1.\n\nVersions before 1.74.3 "
-                      "are affected by security advisories in rclone's "
-                      "remote-control interface (CVE-2026-41176, "
-                      "CVE-2026-49980), which Rclone Browser NG uses for Windows "
-                      "mounts.\n\nPlease update rclone to 1.74.3 or newer.")
-                      .arg(rclone_version_no));
+                  QString("You are running rclone %1.\n\n%2\n\nPlease update "
+                          "rclone to %3 or newer.")
+                      .arg(rclone_version_no,
+                           RcloneSecurityFloor::AdvisorySummary(),
+                           RcloneSecurityFloor::kMinimumVersion));
             }
           }
 

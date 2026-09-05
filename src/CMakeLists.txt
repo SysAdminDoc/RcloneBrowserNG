@@ -65,6 +65,7 @@ set(SOURCE
   rclone_capabilities.cpp
   rc_job_widget.cpp
   remote_path.cpp
+  rclone_security_floor.cpp
   selection_arguments.cpp
   schedule_dialog.cpp
   vfs_upload_state.cpp

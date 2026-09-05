@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import os
 from pathlib import Path
 import re
@@ -272,6 +273,60 @@ def check_release_scripts(report: Report, root: Path) -> None:
             report.passed("Windows Qt security-floor validator contract")
 
 
+def check_rclone_security_floor(report: Report, root: Path) -> None:
+    """The app warns about old rclone builds against a hardcoded floor.
+
+    A floor nobody revisits goes stale silently, and a stale floor is worse
+    than none: the previous "1.74.3" was itself an affected version. Fail the
+    release when the recorded review date has aged out.
+    """
+    source = root / "src" / "rclone_security_floor.cpp"
+    if not source.is_file():
+        report.failed_check("rclone security floor", "src/rclone_security_floor.cpp is missing")
+        return
+
+    text = read_text(source)
+    version = re.search(r'kMinimumVersion\[\]\s*=\s*"([^"]+)"', text)
+    reviewed = re.search(r'kReviewedDate\[\]\s*=\s*"([^"]+)"', text)
+    interval = re.search(r"kReviewIntervalDays\s*=\s*(\d+)", text)
+    if not version or not reviewed or not interval:
+        report.failed_check(
+            "rclone security floor",
+            "kMinimumVersion, kReviewedDate or kReviewIntervalDays could not be read",
+        )
+        return
+
+    try:
+        reviewed_date = date.fromisoformat(reviewed.group(1))
+    except ValueError:
+        report.failed_check(
+            "rclone security floor",
+            f"kReviewedDate '{reviewed.group(1)}' is not an ISO-8601 date",
+        )
+        return
+
+    max_age = int(interval.group(1))
+    age = (date.today() - reviewed_date).days
+    if age < 0:
+        report.failed_check(
+            "rclone security floor",
+            f"kReviewedDate {reviewed_date.isoformat()} is in the future",
+        )
+    elif age > max_age:
+        report.failed_check(
+            "rclone security floor",
+            f"floor {version.group(1)} was last reviewed {age} days ago "
+            f"({reviewed_date.isoformat()}), over the {max_age}-day limit. "
+            "Re-check https://github.com/rclone/rclone/security/advisories, then "
+            "update kMinimumVersion, AdvisorySummary and kReviewedDate.",
+        )
+    else:
+        report.passed(
+            f"rclone security floor {version.group(1)} reviewed "
+            f"{reviewed_date.isoformat()} ({age}d ago)"
+        )
+
+
 def check_package_manifest_generator(report: Report, root: Path) -> None:
     test = root / "tests" / "package_manifest_test.py"
     if not test.is_file():
@@ -505,6 +560,7 @@ def main() -> int:
     version = check_source_contract(report, root)
     check_metadata(report, root)
     check_release_scripts(report, root)
+    check_rclone_security_floor(report, root)
     check_package_manifest_generator(report, root)
     check_appimage_update_verifier(report, root)
     if version is not None:

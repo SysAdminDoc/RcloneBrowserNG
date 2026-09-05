@@ -57,6 +57,18 @@ if(BUILD_TESTING)
   target_link_libraries(remote_path_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME remote_path_test COMMAND remote_path_test)
 
+  add_executable(rclone_security_floor_test
+    tests/rclone_security_floor_test.cpp
+    src/rclone_security_floor.cpp
+    src/utils.cpp
+  )
+  target_include_directories(rclone_security_floor_test PRIVATE src)
+  target_link_libraries(rclone_security_floor_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(rclone_security_floor_test advapi32)
+  endif()
+  add_test(NAME rclone_security_floor_test COMMAND rclone_security_floor_test)
+
   add_executable(selection_arguments_test
     tests/selection_arguments_test.cpp
     src/selection_arguments.cpp
@@ -228,6 +240,7 @@ if(BUILD_TESTING)
     src/mount_options.cpp
     src/rclone_rc_engine.cpp
     src/rclone_capabilities.cpp
+    src/rclone_security_floor.cpp
     src/rc_job_widget.cpp
     src/remote_path.cpp
     src/selection_arguments.cpp

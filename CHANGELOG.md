@@ -1,5 +1,9 @@
 # Change Log
 ## [Unreleased]
+### Security
+-   SECURITY: The rclone version the app warns about was raised from 1.74.3 to 1.75.1. The old floor was three releases behind and was itself an affected version (GHSA-fqj9-69pf-6pjg, patched in 1.74.4); rclone 1.75.1 closes eleven further advisories, two of them critical. The warning now names them, including the one that exposes the remote-control daemon's command line — and so its credentials — to anything that can reach the port
+-   SECURITY: The floor lives in one place with the date it was last checked, and the local release harness refuses to publish once that review is more than 180 days old
+
 ### Bug Fixes
 -   FIX: Remotes no longer disappear from the list a moment after it loads. When a crypt remote was configured, the remote holding its encrypted data was hidden unconditionally by a background `rclone config dump`, with no setting and no way to bring it back — a user with seven crypt backends saw eight of their fifteen remotes. Hiding is now opt-in through "Hide remotes used as crypt backends" in Preferences, off by default, and when it is on the remotes list says how many remotes it hid and where to turn it off
 -   FIX: Downloading a multi-file selection transferred the wrong files. Each selected name was passed as `--include <name>`, and rclone filter patterns are unanchored globs, so selecting `a.txt` also pulled `sub/a.txt`, selecting `b[1].txt` fetched `b1.txt` instead, and selecting a folder fetched nothing from inside it. The selection is now turned into anchored, escaped `--filter` rules that match exactly what was picked, with folders recursed. A selection too large for one command line is refused with an explanation rather than silently truncated

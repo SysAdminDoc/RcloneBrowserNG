@@ -24,3 +24,7 @@ Roadmap_Blocked.md
 .ai/
 PROJECT_CONTEXT.md
 CONTINUATION_PROMPT.md
+
+# Python bytecode
+__pycache__/
+*.pyc

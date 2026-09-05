@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QLabel>
 #include <QListWidget>
+#include <QProcess>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -34,6 +35,22 @@ private:
       }
     }
     return visible;
+  }
+
+  // Mirrors the parsing in MainWindow::rcloneGetVersion so the pre-acknowledged
+  // security-floor warning matches the string the window will compute.
+  QString detectedRcloneVersion() const {
+    QProcess probe;
+    probe.start(mRclone, QStringList() << "version");
+    if (!probe.waitForFinished(30000)) {
+      return QString();
+    }
+    QString first = QString::fromUtf8(probe.readAllStandardOutput()).trimmed();
+    const int lineBreak = first.indexOf('\n');
+    if (lineBreak != -1) {
+      first.truncate(lineBreak);
+    }
+    return first.trimmed().replace("rclone v", "").replace("-DEV", "");
   }
 
   void setHideCryptBackends(bool hide) {
@@ -72,10 +89,13 @@ private slots:
     QSettings settings;
     settings.setValue("Settings/rclone", mRclone);
     settings.setValue("Settings/rcloneConf", mConfigPath);
-    // Keep the window off the network and away from modal dialogs.
+    // Keep the window off the network and away from modal dialogs. The
+    // security-floor warning is shown once per version string, so it has to
+    // be pre-acknowledged for the exact version this rclone reports or an
+    // offscreen QMessageBox blocks the run.
     settings.setValue("Settings/checkRcloneBrowserUpdates", false);
     settings.setValue("Settings/checkRcloneUpdates", false);
-    settings.setValue("Settings/rcloneCveWarnedVersion", "suppressed");
+    settings.setValue("Settings/rcloneCveWarnedVersion", detectedRcloneVersion());
     settings.sync();
 
     SetRclone(mRclone);

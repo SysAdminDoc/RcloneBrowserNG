@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P0
 
-- [ ] P0 — Raise the rclone security floor to 1.75.1 and make the constant reviewable
-  Why: the hardcoded floor is `1.74.3`, a version that is itself affected by a high-severity advisory, and eleven further advisories (two critical, three high) were published on 2026-09-04; one of them exposes the rcd daemon's full argv, which is how this app passes `--rc-user`/`--rc-pass`.
-  Evidence: `src/main_window.cpp:2025` compares against the literal `"1.74.3"`. GHSA-fqj9-69pf-6pjg patched in 1.74.4; GHSA-xwwr-4h3p-r22c and GHSA-p569-5gjg-9cmj (critical) and GHSA-f8g7-2xjc-7mfh, GHSA-2p48-j3qc-rx9f, GHSA-c476-6w5q-jw77 (high) patched in 1.75.1; GHSA-mfvx-7rcj-9m5g (pprof argv exposure bypassing rc auth) patched in 1.75.0.
-  Touches: `src/main_window.cpp`, new `src/rclone_security_floor.{h,cpp}`, `scripts/release_check.py`, `CMakeLists.txt`, new `tests/rclone_security_floor_test.cpp`
-  Acceptance: the floor lives in one named constant alongside a `kFloorReviewedDate`; the warning text names the current advisories; `release_check.py` fails when `kFloorReviewedDate` is more than 180 days before the build date; a test asserts 1.74.3 and 1.75.0 warn and 1.75.1 does not.
-  Complexity: S
-
 - [ ] P0 — Tag and publish 2.0.0, 2.0.1 and 2.0.2 as GitHub Releases with checksums
   Why: CHANGELOG.md records three releases but the repository has no `2.x` git tag and no GitHub Release, so the only install route is a source build; the built 2.0.2 Windows artifacts already exist unpublished in `release/`.
   Evidence: `gh api repos/SysAdminDoc/RcloneBrowserNG/releases` returns `0`; `git ls-remote --tags origin` shows no `2.x` tag; `release/RcloneBrowserNG-2.0.2-2d87d92-windows-x64-setup.exe` and the matching `.zip` are on disk. Competing GUIs ship through six package managers each.

@@ -1,5 +1,9 @@
 #include "selection_arguments.h"
 
+#include <QDir>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 
 using SelectionArguments::BuildSelectionFilter;
@@ -97,6 +101,70 @@ private slots:
     QVERIFY(rules.error.contains("line break"));
     QVERIFY(BuildSelectionFilter({{"carriage\rreturn.txt", false}}).valid ==
             false);
+  }
+
+  // The unit cases above only prove what string we generate. This one hands
+  // the generated arguments to a real rclone and checks what actually moves,
+  // which is the part that would drift if rclone changed its filter matching
+  // or stopped accepting flags ahead of the subcommand.
+  void rcloneCopiesExactlyTheNamedEntries() {
+    const QString rclone = QStandardPaths::findExecutable("rclone");
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH");
+    }
+
+    QTemporaryDir fixture;
+    QVERIFY(fixture.isValid());
+    const QDir root(fixture.path());
+    QVERIFY(root.mkpath("src/sub"));
+    QVERIFY(root.mkpath("src/folder/deep"));
+    const QStringList files = {
+        "src/a.txt",           // selected
+        "src/sub/a.txt",       // same name, deeper: must stay behind
+        "src/b1.txt",          // must stay behind
+        "src/b[1].txt",        // selected, and a glob would grab b1.txt instead
+        "src/keep.txt",        // must stay behind
+        "src/folder/f1.txt",   // inside a selected directory
+        "src/folder/deep/f2.txt",
+    };
+    for (const QString &relative : files) {
+      QFile file(root.filePath(relative));
+      QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(relative));
+      file.write("x");
+      file.close();
+    }
+
+    const auto rules = BuildSelectionFilter({
+        {"a.txt", false},
+        {"b[1].txt", false},
+        {"folder", true},
+    });
+    QVERIFY2(rules.valid, qPrintable(rules.error));
+
+    // Filters go ahead of the subcommand, which is where RemoteWidget
+    // prepends them.
+    QStringList args = rules.arguments;
+    args << "copy" << root.filePath("src") << root.filePath("dst");
+    QProcess copy;
+    copy.start(rclone, args);
+    QVERIFY(copy.waitForFinished(60000));
+    QCOMPARE(copy.exitCode(), 0);
+
+    QProcess list;
+    list.start(rclone, QStringList() << "lsf" << "-R" << root.filePath("dst"));
+    QVERIFY(list.waitForFinished(60000));
+    QStringList copied = QString::fromUtf8(list.readAllStandardOutput())
+                             .split('\n', Qt::SkipEmptyParts);
+    for (QString &entry : copied) {
+      entry = entry.trimmed();
+    }
+    copied.removeAll(QString());
+    copied.sort();
+
+    QStringList expected = {"a.txt", "b[1].txt", "folder/", "folder/deep/",
+                            "folder/deep/f2.txt", "folder/f1.txt"};
+    expected.sort();
+    QCOMPARE(copied, expected);
   }
 
   void refusesSelectionsTooLargeForOneCommandLine() {

@@ -56,7 +56,9 @@ FilterRules BuildSelectionFilter(const QVector<SelectionEntry> &entries) {
     if (entry.isDirectory) {
       rule += "/**";
     }
-    characters += rule.size() + 10; // "--filter " plus quoting
+    // "--filter " is 9 characters, plus a surrounding quote pair and the
+    // separating space once the command line is assembled.
+    characters += rule.size() + 12;
     rules << rule;
   }
 
