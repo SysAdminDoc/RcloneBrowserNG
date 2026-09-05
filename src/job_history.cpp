@@ -25,6 +25,7 @@ QJsonObject toObject(const JobHistoryEntry &entry) {
   obj.insert("files", entry.files);
   obj.insert("errors", entry.errors);
   obj.insert("exitCode", entry.exitCode);
+  obj.insert("statusLabel", entry.statusLabel);
   if (!entry.transferDetail.isEmpty()) {
     QJsonArray detail;
     for (const QString &line : entry.transferDetail) {
@@ -54,6 +55,7 @@ JobHistoryEntry fromObject(const QJsonObject &obj) {
   entry.files = obj.value("files").toInt();
   entry.errors = obj.value("errors").toInt();
   entry.exitCode = obj.value("exitCode").toInt();
+  entry.statusLabel = obj.value("statusLabel").toString();
   QJsonArray detail = obj.value("transferDetail").toArray();
   for (const QJsonValue &val : detail) {
     entry.transferDetail.append(val.toString());

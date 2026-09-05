@@ -1,9 +1,12 @@
 #include "layout_assertions.h"
+#include "test_rclone.h"
 
 #include "icon_cache.h"
+#include "job_options.h"
 #include "main_window.h"
 #include "remote_widget.h"
 #include "transfer_dialog.h"
+#include "utils.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -17,7 +20,9 @@
 #include <QSettings>
 #include <QSizeGrip>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QToolBar>
@@ -37,6 +42,8 @@ class LayoutRegressionTest : public QObject {
 
 private:
   QTemporaryDir mSettingsDir;
+  QTemporaryDir mConfigDir;
+  QString mRclone;
 
   static void verifyManaged(QWidget *widget, const char *name) {
     QVERIFY2(widget != nullptr, name);
@@ -53,6 +60,103 @@ private slots:
                        mSettingsDir.path());
     QCoreApplication::setOrganizationName("rclone-browser-layout-test");
     QCoreApplication::setApplicationName("rclone-browser-layout-test");
+
+    // Two remotes of the same backend type, which is what puts the
+    // server-side option on offer, plus one of a different type to prove the
+    // option withdraws.
+    QVERIFY(mConfigDir.isValid());
+    mRclone = FindRcloneForTests();
+    const QString configPath = QDir(mConfigDir.path()).filePath("rclone.conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    config.write("[one]\ntype = alias\nremote = " +
+                 mConfigDir.path().toUtf8() +
+                 "\n\n[two]\ntype = alias\nremote = " +
+                 mConfigDir.path().toUtf8() +
+                 "\n\n[other]\ntype = memory\n");
+    config.close();
+
+    QSettings settings;
+    settings.setValue("Settings/rclone", mRclone);
+    settings.setValue("Settings/rcloneConf", configPath);
+    settings.sync();
+    if (!mRclone.isEmpty()) {
+      SetRclone(mRclone);
+      SetRcloneConf(configPath);
+    }
+  }
+
+  // The option was gated on ui.checkServerSide->isVisible(). That is false
+  // for a child of a hidden window, and QDialog::exec() hides the dialog
+  // before returning, so getJobOptions() always read false and
+  // --server-side-across-configs could never reach the command line. It is
+  // also false whenever the Advanced tab is not the current one, which made
+  // a saved task depend on which tab was last clicked.
+  void serverSideSurvivesAHiddenDialogAndABackgroundTab() {
+    if (mRclone.isEmpty()) {
+      QSKIP("rclone is not on PATH");
+    }
+    TransferDialog dialog(false, false, "one", QDir(), true);
+    auto *source = dialog.findChild<QLineEdit *>("textSource");
+    auto *dest = dialog.findChild<QLineEdit *>("textDest");
+    auto *serverSide = dialog.findChild<QCheckBox *>("checkServerSide");
+    QVERIFY(source != nullptr);
+    QVERIFY(dest != nullptr);
+    QVERIFY(serverSide != nullptr);
+
+    source->setText("one:from");
+    dest->setText("two:to");
+    // The remote types are read by a background rclone process now, so the
+    // option appears a moment after the paths do.
+    QTRY_VERIFY_WITH_TIMEOUT(!serverSide->isHidden(), 30000);
+    serverSide->setChecked(true);
+
+    // Sit on the first tab, the way a user who ticked the box and went back
+    // to check their paths would, and never show the dialog at all, which is
+    // the state exec() leaves behind.
+    auto *tabs = dialog.findChild<QTabWidget *>();
+    QVERIFY(tabs != nullptr);
+    tabs->setCurrentIndex(0);
+    QVERIFY(!dialog.isVisible());
+    QVERIFY2(!serverSide->isVisible(),
+             "the widget really is invisible here; that is the whole point");
+
+    JobOptions *options = dialog.getJobOptions();
+    QVERIFY(options != nullptr);
+    QVERIFY2(options->serverSideAcrossConfigs,
+             "the ticked option was dropped");
+    QVERIFY2(options->getOptions().contains("--server-side-across-configs"),
+             qPrintable(options->getOptions().join(' ')));
+  }
+
+  // The other half: a tick left behind after the user retargets the transfer
+  // must not survive into the command line.
+  void retargetingTheTransferDropsAStaleServerSideTick() {
+    if (mRclone.isEmpty()) {
+      QSKIP("rclone is not on PATH");
+    }
+    TransferDialog dialog(false, false, "one", QDir(), true);
+    auto *source = dialog.findChild<QLineEdit *>("textSource");
+    auto *dest = dialog.findChild<QLineEdit *>("textDest");
+    auto *serverSide = dialog.findChild<QCheckBox *>("checkServerSide");
+    QVERIFY(source != nullptr);
+    QVERIFY(dest != nullptr);
+    QVERIFY(serverSide != nullptr);
+
+    source->setText("one:from");
+    dest->setText("two:to");
+    QTRY_VERIFY_WITH_TIMEOUT(!serverSide->isHidden(), 30000);
+    serverSide->setChecked(true);
+
+    // A different backend on the far end: the provider cannot do this copy.
+    dest->setText("other:to");
+    QTRY_VERIFY_WITH_TIMEOUT(serverSide->isHidden(), 30000);
+    QVERIFY(serverSide->isChecked());
+
+    JobOptions *options = dialog.getJobOptions();
+    QVERIFY(options != nullptr);
+    QVERIFY(!options->serverSideAcrossConfigs);
+    QVERIFY(!options->getOptions().contains("--server-side-across-configs"));
   }
 
   void transferDialogControlsLiveInManagedLayouts() {

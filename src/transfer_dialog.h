@@ -54,11 +54,15 @@ private:
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
   QLabel *mExcludeExplanation = nullptr;
+  // Whether the server-side option was actually on offer the last time
+  // the paths were checked. A tick left behind after the user retargets
+  // the transfer must not reach the command line.
+  bool mServerSideOffered = false;
   bool mPreviewInFlight = false;
 
   bool wouldDeleteAtDestination() const;
   bool showDeletionSummary(const SyncPreview::Summary &summary);
-  static QHash<QString, QString> RemoteTypes();
+  void startRemoteTypesProbe();
 
   bool mIsDownload;
   bool mDryRun = false;

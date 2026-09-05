@@ -1,4 +1,5 @@
 #include "job_history.h"
+#include "test_rclone.h"
 #include "main_window.h"
 #include "utils.h"
 
@@ -70,7 +71,7 @@ private slots:
     QCoreApplication::setOrganizationName("rclone-browser-remotes-test");
     QCoreApplication::setApplicationName("rclone-browser-remotes-test");
 
-    mRclone = QStandardPaths::findExecutable("rclone");
+    mRclone = FindRcloneForTests();
     if (mRclone.isEmpty()) {
       QSKIP("rclone is not on PATH");
     }

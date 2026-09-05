@@ -84,6 +84,53 @@ private slots:
     QCOMPARE(explanations.size(), 11);
   }
 
+  // Cancelling a transfer never produces an rclone exit code. On Windows
+  // QProcess::terminate() is a no-op for a console child, so JobWidget::cancel
+  // always falls through to kill() and the process reports 62097; on POSIX the
+  // kill reports signal 9, which the rclone table calls "Nothing to transfer"
+  // and IsSuccessful() accepts. Reading either through the table put
+  // "Exit code 62097" in the job history next to a card saying "Cancelled",
+  // and would have recorded a killed transfer as a success on Linux.
+  void aCancelledJobIsNeverDescribedByItsExitCode() {
+    for (int code : {62097, 9, 15, 1, 0}) {
+      const auto outcome = RcloneExitCode::DescribeProcess(code, true, true);
+      QCOMPARE(outcome.name, QStringLiteral("Cancelled"));
+      QVERIFY2(!outcome.success, qPrintable(QString::number(code)));
+      QVERIFY2(!outcome.completedFully, qPrintable(QString::number(code)));
+    }
+  }
+
+  void aCrashedProcessIsNotReadAsAnExitCode() {
+    const auto outcome = RcloneExitCode::DescribeProcess(9, true, false);
+    QVERIFY2(outcome.name != Describe(9).name, qPrintable(outcome.name));
+    QVERIFY(!outcome.success);
+    QVERIFY(!outcome.completedFully);
+  }
+
+  // The looser flag gates the label; the stricter one gates `rclone purge` of
+  // old backup directories and a post-transfer check of the two ends. A run
+  // stopped at --max-transfer or --max-duration is a success that did not
+  // finish the copy, so it must not reach either.
+  void aLimitedRunSucceedsWithoutCountingAsComplete() {
+    for (int code : {8, 9, 10}) {
+      const auto outcome = RcloneExitCode::DescribeProcess(code, false, false);
+      QVERIFY2(outcome.success, qPrintable(QString::number(code)));
+      QVERIFY2(!outcome.completedFully, qPrintable(QString::number(code)));
+    }
+
+    const auto clean = RcloneExitCode::DescribeProcess(0, false, false);
+    QVERIFY(clean.success);
+    QVERIFY(clean.completedFully);
+  }
+
+  void aPlainFailureIsNeitherSuccessfulNorComplete() {
+    for (int code : {1, 2, 3, 4, 5, 6, 7, 42, -1}) {
+      const auto outcome = RcloneExitCode::DescribeProcess(code, false, false);
+      QVERIFY2(!outcome.success, qPrintable(QString::number(code)));
+      QVERIFY2(!outcome.completedFully, qPrintable(QString::number(code)));
+    }
+  }
+
   void unknownCodesSaySoRatherThanGuessing() {
     const auto meaning = Describe(42);
     QCOMPARE(meaning.outcome, Outcome::Failed);

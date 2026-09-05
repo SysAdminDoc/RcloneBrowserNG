@@ -323,16 +323,26 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
   QObject::connect(mProcess,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
                        &QProcess::finished),
-                   this, [=](int status, QProcess::ExitStatus) {
+                   this, [=](int status,
+                             QProcess::ExitStatus exitStatus) {
                      mProcess->deleteLater();
                      clearFileProgress();
 
                      mRunning = false;
                      mFinishedAt = QDateTime::currentDateTimeUtc();
                      mExitCode = status;
-                     // 8, 9 and 10 mean rclone stopped at a limit the user
-                     // asked for; the work it was allowed to do is done.
-                     mSuccess = RcloneExitCode::IsSuccessful(status);
+                     // A cancelled or crashed process did not choose its exit
+                     // code, so it must not be read as one. Cancelling on
+                     // Windows lands on 62097 and on POSIX reports signal 9,
+                     // which the rclone table calls "Nothing to transfer" and
+                     // counts as a success.
+                     const RcloneExitCode::ProcessOutcome processOutcome =
+                         RcloneExitCode::DescribeProcess(
+                             status, exitStatus == QProcess::CrashExit,
+                             mUserCancelled);
+                     mSuccess = processOutcome.success;
+                     mCompletedFully = processOutcome.completedFully;
+                     mStatusLabel = processOutcome.name;
 
                      for (int i = 0; i < ui.horizontalLayout->count(); ++i) {
                        auto *w = ui.horizontalLayout->itemAt(i)->widget();
@@ -348,12 +358,13 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                          ui.cancel, "Close transfer card",
                          "Remove this transfer from the jobs list.");
 
-                     const RcloneExitCode::Meaning meaning =
-                         RcloneExitCode::Describe(status);
+                     const RcloneExitCode::ProcessOutcome &meaning =
+                         processOutcome;
                      if (mUserCancelled) {
                        UiPolish::SetStatus(ui.showDetails, "warning",
-                                           "Cancelled");
-                     } else if (status == 0) {
+                                           meaning.name);
+                       ui.showDetails->setToolTip(meaning.explanation);
+                     } else if (processOutcome.completedFully) {
                        UiPolish::SetStatus(ui.showDetails, "success",
                                            meaning.name);
                        ui.showDetails->setToolTip(meaning.explanation);
@@ -431,6 +442,7 @@ JobHistoryEntry JobWidget::historyEntry() const {
   entry.files = mFiles;
   entry.errors = mErrors;
   entry.exitCode = mExitCode;
+  entry.statusLabel = mStatusLabel;
   entry.transferDetail = mTransferDetail;
   entry.args = mTransferArgs;
   return entry;

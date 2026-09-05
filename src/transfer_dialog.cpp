@@ -1019,6 +1019,12 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
 }
 
 namespace {
+// Remote name to backend type, shared by every transfer dialog in the
+// process. Populated once, and only from a probe that actually succeeded.
+QHash<QString, QString> gRemoteTypes;
+bool gRemoteTypesLoaded = false;
+bool gRemoteTypesLoading = false;
+
 // "remote:path" -> "remote". Empty for a local path, which can never be a
 // server-side copy.
 QString RemoteNameOf(const QString &path) {
@@ -1027,15 +1033,19 @@ QString RemoteNameOf(const QString &path) {
   if (colon <= 0) {
     return QString();
   }
-  // A Windows drive letter is not a remote.
+#ifdef Q_OS_WIN
+  // A Windows drive letter is not a remote. Elsewhere a one-character remote
+  // name is perfectly legal, so this must not apply.
   if (colon == 1) {
     return QString();
   }
+#endif
   return trimmed.left(colon);
 }
 } // namespace
 
 void TransferDialog::refreshServerSideOption() {
+  mServerSideOffered = false;
   const QString sourceRemote = RemoteNameOf(ui.textSource->text());
   const QString destRemote = RemoteNameOf(ui.textDest->text());
   if (sourceRemote.isEmpty() || destRemote.isEmpty() ||
@@ -1046,10 +1056,16 @@ void TransferDialog::refreshServerSideOption() {
     return;
   }
 
-  const QHash<QString, QString> types = RemoteTypes();
-  const QString sourceType = types.value(sourceRemote);
-  const QString destType = types.value(destRemote);
+  if (!gRemoteTypesLoaded) {
+    startRemoteTypesProbe();
+    ui.checkServerSide->setVisible(false);
+    return;
+  }
+
+  const QString sourceType = gRemoteTypes.value(sourceRemote);
+  const QString destType = gRemoteTypes.value(destRemote);
   const bool sameProvider = !sourceType.isEmpty() && sourceType == destType;
+  mServerSideOffered = sameProvider;
   ui.checkServerSide->setVisible(sameProvider);
   if (sameProvider) {
     ui.checkServerSide->setToolTip(
@@ -1060,30 +1076,55 @@ void TransferDialog::refreshServerSideOption() {
   }
 }
 
-QHash<QString, QString> TransferDialog::RemoteTypes() {
-  // Read once per dialog: the config does not change while it is open, and
-  // this runs on every keystroke in the path fields.
-  static QHash<QString, QString> cache;
-  static bool loaded = false;
-  if (loaded) {
-    return cache;
+void TransferDialog::startRemoteTypesProbe() {
+  if (gRemoteTypesLoaded || gRemoteTypesLoading) {
+    return;
   }
-  loaded = true;
+  gRemoteTypesLoading = true;
 
-  QProcess probe;
-  UseRclonePassword(&probe);
+  // This used to be a blocking waitForFinished(5000) called straight from the
+  // textChanged handler, so the first keystroke in a path field could freeze
+  // the window for five seconds.
+  auto *probe = new QProcess();
+  UseRclonePassword(probe);
+  const QPointer<TransferDialog> dialog(this);
+
+  QObject::connect(
+      probe, &QProcess::finished, probe,
+      [probe, dialog](int exitCode, QProcess::ExitStatus exitStatus) {
+        gRemoteTypesLoading = false;
+        if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+          for (const RemoteListParser::Remote &remote :
+               RemoteListParser::ParseJson(probe->readAllStandardOutput())) {
+            gRemoteTypes.insert(remote.name, remote.type);
+          }
+          // Only a successful read is remembered. Marking it loaded before
+          // the probe ran meant one slow or password-locked config hid the
+          // option for the rest of the session, with nothing said.
+          gRemoteTypesLoaded = true;
+        }
+        probe->deleteLater();
+        if (dialog) {
+          dialog->refreshServerSideOption();
+        }
+      });
+
+  QObject::connect(probe, &QProcess::errorOccurred, probe,
+                   [probe, dialog](QProcess::ProcessError processError) {
+                     if (processError != QProcess::FailedToStart) {
+                       return; // finished() still arrives for the rest
+                     }
+                     gRemoteTypesLoading = false;
+                     probe->deleteLater();
+                     if (dialog) {
+                       dialog->refreshServerSideOption();
+                     }
+                   });
+
   QStringList args;
   args << "listremotes" << GetRcloneConf() << "--json"
        << "--ask-password=false";
-  probe.start(GetRclone(), args, QIODevice::ReadOnly);
-  if (!probe.waitForFinished(5000) || probe.exitCode() != 0) {
-    return cache;
-  }
-  for (const RemoteListParser::Remote &remote :
-       RemoteListParser::ParseJson(probe.readAllStandardOutput())) {
-    cache.insert(remote.name, remote.type);
-  }
-  return cache;
+  probe->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
 void TransferDialog::refreshExcludeExplanation() {
@@ -1244,9 +1285,13 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->retries = ui.spinRetries->text();
   mJobOptions->lowLevelRetries = ui.spinLowLevelRetries->text();
   mJobOptions->deleteExcluded = ui.checkDeleteExcluded->isChecked();
+  // Not isVisible(): exec() hides the dialog before returning, and the
+  // control lives on a tab that is usually not the current one, so both make
+  // isVisible() false while the option is genuinely on offer. This tracks
+  // whether it was offered, which is also what makes a tick stale when the
+  // user edits a path afterwards.
   mJobOptions->serverSideAcrossConfigs =
-      ui.checkServerSide->isVisible() &&
-      ui.checkServerSide->isChecked();
+      mServerSideOffered && ui.checkServerSide->isChecked();
 
   mJobOptions->excluded = ui.textExclude->toPlainText().trimmed();
   mJobOptions->extra = ui.textExtra->text().trimmed();

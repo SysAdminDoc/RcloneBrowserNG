@@ -70,6 +70,39 @@ Meaning Describe(int exitCode) {
           "not recognise. The job output says more."};
 }
 
+ProcessOutcome DescribeProcess(int exitCode, bool crashed,
+                              bool userCancelled) {
+  ProcessOutcome outcome;
+
+  if (userCancelled) {
+    outcome.outcome = Outcome::Failed;
+    outcome.name = QStringLiteral("Cancelled");
+    outcome.explanation =
+        QStringLiteral("You stopped this transfer. Anything already "
+                       "transferred is still there.");
+    return outcome;
+  }
+
+  if (crashed) {
+    // QProcess::terminate() is a no-op on a Windows console child, so cancel
+    // always ends in kill() and the exit code is the kill's, not rclone's.
+    outcome.outcome = Outcome::Failed;
+    outcome.name = QStringLiteral("Stopped unexpectedly");
+    outcome.explanation =
+        QStringLiteral("rclone did not exit on its own, so there is no exit "
+                       "code to explain. Check the output above.");
+    return outcome;
+  }
+
+  const Meaning meaning = Describe(exitCode);
+  outcome.outcome = meaning.outcome;
+  outcome.name = meaning.name;
+  outcome.explanation = meaning.explanation;
+  outcome.success = IsSuccessful(exitCode);
+  outcome.completedFully = (exitCode == 0);
+  return outcome;
+}
+
 bool IsRetryable(int exitCode) {
   return Describe(exitCode).outcome == Outcome::Retryable;
 }

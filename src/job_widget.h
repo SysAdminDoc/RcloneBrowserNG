@@ -29,6 +29,11 @@ public:
 
   void showDetails();
   bool wasSuccessful() const { return mSuccess; }
+  // Stricter than wasSuccessful(): a run stopped at --max-transfer or
+  // --max-duration is a success but is NOT a complete copy, so nothing
+  // destructive and nothing that assumes completeness may use the
+  // looser flag.
+  bool completedFully() const { return mCompletedFully; }
   JobHistoryEntry historyEntry() const;
   int serverSideCopies() const { return mServerSideCopies; }
 
@@ -55,6 +60,8 @@ private:
   bool mUserCancelled = false;
   bool mPaused = false;
   bool mSuccess = false;
+  bool mCompletedFully = false;
+  QString mStatusLabel;
   QProcess *mProcess;
   QDateTime mStartedAt;
   QDateTime mFinishedAt;

@@ -3784,7 +3784,11 @@ void MainWindow::addTransferViaProcess(
         }
 
         persistJobHistory(widget->historyEntry());
-        if (widget->wasSuccessful()) {
+        // Deliberately stricter than wasSuccessful(). Pruning old backup
+        // directories runs `rclone purge`, and verification compares the two
+        // ends: both assume the copy finished. A run cut short by
+        // --max-transfer or --max-duration is a success that did not finish.
+        if (widget->completedFully()) {
           pruneBackupRetention(backupDirTemplate, backupRetainCount);
           if (verifyAfterTransfer) {
             bool isCrypt =
@@ -3882,10 +3886,13 @@ void MainWindow::showJobHistory() {
   for (int row = 0; row < entries.size(); ++row) {
     const JobHistoryEntry &entry = entries.at(entries.size() - row - 1);
     // "Failed" for every non-zero code hid the difference between a broken
-    // transfer and one that stopped at a limit the user set.
+    // transfer and one that stopped at a limit the user set. The label comes
+    // from the job card so the two always agree; entries written before the
+    // label existed still fall back to the exit-code table.
     const RcloneExitCode::Meaning meaning =
         RcloneExitCode::Describe(entry.exitCode);
-    const QString status = meaning.name;
+    const QString status =
+        entry.statusLabel.isEmpty() ? meaning.name : entry.statusLabel;
     QString finished = entry.finishedAt.toLocalTime().toString("yyyy-MM-dd hh:mm:ss");
     const QStringList values = QStringList()
                                << finished

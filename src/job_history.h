@@ -13,6 +13,9 @@ struct JobHistoryEntry {
   int files = 0;
   int errors = 0;
   int exitCode = 0;
+  // What the job card called this run. Stored rather than recomputed so
+  // the history cannot describe a cancelled job as an rclone exit code.
+  QString statusLabel;
   QStringList transferDetail;
   QStringList args;
 };
