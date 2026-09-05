@@ -63,6 +63,8 @@ private:
   QToolButton *mErrorLogToggle = nullptr;
   QLineEdit *mRemotesFilter = nullptr;
   QLabel *mRemotesEmptyState = nullptr;
+  QLabel *mRemotesHiddenNotice = nullptr;
+  int mHiddenCryptBackends = 0;
   QLineEdit *mTasksFilter = nullptr;
   QLabel *mTasksEmptyState = nullptr;
 
@@ -101,6 +103,7 @@ private:
   void showCreateRemoteDialog(const QVector<RemoteProvider> &providers);
   void showRemotesEmptyState(const QString &title, const QString &detail);
   void hideRemotesEmptyState();
+  void updateRemotesHiddenNotice();
   void showTasksEmptyState(const QString &title, const QString &detail);
   void hideTasksEmptyState();
   void updateStagingEmptyState();

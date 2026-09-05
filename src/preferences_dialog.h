@@ -33,6 +33,7 @@ public:
   bool getShowFileIcons() const;
   bool getRowColors() const;
   bool getShowHidden() const;
+  bool getHideCryptBackends() const;
   bool getDarkMode() const;
   QString getIconSize() const;
 

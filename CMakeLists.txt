@@ -297,4 +297,22 @@ if(BUILD_TESTING)
   add_test(NAME layout_regression_test COMMAND layout_regression_test)
   set_tests_properties(layout_regression_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+  add_executable(remotes_list_test
+    tests/remotes_list_test.cpp
+    ${ACCESSIBILITY_SMOKE_SOURCES}
+  )
+  set_target_properties(remotes_list_test PROPERTIES AUTOUIC ON)
+  target_include_directories(remotes_list_test PRIVATE src tests)
+  target_compile_definitions(remotes_list_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(remotes_list_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(remotes_list_test version advapi32)
+  elseif(APPLE)
+    find_library(REMOTES_LIST_COCOA_LIBRARY Cocoa REQUIRED)
+    target_link_libraries(remotes_list_test ${REMOTES_LIST_COCOA_LIBRARY})
+  endif()
+  add_test(NAME remotes_list_test COMMAND remotes_list_test)
+  set_tests_properties(remotes_list_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 600)
 endif()

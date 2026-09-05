@@ -300,10 +300,17 @@ MainWindow::MainWindow(bool initializeRuntime)
       mRemotesEmptyState, "No remotes yet",
       "Create a remote or open rclone config to connect storage.");
   mRemotesEmptyState->hide();
+  mRemotesHiddenNotice = new QLabel(this);
+  mRemotesHiddenNotice->setObjectName("remotesHiddenNotice");
+  mRemotesHiddenNotice->setWordWrap(true);
+  mRemotesHiddenNotice->setTextFormat(Qt::PlainText);
+  UiPolish::SetMuted(mRemotesHiddenNotice);
+  mRemotesHiddenNotice->hide();
   if (auto *layout =
           qobject_cast<QVBoxLayout *>(ui.remotes->parentWidget()->layout())) {
     layout->insertWidget(0, remotesTools);
     layout->insertWidget(1, mRemotesEmptyState);
+    layout->insertWidget(2, mRemotesHiddenNotice);
   }
   ui.remotes->setUniformItemSizes(true);
   ui.remotes->setTextElideMode(Qt::ElideMiddle);
@@ -606,6 +613,8 @@ MainWindow::MainWindow(bool initializeRuntime)
       settings->setValue("Settings/showFileIcons", dialog.getShowFileIcons());
       settings->setValue("Settings/rowColors", dialog.getRowColors());
       settings->setValue("Settings/showHidden", dialog.getShowHidden());
+      settings->setValue("Settings/hideCryptBackends",
+                         dialog.getHideCryptBackends());
       settings->setValue("Settings/darkMode", dialog.getDarkMode());
       settings->setValue("Settings/iconSize", dialog.getIconSize().trimmed());
 
@@ -2680,6 +2689,25 @@ void MainWindow::hideRemotesEmptyState() {
   ui.remotes->show();
 }
 
+void MainWindow::updateRemotesHiddenNotice() {
+  if (!mRemotesHiddenNotice) {
+    return;
+  }
+  if (mHiddenCryptBackends <= 0) {
+    mRemotesHiddenNotice->clear();
+    mRemotesHiddenNotice->hide();
+    return;
+  }
+  mRemotesHiddenNotice->setText(
+      QString("%1 %2 hidden as crypt %3. Turn off \"Hide remotes used as "
+              "crypt backends\" in Preferences to show %4.")
+          .arg(mHiddenCryptBackends)
+          .arg(mHiddenCryptBackends == 1 ? "remote is" : "remotes are")
+          .arg(mHiddenCryptBackends == 1 ? "backend" : "backends")
+          .arg(mHiddenCryptBackends == 1 ? "it" : "them"));
+  mRemotesHiddenNotice->show();
+}
+
 void MainWindow::showTasksEmptyState(const QString &title,
                                      const QString &detail) {
   if (!mTasksEmptyState) {
@@ -2789,6 +2817,8 @@ void MainWindow::rcloneListRemotes() {
     mRemotesFilter->blockSignals(wasBlocked);
   }
   ui.remotes->clear();
+  mHiddenCryptBackends = 0;
+  updateRemotesHiddenNotice();
   showRemotesEmptyState("Loading remotes",
                         "Reading remotes from rclone.conf...");
 
@@ -2893,10 +2923,18 @@ void MainWindow::rcloneListRemotes() {
             ui.remotes->addItem(item);
           }
 
-          bool hasCrypt = false;
-          for (int i = 0; i < ui.remotes->count(); ++i) {
-            if (ui.remotes->item(i)->data(Qt::UserRole).toString() == "crypt")
-              hasCrypt = true;
+          // Off by default. Hiding a remote the user configured, with no way
+          // to bring it back, is what produced the "only 8 of my 15 remotes
+          // are listed" report; the crypt backends stay visible unless asked
+          // for.
+          bool hasCrypt =
+              settings->value("Settings/hideCryptBackends", false).toBool();
+          if (hasCrypt) {
+            hasCrypt = false;
+            for (int i = 0; i < ui.remotes->count(); ++i) {
+              if (ui.remotes->item(i)->data(Qt::UserRole).toString() == "crypt")
+                hasCrypt = true;
+            }
           }
           if (hasCrypt) {
             auto *dump = new QProcess(this);
@@ -2925,12 +2963,20 @@ void MainWindow::rcloneListRemotes() {
                   }
                   if (cryptBackends.isEmpty())
                     return;
+                  int hiddenCount = 0;
                   for (int i = 0; i < ui.remotes->count(); ++i) {
                     auto *item = ui.remotes->item(i);
                     if (cryptBackends.contains(item->text())) {
                       item->setHidden(true);
                       item->setData(Qt::UserRole + 1, true);
+                      ++hiddenCount;
                     }
+                  }
+                  // Say so. Remotes vanishing a second after the list paints,
+                  // with nothing to explain it, is what the field report was.
+                  if (hiddenCount > 0) {
+                    mHiddenCryptBackends = hiddenCount;
+                    updateRemotesHiddenNotice();
                   }
                 });
             UseRclonePassword(dump);

@@ -8,13 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P0
 
-- [ ] P0 — Make crypt-backing-remote hiding an unhideable-by-default preference
-  Why: backing remotes are hidden permanently by an async callback with no toggle and no indication, which is the confirmed cause of the "only 8 of 15 remotes displayed, all 15 flash up on refresh" field report; upstream asked for this as an option, not as unconditional behaviour.
-  Evidence: `src/main_window.cpp:2905-2937` sets `setHidden(true)` and `Qt::UserRole + 1` from the `rclone config dump` callback; `src/main_window.cpp:242` makes the filter skip those items so they can never be revealed; no `Settings/` key exists for it. Reported in PR #15; requested as an option in `kapitainsky#178` and `kapitainsky#206`.
-  Touches: `src/main_window.cpp`, `src/preferences_dialog.ui`, `src/preferences_dialog.cpp`
-  Acceptance: a "Hide remotes used as crypt backends" checkbox exists in Preferences and defaults to off; when on, hidden remotes are reported in the remotes-list status text with a count and the setting can be turned off without restarting; with a config containing one crypt remote over a local remote, all remotes are listed by default.
-  Complexity: S
-
 - [ ] P0 — Raise the rclone security floor to 1.75.1 and make the constant reviewable
   Why: the hardcoded floor is `1.74.3`, a version that is itself affected by a high-severity advisory, and eleven further advisories (two critical, three high) were published on 2026-09-04; one of them exposes the rcd daemon's full argv, which is how this app passes `--rc-user`/`--rc-pass`.
   Evidence: `src/main_window.cpp:2025` compares against the literal `"1.74.3"`. GHSA-fqj9-69pf-6pjg patched in 1.74.4; GHSA-xwwr-4h3p-r22c and GHSA-p569-5gjg-9cmj (critical) and GHSA-f8g7-2xjc-7mfh, GHSA-2p48-j3qc-rx9f, GHSA-c476-6w5q-jw77 (high) patched in 1.75.1; GHSA-mfvx-7rcj-9m5g (pprof argv exposure bypassing rc auth) patched in 1.75.0.

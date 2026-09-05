@@ -100,6 +100,21 @@ private slots:
     QVERIFY(dialog.getAlwaysShowInTray());
   }
 
+  void cryptBackendHidingIsOptInAndManaged() {
+    // Hiding a configured remote with no way to bring it back is what made
+    // seven of a reporter's fifteen remotes disappear, so the control has to
+    // exist, be reachable, and start off.
+    PreferencesDialog dialog;
+    auto *hide = dialog.findChild<QCheckBox *>("hideCryptBackends");
+    QVERIFY(hide != nullptr);
+    QVERIFY2(LayoutAssertions::IsManagedByParentLayout(hide),
+             "hideCryptBackends");
+    QVERIFY2(!hide->isChecked(), "crypt backends are visible by default");
+    QVERIFY(!dialog.getHideCryptBackends());
+    hide->setChecked(true);
+    QVERIFY(dialog.getHideCryptBackends());
+  }
+
   void mountPresetShowsExactFlags() {
     PreferencesDialog dialog;
     auto *preset = dialog.findChild<QComboBox *>("mountPreset");

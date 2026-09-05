@@ -365,6 +365,11 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       settings->value("Settings/rowColors", false).toBool());
   ui.showHidden->setChecked(
       settings->value("Settings/showHidden", true).toBool());
+  // Defaults to off: hiding a remote the user configured, with no way to get
+  // it back, is the behaviour that produced the "only 8 of my 15 remotes are
+  // listed" report.
+  ui.hideCryptBackends->setChecked(
+      settings->value("Settings/hideCryptBackends", false).toBool());
   ui.darkMode->setChecked(
       settings->value("Settings/darkMode", false).toBool());
 
@@ -511,6 +516,10 @@ bool PreferencesDialog::getRowColors() const {
 
 bool PreferencesDialog::getShowHidden() const {
   return ui.showHidden->isChecked();
+}
+
+bool PreferencesDialog::getHideCryptBackends() const {
+  return ui.hideCryptBackends->isChecked();
 }
 
 bool PreferencesDialog::getDarkMode() const { return ui.darkMode->isChecked(); }
