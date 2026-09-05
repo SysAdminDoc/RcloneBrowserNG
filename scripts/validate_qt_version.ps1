@@ -3,6 +3,10 @@ param(
   [string]$QtDir
 )
 
+# Thin wrapper. The policy itself lives in validate_qt_version.py so the
+# Windows, AppImage and macOS release lanes all enforce the same table
+# instead of three copies drifting apart.
+
 $ErrorActionPreference = 'Stop'
 
 $qmake = Join-Path $QtDir 'bin/qmake6.exe'
@@ -14,26 +18,21 @@ if (-not (Test-Path $qmake)) {
   exit 1
 }
 
-$version = (& $qmake -query QT_VERSION).Trim()
-Write-Host "Qt version: $version"
-
-$parts = $version -split '\.'
-if ($parts.Count -lt 3) {
-  Write-Error "Could not parse Qt version '$version'."
+$validator = Join-Path $PSScriptRoot 'validate_qt_version.py'
+if (-not (Test-Path $validator)) {
+  Write-Error "validate_qt_version.py is missing next to this script."
   exit 1
 }
 
-$major = [int]$parts[0]
-$minor = [int]$parts[1]
-$patch = [int]$parts[2]
-
-# CVE-2026-6210 is fixed in Qt 6.8.8+ and 6.11.1+.
-$safe = ($major -gt 6) -or
-        ($major -eq 6 -and $minor -eq 8 -and $patch -ge 8) -or
-        ($major -eq 6 -and $minor -eq 11 -and $patch -ge 1) -or
-        ($major -eq 6 -and $minor -gt 11)
-
-if (-not $safe) {
-  Write-Error "Qt $version is in the CVE-2026-6210 vulnerable range. Use Qt 6.8.8+ or 6.11.1+ for release packaging."
+$python = $null
+foreach ($candidate in @('py', 'python3', 'python')) {
+  $resolved = Get-Command $candidate -ErrorAction SilentlyContinue
+  if ($resolved) { $python = $resolved.Source; break }
+}
+if (-not $python) {
+  Write-Error "Python 3 is required to validate the Qt version. Install it or run scripts/validate_qt_version.py directly."
   exit 1
 }
+
+& $python $validator --qmake $qmake
+exit $LASTEXITCODE

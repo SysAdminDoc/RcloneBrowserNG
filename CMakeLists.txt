@@ -7,8 +7,19 @@ if(WIN32)
   cmake_policy(SET CMP0020 NEW)
 endif()
 
-find_package(QT NAMES Qt6 REQUIRED COMPONENTS Core Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network Test)
+# Source builds floor at 6.4, which is what the README badge claims and what
+# the oldest distro the project supports ships (Ubuntu 24.04 LTS: 6.4.2).
+# Release packaging is stricter and separately enforced by
+# scripts/validate_qt_version.py; see SECURITY.md.
+set(RCLONE_BROWSER_QT_MINIMUM 6.4)
+find_package(QT ${RCLONE_BROWSER_QT_MINIMUM} NAMES Qt6 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt${QT_VERSION_MAJOR} ${RCLONE_BROWSER_QT_MINIMUM} REQUIRED COMPONENTS Core Widgets Network Test)
+if(Qt${QT_VERSION_MAJOR}_VERSION VERSION_LESS RCLONE_BROWSER_QT_MINIMUM)
+  message(FATAL_ERROR
+    "Qt ${Qt${QT_VERSION_MAJOR}_VERSION} is too old. Rclone Browser NG needs "
+    "Qt ${RCLONE_BROWSER_QT_MINIMUM} or newer; point CMAKE_PREFIX_PATH at a "
+    "newer Qt.")
+endif()
 
 if(WIN32)
   set_property(GLOBAL PROPERTY USE_FOLDERS OFF)

@@ -9,6 +9,11 @@
 -   SECURITY: The rclone version the app warns about was raised from 1.74.3 to 1.75.1. The old floor was three releases behind and was itself an affected version (GHSA-fqj9-69pf-6pjg, patched in 1.74.4); rclone 1.75.1 closes eleven further advisories, two of them critical. The warning now names them, including the one that exposes the remote-control daemon's command line — and so its credentials — to anything that can reach the port
 -   SECURITY: The floor lives in one place with the date it was last checked, and the local release harness refuses to publish once that review is more than 180 days old
 
+### Security
+-   SECURITY: The Qt version check now runs in all three release lanes, not just the Windows one, so an AppImage or DMG can no longer ship a Qt nobody validated. It refuses a build on two grounds rather than one: unpatched for CVE-2026-6210 or CVE-2026-9499, or on a branch that has stopped receiving open-source patches
+-   CHANGED: Release builds are pinned to Qt 6.11.2 and the reasoning is written down in SECURITY.md. Qt 6.8 LTS looks like the right choice but is not usable: its open-source window closed in April 2025 and the public archive stops at 6.8.4, while the CVE fixes are in 6.8.8, which is commercial-only. The policy is dated and the validator warns for the last 30 days of a branch's support window
+-   NEW: CMake states an explicit Qt 6.4 minimum for source builds, matching the README badge, and fails at configure time with a readable message instead of somewhere deep in the build
+
 ### Reliability
 -   NEW: A rotating diagnostic log is written to disk, so a scheduled transfer that fails overnight leaves evidence behind instead of only an in-memory list that dies with the process. It lives in `logs/rclonebrowser.log` under the application data folder, rotates at 5 MB keeping three older generations, and records job starts, exit codes, background errors and Qt messages. Secrets are redacted with the same rules the support bundle uses. Preferences has a log level and an Open Log Folder button (kapitainsky#134, kapitainsky#233, mmozeiko#148)
 

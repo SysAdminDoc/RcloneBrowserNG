@@ -35,7 +35,18 @@ if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
   exit 1
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Same branch policy the Windows lane enforces: refuse a Qt that is either
+# unpatched for the documented CVEs or past its open-source support date.
+QMAKE_TOOL="$(command -v qmake6 || command -v qmake || true)"
+if [ -z "$QMAKE_TOOL" ]; then
+  echo "ERROR: qmake6 not found. Install the Qt 6 development packages."
+  exit 1
+fi
+python3 "$SCRIPT_DIR/validate_qt_version.py" --qmake "$QMAKE_TOOL"
+
+ROOT="$SCRIPT_DIR"/..
 VERSION="$(cat "$ROOT/VERSION")"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
 if [ -n "$COMMIT" ]; then

@@ -263,15 +263,13 @@ def check_release_scripts(report: Report, root: Path) -> None:
     qt_validator = root / "scripts" / "validate_qt_version.ps1"
     if not qt_validator.is_file():
         report.failed_check("Windows Qt security-floor validator", "validator is missing")
+    elif "validate_qt_version.py" not in read_text(qt_validator):
+        report.failed_check(
+            "Windows Qt security-floor validator",
+            "the Windows wrapper no longer delegates to the shared policy",
+        )
     else:
-        validator_text = read_text(qt_validator)
-        if "CVE-2026-6210" not in validator_text or "6.8.8" not in validator_text:
-            report.failed_check(
-                "Windows Qt security-floor validator",
-                "the documented Qt CVE floor is not enforced by the validator",
-            )
-        else:
-            report.passed("Windows Qt security-floor validator contract")
+        report.passed("Windows Qt security-floor validator contract")
 
 
 def check_rclone_security_floor(report: Report, root: Path) -> None:
@@ -363,6 +361,47 @@ def write_release_checksums(report: Report, root: Path) -> None:
     with (release_dir / "SHA256SUMS").open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines) + "\n")
     report.passed(f"release checksums written for {len(artifacts)} artifact(s)")
+
+
+def check_qt_branch_policy(report: Report, root: Path) -> None:
+    """The Qt branch policy is one table, enforced by every release lane.
+
+    It used to be a Windows-only PowerShell script, so an AppImage or DMG
+    could ship a Qt nobody had checked.
+    """
+    validator = root / "scripts" / "validate_qt_version.py"
+    if not validator.is_file():
+        report.failed_check("Qt branch policy", "scripts/validate_qt_version.py is missing")
+        return
+
+    lanes = {
+        "scripts/release_windows.cmd": "validate_qt_version.ps1",
+        "scripts/release_AppImage.sh": "validate_qt_version.py",
+        "scripts/release_macOS.sh": "validate_qt_version.py",
+    }
+    missing = [
+        lane
+        for lane, needle in lanes.items()
+        if not (root / lane).is_file() or needle not in read_text(root / lane)
+    ]
+    if missing:
+        report.failed_check(
+            "Qt branch policy",
+            "these release lanes do not validate Qt: " + ", ".join(missing),
+        )
+        return
+
+    test = root / "tests" / "qt_version_policy_test.py"
+    if not test.is_file():
+        report.failed_check("Qt branch policy", "tests/qt_version_policy_test.py is missing")
+        return
+    run_checked(
+        report,
+        "Qt branch policy contract",
+        [sys.executable, str(test)],
+        root,
+        timeout=60,
+    )
 
 
 def check_package_manifest_generator(report: Report, root: Path) -> None:
@@ -599,6 +638,7 @@ def main() -> int:
     check_metadata(report, root)
     check_release_scripts(report, root)
     check_rclone_security_floor(report, root)
+    check_qt_branch_policy(report, root)
     write_release_checksums(report, root)
     check_package_manifest_generator(report, root)
     check_appimage_update_verifier(report, root)

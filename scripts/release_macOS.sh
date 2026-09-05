@@ -26,6 +26,17 @@ if [ -z "$QT_PREFIX" ] || [ ! -d "$QT_PREFIX" ]; then
   exit 1
 fi
 
+# Same branch policy the Windows lane enforces: refuse a Qt that is either
+# unpatched for the documented CVEs or past its open-source support date.
+QMAKE_TOOL="$QT_PREFIX/bin/qmake6"
+[ -x "$QMAKE_TOOL" ] || QMAKE_TOOL="$QT_PREFIX/bin/qmake"
+if [ ! -x "$QMAKE_TOOL" ]; then
+  echo "ERROR: qmake not found under $QT_PREFIX."
+  exit 1
+fi
+python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/validate_qt_version.py" \
+  --qmake "$QMAKE_TOOL"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
 VERSION="$(cat "$ROOT/VERSION")"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"

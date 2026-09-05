@@ -8,14 +8,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
-- [ ] P1 — Settle and enforce the Qt branch policy before 2026-09-22
-  Why: Qt 6.11 leaves open-source support on 2026-09-22 and `validate_qt_version.ps1` still accepts it with no upper bound; the CVE gate runs on Windows only; and CMake declares no Qt minimum at all despite the README badge claiming 6.4+.
-  Evidence: endoflife.date/qt gives Qt 6.11 OSS end 2026-09-22, 6.10 ended 2026-04-07, 6.8 LTS commercial to 2029-10-08 with its OSS window closed 2025-04-02 and the highest public patch at 6.8.3, while the CVE-2026-6210 fix needs 6.8.8; Qt 6.12 LTS is targeted for 2026-09-22 (Beta 1 June 2026, wiki.qt.io/Qt_6.12_Release). `CMakeLists.txt:10` calls `find_package(QT NAMES Qt6 REQUIRED ...)` with no version; `scripts/release_windows.cmd:67` is the only caller of `scripts/validate_qt_version.ps1`; `scripts/release_AppImage.sh` and `scripts/release_macOS.sh` have no Qt check; the gate cites CVE-2026-6210 but not CVE-2026-9499, which shares the 6.8.8+/6.11.1+ boundary.
-  Touches: `CMakeLists.txt`, `scripts/validate_qt_version.ps1`, new `scripts/validate_qt_version.sh`, `scripts/release_AppImage.sh`, `scripts/release_macOS.sh`, `scripts/release_check.py`, `README.md`, `SECURITY.md`
-  Acceptance: `find_package` carries an explicit minimum that matches the README badge and the distro floor the project intends to support; one shared version-policy check runs in all three release scripts, names both CVEs, and additionally fails when the detected branch is past its documented open-source support date; `SECURITY.md` records the chosen branch, the date it must be revisited, and the intended move to 6.12 LTS; building below the minimum fails at configure time with a readable message.
-  Complexity: S
-  Note: settle the "is 6.8.8 obtainable without a commercial licence" open question in RESEARCH.md first; the answer decides whether the pinned branch is 6.8 or 6.11 until 6.12 ships.
-
 - [ ] P1 — Parse `rclone listremotes --json` instead of splitting on `:`
   Why: the current parser requires exactly two colon-separated parts, but rclone emits `name: type description` when a remote has a description, which yields a garbage type, a failed icon lookup and a misleading tooltip.
   Evidence: `src/main_window.cpp:2802-2822`. Verified against rclone v1.75.0: `listremotes --long` printed `localdisk: alias My main disk: backup`; `listremotes --json` returned `{"name","type","source","description"}` per remote. Likely residue of `mmozeiko#83`.
