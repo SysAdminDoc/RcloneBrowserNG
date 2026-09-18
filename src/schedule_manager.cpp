@@ -407,6 +407,7 @@ bool ScheduleManager::installSchedule(const QString &taskName,
 }
 
 bool ScheduleManager::removeSchedule(const QString &taskName, QString *error) {
+  Q_UNUSED(error);
   const QString sysName = scheduleTaskName(taskName);
 
 #if defined(Q_OS_WIN32)

@@ -2508,6 +2508,7 @@ QString MainWindow::terminalRcloneConfigCommand(const QStringList &args) const {
 bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
                                               const QDateTime &configBefore,
                                               const QString &errorTitle) {
+  Q_UNUSED(errorTitle);
   const QStringList fullArgs = GetRcloneConf() + args;
 
   QProcess *p = new QProcess(this);
