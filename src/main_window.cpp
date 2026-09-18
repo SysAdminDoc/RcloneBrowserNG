@@ -27,6 +27,8 @@
 #include "osx_helper.h"
 #endif
 
+#define UNUSED(expr) do { (void)(expr); } while (0)
+
 namespace {
 
 #if defined(Q_OS_WIN32)
@@ -2508,6 +2510,7 @@ QString MainWindow::terminalRcloneConfigCommand(const QStringList &args) const {
 bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
                                               const QDateTime &configBefore,
                                               const QString &errorTitle) {
+  UNUSED(errorTitle);
   const QStringList fullArgs = GetRcloneConf() + args;
 
   QProcess *p = new QProcess(this);
