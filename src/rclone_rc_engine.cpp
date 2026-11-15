@@ -9,6 +9,26 @@ constexpr int kRcRequestTimeoutMs = 10000;
 QString makeRcUrl(quint16 port) {
   return QString("http://localhost:%1/").arg(port);
 }
+
+// The arg array for core/command. The daemon runs that command as a second
+// rclone process with only these arguments, so the daemon's own --config and
+// --password-command don't reach it, and a remote that only exists in the
+// config chosen in Preferences fails with "didn't find section in config
+// file". GetRcloneConf() always returns flag/value pairs.
+QJsonArray coreCommandArguments(const QStringList &args) {
+  QJsonArray commandArgs;
+  const QStringList conf = GetRcloneConf();
+  for (int i = 0; i + 1 < conf.size(); i += 2) {
+    if (!args.contains(conf.at(i))) {
+      commandArgs.append(conf.at(i));
+      commandArgs.append(conf.at(i + 1));
+    }
+  }
+  for (int i = 1; i < args.size(); i++) {
+    commandArgs.append(args[i]);
+  }
+  return commandArgs;
+}
 } // namespace
 
 RcloneRcEngine::RcloneRcEngine(QObject *parent) : QObject(parent) {}
@@ -362,14 +382,9 @@ void RcloneRcEngine::startCommand(const QStringList &args,
                                   const QString &group, QObject *context,
                                   const JobCallback &callback) {
   Q_UNUSED(group);
-  QJsonArray commandArgs;
-  for (int i = 1; i < args.size(); i++) {
-    commandArgs.append(args[i]);
-  }
-
   QJsonObject payload;
   payload.insert("command", args.first());
-  payload.insert("arg", commandArgs);
+  payload.insert("arg", coreCommandArguments(args));
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 
@@ -498,16 +513,11 @@ void RcloneRcEngine::stopJob(
 }
 
 QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
-  QJsonArray commandArgs;
-  for (int i = 1; i < args.size(); i++) {
-    commandArgs.append(args[i]);
-  }
-
   QJsonObject payload;
   if (!args.isEmpty()) {
     payload.insert("command", args.first());
   }
-  payload.insert("arg", commandArgs);
+  payload.insert("arg", coreCommandArguments(args));
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 

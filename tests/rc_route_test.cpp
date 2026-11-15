@@ -213,6 +213,27 @@ private slots:
     QCOMPARE(filesUnder(dest).size(), 4);
   }
 
+  // core/command runs a second rclone inside the daemon, and that one reads
+  // the default rclone.conf unless it's told otherwise. A remote that only
+  // exists in the config chosen in Preferences has to resolve there too.
+  void coreCommandReadsTheConfigFromPreferences() {
+    makeTree("src-conf");
+    const QString dest = QDir(mDir.path()).filePath("dst-conf");
+
+    RcloneRcEngine engine;
+    QStringList args;
+    // The fixture's "local" remote is an alias for the temporary folder.
+    args << "copy" << "--one-file-system" << "--verbose" << "local:src-conf"
+         << dest;
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+
+    QCOMPARE(filesUnder(dest).size(), 4);
+  }
+
   // sync/copy takes a directory Fs and fails a file source with "is a file
   // not a directory", while the CLI splits it and copies the one file. The
   // engine has to notice before it commits to the route.
