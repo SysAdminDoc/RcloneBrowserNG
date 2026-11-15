@@ -6,7 +6,7 @@
 ScheduleDialog::ScheduleDialog(const QString &taskName, QWidget *parent)
     : QDialog(parent) {
   setWindowTitle(QString("Schedule: %1").arg(taskName));
-  resize(480, 320);
+  resize(480, 380);
   UiPolish::SetWindowDefaults(this, QSize(400, 260));
 
   auto *layout = new QVBoxLayout(this);
@@ -56,6 +56,31 @@ ScheduleDialog::ScheduleDialog(const QString &taskName, QWidget *parent)
   mPreview->setAccessibleDescription(
       "Shows the next scheduled run times or validation errors.");
   layout->addWidget(mPreview);
+
+  // The scheduled run checks these itself and writes a skip, with the reason,
+  // to the app's log.
+  mRequireAc = new QCheckBox("Only run while plugged in", this);
+  mRequireAc->setObjectName("scheduleRequireAc");
+  mRequireAc->setAccessibleDescription(
+      "Skips a run when the computer is on battery. The skip and its reason "
+      "go to the app's log.");
+  layout->addWidget(mRequireAc);
+
+  mRequireUnmetered =
+      new QCheckBox("Only run on a network that isn't metered", this);
+  mRequireUnmetered->setObjectName("scheduleRequireUnmetered");
+  if (RunConditions::CanCheckMetering()) {
+    mRequireUnmetered->setAccessibleDescription(
+        "Skips a run on a metered connection, such as a phone hotspot. The "
+        "skip and its reason go to the app's log.");
+  } else {
+    mRequireUnmetered->setEnabled(false);
+    const QString why =
+        "This system doesn't say whether a network is metered.";
+    mRequireUnmetered->setToolTip(why);
+    mRequireUnmetered->setAccessibleDescription(why);
+  }
+  layout->addWidget(mRequireUnmetered);
   layout->addStretch();
 
   auto *buttons = new QDialogButtonBox(
@@ -79,7 +104,9 @@ ScheduleDialog::ScheduleDialog(const QString &taskName, QWidget *parent)
                    &ScheduleDialog::updatePreview);
   setTabOrder(mIntervalCombo, mTimeEdit);
   setTabOrder(mTimeEdit, mCronEdit);
-  setTabOrder(mCronEdit, buttons->button(QDialogButtonBox::Ok));
+  setTabOrder(mCronEdit, mRequireAc);
+  setTabOrder(mRequireAc, mRequireUnmetered);
+  setTabOrder(mRequireUnmetered, buttons->button(QDialogButtonBox::Ok));
   updatePreview();
 }
 
@@ -96,6 +123,15 @@ QString ScheduleDialog::time() const {
   const int index = mIntervalCombo ? mIntervalCombo->currentIndex() : -1;
   return (index == 3 || index == 4) && mTimeEdit ? mTimeEdit->text().trimmed()
                                                   : QString();
+}
+
+RunConditions::Conditions ScheduleDialog::conditions() const {
+  RunConditions::Conditions conditions;
+  conditions.requireAcPower = mRequireAc && mRequireAc->isChecked();
+  conditions.requireUnmetered = mRequireUnmetered &&
+                                mRequireUnmetered->isEnabled() &&
+                                mRequireUnmetered->isChecked();
+  return conditions;
 }
 
 void ScheduleDialog::updatePreview() {

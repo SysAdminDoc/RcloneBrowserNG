@@ -75,6 +75,7 @@ set(SOURCE
   rclone_capabilities.cpp
   rc_delete_batch.cpp
   rc_job_widget.cpp
+  run_conditions.cpp
   remote_list_parser.cpp
   remote_path.cpp
   app_log.cpp
@@ -130,6 +131,7 @@ set(OTHER
   rclone_capabilities.h
   rc_delete_batch.h
   rc_job_widget.h
+  run_conditions.h
   remote_path.h
   schedule_dialog.h
   vfs_upload_state.h

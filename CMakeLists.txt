@@ -317,6 +317,14 @@ if(BUILD_TESTING)
   set_tests_properties(async_helpers_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
 
+  add_executable(run_conditions_test
+    tests/run_conditions_test.cpp
+    src/run_conditions.cpp
+  )
+  target_include_directories(run_conditions_test PRIVATE src)
+  target_link_libraries(run_conditions_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME run_conditions_test COMMAND run_conditions_test)
+
   # Starts the built app with --run-task, the way a system scheduler does.
   if(WIN32)
     set(RCLONE_BROWSER_APP_TARGET RcloneBrowser)
@@ -448,6 +456,7 @@ if(BUILD_TESTING)
     src/list_of_job_options.cpp
     src/schedule_manager.cpp
     src/schedule_dialog.cpp
+    src/run_conditions.cpp
     src/staged_transfer.cpp
     src/cross_remote_search.cpp
     src/combine_remote.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "run_conditions.h"
 
 class ScheduleDialog : public QDialog {
   Q_OBJECT
@@ -11,6 +12,7 @@ public:
 
   QString interval() const;
   QString time() const;
+  RunConditions::Conditions conditions() const;
 
 private:
   QComboBox *mIntervalCombo = nullptr;
@@ -19,6 +21,8 @@ private:
   QLabel *mTimeLabel = nullptr;
   QLabel *mCronLabel = nullptr;
   QLabel *mPreview = nullptr;
+  QCheckBox *mRequireAc = nullptr;
+  QCheckBox *mRequireUnmetered = nullptr;
 
   void updatePreview();
 };

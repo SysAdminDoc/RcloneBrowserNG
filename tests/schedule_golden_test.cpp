@@ -62,7 +62,9 @@ private slots:
         "Task <with> &special \"chars\"", "daily", "");
     QVERIFY(xml.contains("&amp;special"));
     QVERIFY(xml.contains("&lt;with&gt;"));
-    QVERIFY(xml.contains("&quot;chars&quot;"));
+    // The task name is also quoted for the command line, so its own
+    // quotes carry a backslash.
+    QVERIFY(xml.contains("\\&quot;chars\\&quot;"));
   }
 
   void systemdService() {
@@ -139,6 +141,113 @@ private slots:
         "Task <with> &chars", "daily", "");
     QVERIFY(plist.contains("&amp;chars"));
     QVERIFY(plist.contains("&lt;with&gt;"));
+  }
+
+  // Run conditions travel on the command line, after the task name, in each
+  // scheduler's own format.
+  void windowsXmlCarriesRunConditions() {
+    const QString xml = ScheduleManager::generateWindowsTaskXml(
+        "RcloneBrowserNG_test", "C:\\Apps\\RcloneBrowser.exe", "Nightly Backup",
+        "daily", "02:00", {"--require-ac", "--require-unmetered"});
+    QVERIFY(xml.contains("<Arguments>--run-task &quot;Nightly Backup&quot; "
+                         "--require-ac --require-unmetered</Arguments>"));
+    // The app logs a skipped run itself, so Task Scheduler must still start
+    // it on battery.
+    QVERIFY(xml.contains(
+        "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"));
+  }
+
+  void windowsXmlWithoutRunConditions() {
+    const QString xml = ScheduleManager::generateWindowsTaskXml(
+        "RcloneBrowserNG_test", "C:\\Apps\\RcloneBrowser.exe", "Nightly Backup",
+        "daily", "02:00");
+    QVERIFY(xml.contains(
+        "<Arguments>--run-task &quot;Nightly Backup&quot;</Arguments>"));
+  }
+
+  // CommandLineToArgvW reads a backslash before a quote as an escape, so a
+  // name ending in one used to swallow the closing quote.
+  void windowsArgumentQuoting_data() {
+    QTest::addColumn<QString>("taskName");
+    QTest::addColumn<QString>("arguments");
+    QTest::newRow("plain") << "Nightly" << "--run-task &quot;Nightly&quot;";
+    QTest::newRow("quote") << "The \"big\" one"
+                           << "--run-task &quot;The \\&quot;big\\&quot; "
+                              "one&quot;";
+    QTest::newRow("trailing backslash")
+        << "D:\\Backups\\" << "--run-task &quot;D:\\Backups\\\\&quot;";
+    QTest::newRow("inner backslash")
+        << "a\\b" << "--run-task &quot;a\\b&quot;";
+  }
+
+  void windowsArgumentQuoting() {
+    QFETCH(QString, taskName);
+    QFETCH(QString, arguments);
+    const QString xml = ScheduleManager::generateWindowsTaskXml(
+        "RcloneBrowserNG_test", "C:\\Apps\\RcloneBrowser.exe", taskName,
+        "daily", "");
+    QVERIFY2(xml.contains("<Arguments>" + arguments + "</Arguments>"),
+             qPrintable(xml));
+  }
+
+  void systemdServiceCarriesRunConditions() {
+    const QString svc = ScheduleManager::generateSystemdService(
+        "Nightly Backup", "/usr/bin/rclone-browser", {"--require-ac"});
+    QVERIFY(svc.contains("ExecStart=\"/usr/bin/rclone-browser\" --run-task "
+                         "\"Nightly Backup\" --require-ac\n"));
+  }
+
+  // systemd expands %h and friends inside ExecStart, and a quote would end
+  // the argument early.
+  void systemdServiceEscapesSpecifiersAndQuotes() {
+    const QString svc = ScheduleManager::generateSystemdService(
+        "50% \"sync\"", "/home/me/My Apps/rclone-browser");
+    QVERIFY(svc.contains("ExecStart=\"/home/me/My Apps/rclone-browser\" "
+                         "--run-task \"50%% \\\"sync\\\"\"\n"));
+    QVERIFY(svc.contains("Description=RcloneBrowserNG task: 50%% \"sync\""));
+  }
+
+  void macOsPlistCarriesRunConditions() {
+    const QString plist = ScheduleManager::generateMacPlist(
+        "RcloneBrowserNG_test", "/Applications/Rclone Browser NG.app",
+        "Nightly Backup", "daily", "02:00", {"--require-unmetered"});
+    QVERIFY(plist.contains("    <string>--run-task</string>\n"
+                           "    <string>Nightly Backup</string>\n"
+                           "    <string>--require-unmetered</string>\n"
+                           "  </array>\n"));
+  }
+
+  void cronLineCarriesRunConditions() {
+    const QString line = ScheduleManager::generateCronLine(
+        "RcloneBrowserNG_Nightly Backup", "/usr/bin/rclone-browser",
+        "Nightly Backup", "daily", "02:00", {"--require-ac"});
+    QCOMPARE(line, QString("0 02 * * * '/usr/bin/rclone-browser' --run-task "
+                           "'Nightly Backup' --require-ac "
+                           "# RcloneBrowserNG_Nightly Backup"));
+  }
+
+  // cron turns a bare % into a line break, and a quote in the name has to
+  // leave and re-enter the shell's single quotes.
+  void cronLineEscapesPercentAndQuotes() {
+    const QString line = ScheduleManager::generateCronLine(
+        "RcloneBrowserNG_50_ Bob_s", "/opt/it's/rclone-browser", "50% Bob's",
+        "hourly", "");
+    QCOMPARE(line, QString("0 * * * * '/opt/it'\\''s/rclone-browser' "
+                           "--run-task '50\\% Bob'\\''s' "
+                           "# RcloneBrowserNG_50_ Bob_s"));
+  }
+
+  // The listing used to cut the line at a double quote the line never has,
+  // so the whole crontab line showed up as the interval.
+  void cronLineReadsBack() {
+    const QString line = ScheduleManager::generateCronLine(
+        "RcloneBrowserNG_Nightly Backup", "/usr/bin/rclone-browser",
+        "Nightly Backup", "0 2 * * 1-5", "", {"--require-ac"});
+    const ScheduleEntry entry = ScheduleManager::parseCronLine(line);
+    QCOMPARE(entry.taskName, QString("Nightly Backup"));
+    QCOMPARE(entry.interval, QString("0 2 * * 1-5"));
+    QVERIFY(ScheduleManager::parseCronLine("0 * * * * /usr/bin/backup")
+                .taskName.isEmpty());
   }
 
   void cronValidExpressions() {

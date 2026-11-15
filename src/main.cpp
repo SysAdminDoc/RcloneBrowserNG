@@ -3,6 +3,7 @@
 #include "identity_migration.h"
 #include "list_of_job_options.h"
 #include "main_window.h"
+#include "run_conditions.h"
 #include "utils.h"
 
 namespace {
@@ -296,6 +297,21 @@ int main(int argc, char *argv[]) {
         qCritical().noquote() << "Available tasks:\n" + available.join("\n");
       }
       return 1;
+    }
+    const RunConditions::Conditions conditions =
+        RunConditions::FromArguments(app.arguments());
+    if (conditions.any()) {
+      const QString reason = RunConditions::SkipReasonNow(conditions);
+      if (!reason.isEmpty()) {
+        const QString message =
+            QString("Skipped the scheduled run of \"%1\" because %2.")
+                .arg(taskName, reason);
+        AppLog::Write(AppLog::Level::Warning, "schedule", message);
+        AppLog::Flush();
+        QTextStream(stdout) << message << "\n";
+        // A skip isn't a failure, so the scheduler shouldn't report one.
+        return 0;
+      }
     }
     // Only the main window used to read these, so a scheduled run started
     // an empty program path and reported success without running rclone.

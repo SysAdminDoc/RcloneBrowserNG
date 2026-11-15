@@ -28,6 +28,49 @@ QString xmlEscape(const QString &s) {
   return out;
 }
 
+// The extra arguments are fixed flags like --require-ac, so a space before
+// each is all the quoting they need on every scheduler.
+QString trailingArgs(const QStringList &extraArgs) {
+  QString out;
+  for (const QString &arg : extraArgs) {
+    out += ' ' + arg;
+  }
+  return out;
+}
+
+// Quotes one argument the way CommandLineToArgvW reads it back: backslashes
+// count only in front of a quote, so those runs are doubled, and a quote in
+// the name is escaped instead of ending the argument.
+QString windowsQuote(const QString &s) {
+  QString out = "\"";
+  int backslashes = 0;
+  for (const QChar ch : s) {
+    if (ch == '\\') {
+      ++backslashes;
+      continue;
+    }
+    if (ch == '"') {
+      out += QString(backslashes * 2 + 1, '\\');
+    } else {
+      out += QString(backslashes, '\\');
+    }
+    backslashes = 0;
+    out += ch;
+  }
+  out += QString(backslashes * 2, '\\');
+  return out + '"';
+}
+
+// systemd expands %h and friends anywhere in ExecStart, and reads "..." with
+// C-style escapes, so a task called "50% sync" needs both handled.
+QString systemdQuote(const QString &s) {
+  QString out = s;
+  out.replace('\\', "\\\\");
+  out.replace('"', "\\\"");
+  out.replace('%', "%%");
+  return '"' + out + '"';
+}
+
 void dispatchScheduleCallback(QPointer<QObject> context,
                               std::function<void()> callback) {
   if (!context) {
@@ -76,7 +119,8 @@ bool ScheduleManager::isSupported() {
 
 QString ScheduleManager::generateWindowsTaskXml(
     const QString &sysName, const QString &appPath, const QString &taskName,
-    const QString &interval, const QString &time) {
+    const QString &interval, const QString &time,
+    const QStringList &extraArgs) {
   QString triggerXml;
   if (interval == "hourly") {
     triggerXml = "      <CalendarTrigger>\n"
@@ -145,20 +189,25 @@ QString ScheduleManager::generateWindowsTaskXml(
       "  <Actions Context=\"Author\">\n"
       "    <Exec>\n"
       "      <Command>%3</Command>\n"
-      "      <Arguments>--run-task \"%4\"</Arguments>\n"
+      "      <Arguments>--run-task %4%5</Arguments>\n"
       "    </Exec>\n"
       "  </Actions>\n"
       "</Task>\n")
           .arg(xmlEscape(sysName), triggerXml, xmlEscape(appPath),
-               xmlEscape(taskName));
+               xmlEscape(windowsQuote(taskName)),
+               xmlEscape(trailingArgs(extraArgs)));
 }
 
 QString ScheduleManager::generateSystemdService(const QString &taskName,
-                                                const QString &appPath) {
+                                                const QString &appPath,
+                                                const QStringList &extraArgs) {
+  QString description = taskName;
+  description.replace('%', "%%");
   return QString(
       "[Unit]\nDescription=RcloneBrowserNG task: %1\n\n"
-      "[Service]\nType=oneshot\nExecStart=%2 --run-task \"%1\"\n")
-          .arg(taskName, appPath);
+      "[Service]\nType=oneshot\nExecStart=%2 --run-task %3%4\n")
+          .arg(description, systemdQuote(appPath), systemdQuote(taskName),
+               trailingArgs(extraArgs));
 }
 
 QString ScheduleManager::generateSystemdTimer(const QString &taskName,
@@ -194,7 +243,8 @@ QString ScheduleManager::generateMacPlist(const QString &sysName,
                                           const QString &appPath,
                                           const QString &taskName,
                                           const QString &interval,
-                                          const QString &time) {
+                                          const QString &time,
+                                          const QStringList &extraArgs) {
   int hour = 0;
   if (!time.isEmpty() && time.contains(':'))
     hour = time.left(time.indexOf(':')).toInt();
@@ -226,6 +276,11 @@ QString ScheduleManager::generateMacPlist(const QString &sysName,
         "  <key>StartInterval</key><integer>%1</integer>\n").arg(intervalSec);
   }
 
+  QString extraStrings;
+  for (const QString &arg : extraArgs) {
+    extraStrings += QString("    <string>%1</string>\n").arg(xmlEscape(arg));
+  }
+
   return QString(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
       "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
@@ -236,22 +291,69 @@ QString ScheduleManager::generateMacPlist(const QString &sysName,
       "    <string>%2</string>\n"
       "    <string>--run-task</string>\n"
       "    <string>%3</string>\n"
+      "%5"
       "  </array>\n"
       "%4"
       "  <key>RunAtLoad</key><false/>\n"
       "</dict>\n</plist>\n")
           .arg(xmlEscape(sysName), xmlEscape(appPath),
-               xmlEscape(taskName), scheduleKey);
+               xmlEscape(taskName), scheduleKey, extraStrings);
+}
+
+QString ScheduleManager::generateCronLine(const QString &sysName,
+                                          const QString &appPath,
+                                          const QString &taskName,
+                                          const QString &interval,
+                                          const QString &time,
+                                          const QStringList &extraArgs) {
+  QString cronExpr;
+  if (isValidCronExpr(interval)) {
+    cronExpr = interval;
+  } else if (interval == "hourly") {
+    cronExpr = QString("0 * * * *");
+  } else if (interval == "weekly") {
+    cronExpr = QString("%1 * * 0").arg(time.isEmpty() ? "0 0" : "0 " + time.left(2));
+  } else if (interval.endsWith("m")) {
+    cronExpr = QString("*/%1 * * * *").arg(interval.left(interval.length() - 1));
+  } else {
+    cronExpr = QString("0 %1 * * *").arg(time.isEmpty() ? "0" : time.left(2));
+  }
+
+  QString safeAppPath = appPath;
+  safeAppPath.replace('\'', "'\\''");
+  QString safeTaskName = taskName;
+  safeTaskName.replace('\'', "'\\''");
+  // cron reads a bare % in the command as a line break.
+  safeAppPath.replace('%', "\\%");
+  safeTaskName.replace('%', "\\%");
+  return QString("%1 '%2' --run-task '%3'%4 # %5")
+      .arg(cronExpr, safeAppPath, safeTaskName, trailingArgs(extraArgs),
+           sysName);
+}
+
+ScheduleEntry ScheduleManager::parseCronLine(const QString &line) {
+  ScheduleEntry entry;
+  const qsizetype marker = line.indexOf("# " + kPrefix);
+  if (marker < 0) {
+    return entry;
+  }
+  entry.taskName = line.mid(marker + 2 + kPrefix.length()).trimmed();
+  // The schedule is everything before the quoted app path.
+  const qsizetype command = line.indexOf('\'');
+  entry.interval = line.left(command < 0 ? marker : command).trimmed();
+  return entry;
 }
 
 bool ScheduleManager::installSchedule(const QString &taskName,
                                        const QString &interval,
-                                       const QString &time, QString *error) {
+                                       const QString &time, QString *error,
+                                       const QStringList &extraArgs) {
   const QString sysName = scheduleTaskName(taskName);
   const QString app = appPath();
 
 #if defined(Q_OS_WIN32)
-  QString xml = generateWindowsTaskXml(sysName, app, taskName, interval, time);
+  QString xml = generateWindowsTaskXml(sysName, app, taskName, interval, time,
+                                       extraArgs);
 
   QTemporaryFile xmlFile(QDir::tempPath() + "/rclonebrowserng-XXXXXX.xml");
   xmlFile.setAutoRemove(false);
@@ -286,7 +388,7 @@ bool ScheduleManager::installSchedule(const QString &taskName,
     QString servicePath = dir + "/" + sysName + ".service";
     QString timerPath = dir + "/" + sysName + ".timer";
 
-    QString service = generateSystemdService(taskName, app);
+    QString service = generateSystemdService(taskName, app, extraArgs);
     QString timer = generateSystemdTimer(taskName, interval, time);
 
     QFile sf(servicePath);
@@ -335,23 +437,8 @@ bool ScheduleManager::installSchedule(const QString &taskName,
       filtered << line;
   }
 
-  QString cronExpr;
-  if (isValidCronExpr(interval)) {
-    cronExpr = interval;
-  } else if (interval == "hourly") {
-    cronExpr = QString("0 * * * *");
-  } else if (interval == "weekly") {
-    cronExpr = QString("%1 * * 0").arg(time.isEmpty() ? "0 0" : "0 " + time.left(2));
-  } else if (interval.endsWith("m")) {
-    cronExpr = QString("*/%1 * * * *").arg(interval.left(interval.length() - 1));
-  } else {
-    cronExpr = QString("0 %1 * * *").arg(time.isEmpty() ? "0" : time.left(2));
-  }
-
-  QString safeTaskName = taskName;
-  safeTaskName.replace('\'', "'\\''");
-  filtered << QString("%1 '%2' --run-task '%3' %4")
-                  .arg(cronExpr, app, safeTaskName, marker);
+  filtered << generateCronLine(sysName, app, taskName, interval, time,
+                               extraArgs);
 
   QProcess install;
   install.start("crontab", QStringList() << "-");
@@ -373,7 +460,8 @@ bool ScheduleManager::installSchedule(const QString &taskName,
   QDir().mkpath(plistDir);
   QString plistPath = plistDir + "/" + sysName + ".plist";
 
-  QString plist = generateMacPlist(sysName, app, taskName, interval, time);
+  QString plist =
+      generateMacPlist(sysName, app, taskName, interval, time, extraArgs);
 
   QFile file(plistPath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -571,14 +659,10 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
     existing.waitForFinished(5000);
     QString crontab = QString::fromUtf8(existing.readAllStandardOutput());
     for (const QString &line : crontab.split('\n')) {
-      int marker = line.indexOf("# " + kPrefix);
-      if (marker < 0)
-        continue;
-      ScheduleEntry entry;
-      entry.taskName =
-          line.mid(marker + 2 + kPrefix.length()).trimmed();
-      entry.interval = line.left(line.indexOf('"')).trimmed();
-      result.append(entry);
+      const ScheduleEntry entry = parseCronLine(line);
+      if (!entry.taskName.isEmpty()) {
+        result.append(entry);
+      }
     }
   }
 
@@ -599,13 +683,15 @@ QList<ScheduleEntry> ScheduleManager::listSchedules(QString *error) {
 
 void ScheduleManager::installScheduleAsync(
     const QString &taskName, const QString &interval, const QString &time,
-    QObject *context, ScheduleOperationCallback callback) {
+    QObject *context, ScheduleOperationCallback callback,
+    const QStringList &extraArgs) {
   const QPointer<QObject> contextGuard(context);
   QThreadPool::globalInstance()->start(
-      [taskName, interval, time, contextGuard,
+      [taskName, interval, time, extraArgs, contextGuard,
        callback = std::move(callback)]() mutable {
         QString error;
-        const bool ok = installSchedule(taskName, interval, time, &error);
+        const bool ok =
+            installSchedule(taskName, interval, time, &error, extraArgs);
         dispatchScheduleCallback(
             contextGuard,
             [ok, error, callback = std::move(callback)]() mutable {

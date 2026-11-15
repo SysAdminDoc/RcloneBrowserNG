@@ -1498,6 +1498,8 @@ MainWindow::MainWindow(bool initializeRuntime)
 
       const QString interval = dialog.interval();
       const QString time = dialog.time();
+      const QStringList conditionArgs =
+          RunConditions::ToArguments(dialog.conditions());
 
       scheduleBtn->setEnabled(false);
       unscheduleBtn->setEnabled(false);
@@ -1516,7 +1518,8 @@ MainWindow::MainWindow(bool initializeRuntime)
                                    QString("Could not schedule \"%1\":\n%2")
                                        .arg(taskName, error));
             }
-          });
+          },
+          conditionArgs);
     });
 
     QObject::connect(unscheduleBtn, &QPushButton::clicked, this,

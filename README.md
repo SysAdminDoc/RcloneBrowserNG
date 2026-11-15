@@ -56,6 +56,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Google Drive "shared with me" support
 *   Public link generation for remotes that support sharing
 *   Saved tasks let you set up a job once, then run or edit it later (dry runs too)
+*   Put a saved task on your system's scheduler (Task Scheduler, launchd, systemd or cron), and have it wait until the computer is plugged in or off a metered network if you like
 *   Configurable dark mode on all systems
 
 ## How to get it

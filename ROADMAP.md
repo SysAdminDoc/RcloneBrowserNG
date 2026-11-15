@@ -148,10 +148,6 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
   Was blocked on: having no Mac. A manually triggered workflow on a GitHub-hosted macOS runner is the one CI build the project's rules allow, and the repo is public, so it costs nothing.
   Acceptance: a `workflow_dispatch` workflow runs `scripts/release_macOS.sh` and uploads the DMG as a workflow artifact (not a release), and one run passes.
 
-- [ ] P3 Condition-gated schedules: AC power and unmetered network
-  Was blocked on: the scheduler and the platform probes. The scheduler exists, and Qt's `QNetworkInformation` reports metered networks.
-  Acceptance: a scheduled task can require AC power and/or an unmetered network, and a skipped run is logged with the reason.
-
 - [ ] P3 Adaptive bandwidth while other apps use the network
   Was blocked on: other bandwidth work and platform traffic probes. `core/bwlimit` is wired to the job card now.
   Acceptance: an Adaptive mode compares interface traffic against rclone's own rate, throttles to a floor while other traffic is present and returns to the ceiling when it stops.
