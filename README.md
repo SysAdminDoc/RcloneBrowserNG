@@ -135,21 +135,33 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 
 ## Portable vs standard mode
 
-In standard mode configuration is stored in the usual per-user locations:
+In standard mode, settings and saved tasks live in the usual per-user places:
 
 *   macOS:
-    *   preferences: `~/Library/Preferences/com.rclone-browser.rclone-browser.plist`
-    *   tasks file: `~/Library/Application Support/rclone-browser/rclone-browser/tasks.bin`
+    *   preferences: `~/Library/Preferences/com.rclone-browser-ng.rclone-browser-ng.plist`
+    *   tasks file: `~/Library/Application Support/rclone-browser-ng/rclone-browser-ng/tasks.json`
 *   Linux/BSD:
-    *   preferences: `~/.config/rclone-browser/rclone-browser.conf`
-    *   tasks file: `~/.local/share/rclone-browser/rclone-browser/tasks.bin`
+    *   preferences: `~/.config/rclone-browser-ng/rclone-browser-ng.conf`
+    *   tasks file: `~/.local/share/rclone-browser-ng/rclone-browser-ng/tasks.json`
 *   Windows:
-    *   preferences: registry `HKEY_CURRENT_USER\Software\rclone-browser\rclone-browser`
-    *   tasks file: `%LOCALAPPDATA%\rclone-browser\rclone-browser\tasks.bin`
+    *   preferences: registry `HKEY_CURRENT_USER\Software\rclone-browser-ng\rclone-browser-ng`
+    *   tasks file: `%LOCALAPPDATA%\rclone-browser-ng\rclone-browser-ng\tasks.json`
 
-To enable portable mode, create an `.ini` file next to the executable with the same name — e.g. for `RcloneBrowser.exe` create `RcloneBrowser.ini` (for a macOS bundle, next to the `.app`). For Linux AppImages create a directory named `<appimage>.config` next to the AppImage file, per the [AppImage portable-mode spec](https://docs.appimage.org/user-guide/portable-mode.html).
+The app log is in a `logs` folder beside the tasks file.
 
-In portable mode all configuration lives next to the application, and the rclone binary and `rclone.conf` paths may be relative to the executable — so everything can live on a memory stick.
+NG 2.0.2 and earlier used classic Rclone Browser's `rclone-browser` locations instead, so the two apps overwrote each other's settings. The first time a newer NG starts, it copies from the old locations and leaves them as they were:
+
+*   your preferences, if NG doesn't have any of its own yet
+*   NG's `tasks.json` and `job-history.json`
+*   the tasks in classic's `tasks.bin`, apart from ones NG already has
+
+Classic keeps its `tasks.bin`, since NG only reads it. A `tasks.bin.corrupt` left by NG 2.0.2 gets its old name back, unless classic has already made a new one. The copy happens once. After that a change made in one app doesn't reach the other. Going back to 2.0.2 puts you on the old shared settings again, without any task you made after upgrading.
+
+NG doesn't rename or delete a tasks file it can't read. It leaves an unreadable `tasks.bin` where it is. For an unreadable `tasks.json`, it saves a copy called `tasks.json.unreadable` before writing a new one.
+
+To turn on portable mode, put an `.ini` file with the executable's name next to it. For `RcloneBrowser.exe` that's `RcloneBrowser.ini`, and on macOS it goes next to the `.app` bundle. For a Linux AppImage, make a folder named `<appimage>.config` next to the AppImage file, as the [AppImage portable-mode spec](https://docs.appimage.org/user-guide/portable-mode.html) describes.
+
+Portable mode keeps all configuration next to the application, and the rclone binary and `rclone.conf` paths can be relative to the executable, so everything can live on a USB stick. It uses the same files it always has.
 
 ## History
 

@@ -88,6 +88,7 @@ set(SOURCE
   utils.cpp
   job_options.cpp
   job_options_store.cpp
+  identity_migration.cpp
   list_of_job_options.cpp
   schedule_manager.cpp
   staged_transfer.cpp
@@ -99,6 +100,8 @@ set(OTHER
   utils.h
   job_options.h
   job_options_store.h
+  app_identity.h
+  identity_migration.h
   main_window.h
   remote_widget.h
   transfer_dialog.h
@@ -145,7 +148,8 @@ if(WIN32)
   add_executable(RcloneBrowser WIN32 ${SOURCE} ${OTHER} ${UI} ${QRC})
   target_link_libraries(RcloneBrowser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   target_link_libraries(RcloneBrowser version advapi32)
-  add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp)
+  add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp
+    identity_migration.cpp job_options_store.cpp job_options.cpp)
   target_link_libraries(RcloneBrowserPassword Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network advapi32)
 elseif(APPLE)
   find_library(COCOA_LIB Cocoa REQUIRED)

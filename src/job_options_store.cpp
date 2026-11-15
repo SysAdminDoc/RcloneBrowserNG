@@ -464,3 +464,82 @@ bool WriteJobOptionsStoreJson(QIODevice *device,
   }
   return true;
 }
+
+namespace {
+// Keeps a copy of a task file NG could not read, next to it, before NG saves
+// over it. Starting again with the same broken file reuses the copy instead
+// of making another one.
+QString keepCopyOf(const QString &path) {
+  QFile source(path);
+  if (!source.open(QIODevice::ReadOnly)) {
+    return QString();
+  }
+  const QByteArray bytes = source.readAll();
+  source.close();
+  for (int n = 1; n < 100; ++n) {
+    const QString candidate =
+        path + ".unreadable" + (n > 1 ? QString::number(n) : QString());
+    QFile existing(candidate);
+    if (!existing.exists()) {
+      return QFile::copy(path, candidate) ? candidate : QString();
+    }
+    if (existing.open(QIODevice::ReadOnly) && existing.readAll() == bytes) {
+      return candidate;
+    }
+  }
+  return QString();
+}
+} // namespace
+
+SavedTasksLoadResult LoadSavedTasks(const QString &jsonPath,
+                                    const QString &binPath) {
+  SavedTasksLoadResult result;
+  QStringList problems;
+
+  QFile jsonFile(jsonPath);
+  if (jsonFile.open(QIODevice::ReadOnly)) {
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&jsonFile);
+    jsonFile.close();
+    if (loaded.error.isEmpty()) {
+      result.tasks = loaded.tasks;
+      result.loaded = true;
+      return result;
+    }
+    ClearJobOptionsList(&loaded.tasks);
+    const QString copy = keepCopyOf(jsonPath);
+    problems << (copy.isEmpty()
+                     ? QString("%1 could not be read (%2).")
+                           .arg(QDir::toNativeSeparators(jsonPath),
+                                loaded.error)
+                     : QString("%1 could not be read (%2). A copy of it was "
+                               "kept as %3.")
+                           .arg(QDir::toNativeSeparators(jsonPath),
+                                loaded.error,
+                                QDir::toNativeSeparators(copy)));
+  }
+
+  QFile binFile(binPath);
+  if (binFile.open(QIODevice::ReadOnly)) {
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&binFile);
+    binFile.close();
+    if (loaded.error.isEmpty()) {
+      result.tasks = loaded.tasks;
+      result.loaded = true;
+      result.fromLegacyFile = true;
+    } else {
+      // Left exactly as it is. Classic Rclone Browser, or the build that
+      // wrote it, may still be able to read it (#17).
+      ClearJobOptionsList(&loaded.tasks);
+      problems << QString("%1 could not be read (%2). It was left as it is, "
+                          "and tasks you save from now on go to tasks.json. "
+                          "Move the file somewhere else to stop this notice.")
+                      .arg(QDir::toNativeSeparators(binPath), loaded.error);
+    }
+  }
+
+  if (!problems.isEmpty()) {
+    result.error = "Some saved tasks could not be loaded.\n\n" +
+                   problems.join("\n\n");
+  }
+  return result;
+}

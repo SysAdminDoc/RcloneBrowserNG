@@ -84,47 +84,20 @@ QString ListOfJobOptions::GetPersistenceFilePath() {
 }
 
 bool ListOfJobOptions::RestoreFromUserData(ListOfJobOptions &dataIn) {
-  QString jsonPath = GetPersistenceFilePath();
-  QFile jsonFile(jsonPath);
-  if (jsonFile.open(QIODevice::ReadOnly)) {
-    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&jsonFile);
-    jsonFile.close();
-    if (loaded.error.isEmpty()) {
-      ClearJobOptionsList(&dataIn.tasks);
-      dataIn.tasks = loaded.tasks;
-      return true;
-    }
-  }
-
+  const QString jsonPath = GetPersistenceFilePath();
   QString binPath = jsonPath;
   binPath.replace(".json", ".bin");
-  QFile binFile(binPath);
-  if (!binFile.open(QIODevice::ReadOnly))
-    return false;
 
-  JobOptionsStoreLoadResult loaded = ReadJobOptionsStore(&binFile);
-  binFile.close();
-  if (!loaded.error.isEmpty()) {
-    QString corruptPath = binPath + ".corrupt";
-    int n = 1;
-    while (QFile::exists(corruptPath +
-                         (n > 1 ? QString::number(n) : QString()))) {
-      ++n;
-    }
-    corruptPath += (n > 1 ? QString::number(n) : QString());
-    QFile::rename(binPath, corruptPath);
-
-    dataIn.mLastLoadError =
-        QString("Saved tasks file could not be loaded (%1).\n\n"
-                "The file has been renamed to:\n%2\n\n"
-                "Your saved tasks will need to be recreated.")
-            .arg(loaded.error, corruptPath);
+  SavedTasksLoadResult loaded = LoadSavedTasks(jsonPath, binPath);
+  dataIn.mLastLoadError = loaded.error;
+  if (!loaded.loaded) {
     return false;
   }
-
   ClearJobOptionsList(&dataIn.tasks);
   dataIn.tasks = loaded.tasks;
-  dataIn.PersistToUserData();
+  if (loaded.fromLegacyFile) {
+    dataIn.PersistToUserData();
+  }
   return true;
 }
 

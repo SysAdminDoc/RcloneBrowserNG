@@ -132,26 +132,9 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
 
-- [ ] P3 — Document the saved-task file migration in the README
-  Why: a field report treated the move from `tasks.bin` to `tasks.json` as a compatibility break; the behaviour is intentional but undocumented, and downgrading loses any task created after the upgrade.
-  Evidence: `src/list_of_job_options.cpp` reads `tasks.json`, falls back to `tasks.bin`, and thereafter writes only `tasks.json`, leaving the legacy file untouched; PR #15 third observation.
-  Touches: `README.md`
-  Acceptance: the "Portable vs standard mode" section names `tasks.json` as the current store, states that `tasks.bin` is read once and then left alone, and says plainly that reverting to an older build loses tasks created since the upgrade.
-  Complexity: S
-
 ## Issue Intake (2026-09-26)
 
-Open GitHub issues checked against this list on 2026-09-26. None of the three was on the list before. #17 relates to the P3 README item above about `tasks.json` and `tasks.bin` (PR #15).
-
-### P2
-
-- [ ] P2: Stop sharing the classic RcloneBrowser's AppData folder and settings (issue #17)
-  Reported: Achim16, 2026-09-05, v2.0.2 on Windows 10 22H2, with the 2021 RcloneBrowser Portable 2.0.1.1 on the same drive.
-  Why: NG reads and writes `%LOCALAPPDATA%\rclone-browser`, so it renames the classic build's `tasks.bin` to `tasks.bin.corrupt` and inherits the classic build's rclone location and rclone.conf path from Preferences. Either NG gets its own folder, or it must read the classic `tasks.bin` cleanly and leave it alone.
-  Next: give NG its own organisation and application name for QSettings and its own data directory; on first run offer a one-time import of the classic tasks and preferences; never rename a file it did not write. Document the change in the README section named in the P3 item above.
-  Acceptance: with both builds installed, each keeps its own tasks and settings and neither marks the other's files corrupt.
-  Evidence: https://github.com/SysAdminDoc/RcloneBrowserNG/issues/17
-  Complexity: M
+Open GitHub issues checked against this list on 2026-09-26. None of the three was on the list before.
 
 ### P3
 

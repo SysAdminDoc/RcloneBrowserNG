@@ -1,9 +1,13 @@
+#include "app_identity.h"
+#include "identity_migration.h"
 #include "utils.h"
 
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);
-  app.setApplicationName("rclone-browser");
-  app.setOrganizationName("rclone-browser");
+  ApplyAppIdentity();
+  // rclone can run this before the main window ever has, so it needs the
+  // settings copied over just the same.
+  RunSharedIdentityMigration();
 
   QString error;
   const QString password = ReadRcloneConfigPassword(&error);

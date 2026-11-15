@@ -165,6 +165,20 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME job_options_store_test COMMAND job_options_store_test)
 
+  add_executable(identity_migration_test
+    tests/identity_migration_test.cpp
+    src/identity_migration.cpp
+    src/job_options_store.cpp
+    src/job_options.cpp
+    src/utils.cpp
+  )
+  target_include_directories(identity_migration_test PRIVATE src)
+  target_link_libraries(identity_migration_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(identity_migration_test advapi32)
+  endif()
+  add_test(NAME identity_migration_test COMMAND identity_migration_test)
+
   add_executable(job_history_test
     tests/job_history_test.cpp
     src/job_history.cpp

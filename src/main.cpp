@@ -1,4 +1,6 @@
+#include "app_identity.h"
 #include "app_log.h"
+#include "identity_migration.h"
 #include "list_of_job_options.h"
 #include "main_window.h"
 #include "utils.h"
@@ -36,13 +38,20 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
 
   app.setApplicationDisplayName("Rclone Browser NG");
-  app.setApplicationName("rclone-browser");
-  app.setOrganizationName("rclone-browser");
+  ApplyAppIdentity();
   QGuiApplication::setDesktopFileName("io.github.sysadmindoc.rclonebrowserng");
   app.setWindowIcon(QIcon(":/icons/icon.png"));
 
+  // Before anything reads or writes settings, so a first start under the new
+  // identity still sees the preferences saved under the old one.
+  const IdentityMigrationResult identityMigration =
+      RunSharedIdentityMigration();
+
   // Before anything that can fail, so a startup problem is on disk too.
   AppLog::Install();
+  if (!identityMigration.summary().isEmpty()) {
+    qInfo().noquote() << identityMigration.summary();
+  }
 
   QTranslator translator;
   const QStringList uiLanguages = QLocale::system().uiLanguages();
