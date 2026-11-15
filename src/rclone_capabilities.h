@@ -18,6 +18,9 @@ struct BackendFeatures {
 
   static BackendFeatures fromJson(const QByteArray &json);
   static BackendFeatures defaultForType(const QString &remoteType);
+  // The queried features with the trash fields taken from the type defaults.
+  static BackendFeatures withTypeDefaults(const BackendFeatures &queried,
+                                          const BackendFeatures &typeDefaults);
 };
 
 class BackendFeatureCache {

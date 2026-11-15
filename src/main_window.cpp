@@ -2185,9 +2185,10 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
     remote->applyBackendFeatures(defaultFeatures);
     QPointer<RemoteWidget> safeRemote(remote);
     BackendFeatureCache::queryAsync(
-        name, [safeRemote](const BackendFeatures &features) {
+        name, [safeRemote, defaultFeatures](const BackendFeatures &features) {
           if (safeRemote)
-            safeRemote->applyBackendFeatures(features);
+            safeRemote->applyBackendFeatures(
+                BackendFeatures::withTypeDefaults(features, defaultFeatures));
         });
   }
 

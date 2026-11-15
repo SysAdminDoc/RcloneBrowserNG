@@ -63,7 +63,9 @@ BackendFeatures BackendFeatures::defaultForType(const QString &remoteType) {
     f.about = true;
     f.cleanUp = true;
     f.trashSupported = true;
-    f.trashFlag = "--onedrive-no-trash=false"; // inverted flag
+    // OneDrive has no use-trash flag. Deletes go to the recycle bin unless
+    // hard_delete is set, so turning that off is the trash flag here.
+    f.trashFlag = "--onedrive-hard-delete=false";
   } else if (remoteType == "dropbox") {
     f.about = true;
     f.trashSupported = true;
@@ -83,6 +85,16 @@ BackendFeatures BackendFeatures::defaultForType(const QString &remoteType) {
   }
 
   return f;
+}
+
+BackendFeatures BackendFeatures::withTypeDefaults(
+    const BackendFeatures &queried, const BackendFeatures &typeDefaults) {
+  BackendFeatures merged = queried;
+  // `rclone backend features` says nothing about trash, so what the type
+  // knows about it has to survive the query.
+  merged.trashSupported = typeDefaults.trashSupported;
+  merged.trashFlag = typeDefaults.trashFlag;
+  return merged;
 }
 
 BackendFeatureCache &BackendFeatureCache::instance() {

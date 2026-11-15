@@ -1,5 +1,8 @@
 #include "rclone_capabilities.h"
+#include "test_rclone.h"
 
+#include <QProcess>
+#include <QTemporaryDir>
 #include <QTest>
 
 class BackendFeaturesTest : public QObject {
@@ -75,6 +78,76 @@ private slots:
     BackendFeatures unknown = BackendFeatures::defaultForType("someunknown");
     QVERIFY2(unknown.copy, "unknown default copy should be true");
     QVERIFY2(!unknown.publicLink, "unknown default publicLink should be false");
+  }
+
+  void trashFieldsSurviveTheQuery() {
+    const BackendFeatures queried = BackendFeatures::fromJson(
+        R"({"Features": {"CleanUp": true, "PublicLink": false}})");
+    const BackendFeatures defaults =
+        BackendFeatures::defaultForType("onedrive");
+    const BackendFeatures merged =
+        BackendFeatures::withTypeDefaults(queried, defaults);
+    QVERIFY(merged.queried);
+    QVERIFY(merged.cleanUp);
+    QVERIFY(!merged.publicLink);
+    QVERIFY(merged.trashSupported);
+    QCOMPARE(merged.trashFlag, defaults.trashFlag);
+  }
+
+  // Every trash flag goes on the command line of a delete or purge, and
+  // rclone refuses the whole command over a flag it doesn't know. OneDrive
+  // shipped with one (--onedrive-no-trash), so every OneDrive delete failed.
+  void trashFlagsAreFlagsRcloneKnows() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("no rclone; set RCLONE_BROWSER_TEST_RCLONE");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString config = dir.filePath("rclone.conf");
+    {
+      QFile file(config);
+      QVERIFY(file.open(QIODevice::WriteOnly));
+    }
+    {
+      QFile file(dir.filePath("target/keep.txt"));
+      QVERIFY(QDir(dir.path()).mkpath("target"));
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write("x");
+    }
+
+    auto deleteWith = [&](const QString &flag, QString *output) {
+      QProcess process;
+      process.setProcessChannelMode(QProcess::MergedChannels);
+      process.start(rclone, {"--config", config, "delete", "--dry-run", flag,
+                             dir.filePath("target")});
+      if (!process.waitForFinished(60000)) {
+        process.kill();
+        *output = "timed out";
+        return -1;
+      }
+      *output = QString::fromUtf8(process.readAll()).trimmed();
+      return process.exitCode();
+    };
+
+    // A pass below only means something if rclone checks the flag at all.
+    QString output;
+    QVERIFY2(deleteWith("--no-such-trash-flag", &output) != 0,
+             qPrintable(output));
+
+    int checked = 0;
+    for (const QString &type :
+         {"drive", "onedrive", "dropbox", "s3", "b2", "sftp", "ftp", "local"}) {
+      const QString flag = BackendFeatures::defaultForType(type).trashFlag;
+      if (flag.isEmpty()) {
+        continue;
+      }
+      QVERIFY2(deleteWith(flag, &output) == 0,
+               qPrintable(type + " " + flag + ": " + output));
+      checked++;
+    }
+    QVERIFY(checked >= 2);
+    QVERIFY(QFile::exists(dir.filePath("target/keep.txt")));
   }
 
   void cachePutGetRoundTrip() {
