@@ -57,7 +57,25 @@ void rotateIfNeededLocked() {
   }
 
   file.setFileName(base);
-  file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text);
+  if (file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+    return;
+  }
+  // Every Write() retries the open, so say why only once.
+  static bool reported = false;
+  if (reported) {
+    return;
+  }
+  reported = true;
+  const QString why =
+      QString("Can't open the log file %1: %2").arg(base, file.errorString());
+  if (previousHandler()) {
+    // The log's lock is held here, so this skips our own handler, which
+    // would come back into Write() and wait on that lock forever.
+    previousHandler()(QtWarningMsg, QMessageLogContext(), why);
+  } else {
+    // Install() hasn't run, so qWarning can't reach Write().
+    qWarning("%s", qPrintable(why));
+  }
 }
 
 QString levelTag(Level level) {

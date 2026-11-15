@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -143,6 +144,35 @@ private slots:
     QVERIFY2(readLog().contains("job: rclone said something"),
              qPrintable(readLog()));
     Diagnostics::setLogCallback(nullptr);
+  }
+
+  void saysOnceWhenTheLogCannotBeOpened() {
+    // A log that couldn't be opened stayed empty without a word about why.
+    // Fill the open file to the cap so the next line closes it and opens
+    // whatever LogFilePath() names by then, which is a folder.
+    AppLog::Write(AppLog::Level::Error, "app", "before");
+    AppLog::Flush();
+    {
+      QFile seed(AppLog::LogFilePath());
+      QVERIFY(seed.open(QIODevice::WriteOnly | QIODevice::Append));
+      seed.write(QByteArray(AppLog::MaxBytes(), 'x'));
+    }
+
+    const QString name = QCoreApplication::applicationName();
+    QCoreApplication::setApplicationName(name + "-blocked");
+    const QString blocked = AppLog::LogDirectory();
+    const auto restore = qScopeGuard([name, blocked] {
+      QCoreApplication::setApplicationName(name);
+      QDir(blocked).removeRecursively();
+    });
+    QVERIFY(QDir().mkpath(AppLog::LogFilePath()));
+
+    QTest::ignoreMessage(
+        QtWarningMsg,
+        QRegularExpression("^Can't open the log file .*rclonebrowser\\.log: "));
+    QTest::failOnWarning(QRegularExpression("Can't open the log file"));
+    AppLog::Write(AppLog::Level::Error, "app", "first line");
+    AppLog::Write(AppLog::Level::Error, "app", "second line");
   }
 };
 
