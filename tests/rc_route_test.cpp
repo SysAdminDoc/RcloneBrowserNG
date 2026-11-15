@@ -8,6 +8,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <memory>
+
 // Proves the engine really takes the sync/* route, which no test of the
 // request builder can show. The two routes are told apart by the stats group
 // they report: a sync/* job is given an explicit "rclonebrowser-N", while an
@@ -75,18 +77,25 @@ private:
       return result.group;
     }
 
-    bool finished = false;
+    // One status request at a time, and state the callback owns a share of,
+    // since an answer can arrive after this returns.
+    auto finished = std::make_shared<bool>(false);
+    auto asking = std::make_shared<bool>(false);
     const bool done = QTest::qWaitFor(
         [&]() {
-          engine.jobStatus(result.jobId, this,
-                           [&finished](const QJsonObject &status,
-                                       const QString &error) {
-                             if (!error.isEmpty() ||
-                                 status.value("finished").toBool()) {
-                               finished = true;
-                             }
-                           });
-          return finished;
+          if (!*asking) {
+            *asking = true;
+            engine.jobStatus(result.jobId, this,
+                             [finished, asking](const QJsonObject &status,
+                                                const QString &error) {
+                               *asking = false;
+                               if (!error.isEmpty() ||
+                                   status.value("finished").toBool()) {
+                                 *finished = true;
+                               }
+                             });
+          }
+          return *finished;
         },
         60000);
     if (!done) {
@@ -127,25 +136,30 @@ private:
       return QJsonObject();
     }
 
-    QJsonObject finished;
+    auto finished = std::make_shared<QJsonObject>();
+    auto asking = std::make_shared<bool>(false);
     const bool done = QTest::qWaitFor(
         [&]() {
-          engine.jobStatus(started->jobId, this,
-                           [&finished](const QJsonObject &status,
-                                       const QString &error) {
-                             if (error.isEmpty() &&
-                                 status.value("finished").toBool()) {
-                               finished = status;
-                             }
-                           });
-          return !finished.isEmpty();
+          if (!*asking) {
+            *asking = true;
+            engine.jobStatus(started->jobId, this,
+                             [finished, asking](const QJsonObject &status,
+                                                const QString &error) {
+                               *asking = false;
+                               if (error.isEmpty() &&
+                                   status.value("finished").toBool()) {
+                                 *finished = status;
+                               }
+                             });
+          }
+          return !finished->isEmpty();
         },
         60000);
     if (!done) {
       qWarning("batch job %lld didn't finish within a minute",
                static_cast<long long>(started->jobId));
     }
-    return finished;
+    return *finished;
   }
 
 private slots:
