@@ -15,6 +15,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: Sync offers "Stop if more than N files would be deleted", which adds `--max-delete N` and reaches `_config` on the rc route through `options/info`; the saved-task store round-trips it with a schema bump; a run stopped by the cap (exit 7 with rclone's cap error in its output) shows as "Stopped by delete cap" in job history, and a scheduled run sends its failure webhook; the copy-command output includes the flag; against an rclone older than 1.76.0 the rc route is tested with a real daemon and falls back to the CLI route if the cap isn't honored (needs live validation). The default is Open Question 2 in RESEARCH.md.
   Complexity: M
 
+- [ ] P1 — Check rclone's signature on the checksum list before installing a download
+  Why: the first-start downloader trusts the SHA256SUMS that comes from the same server as the zip, so it catches a corrupt download but not a tampered one. `rclone selfupdate` also checks that list's PGP signature against rclone's built-in key, and the update prompt now uses our downloader instead of selfupdate when rclone's folder isn't writable, so that path checks less than the one it replaced.
+  Evidence (Verified): `src/rclone_installer.cpp:144` (`ChecksumFor`) reads the hash lines and skips the signature; `downloads.rclone.org/v1.76.0/SHA256SUMS` is clearsigned (`Hash: SHA1`, a v4 DSA signature from key ID `93935E02FF3B54FA`); rclone's `cmd/selfupdate/verify.go` embeds `ncwPublicKeyPGP` and runs `clearsign.Decode` then `openpgp.CheckDetachedSignature`.
+  Touches: `src/rclone_installer.{h,cpp}`, new `src/pgp_clearsign.{h,cpp}` (clearsign text canonicalization, the v4 signature trailer, DSA verify), `src/CMakeLists.txt`, `CMakeLists.txt`, `tests/rclone_installer_test.cpp`, new `tests/pgp_clearsign_test.cpp`
+  Acceptance: a download goes ahead only when SHA256SUMS verifies against rclone's key compiled into the app; tests feed the real v1.76.0 SHA256SUMS (accepted), the same list with one hash changed (refused) and a list signed by another key (refused); the fake release server signs with a test key that only the test build trusts; `RB_RCLONE_LIVE_DOWNLOAD=1` still passes.
+  Complexity: M
+
 ### P2
 
 - [ ] P2 — Offer "finish current files, then stop" alongside kill
@@ -114,6 +121,27 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Evidence (Verified): `rclone sync --combined FILE` writes one line per file marked `=`, `-`, `+`, `*` or `!` (rclone_sync.md at v1.76.0); rclone 1.76.0 added report parameters (`combined`, `missingOnSrc`, `missingOnDst`, `match`, `differ`, `error`, `destAfter`) to `sync/sync`, `sync/copy` and `sync/move`; `src/folder_compare.cpp:315` already reads `check --combined -` output; Rclone Manager v0.3.6 File Report; forum.rclone.org topic 53728.
   Touches: `src/job_options.cpp`, `src/rc_sync_request.cpp`, `src/job_widget.cpp`, `src/rc_job_widget.cpp`, `src/job_history.cpp`, `src/folder_compare.cpp` (share the parser), new `tests/run_report_test.cpp`
   Acceptance: each sync, copy or move keeps a report in the app data folder (CLI `--combined`, rc `combined` on rclone 1.76.0 and later); the job card's "Changes" view lists added, replaced, deleted and failed files with a filter; reports are pruned with job history; with an older rc daemon the view says the report needs rclone 1.76.0.
+  Complexity: M
+
+- [ ] P2 — Add "Download rclone" to Preferences
+  Why: after "Not now" the only way back to the download is restarting the app, and a deleted or broken rclone can't be replaced without finding a binary by hand.
+  Evidence (Verified): the "Not now" status in `src/main_window.cpp` (`offerRcloneDownload`) says "restart the app to download it"; `src/preferences_dialog.cpp` has no download entry; `RcloneInstaller::RunDownload` already takes any parent and folder.
+  Touches: `src/preferences_dialog.{ui,cpp}`, `src/main_window.cpp`, `tests/accessibility_smoke_test.cpp`
+  Acceptance: Preferences shows "Download rclone" beside the rclone path; it runs the same download into the app folder (or the per-user folder), fills the path field, and the remotes load after OK; the "Not now" status points to Preferences instead of a restart.
+  Complexity: S
+
+- [ ] P2 — Send the rclone download through the proxy, with GitHub as a second source
+  Why: on a network that needs a proxy, or one that blocks downloads.rclone.org, the download fails even when a proxy is saved in Preferences.
+  Evidence (Verified): `src/rclone_installer.cpp` has no proxy handling, while `src/main_window.cpp:673-680` saves `useProxy`, `http_proxy`, `https_proxy`, `no_proxy` and `socksProxy`; `Download::Source` holds one base URL; `github.com/rclone/rclone/releases/download/v1.76.0/SHA256SUMS` serves the same signed list.
+  Touches: `src/rclone_installer.{h,cpp}`, `tests/rclone_installer_test.cpp`
+  Acceptance: with a proxy saved, every download request goes through it (a local proxy stub in the test sees them), and the system proxy is used otherwise; when rclone.org can't be reached or answers 404, the download tries the GitHub release once with the same checks, the signature check from the P1 item included.
+  Complexity: S
+
+- [ ] P2 — Offer to install WinFsp when a mount needs it
+  Why: mounting on Windows without WinFsp opens the WinFsp download page in a browser and stops, so a new user still has to find, download and run an installer by hand before the mount works.
+  Evidence (Verified): `src/main_window.cpp:5244-5254` shows "WinFsp required" and calls `QDesktopServices::openUrl(WinFspFloor::kDownloadUrl)`; `src/winfsp_floor.cpp` already knows the minimum safe WinFsp version.
+  Touches: `src/main_window.cpp`, `src/winfsp_floor.{h,cpp}`, `src/rclone_installer.{h,cpp}` (shared download and progress code), `tests/winfsp_floor_test.cpp`
+  Acceptance: the dialog offers "Install WinFsp", downloads the current stable MSI from WinFsp's GitHub release, checks its Authenticode signature and publisher, runs it elevated with basic UI and carries on with the mount when it finishes; Cancel keeps today's behavior.
   Complexity: M
 
 ### P3
