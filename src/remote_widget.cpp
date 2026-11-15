@@ -375,12 +375,24 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   mBreadcrumbLayout = new QHBoxLayout(mBreadcrumbBar);
   mBreadcrumbLayout->setContentsMargins(0, 0, 0, 0);
   mBreadcrumbLayout->setSpacing(4);
-  if (auto *pathLayout =
+  // The path field sits in the column above the file list. Inserting the
+  // navigation controls into that column gave each one a full-width row, so
+  // they get a row of their own and the path field joins it, taking the
+  // breadcrumb's place while a path is typed.
+  if (auto *column =
           qobject_cast<QBoxLayout *>(ui.path->parentWidget()->layout())) {
-    const int pathIndex = pathLayout->indexOf(ui.path);
-    pathLayout->insertWidget(pathIndex, mBreadcrumbBar);
-    pathLayout->insertWidget(pathIndex, mForwardButton);
-    pathLayout->insertWidget(pathIndex, mBackButton);
+    const int pathIndex = column->indexOf(ui.path);
+    if (pathIndex >= 0) {
+      column->removeWidget(ui.path);
+      auto *navigationRow = new QHBoxLayout();
+      navigationRow->setContentsMargins(0, 0, 0, 0);
+      navigationRow->setSpacing(4);
+      navigationRow->addWidget(mBackButton);
+      navigationRow->addWidget(mForwardButton);
+      navigationRow->addWidget(mBreadcrumbBar, 1);
+      navigationRow->addWidget(ui.path, 1);
+      column->insertLayout(pathIndex, navigationRow);
+    }
   }
   ui.path->installEventFilter(this);
   ui.path->hide();

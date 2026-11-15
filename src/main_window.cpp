@@ -1054,10 +1054,10 @@ MainWindow::MainWindow(bool initializeRuntime)
       "Open a side-by-side split view with two remote browsers.");
   dualPaneBtn->setAccessibleName("Open dual-pane view");
   dualPaneBtn->setEnabled(false);
-  if (auto *layout = ui.open->parentWidget()->layout()) {
-    static_cast<QHBoxLayout *>(layout)->insertWidget(
-        static_cast<QHBoxLayout *>(layout)->indexOf(ui.open) + 1, dualPaneBtn);
-  }
+  // Beside Open, in the button row. The tab's own layout is the column above
+  // it, where Open isn't an item, so inserting there put Dual Pane on top.
+  ui.horizontalLayout->insertWidget(ui.horizontalLayout->indexOf(ui.open),
+                                    dualPaneBtn);
   QObject::connect(ui.remotes, &QListWidget::itemSelectionChanged, this,
                    [this, dualPaneBtn]() {
                      dualPaneBtn->setEnabled(

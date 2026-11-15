@@ -193,6 +193,80 @@ private slots:
     QCOMPARE(trash->parentWidget(), shared->parentWidget());
   }
 
+  // Back, forward and the breadcrumb were inserted into the column that holds
+  // the path field, so each took a full-width row of its own above the file
+  // list. They belong on one line, and the typed path takes the breadcrumb's
+  // place on that line.
+  void remoteWidgetNavigationSharesOneRow() {
+    IconCache icons(nullptr);
+    RemoteWidget widget(&icons, "remote", false, true, false);
+    widget.resize(900, 600);
+    widget.show();
+    QCoreApplication::processEvents();
+
+    QToolButton *back = nullptr;
+    QToolButton *forward = nullptr;
+    QToolButton *editPath = nullptr;
+    for (auto *button : widget.findChildren<QToolButton *>()) {
+      if (button->accessibleName() == QLatin1String("Navigate back")) {
+        back = button;
+      } else if (button->accessibleName() == QLatin1String("Navigate forward")) {
+        forward = button;
+      } else if (button->accessibleName() == QLatin1String("Edit current path")) {
+        editPath = button;
+      }
+    }
+    auto *breadcrumbs = widget.findChild<QWidget *>("breadcrumbBar");
+    auto *path = widget.findChild<QLineEdit *>("path");
+    QVERIFY(back && forward && editPath && breadcrumbs && path);
+
+    const auto middle = [&widget](QWidget *child) {
+      return child->mapTo(&widget, child->rect().center()).y();
+    };
+    const int row = middle(back);
+    QVERIFY2(qAbs(middle(forward) - row) <= 2,
+             qPrintable(QString("forward at %1, back at %2")
+                            .arg(middle(forward)).arg(row)));
+    QVERIFY2(qAbs(middle(breadcrumbs) - row) <= 2,
+             qPrintable(QString("breadcrumbs at %1, back at %2")
+                            .arg(middle(breadcrumbs)).arg(row)));
+
+    editPath->click();
+    QCoreApplication::processEvents();
+    QVERIFY(path->isVisible());
+    QVERIFY2(qAbs(middle(path) - row) <= 4,
+             qPrintable(QString("path at %1, back at %2")
+                            .arg(middle(path)).arg(row)));
+    QVERIFY(path->width() > widget.width() / 2);
+  }
+
+  // Dual Pane was inserted at indexOf(Open) + 1 in the remotes tab's column,
+  // where Open isn't a direct item, so it landed at index 0 as a full-width
+  // bar above the filter. It belongs beside Open.
+  void dualPaneButtonSitsBesideOpen() {
+    MainWindow window(false);
+    window.resize(1000, 700);
+    window.show();
+    QCoreApplication::processEvents();
+
+    auto *open = window.findChild<QPushButton *>("open");
+    QPushButton *dualPane = nullptr;
+    for (auto *button : window.findChildren<QPushButton *>()) {
+      if (button->accessibleName() == QLatin1String("Open dual-pane view")) {
+        dualPane = button;
+      }
+    }
+    QVERIFY(open && dualPane);
+    verifyManaged(dualPane, "dualPane");
+    const auto middle = [&window](QWidget *child) {
+      return child->mapTo(&window, child->rect().center()).y();
+    };
+    QVERIFY2(qAbs(middle(dualPane) - middle(open)) <= 2,
+             qPrintable(QString("Dual Pane at %1, Open at %2")
+                            .arg(middle(dualPane)).arg(middle(open))));
+    QVERIFY(dualPane->width() < window.width() / 3);
+  }
+
   void presetSelectionIsNotRestoredFromSettings() {
     // cbPreset became a named .ui widget, which puts it in reach of the
     // ReadSettings/WriteSettings recursion. Restoring a stored index would
