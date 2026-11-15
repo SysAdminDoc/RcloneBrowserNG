@@ -3,6 +3,7 @@
 #include "identity_migration.h"
 #include "list_of_job_options.h"
 #include "main_window.h"
+#include "rclone_installer.h"
 #include "run_conditions.h"
 #include "utils.h"
 #include "vss_snapshot.h"
@@ -46,6 +47,13 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && std::strcmp(argv[1], VssSnapshot::kHelperFlag) == 0) {
     const QCoreApplication helper(argc, argv);
     return VssSnapshot::RunHelper(QCoreApplication::arguments());
+  }
+
+  // The elevated half of a first-start rclone download, for an install
+  // folder only an administrator can write. Windowless, like the above.
+  if (argc > 1 && std::strcmp(argv[1], RcloneInstaller::kHelperFlag) == 0) {
+    const QCoreApplication helper(argc, argv);
+    return RcloneInstaller::RunHelper(QCoreApplication::arguments());
   }
 
   // Answered before QApplication, which needs a display and a platform

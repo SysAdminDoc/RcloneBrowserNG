@@ -409,6 +409,16 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME vss_snapshot_test COMMAND vss_snapshot_test)
 
+  add_executable(rclone_installer_test
+    tests/rclone_installer_test.cpp
+    src/rclone_installer.cpp
+  )
+  target_include_directories(rclone_installer_test PRIVATE src)
+  target_link_libraries(rclone_installer_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME rclone_installer_test COMMAND rclone_installer_test)
+  set_tests_properties(rclone_installer_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
   add_executable(remote_daemon_test
     tests/remote_daemon_test.cpp
     src/remote_daemon.cpp
@@ -541,6 +551,7 @@ if(BUILD_TESTING)
     src/run_conditions.cpp
     src/staged_transfer.cpp
     src/vss_snapshot.cpp
+    src/rclone_installer.cpp
     src/remote_daemon.cpp
     src/cross_remote_search.cpp
     src/combine_remote.cpp

@@ -62,3 +62,7 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+; rclone.exe is downloaded by the app on first start when rclone is missing,
+; so the uninstaller has to be told about it.
+[UninstallDelete]
+Type: files; Name: "{app}\rclone.exe"

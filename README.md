@@ -72,6 +72,8 @@ sha256sum -c SHA256SUMS
 
 The Windows binaries are **not code-signed**, so SmartScreen warns on first run. Verify the checksum, then choose More info and Run anyway. Signing needs a certificate the project does not have yet.
 
+You don't need to install rclone first. If the app can't find it at startup, it offers to download the current release from rclone.org and checks it against rclone's published checksums. On Windows it saves `rclone.exe` next to the app, asking for permission when that's under Program Files. Elsewhere it goes in the app's data folder. To use an rclone you already have, pick it in Preferences.
+
 For macOS, Linux and BSD, build from source with the instructions below. The maintainer builds and publishes artifacts from a local machine, and this repository does not provide a CI build on push or artifact attestation. The one exception is the macOS DMG. There's no Mac on hand, so a workflow that only runs when started by hand builds it on a GitHub-hosted Mac and keeps it as a workflow artifact.
 
 ### Local release verification

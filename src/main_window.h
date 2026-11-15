@@ -47,6 +47,7 @@ public slots:
 
 private slots:
   void rcloneGetVersion();
+  void offerRcloneDownload();
   void rcloneConfig();
   void createRemote();
   void rcloneListRemotes();
@@ -209,6 +210,7 @@ private:
   void sendWebhook(const QString &url, const QString &taskName, bool success,
                    const QString &error = QString());
   void checkRcloneUpdate(const QString &currentVersion);
+  void useRclone(const QString &path);
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;
 

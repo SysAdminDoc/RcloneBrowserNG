@@ -10,6 +10,7 @@
 #include "rclone_rc_engine.h"
 #include "app_log.h"
 #include "rclone_exit_code.h"
+#include "rclone_installer.h"
 #include "rclone_security_floor.h"
 #include "remote_daemon.h"
 #include "remote_list_parser.h"
@@ -1929,22 +1930,62 @@ MainWindow::MainWindow(bool initializeRuntime)
   QTimer::singleShot(0, ui.remotes, SLOT(setFocus()));
   refreshTaskWatchers();
 
+  // A saved path whose file is gone (rclone uninstalled or moved) counts as
+  // no rclone, so the app looks again instead of failing every call.
   QString rclone = GetRclone();
-  if (rclone.isEmpty()) {
-    rclone = QStandardPaths::findExecutable("rclone");
+  if (rclone.isEmpty() || !QFileInfo(rclone).isFile()) {
+    rclone = RcloneInstaller::FindDownloaded();
     if (rclone.isEmpty()) {
-      QMessageBox::warning(
-          this, "Configuration needed",
-          "Cannot find rclone. Please select its location in Preferences.");
-      emit ui.preferences->trigger();
+      rclone = QStandardPaths::findExecutable("rclone");
+    }
+    if (rclone.isEmpty()) {
+      // After the window is up, so the question has something to sit on.
+      QTimer::singleShot(0, this, &MainWindow::offerRcloneDownload);
     } else {
-      auto settings = GetSettings();
-      settings->setValue("Settings/rclone", rclone);
-      SetRclone(rclone);
+      useRclone(rclone);
     }
   } else {
     rcloneGetVersion();
   }
+}
+
+void MainWindow::useRclone(const QString &path) {
+  QString stored = QDir::toNativeSeparators(path);
+#if defined(Q_OS_WIN32)
+  // A portable copy keeps working after its folder moves.
+  if (IsPortableMode() &&
+      QFileInfo(path).absolutePath().compare(
+          QCoreApplication::applicationDirPath(), Qt::CaseInsensitive) == 0) {
+    stored = QFileInfo(path).fileName();
+  }
+#endif
+  auto settings = GetSettings();
+  settings->setValue("Settings/rclone", stored);
+  SetRclone(stored);
+  // Without this a first start that found rclone showed no remotes until
+  // the next start.
+  rcloneGetVersion();
+}
+
+void MainWindow::offerRcloneDownload() {
+  RcloneInstaller::OfferDownload(
+      this, RcloneInstaller::Download::Source(), RcloneInstaller::InstallDir(),
+      [this](RcloneInstaller::SetupChoice choice, const QString &path) {
+        switch (choice) {
+        case RcloneInstaller::SetupChoice::Installed:
+          setStatusMessage(QString("rclone saved to %1")
+                               .arg(QDir::toNativeSeparators(path)));
+          useRclone(path);
+          break;
+        case RcloneInstaller::SetupChoice::ChooseManually:
+          emit ui.preferences->trigger();
+          break;
+        case RcloneInstaller::SetupChoice::Later:
+          setStatusMessage("No rclone yet. Choose one in Preferences, or "
+                           "restart the app to download it.");
+          break;
+        }
+      });
 }
 
 void MainWindow::ensureTrayIconVisible() {
@@ -5031,10 +5072,17 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
               // (GHSA-w33h-3qgq-8mv8), so only the download page is offered
               const bool selfUpdateSafe =
                   RcloneSecurityFloor::SelfUpdateIsSafe(currentVersion);
+              // selfupdate replaces rclone where it is, so it fails in a
+              // folder this account can't write, like an rclone the app
+              // saved under Program Files. The app's own download checks the
+              // file and asks Windows for permission instead.
+              const QString rcloneDir = QFileInfo(GetRclone()).absolutePath();
+              const bool replaceByDownload =
+                  !RcloneInstaller::CanWriteTo(rcloneDir);
               QString text = QString("A newer version of rclone is available.\n\n"
                                      "Installed: v%1\nAvailable: v%2")
                                  .arg(currentVersion, latest);
-              if (!selfUpdateSafe) {
+              if (!selfUpdateSafe && !replaceByDownload) {
                 text += "\n\n" + RcloneSecurityFloor::SelfUpdateUnsafeReason();
               }
               QMessageBox box(QMessageBox::Information,
@@ -5042,7 +5090,13 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
                               QMessageBox::NoButton, this);
               QPushButton *selfUpdate = nullptr;
               QPushButton *downloadPage = nullptr;
-              if (selfUpdateSafe) {
+              QPushButton *replace = nullptr;
+              if (replaceByDownload) {
+                replace = box.addButton("Update rclone", QMessageBox::AcceptRole);
+                replace->setToolTip("Download the current rclone from "
+                                    "rclone.org, check it and replace this "
+                                    "one.");
+              } else if (selfUpdateSafe) {
                 selfUpdate =
                     box.addButton("Run selfupdate", QMessageBox::AcceptRole);
                 selfUpdate->setToolTip(
@@ -5059,6 +5113,19 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
                   box.clickedButton() == downloadPage) {
                 QDesktopServices::openUrl(
                     QUrl("https://rclone.org/downloads/"));
+              }
+              if (replace != nullptr && box.clickedButton() == replace) {
+                RcloneInstaller::RunDownload(
+                    this, RcloneInstaller::Download::Source(), rcloneDir,
+                    [this](RcloneInstaller::SetupChoice choice,
+                           const QString &path) {
+                      if (choice != RcloneInstaller::SetupChoice::Installed) {
+                        return;
+                      }
+                      setStatusMessage(QString("rclone updated, saved to %1")
+                                           .arg(QDir::toNativeSeparators(path)));
+                      useRclone(path);
+                    });
               }
               if (selfUpdate != nullptr && box.clickedButton() == selfUpdate) {
                 setStatusMessage("Updating rclone…");

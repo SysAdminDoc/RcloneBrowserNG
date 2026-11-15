@@ -3,6 +3,7 @@
 #include "interface_polish.h"
 #include "main_window.h"
 #include "preferences_dialog.h"
+#include "rclone_installer.h"
 #include "schedule_dialog.h"
 #include "transfer_dialog.h"
 #include "utils.h"
@@ -11,9 +12,13 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QDialog>
+#include <QDir>
+#include <QFileInfo>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QStandardPaths>
@@ -237,6 +242,70 @@ private slots:
                    "Queue delete from destination repair",
                    "Queue delete from source repair"});
     compare.close();
+  }
+
+  // First start on a computer with no rclone anywhere: the window asks to
+  // download it, and "Not now" leaves a hint instead of a silent window.
+  void firstStartWithoutRcloneAsks() {
+    const QString name =
+        RcloneInstaller::BinaryName(RcloneInstaller::PlatformTag());
+    if (QFileInfo::exists(QDir(RcloneInstaller::InstallDir()).filePath(name))) {
+      QSKIP("An rclone sits beside this test, so there's nothing to ask.");
+    }
+    QDir(RcloneInstaller::FallbackDir()).removeRecursively();
+    const QByteArray path = qgetenv("PATH");
+    const QString rclone = GetRclone();
+    auto restore = qScopeGuard([path, rclone] {
+      qputenv("PATH", path);
+      SetRclone(rclone);
+    });
+    // Only the folders holding an rclone go; Qt's own DLLs stay reachable.
+    QStringList kept;
+    for (const QString &dir :
+         QString::fromLocal8Bit(path).split(QDir::listSeparator(),
+                                            Qt::SkipEmptyParts)) {
+      if (!QFileInfo::exists(QDir(dir).filePath(name))) {
+        kept << dir;
+      }
+    }
+    qputenv("PATH", kept.join(QDir::listSeparator()).toLocal8Bit());
+    SetRclone(QString());
+    GetSettings()->remove("Settings/rclone");
+    QVERIFY(QStandardPaths::findExecutable("rclone").isEmpty());
+
+    auto asked = std::make_shared<bool>(false);
+    auto *poll = new QTimer(this);
+    poll->setInterval(20);
+    connect(poll, &QTimer::timeout, poll, [poll, asked]() {
+      auto *box =
+          qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+      if (box == nullptr || box->windowTitle() != "rclone not found") {
+        return;
+      }
+      for (QAbstractButton *button : box->buttons()) {
+        if (button->text() == "Not now") {
+          *asked = true;
+          poll->stop();
+          poll->deleteLater();
+          button->click();
+          return;
+        }
+      }
+    });
+    poll->start();
+
+    MainWindow window(true);
+    const auto statusSays = [&window](const QString &text) {
+      for (QLabel *label : window.findChildren<QLabel *>()) {
+        if (label->text().contains(text)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(statusSays("No rclone yet"), 10000);
+    QVERIFY(*asked);
+    QVERIFY(GetSettings()->value("Settings/rclone").toString().isEmpty());
   }
 };
 
