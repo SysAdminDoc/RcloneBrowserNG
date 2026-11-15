@@ -147,10 +147,6 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
   Was blocked on: restoring GitHub Actions, which the repo dropped on purpose. The CodeQL CLI traces a local build just as well.
   Acceptance: a `security-extended` C++ analysis of a traced build runs to completion and every result is fixed or explained.
 
-- [ ] P2 Build the macOS DMG on a macOS runner
-  Was blocked on: having no Mac. A manually triggered workflow on a GitHub-hosted macOS runner is the one CI build the project's rules allow, and the repo is public, so it costs nothing.
-  Acceptance: a `workflow_dispatch` workflow runs `scripts/release_macOS.sh` and uploads the DMG as a workflow artifact (not a release), and one run passes.
-
 - [ ] P4 Check that the app builds for ppc64le
   Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.
   Acceptance: a cross build for ppc64le succeeds, and any portability fix it needs lands. Sources: kapitainsky#152
