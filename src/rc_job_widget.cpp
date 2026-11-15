@@ -1,4 +1,5 @@
 #include "rc_job_widget.h"
+#include "adaptive_bandwidth_driver.h"
 #include "rclone_rc_engine.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
@@ -114,7 +115,13 @@ void RcJobWidget::buildBandwidthControl() {
   // Only jobs running through the daemon can be retuned while they run. A
   // process-backed transfer is a plain rclone with its limit fixed on the
   // command line, and JobWidget has no equivalent of this for that reason.
-  auto *row = new QWidget(this);
+  auto *panel = new QWidget(this);
+  panel->setObjectName("bandwidthPanel");
+  auto *lines = new QVBoxLayout(panel);
+  lines->setContentsMargins(0, 0, 0, 0);
+  lines->setSpacing(4);
+
+  auto *row = new QWidget(panel);
   row->setObjectName("bandwidthRow");
   auto *layout = new QHBoxLayout(row);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -146,15 +153,62 @@ void RcJobWidget::buildBandwidthControl() {
   layout->addWidget(mBandwidthNote);
   layout->addStretch();
 
+  auto *adaptiveRow = new QWidget(panel);
+  adaptiveRow->setObjectName("adaptiveBandwidthRow");
+  auto *adaptiveLayout = new QHBoxLayout(adaptiveRow);
+  adaptiveLayout->setContentsMargins(0, 0, 0, 0);
+  adaptiveLayout->setSpacing(6);
+  mAdaptive = new QCheckBox("Slow down while other apps use the network, to",
+                            adaptiveRow);
+  mAdaptive->setObjectName("adaptiveBandwidth");
+  mAdaptive->setAccessibleName("Slow down while other apps use the network");
+  mAdaptive->setToolTip(
+      "Watches the computer's network traffic. While other apps use the "
+      "network, transfers on this daemon drop to the rate on the right. "
+      "When they stop, the limit above comes back.");
+  mAdaptiveFloor = new QLineEdit(adaptiveRow);
+  mAdaptiveFloor->setObjectName("adaptiveBandwidthFloor");
+  mAdaptiveFloor->setAccessibleName("Rate while other apps use the network");
+  mAdaptiveFloor->setPlaceholderText("1M");
+  mAdaptiveFloor->setMaximumWidth(120);
+  mAdaptiveFloor->setToolTip("Same form as the bandwidth limit, such as 1M "
+                             "or 512k.");
+  mAdaptiveFloor->setText(
+      GetSettings()->value("Settings/adaptiveBandwidthFloor").toString());
+  adaptiveLayout->addWidget(mAdaptive);
+  adaptiveLayout->addWidget(mAdaptiveFloor);
+  adaptiveLayout->addStretch();
+
+  lines->addWidget(row);
+  lines->addWidget(adaptiveRow);
+
   // Row 5 columns 0 and 1 hold Show Output; the rest of that row is free.
   // gridLayout_2 is a QGridLayout in the .ui and is used as one here, rather
   // than cast to something it is not.
-  ui.gridLayout_2->addWidget(row, 5, 2, 1, 6);
+  ui.gridLayout_2->addWidget(panel, 5, 2, 1, 6);
 
   QObject::connect(mBandwidthApply, &QPushButton::clicked, this,
                    &RcJobWidget::applyBandwidthLimit);
   QObject::connect(mBandwidth, &QLineEdit::returnPressed, this,
                    &RcJobWidget::applyBandwidthLimit);
+  QObject::connect(mAdaptiveFloor, &QLineEdit::returnPressed, this,
+                   &RcJobWidget::applyBandwidthLimit);
+  QObject::connect(mAdaptive, &QCheckBox::toggled, this,
+                   &RcJobWidget::setAdaptive);
+
+  // The daemon's limit and its adaptive mode are shared by every card on it,
+  // so a card opened while adaptive mode runs picks up that state.
+  mAdaptiveDriver = AdaptiveBandwidthDriver::forEngine(mEngine);
+  QObject::connect(mAdaptiveDriver, &AdaptiveBandwidthDriver::stateChanged,
+                   this, &RcJobWidget::showAdaptiveState);
+  if (mAdaptiveDriver->isActive()) {
+    mBandwidth->setText(mAdaptiveDriver->ceiling() == QLatin1String("off")
+                            ? QString()
+                            : mAdaptiveDriver->ceiling());
+    mAdaptiveFloor->setText(mAdaptiveDriver->floor());
+    showAdaptiveState();
+    return;
+  }
 
   // Show what the daemon currently has rather than an empty box.
   mEngine->bandwidthLimit(
@@ -164,6 +218,58 @@ void RcJobWidget::buildBandwidthControl() {
       });
 }
 
+QString RcJobWidget::floorRate() const {
+  const QString rate = mAdaptiveFloor->text().trimmed();
+  return rate.isEmpty() ? mAdaptiveFloor->placeholderText() : rate;
+}
+
+void RcJobWidget::setAdaptive(bool on) {
+  if (!on) {
+    mAdaptiveDriver->stop();
+    return;
+  }
+  QString ceiling = mBandwidth->text().trimmed();
+  if (ceiling.isEmpty()) {
+    ceiling = QStringLiteral("off");
+  }
+  GetSettings()->setValue("Settings/adaptiveBandwidthFloor",
+                          mAdaptiveFloor->text().trimmed());
+  mAdaptiveDriver->start(ceiling, floorRate());
+}
+
+void RcJobWidget::showAdaptiveState() {
+  {
+    const QSignalBlocker blocker(mAdaptive);
+    mAdaptive->setChecked(mAdaptiveDriver->isActive());
+  }
+  if (!mAdaptiveDriver->isActive()) {
+    if (!mAdaptiveDriver->problem().isEmpty()) {
+      mBandwidthNote->setText(mAdaptiveDriver->problem());
+      UiPolish::SetNotice(mBandwidthNote, mAdaptiveDriver->problem());
+      return;
+    }
+    // Adaptive mode put the ceiling back, so show the daemon's own answer.
+    mEngine->bandwidthLimit(
+        QString(), this,
+        [this](const QJsonObject &response, const QString &error) {
+          showBandwidthLimit(response, error);
+        });
+    return;
+  }
+  const QString ceiling = mAdaptiveDriver->ceiling() == QLatin1String("off")
+                              ? QString("no limit")
+                              : mAdaptiveDriver->ceiling();
+  mBandwidthNote->setText(
+      mAdaptiveDriver->isThrottled()
+          ? QString("Other apps are using the network, so every transfer on "
+                    "this daemon is held to %1.")
+                .arg(mAdaptiveDriver->floor())
+          : QString("%1 while the network is free, %2 while other apps use "
+                    "it.")
+                .arg(ceiling, mAdaptiveDriver->floor()));
+  UiPolish::SetMuted(mBandwidthNote);
+}
+
 void RcJobWidget::applyBandwidthLimit() {
   if (!mBandwidth) {
     return;
@@ -171,6 +277,15 @@ void RcJobWidget::applyBandwidthLimit() {
   QString rate = mBandwidth->text().trimmed();
   if (rate.isEmpty()) {
     rate = QStringLiteral("off");
+  }
+  if (mAdaptiveDriver && mAdaptiveDriver->isActive()) {
+    // The daemon holds the floor while other apps are busy, so the new
+    // ceiling goes to the driver, which applies it once the network is free.
+    GetSettings()->setValue("Settings/adaptiveBandwidthFloor",
+                            mAdaptiveFloor->text().trimmed());
+    mAdaptiveDriver->setFloor(floorRate());
+    mAdaptiveDriver->setCeiling(rate);
+    return;
   }
   mBandwidthApply->setEnabled(false);
   mBandwidthNote->setText("Applying...");

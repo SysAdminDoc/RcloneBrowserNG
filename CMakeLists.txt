@@ -337,6 +337,27 @@ if(BUILD_TESTING)
   add_dependencies(scheduled_run_test ${RCLONE_BROWSER_APP_TARGET})
   add_test(NAME scheduled_run_test COMMAND scheduled_run_test)
 
+  add_executable(adaptive_bandwidth_test
+    tests/adaptive_bandwidth_test.cpp
+    src/adaptive_bandwidth.cpp
+    src/adaptive_bandwidth_driver.cpp
+    src/app_log.cpp
+    src/rclone_rc_engine.cpp
+    src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  target_include_directories(adaptive_bandwidth_test PRIVATE src tests)
+  target_compile_definitions(adaptive_bandwidth_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(adaptive_bandwidth_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(adaptive_bandwidth_test advapi32 iphlpapi)
+  endif()
+  add_test(NAME adaptive_bandwidth_test COMMAND adaptive_bandwidth_test)
+  set_tests_properties(adaptive_bandwidth_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+
   add_executable(schedule_golden_test
     tests/schedule_golden_test.cpp
     src/schedule_manager.cpp
@@ -437,6 +458,8 @@ if(BUILD_TESTING)
     src/rclone_exit_code.cpp
     src/rclone_security_floor.cpp
     src/rc_job_widget.cpp
+    src/adaptive_bandwidth.cpp
+    src/adaptive_bandwidth_driver.cpp
     src/remote_list_parser.cpp
     src/remote_path.cpp
     src/selection_arguments.cpp
@@ -484,7 +507,7 @@ if(BUILD_TESTING)
   target_compile_definitions(accessibility_smoke_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(accessibility_smoke_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(accessibility_smoke_test version advapi32)
+    target_link_libraries(accessibility_smoke_test version advapi32 iphlpapi)
   elseif(APPLE)
     find_library(ACCESSIBILITY_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(accessibility_smoke_test ${ACCESSIBILITY_COCOA_LIBRARY})
@@ -502,7 +525,7 @@ if(BUILD_TESTING)
   target_compile_definitions(layout_regression_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(layout_regression_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(layout_regression_test version advapi32)
+    target_link_libraries(layout_regression_test version advapi32 iphlpapi)
   elseif(APPLE)
     find_library(LAYOUT_REGRESSION_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(layout_regression_test ${LAYOUT_REGRESSION_COCOA_LIBRARY})
@@ -521,7 +544,7 @@ if(BUILD_TESTING)
   target_compile_definitions(remotes_list_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(remotes_list_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(remotes_list_test version advapi32)
+    target_link_libraries(remotes_list_test version advapi32 iphlpapi)
   elseif(APPLE)
     find_library(REMOTES_LIST_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(remotes_list_test ${REMOTES_LIST_COCOA_LIBRARY})

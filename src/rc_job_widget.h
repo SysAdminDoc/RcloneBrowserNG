@@ -4,6 +4,7 @@
 #include "job_history.h"
 #include "ui_job_widget.h"
 
+class AdaptiveBandwidthDriver;
 class RcloneRcEngine;
 
 class RcJobWidget : public QWidget {
@@ -59,11 +60,17 @@ private:
   QLineEdit *mBandwidth = nullptr;
   QPushButton *mBandwidthApply = nullptr;
   QLabel *mBandwidthNote = nullptr;
+  QCheckBox *mAdaptive = nullptr;
+  QLineEdit *mAdaptiveFloor = nullptr;
+  AdaptiveBandwidthDriver *mAdaptiveDriver = nullptr;
 
   void poll();
   void buildBandwidthControl();
   void applyBandwidthLimit();
   void showBandwidthLimit(const QJsonObject &response, const QString &error);
+  QString floorRate() const;
+  void setAdaptive(bool on);
+  void showAdaptiveState();
   void applyStats(const QJsonObject &stats);
   void finish(bool success, const QString &error);
 };

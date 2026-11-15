@@ -75,6 +75,8 @@ set(SOURCE
   rclone_capabilities.cpp
   rc_delete_batch.cpp
   rc_job_widget.cpp
+  adaptive_bandwidth.cpp
+  adaptive_bandwidth_driver.cpp
   run_conditions.cpp
   remote_list_parser.cpp
   remote_path.cpp
@@ -131,6 +133,8 @@ set(OTHER
   rclone_capabilities.h
   rc_delete_batch.h
   rc_job_widget.h
+  adaptive_bandwidth.h
+  adaptive_bandwidth_driver.h
   run_conditions.h
   remote_path.h
   schedule_dialog.h
@@ -165,7 +169,8 @@ add_definitions(-DRCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
 if(WIN32)
   add_executable(RcloneBrowser WIN32 ${SOURCE} ${OTHER} ${UI} ${QRC})
   target_link_libraries(RcloneBrowser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
-  target_link_libraries(RcloneBrowser version advapi32)
+  # iphlpapi: network interface counters for adaptive bandwidth.
+  target_link_libraries(RcloneBrowser version advapi32 iphlpapi)
   add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp
     identity_migration.cpp job_options_store.cpp job_options.cpp)
   target_link_libraries(RcloneBrowserPassword Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network advapi32)

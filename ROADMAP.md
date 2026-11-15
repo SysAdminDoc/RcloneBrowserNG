@@ -148,10 +148,6 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
   Was blocked on: having no Mac. A manually triggered workflow on a GitHub-hosted macOS runner is the one CI build the project's rules allow, and the repo is public, so it costs nothing.
   Acceptance: a `workflow_dispatch` workflow runs `scripts/release_macOS.sh` and uploads the DMG as a workflow artifact (not a release), and one run passes.
 
-- [ ] P3 Adaptive bandwidth while other apps use the network
-  Was blocked on: other bandwidth work and platform traffic probes. `core/bwlimit` is wired to the job card now.
-  Acceptance: an Adaptive mode compares interface traffic against rclone's own rate, throttles to a floor while other traffic is present and returns to the ceiling when it stops.
-
 - [ ] P3 VSS snapshot option for locked files on Windows
   Was blocked on: being hard to test. Only the elevated end-to-end run needs a UAC click; everything up to it can be built and tested.
   Acceptance: a local-source task can opt into snapshotting locked files, the snapshot needs elevation and is always cleaned up, and the option explains itself when unavailable.
