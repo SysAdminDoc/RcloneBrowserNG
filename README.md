@@ -25,23 +25,23 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 
 ## What NG fixes over the abandoned upstream
 
-*   Works with modern rclone (v1.56+) — transfer progress, size, bandwidth and ETA parse correctly again
-*   Builds with Qt 6 (minimum 6.4) — required for Wayland and current Linux distributions
+*   Works with modern rclone (v1.56+), so transfer progress, size, bandwidth and ETA parse correctly again
+*   Builds with Qt 6 (minimum 6.4), which Wayland and current Linux distributions need
 *   `rclone config` works with modern terminal emulators (gnome-terminal 3.38+, kitty, alacritty, wezterm, foot, tilix, …)
 *   Delete runs as a background job instead of freezing the GUI
 *   Multiple simultaneous mounts work on Windows (RC port collision fixed)
 *   Cancelled jobs actually terminate the underlying rclone process
-*   Many crash, reliability and dark-mode fixes — see [CHANGELOG.md](CHANGELOG.md)
+*   Many crash, reliability and dark-mode fixes (see [CHANGELOG.md](CHANGELOG.md))
 
 ## Features
 
 *   Browse and modify any rclone remote, including encrypted ones
-*   Uses the same configuration file as rclone — no extra configuration required
+*   Uses the same configuration file as rclone, so there's nothing extra to set up
 *   Custom location and encryption support for `rclone.conf`
 *   Navigate multiple remotes simultaneously in separate tabs
 *   Hierarchical file listing with name, size and modify date
 *   Visible path and filter controls for faster browsing without relying on hidden shortcuts
-*   All rclone commands run asynchronously — no GUI freezing
+*   All rclone commands run in the background and the window never freezes
 *   Lazily cached file hierarchy for fast folder traversal
 *   Upload, download, create folders, rename, move and delete files and folders
 *   Calculate folder sizes, export file lists, copy rclone commands to clipboard
@@ -52,10 +52,10 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
 *   Put several remotes together as one, so they browse and mount as a single drive
 *   Optional tray icon with finished-transfer notifications
-*   Portable mode — keep the app, rclone and its config on a memory stick
+*   Portable mode keeps the app, rclone and its config on a memory stick
 *   Google Drive "shared with me" support
 *   Public link generation for remotes that support sharing
-*   Saved tasks — create a job once, then run or edit it later (with dry-run support)
+*   Saved tasks let you set up a job once, then run or edit it later (dry runs too)
 *   Configurable dark mode on all systems
 
 ## How to get it
@@ -113,7 +113,7 @@ Set `RCLONE_BROWSER_APPIMAGE_SIGN_KEY` to a GPG key ID or fingerprint from your 
 1.  `sudo pkg install git cmake qt6-base`
 2.  Then follow the Linux steps from step 2.
 
-*Note: for rclone mounts to work you may need `sudo sysctl vfs.usermount=1` — see this rclone forum [thread](https://forum.rclone.org/t/failed-to-mount-fuse-fs-freebsd/7723/9).*
+*Note: for rclone mounts to work you may need `sudo sysctl vfs.usermount=1`. See this rclone forum [thread](https://forum.rclone.org/t/failed-to-mount-fuse-fs-freebsd/7723/9).*
 
 *Note: rclone does not support `mount` on OpenBSD/NetBSD, so the feature is disabled there.*
 
@@ -131,13 +131,13 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 
 ### Windows
 
-1.  Install [Visual Studio 2022](https://visualstudio.microsoft.com/) (the "Desktop development with C++" workload is enough — Build Tools also work)
+1.  Install [Visual Studio 2022](https://visualstudio.microsoft.com/) (the "Desktop development with C++" workload is enough, and Build Tools work too)
 2.  Install [CMake](https://cmake.org/)
-3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/) — release packaging should use Qt 6.8.8+ or 6.11.1+; these steps assume `C:\Qt`
+3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/). Release packaging needs Qt 6.11.1 or newer (see [SECURITY.md](SECURITY.md)), and these steps assume `C:\Qt\6.11.2`
 4.  `git clone https://github.com/SysAdminDoc/RcloneBrowserNG.git && cd RcloneBrowserNG`
 5.  `mkdir build && cd build`
-6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.8.8\msvc2019_64 .. && cmake --build . --config Release`
-7.  `C:\Qt\6.8.8\msvc2019_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
+6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64 .. && cmake --build . --config Release`
+7.  `C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
 
 ## Combining remotes

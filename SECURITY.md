@@ -26,9 +26,9 @@ This allows private discussion and coordinated disclosure. You will receive an a
 
 ## What Not to Report Here
 
-- Vulnerabilities in rclone itself — report those to the [rclone project](https://github.com/rclone/rclone/security)
-- Vulnerabilities in Qt — report those to [Qt](https://www.qt.io/security)
-- Vulnerabilities in WinFsp or macFUSE — report to those projects directly
+- Vulnerabilities in rclone itself go to the [rclone project](https://github.com/rclone/rclone/security)
+- Vulnerabilities in Qt go to [Qt](https://www.qt.io/security)
+- Vulnerabilities in WinFsp or macFUSE go to those projects directly
 
 ## Qt branch policy
 
@@ -52,7 +52,7 @@ commercial licensees only. Building a release from open-source 6.8 means
 shipping a known-vulnerable QtSvg.
 
 That leaves 6.11, whose 6.11.2 is published and patched. Its open-source
-support ends 2026-09-22, and Qt 6.12 — the next LTS — had not been released
+support ends 2026-09-22, and Qt 6.12 (the next LTS) had not been released
 as of 2026-09-05. When 6.12 ships, move to it and add it to the policy table
 in `scripts/validate_qt_version.py`; the validator warns for the last 30 days
 of a branch's window and fails once it has passed.
