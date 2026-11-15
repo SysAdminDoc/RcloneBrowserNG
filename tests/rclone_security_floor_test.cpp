@@ -54,6 +54,41 @@ private slots:
              "1.75.2 predates the 2026-11-06 advisories");
   }
 
+  void offersSelfUpdateOnlyWhereTheUpdaterIsFixed_data() {
+    QTest::addColumn<QString>("version");
+    QTest::addColumn<bool>("safe");
+    // GHSA-w33h-3qgq-8mv8 covers >=1.55.0, <=1.75.1.
+    QTest::newRow("1.55.0") << "1.55.0" << false;
+    QTest::newRow("1.75.1") << "1.75.1" << false;
+    QTest::newRow("1.75.2") << "1.75.2" << true;
+    QTest::newRow("1.76.0") << "1.76.0" << true;
+    QTest::newRow("v prefix") << "v1.75.2" << true;
+    QTest::newRow("as printed") << "rclone v1.75.1" << false;
+    // A dev or beta build's number is the release it leads up to. Before
+    // 1.76.0 shipped, master could still have the old updater.
+    QTest::newRow("1.75.1-DEV") << "1.75.1-DEV" << false;
+    QTest::newRow("1.75.2-DEV") << "1.75.2-DEV" << false;
+    QTest::newRow("1.76.0-DEV") << "1.76.0-DEV" << false;
+    QTest::newRow("1.76.0 beta") << "v1.76.0-beta.9200.0123abcd" << false;
+    QTest::newRow("1.77.0-DEV") << "1.77.0-DEV" << true;
+    QTest::newRow("1.77.0 beta") << "v1.77.0-beta.9300.4567ef01" << true;
+    QTest::newRow("empty") << "" << false;
+    QTest::newRow("unreadable") << "unknown" << false;
+  }
+
+  void offersSelfUpdateOnlyWhereTheUpdaterIsFixed() {
+    QFETCH(QString, version);
+    QFETCH(bool, safe);
+    QCOMPARE(RcloneSecurityFloor::SelfUpdateIsSafe(version), safe);
+  }
+
+  void selfUpdateReasonNamesTheAdvisory() {
+    QVERIFY(RcloneSecurityFloor::SelfUpdateUnsafeReason().contains(
+        "GHSA-w33h-3qgq-8mv8"));
+    QVERIFY(RcloneSecurityFloor::SelfUpdateUnsafeReason().contains(
+        "rclone.org"));
+  }
+
   void reviewDateIsParseableAndNotInTheFuture() {
     const QDate reviewed =
         QDate::fromString(RcloneSecurityFloor::kReviewedDate, Qt::ISODate);

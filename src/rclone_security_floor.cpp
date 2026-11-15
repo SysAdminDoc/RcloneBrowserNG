@@ -34,4 +34,31 @@ QString AdvisorySummary() {
       .arg(kMinimumVersion);
 }
 
+bool SelfUpdateIsSafe(const QString &version) {
+  QString trimmed = version.trimmed();
+  if (trimmed.startsWith("rclone ")) {
+    trimmed.remove(0, 7);
+  }
+  if (trimmed.startsWith('v')) {
+    trimmed.remove(0, 1);
+  }
+  if (trimmed.isEmpty() || !trimmed.at(0).isDigit()) {
+    return false;
+  }
+  const qsizetype suffix = trimmed.indexOf('-');
+  if (suffix != -1) {
+    // A pre-release of 1.76.0 or earlier may have been built before the
+    // fix landed. Anything leading up to a later release was built after
+    // 1.76.0 shipped with it.
+    return compareVersion(trimmed.left(suffix).toStdString(), "1.76.0") == 1;
+  }
+  return compareVersion(trimmed.toStdString(), kSelfUpdateFixedVersion) != 2;
+}
+
+QString SelfUpdateUnsafeReason() {
+  return QString("The updater in this rclone can be tricked into installing "
+                 "a tampered download (GHSA-w33h-3qgq-8mv8), so get the new "
+                 "version from rclone.org instead of running selfupdate.");
+}
+
 } // namespace RcloneSecurityFloor

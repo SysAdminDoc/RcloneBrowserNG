@@ -6,15 +6,6 @@ Actionable work only. Historical and completed roadmap material is archived in C
 
 Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 2026-11-15 pass.
 
-### P0
-
-- [ ] P0 — Stop offering `rclone selfupdate` to rclone builds whose updater trusts an unsigned hash
-  Why: on rclone 1.75.1 and older, the binary that runs `selfupdate` is the one GHSA-w33h-3qgq-8mv8 describes, so the app's one-click upgrade is the vulnerable path.
-  Evidence (Verified): `src/main_window.cpp:5021-5059` adds "Run selfupdate" to the update prompt for any older rclone and starts `rclone selfupdate`; GHSA-w33h-3qgq-8mv8 (high) covers `>=1.55.0, <=1.75.1` and is fixed in 1.75.2.
-  Touches: `src/main_window.cpp` (move the choice into a helper beside `src/rclone_security_floor.cpp`), `tests/rclone_security_floor_test.cpp`
-  Acceptance: below 1.75.2 the prompt offers "Open download page" (rclone.org/downloads) with one line saying why, and no selfupdate button; 1.75.2 and later keep "Run selfupdate"; a test covers 1.75.1, 1.75.2 and a `-DEV` version string.
-  Complexity: S
-
 ### P1
 
 - [ ] P1 — Move release builds to Qt 6.12 LTS before the next release

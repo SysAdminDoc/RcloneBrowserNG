@@ -29,4 +29,24 @@ bool IsBelowFloor(const QString &version);
 // to the user.
 QString AdvisorySummary();
 
+// The first rclone whose `selfupdate` checks the signature on the hash it
+// trusts. Older ones take the archive hash from an unsigned prefix of
+// SHA256SUMS (GHSA-w33h-3qgq-8mv8, high), so running their updater is the
+// vulnerable path.
+inline constexpr char kSelfUpdateFixedVersion[] = "1.75.2";
+
+// True when the installed rclone can upgrade itself with `rclone selfupdate`
+// without running the vulnerable updater. Takes the version as `rclone
+// version` prints it ("v1.75.2", "1.76.0-DEV", "1.77.0-beta.9300.abc").
+// A pre-release build counts only when it leads up to a release after
+// 1.76.0: its number names the release it leads up to, not the fixes it
+// has, and a 1.75.2 or 1.76.0 pre-release may predate the fix. An empty or
+// unreadable version is false, since the download page is the safe offer
+// when the app can't tell.
+bool SelfUpdateIsSafe(const QString &version);
+
+// One line for the update prompt saying why it offers the download page
+// instead of selfupdate.
+QString SelfUpdateUnsafeReason();
+
 } // namespace RcloneSecurityFloor

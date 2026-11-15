@@ -2012,6 +2012,9 @@ void MainWindow::rcloneGetVersion() {
       static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
           &QProcess::finished),
       this, [=](int code, QProcess::ExitStatus) {
+        // "-DEV" kept: the selfupdate offer treats a dev build by the
+        // release it leads up to, which the stored number no longer shows
+        QString rcloneVersionAsPrinted;
         if (code == 0) {
           QString version = p->readAllStandardOutput().trimmed();
 
@@ -2023,11 +2026,13 @@ void MainWindow::rcloneGetVersion() {
             rclone_info1.remove(lineBreak, rclone_info1.length() - lineBreak);
             rclone_version_no = rclone_info1;
             rclone_version_no.replace("rclone v", "");
+            rcloneVersionAsPrinted = rclone_version_no.trimmed();
             rclone_version_no.replace("-DEV", "");
           } else {
             // for very old rclone versions format was one line only
             rclone_version_no = rclone_info1.trimmed();
             rclone_version_no.replace("rclone v", "");
+            rcloneVersionAsPrinted = rclone_version_no;
             rclone_version_no.replace("-DEV", "");
           }
           // save current version no in settings
@@ -2217,7 +2222,9 @@ void MainWindow::rcloneGetVersion() {
         // if check updates enabled in settings
         if (checkRcloneUpdates) {
           QString last_check;
-          checkRcloneUpdate(rclone_version_no);
+          checkRcloneUpdate(rcloneVersionAsPrinted.isEmpty()
+                                ? rclone_version_no
+                                : rcloneVersionAsPrinted);
         };
 
         checkBrowserUpdate();
@@ -5020,19 +5027,40 @@ void MainWindow::checkRcloneUpdate(const QString &currentVersion) {
 
             if (compareVersion(latest.toStdString(),
                                currentVersion.toStdString()) == 1) {
+              // below 1.75.2 the updater itself is the vulnerable path
+              // (GHSA-w33h-3qgq-8mv8), so only the download page is offered
+              const bool selfUpdateSafe =
+                  RcloneSecurityFloor::SelfUpdateIsSafe(currentVersion);
+              QString text = QString("A newer version of rclone is available.\n\n"
+                                     "Installed: v%1\nAvailable: v%2")
+                                 .arg(currentVersion, latest);
+              if (!selfUpdateSafe) {
+                text += "\n\n" + RcloneSecurityFloor::SelfUpdateUnsafeReason();
+              }
               QMessageBox box(QMessageBox::Information,
-                              "rclone update available",
-                              QString("A newer version of rclone is available.\n\n"
-                                      "Installed: v%1\nAvailable: v%2")
-                                  .arg(currentVersion, latest),
+                              "rclone update available", text,
                               QMessageBox::NoButton, this);
-              auto *selfUpdate =
-                  box.addButton("Run selfupdate", QMessageBox::AcceptRole);
-              selfUpdate->setToolTip(
-                  "Run rclone selfupdate to upgrade in place.");
+              QPushButton *selfUpdate = nullptr;
+              QPushButton *downloadPage = nullptr;
+              if (selfUpdateSafe) {
+                selfUpdate =
+                    box.addButton("Run selfupdate", QMessageBox::AcceptRole);
+                selfUpdate->setToolTip(
+                    "Run rclone selfupdate to upgrade in place.");
+              } else {
+                downloadPage = box.addButton("Open download page",
+                                             QMessageBox::AcceptRole);
+                downloadPage->setToolTip(
+                    "Open rclone.org/downloads in your browser.");
+              }
               box.addButton("Later", QMessageBox::RejectRole);
               box.exec();
-              if (box.clickedButton() == selfUpdate) {
+              if (downloadPage != nullptr &&
+                  box.clickedButton() == downloadPage) {
+                QDesktopServices::openUrl(
+                    QUrl("https://rclone.org/downloads/"));
+              }
+              if (selfUpdate != nullptr && box.clickedButton() == selfUpdate) {
                 setStatusMessage("Updating rclone…");
                 auto *proc = new QProcess(this);
                 proc->setProcessChannelMode(QProcess::MergedChannels);
