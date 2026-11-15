@@ -53,14 +53,23 @@ QString WarnedKey(const QString &fileVersion) {
 
 QStringList DllCandidates(const QString &installDir) {
   QStringList candidates;
-  const QString dir = QDir::fromNativeSeparators(installDir.trimmed());
+  // The registry holds a Windows path. fromNativeSeparators only converts
+  // on Windows, and these are Windows paths on every platform the tests
+  // run on.
+  const QString dir = QString(installDir.trimmed()).replace('\\', '/');
   if (!dir.isEmpty()) {
     candidates << QDir::cleanPath(dir + "/bin/winfsp-x64.dll");
   }
-  candidates << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
-             << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
-             << "C:/Windows/System32/winfsp-x64.dll";
-  candidates.removeDuplicates();
+  const QStringList defaults{"C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll",
+                             "C:/Program Files/WinFsp/bin/winfsp-x64.dll",
+                             "C:/Windows/System32/winfsp-x64.dll"};
+  // Windows paths ignore case, so a recorded "c:\program files (x86)\..."
+  // is the default folder, not a fourth place to look.
+  for (const QString &path : defaults) {
+    if (!candidates.contains(path, Qt::CaseInsensitive)) {
+      candidates << path;
+    }
+  }
   return candidates;
 }
 

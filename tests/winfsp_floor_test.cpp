@@ -104,14 +104,22 @@ private slots:
                           "C:/Windows/System32/winfsp-x64.dll"}));
     QCOMPARE(WinFspFloor::DllCandidates("C:\\Program Files (x86)\\WinFsp\\"),
              defaults);
+    QCOMPARE(WinFspFloor::DllCandidates("c:\\program files (x86)\\winfsp\\")
+                 .size(),
+             3);
   }
 
   void theInstallFolderComesFromTheRegistry() {
 #if defined(Q_OS_WIN32)
-    const QString dir = WinFspFloor::InstallDirFromRegistry();
-    if (dir.isEmpty()) {
-      QSKIP("WinFsp isn't installed on this computer");
+    // Decide whether WinFsp is installed without the reader under test, so
+    // a read that comes back empty fails instead of skipping. The installer
+    // always records its folder.
+    if (!QFileInfo::exists(
+            "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll")) {
+      QSKIP("WinFsp isn't installed in its default folder on this computer");
     }
+    const QString dir = WinFspFloor::InstallDirFromRegistry();
+    QVERIFY2(!dir.isEmpty(), "WinFsp is installed but its folder wasn't read");
     QVERIFY2(QFileInfo(dir).isDir(), qPrintable(dir));
     QVERIFY2(QFileInfo::exists(WinFspFloor::DllCandidates(dir).first()),
              qPrintable(dir));
