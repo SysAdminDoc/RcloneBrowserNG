@@ -65,6 +65,15 @@ private slots:
     QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
     QCOMPARE(QString(WinFspFloor::kDownloadUrl),
              QString("https://github.com/winfsp/winfsp/releases/tag/v2.2B5"));
+    // The link follows the recommendation: "2026 Beta5" is tag v2.2B5, so a
+    // floor raised to Beta6 with the old link left in fails here.
+    const QString release(WinFspFloor::kRecommendedRelease);
+    const qsizetype beta = release.indexOf("Beta");
+    if (beta >= 0) {
+      QVERIFY2(QString(WinFspFloor::kDownloadUrl)
+                   .endsWith("B" + release.mid(beta + 4)),
+               WinFspFloor::kDownloadUrl);
+    }
     QVERIFY(!text.contains("winfsp.dev/rel"));
     // The old text sent people to Beta1, which is still below the floor.
     QVERIFY(!text.contains("Beta1 or newer"));
@@ -78,6 +87,37 @@ private slots:
     QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
     QVERIFY(!text.contains("winget install"));
     QVERIFY(!text.contains("winfsp.dev/rel"));
+  }
+
+  void theRecordedInstallFolderIsCheckedFirst() {
+    // WinFsp installed somewhere else used to count as not installed.
+    const QStringList custom =
+        WinFspFloor::DllCandidates("D:\\Tools\\WinFsp\\");
+    QCOMPARE(custom.first(), QString("D:/Tools/WinFsp/bin/winfsp-x64.dll"));
+    QCOMPARE(custom.size(), 4);
+    QVERIFY(custom.contains("C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"));
+
+    const QStringList defaults = WinFspFloor::DllCandidates(QString());
+    QCOMPARE(defaults,
+             (QStringList{"C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll",
+                          "C:/Program Files/WinFsp/bin/winfsp-x64.dll",
+                          "C:/Windows/System32/winfsp-x64.dll"}));
+    QCOMPARE(WinFspFloor::DllCandidates("C:\\Program Files (x86)\\WinFsp\\"),
+             defaults);
+  }
+
+  void theInstallFolderComesFromTheRegistry() {
+#if defined(Q_OS_WIN32)
+    const QString dir = WinFspFloor::InstallDirFromRegistry();
+    if (dir.isEmpty()) {
+      QSKIP("WinFsp isn't installed on this computer");
+    }
+    QVERIFY2(QFileInfo(dir).isDir(), qPrintable(dir));
+    QVERIFY2(QFileInfo::exists(WinFspFloor::DllCandidates(dir).first()),
+             qPrintable(dir));
+#else
+    QSKIP("WinFsp is Windows only");
+#endif
   }
 
   void reviewDateIsParseableAndNotInTheFuture() {

@@ -1,6 +1,10 @@
 #include "winfsp_floor.h"
 #include "utils.h"
 
+#if defined(Q_OS_WIN32)
+#include <qt_windows.h>
+#endif
+
 namespace WinFspFloor {
 
 bool IsBelowFloor(const QString &fileVersion) {
@@ -46,5 +50,40 @@ QString InstallAdvice() {
 QString WarnedKey(const QString &fileVersion) {
   return QString("%1 < %2").arg(fileVersion.trimmed(), kMinimumVersion);
 }
+
+QStringList DllCandidates(const QString &installDir) {
+  QStringList candidates;
+  const QString dir = QDir::fromNativeSeparators(installDir.trimmed());
+  if (!dir.isEmpty()) {
+    candidates << QDir::cleanPath(dir + "/bin/winfsp-x64.dll");
+  }
+  candidates << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
+             << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
+             << "C:/Windows/System32/winfsp-x64.dll";
+  candidates.removeDuplicates();
+  return candidates;
+}
+
+#if defined(Q_OS_WIN32)
+QString InstallDirFromRegistry() {
+  // QSettings would create the key when it's missing and the app runs
+  // elevated, and an empty WinFsp key can pass for an install to other tools.
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WinFsp", 0,
+                    KEY_QUERY_VALUE | KEY_WOW64_32KEY,
+                    &key) != ERROR_SUCCESS) {
+    return QString();
+  }
+  wchar_t buffer[1024] = {};
+  DWORD size = sizeof(buffer);
+  const LSTATUS status = RegGetValueW(key, nullptr, L"InstallDir",
+                                      RRF_RT_REG_SZ, nullptr, buffer, &size);
+  RegCloseKey(key);
+  if (status != ERROR_SUCCESS) {
+    return QString();
+  }
+  return QString::fromWCharArray(buffer);
+}
+#endif
 
 } // namespace WinFspFloor

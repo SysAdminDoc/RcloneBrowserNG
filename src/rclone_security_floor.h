@@ -29,8 +29,8 @@ bool IsBelowFloor(const QString &version);
 // to the user.
 QString AdvisorySummary();
 
-// What "already warned" is keyed on: the version and the floor. Releases up
-// to 2.0.2 had a 1.74.3 floor and keyed on the bare version, so someone on
+// What "already warned" is keyed on: the version and the floor. v2.0.1 and
+// v2.0.2 had a 1.74.3 floor and keyed on the bare version, so someone on
 // 1.74.2 who was warned then is keyed on "1.74.2". Raising the floor has to
 // give a different key or they never hear that 1.74.3 isn't enough anymore.
 // "rclone v1.74.2" and "1.74.2" give the same key.

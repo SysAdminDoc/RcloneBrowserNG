@@ -44,4 +44,15 @@ QString InstallAdvice();
 // people again who were told about an older recommendation.
 QString WarnedKey(const QString &fileVersion);
 
+// Where to look for the WinFsp DLL, best first: the bin folder under
+// installDir (the folder the installer records), then the default install
+// folders. Every architecture's DLL is in bin, ARM64 included.
+QStringList DllCandidates(const QString &installDir);
+
+#if defined(Q_OS_WIN32)
+// The InstallDir the installer writes to the 32-bit registry view, or empty
+// when WinFsp isn't installed. Only reads: a missing key stays missing.
+QString InstallDirFromRegistry();
+#endif
+
 } // namespace WinFspFloor

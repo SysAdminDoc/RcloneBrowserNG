@@ -36,25 +36,11 @@
 namespace {
 
 #if defined(Q_OS_WIN32)
-QStringList winFspDllCandidates() {
-  QStringList candidates;
-  // The installer records its folder in the 32-bit registry view, so a
-  // custom install location is found too instead of being reported as no
-  // WinFsp at all. Every architecture's DLL is in bin, ARM64 included.
-  const QSettings winFspKey("HKEY_LOCAL_MACHINE\\SOFTWARE\\WinFsp",
-                            QSettings::Registry32Format);
-  const QString installDir = winFspKey.value("InstallDir").toString();
-  if (!installDir.isEmpty()) {
-    candidates << QDir(installDir).filePath("bin/winfsp-x64.dll");
-  }
-  candidates << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
-             << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
-             << "C:/Windows/System32/winfsp-x64.dll";
-  return candidates;
-}
-
 QString findWinFspDll() {
-  for (const QString &path : winFspDllCandidates()) {
+  // The folder the installer recorded comes first, so a custom install
+  // location is found instead of being reported as no WinFsp at all.
+  for (const QString &path : WinFspFloor::DllCandidates(
+           WinFspFloor::InstallDirFromRegistry())) {
     if (QFileInfo::exists(path)) {
       return path;
     }
