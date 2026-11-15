@@ -10,6 +10,7 @@
 -   CHANGED: `scripts/generate_package_manifests.py` stops writing winget manifests. The project isn't published on winget, so they were never used. Chocolatey, Homebrew and Flatpak output is unchanged, and `--require windows` now checks for the Chocolatey package
 -   CHANGED: `git archive` no longer puts the internal planning notes (`ROADMAP.md`, `RESEARCH.md`, `Roadmap_Blocked.md`) into source tarballs
 -   NEW: A `Dockerfile` runs the app on a server with no desktop and shows it in a web browser on port 6080. The app gets a virtual display with a window manager, so dialogs and the `rclone config` terminal open in their own windows, the same as on a desktop. Settings and `rclone.conf` live in a `/config` volume, and the README has the build and run commands
+-   NEW: The app builds for ppc64le (IBM POWER). A cross build with Ubuntu 24.04's ppc64el Qt packages went through without a single source change, so it builds there like on any other Linux
 
 ### Security
 -   SECURITY: The rclone version the app warns about was raised from 1.74.3 to 1.75.1. The old floor was three releases behind and was itself an affected version (GHSA-fqj9-69pf-6pjg, patched in 1.74.4); rclone 1.75.1 closes eleven further advisories, two of them critical. The warning now names them, including the one that exposes the remote-control daemon's command line (and with it the daemon's credentials) to anything that can reach the port

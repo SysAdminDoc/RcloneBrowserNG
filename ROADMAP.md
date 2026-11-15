@@ -138,11 +138,3 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/main.cpp`
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
-
-## Moved back from Roadmap_Blocked.md
-
-Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, so they are ordinary work.
-
-- [ ] P4 Check that the app builds for ppc64le
-  Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.
-  Acceptance: a cross build for ppc64le succeeds, and any portability fix it needs lands. Sources: kapitainsky#152
