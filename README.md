@@ -137,7 +137,7 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 
 1.  Install [Visual Studio 2022](https://visualstudio.microsoft.com/) (the "Desktop development with C++" workload is enough, and Build Tools work too)
 2.  Install [CMake](https://cmake.org/)
-3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/). Release packaging needs Qt 6.12 (see [SECURITY.md](SECURITY.md)), and these steps assume `C:\Qt\6.12.0`
+3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/). These steps assume `C:\Qt\6.12.0`. Release packaging needs a qtbase 6.12.0 built with two security fixes that have no binary yet (see [SECURITY.md](SECURITY.md)). `python scripts\build_patched_qt.py --prefix C:\Qt\6.12.0-patched\msvc2022_64` builds it (it needs [Ninja](https://ninja-build.org/) on PATH), and `scripts\release_windows.cmd` uses that folder by default
 4.  `git clone https://github.com/SysAdminDoc/RcloneBrowserNG.git && cd RcloneBrowserNG`
 5.  `mkdir build && cd build`
 6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64 .. && cmake --build . --config Release`

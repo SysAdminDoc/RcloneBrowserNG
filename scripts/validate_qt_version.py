@@ -21,9 +21,10 @@ Checked 2026-11-15: endoflife.date ends 6.11's support on 2026-09-30, and
 open-source patches until 2027-04-01) is the branch to ship from. Two qtbase
 fixes the app reaches have no 6.12 binary yet: CVE-2026-116337 (memory
 exhaustion from an HTTP reply's status line or headers) and CVE-2026-105943
-(NTLM single sign-on on Windows without the server's SPN). download.qt.io
-publishes both as 6.12 source diffs, and they ship in 6.12.1, so 6.12.0
-passes with a warning until then.
+(NTLM single sign-on on Windows without the server's SPN). They ship in
+6.12.1, and download.qt.io publishes both as 6.12 source diffs until then.
+A 6.12.0 passes only when scripts/build_patched_qt.py built it with those
+diffs, which it records in qt-security-patches.json at the Qt prefix.
 
 Not tracked, because the app can't reach them: CVE-2026-101201 (QBinaryJson
 in Qt5Compat, which the app doesn't link) and CVE-2026-105924 (CBOR to JSON
@@ -36,6 +37,8 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+import importlib.util
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -44,9 +47,10 @@ import sys
 # Per-branch policy. `patched_from` is the first patch on that branch carrying
 # the fix for every CVE in CVES, or None when no such patch was ever published
 # openly. `oss_support_ends` is when open-source patches stop, from
-# endoflife.date. `pending_fix`, when present, is a (version, CVEs) pair for
-# vulnerabilities whose fixed binary release isn't out yet: builds below that
-# version pass with a warning naming them.
+# endoflife.date. `pending_fix`, when present, covers vulnerabilities whose
+# fixed binary release isn't out yet: builds below `fixed_in` are refused
+# unless their Qt prefix records a build with the source diffs for every CVE
+# in `cves`.
 BRANCHES = {
     (6, 5): {"patched_from": None, "oss_support_ends": date(2023, 10, 9)},
     (6, 6): {"patched_from": None, "oss_support_ends": date(2024, 4, 2)},
@@ -60,30 +64,66 @@ BRANCHES = {
     (6, 12): {
         "patched_from": (6, 12, 0),
         "oss_support_ends": date(2027, 4, 1),
-        "pending_fix": (
-            (6, 12, 1),
-            "CVE-2026-116337 (memory exhaustion from an HTTP reply's status "
-            "line or headers) and CVE-2026-105943 (NTLM single sign-on on "
-            "Windows without the server's SPN)",
-        ),
+        "pending_fix": {
+            "fixed_in": (6, 12, 1),
+            "cves": ("CVE-2026-116337", "CVE-2026-105943"),
+            "summary": (
+                "CVE-2026-116337 (memory exhaustion from an HTTP reply's "
+                "status line or headers) and CVE-2026-105943 (NTLM single "
+                "sign-on on Windows without the server's SPN)"
+            ),
+        },
     },
 }
 
 # The branch the project ships from today, and when that choice must be
-# revisited. Keep in step with SECURITY.md.
+# revisited. Keep in step with SECURITY.md. Until 6.12.1 ships, this version
+# passes only as built by scripts/build_patched_qt.py.
 RECOMMENDED = "6.12.0"
 REVISIT_ON = date(2027, 4, 1)
 
 CVES = "CVE-2026-6210, CVE-2026-9499, CVE-2026-95620, CVE-2026-96432"
 
+PATCH_BUILDER = Path(__file__).resolve().parent / "build_patched_qt.py"
+
 
 def pending_cves() -> str:
     """Every vulnerability the table still waits on a binary release for."""
     return "; ".join(
-        branch["pending_fix"][1]
+        branch["pending_fix"]["summary"]
         for branch in BRANCHES.values()
         if "pending_fix" in branch
     )
+
+
+def patch_builder():
+    """scripts/build_patched_qt.py, which owns the record format."""
+    spec = importlib.util.spec_from_file_location("build_patched_qt", PATCH_BUILDER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"can't load {PATCH_BUILDER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def patched_cves(prefix: Path, version: tuple[int, int, int]) -> frozenset[str]:
+    """The CVEs the record in a Qt prefix shows were patched in.
+
+    Raises ValueError for a record that is there but damaged.
+    """
+    builder = patch_builder()
+    record = builder.read_record(prefix)
+    if record is None:
+        return frozenset()
+    text = ".".join(str(part) for part in version)
+    covered = frozenset(builder.covered_cves(record, text))
+    if not covered:
+        print(
+            f"NOTE: {prefix / builder.RECORD_NAME} lists none of the diffs "
+            f"scripts/build_patched_qt.py pins for Qt {text}, so it is ignored.",
+            file=sys.stderr,
+        )
+    return covered
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -93,8 +133,16 @@ def parse_version(text: str) -> tuple[int, int, int]:
     return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
-def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
-    """Return the reasons this Qt must not be used for a release, if any."""
+def evaluate(
+    version: tuple[int, int, int],
+    today: date,
+    patched: frozenset[str] = frozenset(),
+) -> list[str]:
+    """Return the reasons this Qt must not be used for a release, if any.
+
+    `patched` is the set of CVEs a qt-security-patches.json record shows the
+    build was patched for (see patched_cves).
+    """
     major, minor, patch = version
     problems: list[str] = []
 
@@ -134,17 +182,24 @@ def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
         )
 
     pending = branch.get("pending_fix")
-    if pending is not None and version < pending[0]:
-        fixed_in = ".".join(str(part) for part in pending[0])
-        print(
-            f"WARNING: Qt {major}.{minor}.{patch} is still affected by "
-            f"{pending[1]}. The fixes ship in {fixed_in}, which "
-            "download.qt.io didn't carry when this table was last checked, "
-            "and are published there as source diffs until then. Rebuild "
-            f"with {fixed_in} or a qtbase patched with those diffs, and "
-            "update scripts/validate_qt_version.py.",
-            file=sys.stderr,
-        )
+    if pending is not None and version < pending["fixed_in"]:
+        fixed_in = ".".join(str(part) for part in pending["fixed_in"])
+        missing = [cve for cve in pending["cves"] if cve not in patched]
+        if missing:
+            problems.append(
+                f"Qt {major}.{minor}.{patch} is still affected by "
+                f"{pending['summary']}. This build lacks the fix for "
+                f"{', '.join(missing)}. Use {fixed_in} or newer, or a qtbase "
+                "built with the published source diffs by "
+                "scripts/build_patched_qt.py."
+            )
+        else:
+            print(
+                f"NOTE: Qt {major}.{minor}.{patch} was built with the qtbase "
+                f"source diffs for {', '.join(pending['cves'])}. Move to "
+                f"{fixed_in} once it ships.",
+                file=sys.stderr,
+            )
 
     ends = branch["oss_support_ends"]
     if today > ends:
@@ -164,16 +219,16 @@ def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
     return problems
 
 
-def qt_version_from_qmake(qmake: str) -> str:
+def qmake_query(qmake: str, name: str) -> str:
     result = subprocess.run(
-        [qmake, "-query", "QT_VERSION"],
+        [qmake, "-query", name],
         capture_output=True,
         text=True,
         check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"{qmake} -query QT_VERSION failed: {result.stderr.strip()}"
+            f"{qmake} -query {name} failed: {result.stderr.strip()}"
         )
     return result.stdout.strip()
 
@@ -182,20 +237,31 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qmake", help="path to qmake/qmake6")
     parser.add_argument("--version", help="Qt version string, instead of --qmake")
+    parser.add_argument(
+        "--qt-prefix",
+        help="Qt install prefix to read qt-security-patches.json from "
+        "(defaults to qmake's QT_INSTALL_PREFIX)",
+    )
     args = parser.parse_args()
 
     if not args.qmake and not args.version:
         parser.error("one of --qmake or --version is required")
 
     try:
-        raw = args.version if args.version else qt_version_from_qmake(args.qmake)
+        raw = args.version if args.version else qmake_query(args.qmake, "QT_VERSION")
         version = parse_version(raw)
+        prefix = args.qt_prefix
+        if prefix is None and args.qmake:
+            prefix = qmake_query(args.qmake, "QT_INSTALL_PREFIX")
+        patched = patched_cves(Path(prefix), version) if prefix else frozenset()
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     print(f"Qt version: {'.'.join(str(part) for part in version)}")
-    problems = evaluate(version, date.today())
+    if patched:
+        print(f"Patched with source diffs for: {', '.join(sorted(patched))}")
+    problems = evaluate(version, date.today(), patched)
     if not problems:
         return 0
 

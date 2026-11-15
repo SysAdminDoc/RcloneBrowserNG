@@ -1,7 +1,9 @@
 param(
   # Where the build, the databases and the SARIF files go. /build*/ is ignored.
   [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'build-codeql'),
-  [string]$QtDir = 'C:\Qt\6.12.0\msvc2022_64',
+  # The release lane's Qt: qtbase 6.12.0 with the CVE diffs, built by
+  # scripts/build_patched_qt.py.
+  [string]$QtDir = 'C:\Qt\6.12.0-patched\msvc2022_64',
   [string]$CodeQL = '',
   [int]$Ram = 4096,
   [int]$Jobs = 2,

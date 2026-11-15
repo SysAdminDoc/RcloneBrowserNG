@@ -32,7 +32,7 @@ This allows private discussion and coordinated disclosure. You will receive an a
 
 ## Qt branch policy
 
-Release builds ship **Qt 6.12.0**. Revisit this on **2027-04-01**.
+Release builds ship **Qt 6.12.0**, built from source with two security fixes that have no 6.12 binary yet. Revisit this on **2027-04-01**.
 
 Two things have to be true of the Qt a release is built with, and both are enforced by `scripts/validate_qt_version.py`, which every release script calls:
 
@@ -41,7 +41,9 @@ Two things have to be true of the Qt a release is built with, and both are enfor
 
 Qt 6.12 is the current LTS. It came out on 2026-09-30 and gets open-source patches until 2027-04-01 (endoflife.date, checked 2026-11-15). endoflife.date ends 6.11's support on the day 6.12 shipped. 6.11.3 still followed on 2026-10-26 as the branch's last release, and the validator refuses it with the rest of 6.11.
 
-Two gaps are still open. CVE-2026-116337 (memory exhaustion from an HTTP reply's status line or headers, reachable through the remote daemon and the GitHub update check) and CVE-2026-105943 (on Windows, NTLM single sign-on that doesn't pass the server's SPN) are fixed in 6.12.1. On 2026-11-15 download.qt.io had no 6.12.1 binaries, but it did publish the qtbase source diffs for 6.12, on 2026-11-09 and 2026-11-13. The validator passes 6.12.0 with a warning that names both.
+Two fixes don't have a binary yet. CVE-2026-116337 (memory exhaustion from an HTTP reply's status line or headers, reachable through the remote daemon and the GitHub update check) and CVE-2026-105943 (on Windows, NTLM single sign-on that doesn't pass the server's SPN) are fixed in 6.12.1. On 2026-11-15 download.qt.io had no 6.12.1 binaries, but it did publish the qtbase source diffs for 6.12, on 2026-11-09 and 2026-11-13.
+
+`scripts/build_patched_qt.py` builds qtbase 6.12.0 from the release sources with those three diffs. It checks the source archive and each diff against a SHA-256 pinned in the script before using them, and it leaves `qt-security-patches.json` in the install listing what went in. The validator reads that file through qmake and refuses a 6.12.0 that doesn't have both fixes, so the stock 6.12.0 binaries can't ship. 6.12.1 passes as it is once it's out. The app links only qtbase modules (Core, Gui, Widgets and Network). The script also builds Qt SVG 6.12.0 from its unchanged release source, because the package ships Qt SVG's image and icon plugins so `.svg` files preview in the remote browser. The script runs on Linux and macOS too, with the compiler on PATH.
 
 Qt 6.8 LTS was the obvious choice before 6.12, but it was never usable here. Its open-source window closed on 2025-04-02, and the public archive at download.qt.io carries 6.8 only up to **6.8.5** (checked 2026-11-15). The 6.8.8 that fixes the first two CVEs is available to commercial licensees only. Building a release from open-source 6.8 means shipping a known-vulnerable QtSvg.
 
@@ -53,5 +55,5 @@ Source builds are a separate matter and floor at Qt 6.4, which is what the READM
 
 - Release builds come from the maintainer's local release scripts. The exception is the macOS DMG, which a hand-started workflow builds on a GitHub-hosted Mac because there's no Mac on hand, and that workflow publishes nothing. This repository does not provide CI builds on push, provenance attestations, or published CodeQL and Scorecard results. Each release ships a `SHA256SUMS` file.
 - `scripts/codeql_scan.ps1` runs CodeQL's security-extended queries over the app's C++, traced from a clean MSVC build, and over the Python release scripts. It runs on the maintainer's machine, and its results aren't published. The scan on 2026-11-15 found nothing.
-- The local Windows release script validates the configured Qt version against the documented security floor.
+- The Windows, AppImage and macOS release scripts validate the configured Qt against the documented security floor, including the source-patch record for 6.12.0.
 - The app warns when the detected rclone version has known CVEs

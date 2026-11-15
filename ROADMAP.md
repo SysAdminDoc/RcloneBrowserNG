@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P1
 
-- [ ] P1 — Build release Qt from 6.12.0 sources with the published qtbase CVE diffs
-  Why: CVE-2026-116337 (HTTP reply status line and headers read without a size limit, reached by the remote daemon client and the GitHub update check) and CVE-2026-105943 (NTLM single sign-on on Windows without the server's SPN) have no 6.12 binary before 6.12.1. Release builds use the 6.12.0 binaries, and the validator only warns.
-  Evidence (Verified): download.qt.io/official_releases/qt/6.12/ lists `CVE-2026-116337-qtbase-6.12-0001.diff`, `-0002.diff` (2026-11-09) and `CVE-2026-105943-qtbase-6.12.diff` (2026-11-13), and no 6.12.1 directory on 2026-11-15. The app links only qtbase modules (`src/CMakeLists.txt`: Core, Gui, Widgets, Network) and deploys with `windeployqt --no-translations`, so qtbase alone is enough for the Windows lane.
-  Touches: new `scripts/build_patched_qt.py` (fetch `qtbase-everywhere-src-6.12.0` and the diffs, check SHA-256s pinned in the repo, apply, configure, build, install, record the applied CVEs in the prefix), `scripts/validate_qt_version.py` (read that record; refuse 6.12.0 without both fixes), `tests/qt_version_policy_test.py`, `scripts/release_windows.cmd`, `scripts/codeql_scan.ps1`, README build steps, SECURITY.md.
-  Acceptance: the validator refuses an unpatched 6.12.0, passes a 6.12.0 whose record lists both CVEs, and passes 6.12.1; the app and the full test suite build and pass against the patched Qt. Previously in Roadmap_Blocked.md as "Rebuild releases on Qt 6.12.1", waiting on 6.12.1; the 6.12 source diffs make that wait unnecessary.
-  Complexity: M
-
 - [ ] P1 — Cap deletions on saved and scheduled syncs
   Why: a scheduled sync whose source comes back empty (an unmounted drive, an expired token) deletes the destination, and the dry-run deletion preview only helps someone who is at the screen.
   Evidence (Verified): no `--max-delete` anywhere in `src/` or `tests/`; rclone docs: past `--max-delete` "a fatal error will be generated and rclone will stop the operation in progress", and exit code 7 is a fatal error; rclone 1.76.0 fixed "rc ignoring global `--dry-run` and `--max-delete` settings"; Airclone README: "A repeating Sync always carries a delete cap, and tripping it pauses every schedule until you look"; Alto v0.9.0 mass-deletion protection; Bisync Hub's `TOO_MANY_DELETES` (forum 54406). The P2 transfer-efficiency item covers speed flags only.

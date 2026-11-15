@@ -8,7 +8,9 @@ rem Usage: release_windows.cmd
 rem
 rem Requirements:
 rem   - Visual Studio 2022 (Build Tools or Community) with C++ workload
-rem   - Qt 6.12 MSVC 64-bit, per SECURITY.md (set QT env var or edit the default below)
+rem   - Qt 6.12 MSVC 64-bit, per SECURITY.md (set QT env var or edit the default below).
+rem     Until 6.12.1 ships, that's qtbase 6.12.0 built with the published CVE
+rem     diffs by scripts\build_patched_qt.py; the stock 6.12.0 is refused.
 rem   - CMake on PATH
 rem   - Inno Setup 6 (for installer, optional)
 rem   - 7-Zip (for zip archive, optional)
@@ -57,7 +59,7 @@ if errorlevel 1 (
 )
 
 rem --- Locate Qt --------------------------------------------------------------
-if "%QT%" == "" set "QT=C:\Qt\6.12.0\msvc2022_64"
+if "%QT%" == "" set "QT=C:\Qt\6.12.0-patched\msvc2022_64"
 set "QMAKE=%QT%\bin\qmake6.exe"
 if not exist "%QMAKE%" set "QMAKE=%QT%\bin\qmake.exe"
 if not exist "%QMAKE%" (
