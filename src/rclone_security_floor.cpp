@@ -62,6 +62,13 @@ QString AdvisorySummary() {
       .arg(kMinimumVersion);
 }
 
+QString WarnedKey(const QString &version) {
+  const QString normalized = Normalized(version);
+  return QString("%1 < %2")
+      .arg(normalized.isEmpty() ? version.trimmed() : normalized,
+           kMinimumVersion);
+}
+
 bool SelfUpdateIsSafe(const QString &version) {
   const QString trimmed = Normalized(version);
   if (trimmed.isEmpty()) {

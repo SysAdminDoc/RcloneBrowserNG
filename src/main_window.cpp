@@ -2122,10 +2122,11 @@ void MainWindow::rcloneGetVersion() {
                 rcloneVersionAsPrinted +
                 " has security fixes available (update to " +
                 RcloneSecurityFloor::kMinimumVersion + "+)");
+            const QString warnedKey =
+                RcloneSecurityFloor::WarnedKey(rcloneVersionAsPrinted);
             if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
-                rcloneVersionAsPrinted) {
-              settings->setValue("Settings/rcloneCveWarnedVersion",
-                                 rcloneVersionAsPrinted);
+                warnedKey) {
+              settings->setValue("Settings/rcloneCveWarnedVersion", warnedKey);
               QMessageBox::warning(
                   this, "rclone update recommended",
                   QString("You are running rclone %1.\n\n%2\n\nPlease update "

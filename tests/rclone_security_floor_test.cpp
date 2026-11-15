@@ -127,6 +127,23 @@ private slots:
     // The text has to say where the older advisories stop.
     QVERIFY(summary.contains("before 1.75.2"));
   }
+
+  void raisingTheFloorWarnsAgain() {
+    // Before the 1.76.0 floor the key was the bare version, so anyone told
+    // about 1.75.1 under the old floor would never hear about this one.
+    QVERIFY(RcloneSecurityFloor::WarnedKey("1.75.1") != "1.75.1");
+    QVERIFY(RcloneSecurityFloor::WarnedKey("1.75.1").contains(
+        RcloneSecurityFloor::kMinimumVersion));
+    // The window hands over "1.75.1", a test may hand over the line as
+    // rclone prints it. Both mean the same install.
+    QCOMPARE(RcloneSecurityFloor::WarnedKey("rclone v1.75.1"),
+             RcloneSecurityFloor::WarnedKey("1.75.1"));
+    QCOMPARE(RcloneSecurityFloor::WarnedKey(" 1.75.1 "),
+             RcloneSecurityFloor::WarnedKey("1.75.1"));
+    // A dev build is a different binary from the release.
+    QVERIFY(RcloneSecurityFloor::WarnedKey("1.75.1-DEV") !=
+            RcloneSecurityFloor::WarnedKey("1.75.1"));
+  }
 };
 
 QTEST_APPLESS_MAIN(RcloneSecurityFloorTest)

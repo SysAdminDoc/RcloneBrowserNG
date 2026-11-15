@@ -3,6 +3,7 @@
 #include "job_history.h"
 #include "test_rclone.h"
 #include "main_window.h"
+#include "rclone_security_floor.h"
 #include "remote_daemon.h"
 #include "remote_widget.h"
 #include "utils.h"
@@ -59,8 +60,11 @@ private:
     return visible;
   }
 
-  // Mirrors the parsing in MainWindow::rcloneGetVersion so the pre-acknowledged
-  // security-floor warning matches the string the window will compute.
+  // The first line of `rclone version` ("rclone v1.76.0", "-DEV" kept), which
+  // is what MainWindow::rcloneGetVersion hands the security floor. The
+  // pre-acknowledged warning goes through RcloneSecurityFloor::WarnedKey the
+  // same way, or a dev build below the floor opens an offscreen QMessageBox
+  // that blocks the run.
   QString detectedRcloneVersion() const {
     QProcess probe;
     probe.start(mRclone, QStringList() << "version");
@@ -72,7 +76,7 @@ private:
     if (lineBreak != -1) {
       first.truncate(lineBreak);
     }
-    return first.trimmed().replace("rclone v", "").replace("-DEV", "");
+    return first.trimmed();
   }
 
   void setHideCryptBackends(bool hide) {
@@ -207,7 +211,8 @@ private slots:
     // offscreen QMessageBox blocks the run.
     settings.setValue("Settings/checkRcloneBrowserUpdates", false);
     settings.setValue("Settings/checkRcloneUpdates", false);
-    settings.setValue("Settings/rcloneCveWarnedVersion", detectedRcloneVersion());
+    settings.setValue("Settings/rcloneCveWarnedVersion",
+                      RcloneSecurityFloor::WarnedKey(detectedRcloneVersion()));
     settings.sync();
 
     SetRclone(mRclone);

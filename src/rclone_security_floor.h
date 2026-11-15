@@ -29,6 +29,12 @@ bool IsBelowFloor(const QString &version);
 // to the user.
 QString AdvisorySummary();
 
+// What "already warned" is keyed on: the version and the floor. Someone told
+// about 1.75.1 under the 1.75.1 floor was keyed on the bare version, so
+// raising the floor has to give a different key or they never hear about the
+// new one. "rclone v1.75.1" and "1.75.1" give the same key.
+QString WarnedKey(const QString &version);
+
 // The first rclone whose `selfupdate` checks the signature on the hash it
 // trusts. Older ones take the archive hash from an unsigned prefix of
 // SHA256SUMS (GHSA-w33h-3qgq-8mv8, high), so running their updater is the
