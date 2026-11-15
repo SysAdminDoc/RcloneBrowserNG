@@ -51,7 +51,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Change a running transfer's speed limit, or let it slow down on its own while other apps use the network
 *   On Windows, copy files another program has open (an Outlook data file, a database) by reading them from a shadow copy of the drive
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
-*   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/) 2026 Beta5 or newer from its [GitHub releases](https://github.com/winfsp/winfsp/releases), since WinFsp 2025 lacks the 2026 security fixes. macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
+*   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/). Use [2026 Beta5](https://github.com/winfsp/winfsp/releases/tag/v2.2B5) or newer, because WinFsp 2025 lacks the 2026 security fixes and the app warns about it. macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
 *   Put several remotes together as one, so they browse and mount as a single drive
 *   Work through an rclone running on another computer, like a NAS, with its remotes and its disks
 *   Optional tray icon with finished-transfer notifications

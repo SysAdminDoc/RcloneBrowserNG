@@ -37,10 +37,20 @@ namespace {
 
 #if defined(Q_OS_WIN32)
 QStringList winFspDllCandidates() {
-  return QStringList()
-         << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
-         << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
-         << "C:/Windows/System32/winfsp-x64.dll";
+  QStringList candidates;
+  // The installer records its folder in the 32-bit registry view, so a
+  // custom install location is found too instead of being reported as no
+  // WinFsp at all. Every architecture's DLL is in bin, ARM64 included.
+  const QSettings winFspKey("HKEY_LOCAL_MACHINE\\SOFTWARE\\WinFsp",
+                            QSettings::Registry32Format);
+  const QString installDir = winFspKey.value("InstallDir").toString();
+  if (!installDir.isEmpty()) {
+    candidates << QDir(installDir).filePath("bin/winfsp-x64.dll");
+  }
+  candidates << "C:/Program Files (x86)/WinFsp/bin/winfsp-x64.dll"
+             << "C:/Program Files/WinFsp/bin/winfsp-x64.dll"
+             << "C:/Windows/System32/winfsp-x64.dll";
+  return candidates;
 }
 
 QString findWinFspDll() {
@@ -5196,8 +5206,18 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
     if (settings->value("Settings/winFspWarnedVersion").toString() !=
         warnedKey) {
       settings->setValue("Settings/winFspWarnedVersion", warnedKey);
-      QMessageBox::warning(this, "WinFsp update recommended",
-                           WinFspFloor::Warning(winFspVersion));
+      // A plain-text URL can't be clicked, so the page gets a button. Close
+      // stays the default: the mount goes ahead either way.
+      QMessageBox box(QMessageBox::Warning, "WinFsp update recommended",
+                      WinFspFloor::Warning(winFspVersion), QMessageBox::Close,
+                      this);
+      QPushButton *open =
+          box.addButton("Open download page", QMessageBox::AcceptRole);
+      box.setDefaultButton(QMessageBox::Close);
+      box.exec();
+      if (box.clickedButton() == open) {
+        QDesktopServices::openUrl(QUrl(WinFspFloor::kDownloadUrl));
+      }
     }
   }
 #elif defined(Q_OS_MACOS)

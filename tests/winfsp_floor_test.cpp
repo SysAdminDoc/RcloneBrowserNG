@@ -1,5 +1,6 @@
 #include "winfsp_floor.h"
 
+#include <QDate>
 #include <QTest>
 
 // The WinFsp check used to warn only at 2.1.25156 and older and recommend
@@ -59,10 +60,11 @@ private slots:
     QVERIFY(text.contains(WinFspFloor::kMinimumVersion));
     QVERIFY(text.contains("2026 Beta5"));
     // The fixed builds are only on GitHub. winfsp.dev/rel offers the stable
-    // 2.1.25156, the build being warned about.
+    // 2.1.25156, the build being warned about, and GitHub's release list
+    // marks that one "Latest", so the link is Beta5's own page.
     QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
-    QVERIFY(QString(WinFspFloor::kDownloadUrl)
-                .startsWith("https://github.com/winfsp/winfsp/releases"));
+    QCOMPARE(QString(WinFspFloor::kDownloadUrl),
+             QString("https://github.com/winfsp/winfsp/releases/tag/v2.2B5"));
     QVERIFY(!text.contains("winfsp.dev/rel"));
     // The old text sent people to Beta1, which is still below the floor.
     QVERIFY(!text.contains("Beta1 or newer"));
@@ -76,6 +78,16 @@ private slots:
     QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
     QVERIFY(!text.contains("winget install"));
     QVERIFY(!text.contains("winfsp.dev/rel"));
+  }
+
+  void reviewDateIsParseableAndNotInTheFuture() {
+    // scripts/release_check.py ages this date out. A typo there would
+    // either never expire or block every release.
+    const QDate reviewed =
+        QDate::fromString(WinFspFloor::kReviewedDate, Qt::ISODate);
+    QVERIFY2(reviewed.isValid(), WinFspFloor::kReviewedDate);
+    QVERIFY(reviewed <= QDate::currentDate());
+    QVERIFY(WinFspFloor::kReviewIntervalDays > 0);
   }
 
   void raisingTheFloorWarnsAgain() {

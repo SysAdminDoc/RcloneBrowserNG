@@ -264,7 +264,7 @@ None of these fixes reach users until a release after v2.0.2.
 
 ## Open Questions
 
-1. Answered: the WinFsp warning recommends the prerelease (2026 Beta5) and says it's a beta, because the latest stable, 2.1 from 2025-06-05, carries none of the 2026 fixes. It links GitHub's release list, since winfsp.dev/rel and winget only offer that stable build. Revisit when a stable 2026 build ships (the release check fails once the floor's review date is 180 days old).
+1. Answered: the WinFsp warning recommends the prerelease (2026 Beta5) and says it's a beta, because the latest stable, 2.1 from 2025-06-05, carries none of the 2026 fixes. It links Beta5's GitHub release page, since winfsp.dev/rel and winget's WinFsp.WinFsp only offer that stable build (WinFsp.WinFsp.Beta stops at 2024 Beta2). Revisit when a stable 2026 build ships (the release check fails once the floor's review date is 180 days old).
 2. What deletion cap should a new scheduled sync get by default: off, a fixed count, or a share of the destination's file count?
 3. For remote-daemon mode over TLS, is trusting a self-signed certificate by its SHA-256 fingerprint acceptable, or should the app require a CA-valid certificate and document a reverse proxy?
 4. With fuse-t 1.2.9 on macOS 26, does `-o backend=fskit` fail or fall back when the FSKit extension hasn't been enabled? This needs a Mac.

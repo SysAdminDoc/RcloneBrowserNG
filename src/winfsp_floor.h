@@ -14,11 +14,12 @@ namespace WinFspFloor {
 inline constexpr char kMinimumVersion[] = "2.2.26286";
 inline constexpr char kRecommendedRelease[] = "WinFsp 2026 Beta5";
 
-// Where the recommended build is. winfsp.dev/rel and winget's WinFsp.WinFsp
-// offer only the stable 2.1.25156, the build the warning is about, so
-// sending people there would have them reinstall what they already have.
+// The recommended build's release page. winfsp.dev/rel and winget's
+// WinFsp.WinFsp offer only the stable 2.1.25156, the build the warning is
+// about, and GitHub's release list marks that one "Latest", so only the
+// Beta5 page itself is hard to misread.
 inline constexpr char kDownloadUrl[] =
-    "https://github.com/winfsp/winfsp/releases";
+    "https://github.com/winfsp/winfsp/releases/tag/v2.2B5";
 
 // When the floor was last checked against the WinFsp releases, and how long
 // that check stays good. scripts/release_check.py refuses to publish once it

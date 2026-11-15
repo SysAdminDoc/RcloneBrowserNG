@@ -300,8 +300,9 @@ SECURITY_FLOORS = (
         "path": ("src", "winfsp_floor.h"),
         "advice": (
             "Re-check https://github.com/winfsp/winfsp/releases, then update "
-            "kMinimumVersion, kRecommendedRelease, the Warning text in "
-            "winfsp_floor.cpp and kReviewedDate."
+            "kMinimumVersion, kRecommendedRelease, kDownloadUrl, the Warning "
+            "and InstallAdvice text in winfsp_floor.cpp, the WinFsp line in "
+            "README.md and kReviewedDate."
         ),
     },
 )
