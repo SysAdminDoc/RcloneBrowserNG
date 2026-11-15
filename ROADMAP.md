@@ -131,3 +131,47 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/main.cpp`
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
+
+## Moved back from Roadmap_Blocked.md
+
+Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, so they are ordinary work.
+
+- [ ] P2 Run clang-tidy locally against the existing `.clang-tidy`
+  Was blocked on: no Linux CI runner and no clang-tidy on the workstation. LLVM installs from winget and clang-tidy reads a Ninja `compile_commands.json`.
+  Acceptance: a CMake option runs clang-tidy over `src/`, generated moc/uic files are excluded, and every finding is fixed or suppressed with a reason.
+
+- [ ] P2 Run CodeQL locally with a traced C++ build
+  Was blocked on: restoring GitHub Actions, which the repo dropped on purpose. The CodeQL CLI traces a local build just as well.
+  Acceptance: a `security-extended` C++ analysis of a traced build runs to completion and every result is fixed or explained.
+
+- [ ] P2 Build the macOS DMG on a macOS runner
+  Was blocked on: having no Mac. A manually triggered workflow on a GitHub-hosted macOS runner is the one CI build the project's rules allow, and the repo is public, so it costs nothing.
+  Acceptance: a `workflow_dispatch` workflow runs `scripts/release_macOS.sh` and uploads the DMG as a workflow artifact (not a release), and one run passes.
+
+- [ ] P3 Use `job/batch` for multi-file deletes
+  Was blocked on: the `sync/*` migration, which has landed. rclone 1.75.1 lists `job/batch` in `rc/list`.
+  Acceptance: deleting several selected items goes through one `job/batch` call when the daemon supports it, falls back to the current path otherwise, and reports per-item failures.
+
+- [ ] P3 Condition-gated schedules: AC power and unmetered network
+  Was blocked on: the scheduler and the platform probes. The scheduler exists, and Qt's `QNetworkInformation` reports metered networks.
+  Acceptance: a scheduled task can require AC power and/or an unmetered network, and a skipped run is logged with the reason.
+
+- [ ] P3 Adaptive bandwidth while other apps use the network
+  Was blocked on: other bandwidth work and platform traffic probes. `core/bwlimit` is wired to the job card now.
+  Acceptance: an Adaptive mode compares interface traffic against rclone's own rate, throttles to a floor while other traffic is present and returns to the ceiling when it stops.
+
+- [ ] P3 VSS snapshot option for locked files on Windows
+  Was blocked on: being hard to test. Only the elevated end-to-end run needs a UAC click; everything up to it can be built and tested.
+  Acceptance: a local-source task can opt into snapshotting locked files, the snapshot needs elevation and is always cleaned up, and the option explains itself when unavailable.
+
+- [ ] P4 Check that the app builds for ppc64le
+  Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.
+  Acceptance: a cross build for ppc64le succeeds, and any portability fix it needs lands. Sources: kapitainsky#152
+
+- [ ] P5 Use the app from a browser on a machine with no desktop
+  Was blocked on: "major architecture work". Qt 6 ships a VNC platform plugin, and noVNC turns that into a browser page, so a container can serve the real app without a second frontend.
+  Acceptance: a Dockerfile builds an image that runs the app on Qt's VNC platform with noVNC in front, and the app is usable from a browser. Covers the Web UI, Docker container and FreeBSD-without-a-desktop entries. Sources: mmozeiko#51, kapitainsky#247
+
+- [ ] P5 Connect to an rclone `rcd` running on another machine
+  Was blocked on: "major architecture work". Listing, transfers and mounts all start a local rclone process today, so this needs an rc-only mode for each of them.
+  Acceptance: the app can point at a remote `rcd` URL with credentials and browse and transfer through it. Sources: mmozeiko#38
