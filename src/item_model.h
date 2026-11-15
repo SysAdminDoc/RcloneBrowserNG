@@ -102,12 +102,12 @@ private:
   QIcon mFolderIcon;
   QIcon mFileIcon;
 
-  QFont mFixedFont;
-
   int mSortColumn = 0;
   Qt::SortOrder mSortOrder = Qt::AscendingOrder;
   bool mDriveShared = false;
   bool mGooglePhotos = false;
+
+  QFont mFixedFont;
 
 public:
   Item *get(const QModelIndex &index) const;

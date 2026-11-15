@@ -48,7 +48,7 @@ QString resolveRcloneConfPath(QString conf) {
   return conf;
 }
 
-QString credentialTarget() {
+[[maybe_unused]] QString credentialTarget() {
   QString source = configuredRcloneConf().trimmed();
   if (source.isEmpty()) {
     source = "default";
