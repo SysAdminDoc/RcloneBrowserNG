@@ -18,7 +18,7 @@ RUN apt-get update \
 
 # rclone from rclone.org, since Ubuntu's package is older than the release
 # the app treats as the security floor.
-ARG RCLONE_VERSION=1.75.1
+ARG RCLONE_VERSION=1.76.0
 ARG TARGETARCH=amd64
 RUN set -eu; \
     zip="rclone-v${RCLONE_VERSION}-linux-${TARGETARCH}.zip"; \

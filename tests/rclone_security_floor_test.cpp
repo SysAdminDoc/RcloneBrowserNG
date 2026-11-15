@@ -32,6 +32,16 @@ private slots:
     QTest::newRow("2.0.0") << "2.0.0" << false;
     QTest::newRow("padded") << "1.76" << false;
     QTest::newRow("whitespace") << "  1.76.0  " << false;
+    QTest::newRow("as printed") << "rclone v1.76.0" << false;
+    QTest::newRow("v prefix below") << "v1.75.2" << true;
+    // A dev or beta build of the floor release may predate its fixes, the
+    // same rule SelfUpdateIsSafe applies. compareVersion alone ranks
+    // "1.76.0-beta.9200" above 1.76.0, which is why the suffix is handled.
+    QTest::newRow("1.76.0-DEV") << "1.76.0-DEV" << true;
+    QTest::newRow("1.76.0 beta") << "v1.76.0-beta.9200.0123abcd" << true;
+    QTest::newRow("1.75.2-DEV") << "1.75.2-DEV" << true;
+    QTest::newRow("1.77.0-DEV") << "1.77.0-DEV" << false;
+    QTest::newRow("1.77.0 beta") << "v1.77.0-beta.9300.4567ef01" << false;
   }
 
   void warnsBelowTheFloor() {
@@ -45,6 +55,10 @@ private slots:
     // the user would go chasing an update they already have.
     QVERIFY(!RcloneSecurityFloor::IsBelowFloor(QString()));
     QVERIFY(!RcloneSecurityFloor::IsBelowFloor("   "));
+    // compareVersion reads a non-numeric string as 0, which used to make
+    // these "below the floor".
+    QVERIFY(!RcloneSecurityFloor::IsBelowFloor("unknown"));
+    QVERIFY(!RcloneSecurityFloor::IsBelowFloor("rclone"));
   }
 
   void floorIsAtLeastTheNovember2026Batch() {
@@ -109,6 +123,9 @@ private slots:
     QVERIFY(summary.contains("GHSA-qjw8-8hmp-c3m6"));
     QVERIFY(summary.contains("GHSA-w33h-3qgq-8mv8"));
     QVERIFY(summary.contains("GHSA-f8p4-8g4j-q3m2"));
+    // A 1.75.2 user is below the floor but has every fix except the rc one.
+    // The text has to say where the older advisories stop.
+    QVERIFY(summary.contains("before 1.75.2"));
   }
 };
 

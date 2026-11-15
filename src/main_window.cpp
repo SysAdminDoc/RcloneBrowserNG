@@ -2114,20 +2114,23 @@ void MainWindow::rcloneGetVersion() {
 
           // warn (non-blocking) when the detected rclone is older than the
           // reviewed security floor in rclone_security_floor.cpp
-          if (RcloneSecurityFloor::IsBelowFloor(rclone_version_no)) {
+          // the printed version keeps "-DEV", which the floor needs: a dev
+          // build of the floor release may predate its fixes
+          if (RcloneSecurityFloor::IsBelowFloor(rcloneVersionAsPrinted)) {
             setStatusMessage(
                 mStatusMessage->text() + "  -  WARNING: rclone " +
-                rclone_version_no + " has security fixes available (update to " +
+                rcloneVersionAsPrinted +
+                " has security fixes available (update to " +
                 RcloneSecurityFloor::kMinimumVersion + "+)");
             if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
-                rclone_version_no) {
+                rcloneVersionAsPrinted) {
               settings->setValue("Settings/rcloneCveWarnedVersion",
-                                 rclone_version_no);
+                                 rcloneVersionAsPrinted);
               QMessageBox::warning(
                   this, "rclone update recommended",
                   QString("You are running rclone %1.\n\n%2\n\nPlease update "
                           "rclone to %3 or newer.")
-                      .arg(rclone_version_no,
+                      .arg(rcloneVersionAsPrinted,
                            RcloneSecurityFloor::AdvisorySummary(),
                            RcloneSecurityFloor::kMinimumVersion));
             }
@@ -2206,10 +2209,6 @@ void MainWindow::rcloneGetVersion() {
 
         /// check rclone version
 
-        // get already stored rclone version no
-        QString rclone_version_no =
-            settings->value("Settings/rcloneVersion").toString();
-
         // during first run the key might not exist yet
         if (!(settings->contains("Settings/checkRcloneUpdates"))) {
           // if checkRcloneUpdates does not exist create new key
@@ -2219,12 +2218,13 @@ void MainWindow::rcloneGetVersion() {
         bool checkRcloneUpdates =
             settings->value("Settings/checkRcloneUpdates").toBool();
 
-        // if check updates enabled in settings
-        if (checkRcloneUpdates) {
+        // if check updates enabled in settings. A failed version probe means
+        // rclone can't run, so selfupdate couldn't either, and the stored
+        // version has "-DEV" stripped, which would hide a dev build from
+        // SelfUpdateIsSafe. Skip the prompt until the probe works.
+        if (checkRcloneUpdates && !rcloneVersionAsPrinted.isEmpty()) {
           QString last_check;
-          checkRcloneUpdate(rcloneVersionAsPrinted.isEmpty()
-                                ? rclone_version_no
-                                : rcloneVersionAsPrinted);
+          checkRcloneUpdate(rcloneVersionAsPrinted);
         };
 
         checkBrowserUpdate();
