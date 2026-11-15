@@ -90,6 +90,10 @@ python scripts/generate_package_manifests.py --release-dir release --output rele
 
 The generator writes Chocolatey, Homebrew Cask and Flatpak files with the exact artifact URLs and SHA256 values, and checks each one before it finishes. It also writes `manifest-index.json` with `"submitted": false`. Nothing gets published or submitted until the maintainer does it by hand.
 
+### Signing an AppImage
+
+Set `RCLONE_BROWSER_APPIMAGE_SIGN_KEY` to a GPG key ID or fingerprint from your keyring before running `scripts/release_AppImage.sh`, and it embeds a signature in the AppImage. A key that isn't there stops the script before it builds anything. Anyone can print the signature with `./RcloneBrowserNG-*.AppImage --appimage-signature`.
+
 ## Build instructions
 
 ### Linux

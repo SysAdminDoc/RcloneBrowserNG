@@ -35,6 +35,20 @@ if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
   exit 1
 fi
 
+# Optional embedded GPG signature: set RCLONE_BROWSER_APPIMAGE_SIGN_KEY to a
+# key id or fingerprint in the local keyring. Checked now so a typo fails
+# before the build instead of after it.
+if [ -n "${RCLONE_BROWSER_APPIMAGE_SIGN_KEY:-}" ]; then
+  if ! command -v gpg &>/dev/null; then
+    echo "ERROR: RCLONE_BROWSER_APPIMAGE_SIGN_KEY is set but gpg is not installed."
+    exit 1
+  fi
+  if ! gpg --batch --list-secret-keys "$RCLONE_BROWSER_APPIMAGE_SIGN_KEY" &>/dev/null; then
+    echo "ERROR: no GPG secret key matches '$RCLONE_BROWSER_APPIMAGE_SIGN_KEY'."
+    exit 1
+  fi
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Same branch policy the Windows lane enforces: refuse a Qt that is either
@@ -113,6 +127,12 @@ if [ -n "$QMAKE_TOOL" ]; then
   fi
 fi
 
+# Embed the GPG signature checked for at the top of this script.
+if [ -n "${RCLONE_BROWSER_APPIMAGE_SIGN_KEY:-}" ]; then
+  export LDAI_SIGN=1
+  export LDAI_SIGN_KEY="$RCLONE_BROWSER_APPIMAGE_SIGN_KEY"
+fi
+
 "$TOOLS_DIR/linuxdeploy-${ARCH}.AppImage" \
   --appdir AppDir \
   --desktop-file "AppDir/usr/share/applications/io.github.sysadmindoc.rclonebrowserng.desktop" \
@@ -128,6 +148,19 @@ fi
 
 ARTIFACT_NAME="RcloneBrowserNG-${FULLVER}-linux-${ARCH}.AppImage"
 mv "$APPIMAGE" "$RELEASE/$ARTIFACT_NAME"
+
+if [ -n "${RCLONE_BROWSER_APPIMAGE_SIGN_KEY:-}" ]; then
+  # With APPIMAGE_EXTRACT_AND_RUN set the runtime starts the app instead of
+  # answering --appimage-signature, so drop it for this one call.
+  SIGNATURE="$(env -u APPIMAGE_EXTRACT_AND_RUN "$RELEASE/$ARTIFACT_NAME" --appimage-signature 2>/dev/null || true)"
+  case "$SIGNATURE" in
+    *"BEGIN PGP SIGNATURE"*) echo "AppImage carries an embedded GPG signature." ;;
+    *)
+      echo "ERROR: signing was requested but the AppImage has no embedded signature."
+      exit 1
+      ;;
+  esac
+fi
 
 zsyncmake "$RELEASE/$ARTIFACT_NAME" \
   -o "$RELEASE/$ARTIFACT_NAME.zsync"

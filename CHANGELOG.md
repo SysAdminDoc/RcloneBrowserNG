@@ -5,6 +5,7 @@
 -   NEW: `scripts/release_check.py` writes `release/SHA256SUMS` over whatever artifacts are present, so an unsigned download can still be verified
 -   NEW: The AppStream metadata lists four screenshots, light and dark, so Linux software centers can show what the app looks like before you install it. The README has one as well
 -   CHANGED: Every file in the repository now carries license information, so `reuse lint` passes. The tests and a few root files had none, and the new third-party icons are marked with their own licenses rather than the project's MIT
+-   NEW: `scripts/release_AppImage.sh` embeds a GPG signature when `RCLONE_BROWSER_APPIMAGE_SIGN_KEY` names a key. It checks the key exists before building, and it fails if the finished AppImage doesn't carry the signature
 -   CHANGED: `scripts/generate_package_manifests.py` stops writing winget manifests. The project isn't published on winget, so they were never used. Chocolatey, Homebrew and Flatpak output is unchanged, and `--require windows` now checks for the Chocolatey package
 -   CHANGED: `git archive` no longer puts the internal planning notes (`ROADMAP.md`, `RESEARCH.md`, `Roadmap_Blocked.md`) into source tarballs
 
