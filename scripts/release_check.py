@@ -663,7 +663,9 @@ def main() -> int:
     print("  - No GitHub Actions workflow runs on push. The one workflow builds the macOS DMG")
     print("    when started by hand and publishes nothing.")
     print("  - clang-tidy runs only in a build configured with -DRCLONE_BROWSER_CLANG_TIDY=ON.")
-    print("  - CodeQL, Scorecard, and OpenSSF workflow checks are not run.")
+    print("  - CodeQL is not run here. On Windows, scripts/codeql_scan.ps1 runs the")
+    print("    security-extended C++ and Python analysis locally (about 25 minutes).")
+    print("  - Scorecard and OpenSSF workflow checks are not run.")
     print("  - Artifact attestations, provenance, and code signing are not provided.")
     print("  - Cross-platform packaging is run only through its platform-specific local script.")
 

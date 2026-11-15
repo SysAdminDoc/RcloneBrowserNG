@@ -65,5 +65,6 @@ applies to what gets published.
 ## Security Measures
 
 - Release builds come from the maintainer's local release scripts. The exception is the macOS DMG, which a hand-started workflow builds on a GitHub-hosted Mac because there's no Mac on hand, and that workflow publishes nothing. This repository does not provide CI builds on push, provenance attestations, or published CodeQL and Scorecard results. Each release ships a `SHA256SUMS` file.
+- `scripts/codeql_scan.ps1` runs CodeQL's security-extended queries over the app's C++, traced from a clean MSVC build, and over the Python release scripts. It runs on the maintainer's machine, and its results aren't published. The scan on 2026-11-15 found nothing.
 - The local Windows release script validates the configured Qt version against the documented security floor.
 - The app warns when the detected rclone version has known CVEs

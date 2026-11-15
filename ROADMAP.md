@@ -143,10 +143,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, so they are ordinary work.
 
-- [ ] P2 Run CodeQL locally with a traced C++ build
-  Was blocked on: restoring GitHub Actions, which the repo dropped on purpose. The CodeQL CLI traces a local build just as well.
-  Acceptance: a `security-extended` C++ analysis of a traced build runs to completion and every result is fixed or explained.
-
 - [ ] P4 Check that the app builds for ppc64le
   Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.
   Acceptance: a cross build for ppc64le succeeds, and any portability fix it needs lands. Sources: kapitainsky#152

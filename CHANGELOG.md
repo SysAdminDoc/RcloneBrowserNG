@@ -15,6 +15,7 @@
 -   SECURITY: The floor lives in one place with the date it was last checked, and the local release harness refuses to publish once that review is more than 180 days old
 -   SECURITY: The Qt version check now runs in all three release lanes, not just the Windows one, so an AppImage or DMG can no longer ship a Qt nobody validated. It refuses a build on two grounds rather than one: unpatched for CVE-2026-6210 or CVE-2026-9499, or on a branch that has stopped receiving open-source patches
 -   CHANGED: Release builds are pinned to Qt 6.11.2 and the reasoning is written down in SECURITY.md. Qt 6.8 LTS looks like the right choice but is not usable: its open-source window closed in April 2025 and the public archive stops at 6.8.4, while the CVE fixes are in 6.8.8, which is commercial-only. The policy is dated and the validator warns for the last 30 days of a branch's support window
+-   NEW: `scripts/codeql_scan.ps1` runs CodeQL's security-extended checks over the app's C++ and the Python release scripts on Windows. The C++ is traced from a clean build, because CodeQL only sees the files a build compiles. The first full scan found nothing to fix
 -   NEW: CMake states an explicit Qt 6.4 minimum for source builds, matching the README badge, and fails at configure time with a readable message instead of somewhere deep in the build
 
 ### Reliability
