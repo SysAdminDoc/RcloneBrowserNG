@@ -1,16 +1,25 @@
+#include "item_model.h"
 #include "job_history.h"
 #include "test_rclone.h"
 #include "main_window.h"
+#include "remote_widget.h"
 #include "utils.h"
 
+#include <QApplication>
 #include <QDir>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QProcess>
+#include <QPushButton>
 #include <QSettings>
+#include <QSplitter>
 #include <QStandardPaths>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 
 #include <memory>
 
@@ -164,6 +173,108 @@ private slots:
     QVERIFY(notice->text().contains(QLatin1String("Preferences")));
 
     setHideCryptBackends(false);
+  }
+
+  void dualPaneLocalFilesystemListsTheDisk() {
+    // Issue #20: the dual pane's "(Local filesystem)" choice opened a pane
+    // named "/", so every listing asked rclone for "/:C:/" and failed with
+    // "rclone could not list". Open it the way a user does and list the drive
+    // that holds the test's temp folder through the real rclone.
+    setHideCryptBackends(false);
+    std::unique_ptr<MainWindow> window(new MainWindow(true));
+    auto *remotes = window->findChild<QListWidget *>("remotes");
+    auto *tabs = window->findChild<QTabWidget *>("tabs");
+    QVERIFY(remotes != nullptr);
+    QVERIFY(tabs != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), 2, 120000);
+
+    QPushButton *dualPane = nullptr;
+    for (auto *button : window->findChildren<QPushButton *>()) {
+      if (button->text() == QLatin1String("Dual Pane")) {
+        dualPane = button;
+      }
+    }
+    QVERIFY(dualPane != nullptr);
+    remotes->setCurrentRow(0);
+    remotes->item(0)->setSelected(true);
+    QVERIFY(dualPane->isEnabled());
+
+    // Record and close every message box, so a "Listing failed" warning
+    // fails the test with its text instead of blocking the run.
+    QStringList dialogs;
+    QTimer watcher;
+    QObject::connect(&watcher, &QTimer::timeout, [&dialogs]() {
+      for (QWidget *top : QApplication::topLevelWidgets()) {
+        if (auto *input = qobject_cast<QInputDialog *>(top)) {
+          if (input->isVisible()) {
+            input->setTextValue("(Local filesystem)");
+            input->accept();
+          }
+        } else if (auto *box = qobject_cast<QMessageBox *>(top)) {
+          if (box->isVisible()) {
+            dialogs << box->text() + "\n" + box->informativeText();
+            box->done(QMessageBox::Ok);
+          }
+        }
+      }
+    });
+    watcher.start(50);
+
+    const int tabsBefore = tabs->count();
+    dualPane->click();
+    QTRY_COMPARE_WITH_TIMEOUT(tabs->count(), tabsBefore + 1, 30000);
+    const QString leftName = remotes->item(0)->text();
+    QCOMPARE(tabs->tabText(tabs->currentIndex()),
+             leftName + " | Local filesystem");
+
+    auto *splitter = qobject_cast<QSplitter *>(tabs->currentWidget());
+    QVERIFY(splitter != nullptr);
+    QCOMPARE(splitter->count(), 2);
+    auto *localPane = qobject_cast<RemoteWidget *>(splitter->widget(1));
+    QVERIFY(localPane != nullptr);
+    auto *model = localPane->findChild<ItemModel *>();
+    QVERIFY(model != nullptr);
+
+    // Windows lists each drive as a root and asks rclone only when one is
+    // opened; elsewhere the single "/" root is listed straight away.
+    const QString tempPath =
+        QDir::fromNativeSeparators(QDir(mConfigDir.path()).absolutePath());
+    QModelIndex driveIndex;
+    for (int row = 0; row < model->rowCount(QModelIndex()); ++row) {
+      const QModelIndex candidate = model->index(row, 0, QModelIndex());
+      const QString root =
+          QDir::fromNativeSeparators(model->path(candidate).path());
+      if (tempPath.startsWith(root, Qt::CaseInsensitive) &&
+          (!driveIndex.isValid() ||
+           root.size() > model->path(driveIndex).path().size())) {
+        driveIndex = candidate;
+      }
+    }
+    QVERIFY2(driveIndex.isValid(), qPrintable(tempPath));
+
+    // The first folder of the temp path has to show up in the listing.
+    const QString driveRoot =
+        QDir::fromNativeSeparators(model->path(driveIndex).path());
+    const QString firstFolder =
+        tempPath.mid(driveRoot.size()).section('/', 0, 0, QString::SectionSkipEmpty);
+    QVERIFY(!firstFolder.isEmpty());
+
+    auto listed = [&]() {
+      const int rows = model->rowCount(driveIndex);
+      for (int row = 0; row < rows; ++row) {
+        if (model->index(row, 0, driveIndex)
+                .data(Qt::DisplayRole)
+                .toString()
+                .compare(firstFolder, Qt::CaseInsensitive) == 0) {
+          return true;
+        }
+      }
+      return false;
+    };
+    QTRY_VERIFY2_WITH_TIMEOUT(listed() || !dialogs.isEmpty(),
+                              qPrintable(dialogs.join("\n---\n")), 120000);
+    QVERIFY2(dialogs.isEmpty(), qPrintable(dialogs.join("\n---\n")));
+    QVERIFY2(listed(), qPrintable(firstFolder));
   }
 
   void failingPostCommandIsReportedRatherThanSwallowed() {

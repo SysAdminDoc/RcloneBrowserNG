@@ -12,6 +12,7 @@
 #include "rclone_exit_code.h"
 #include "rclone_security_floor.h"
 #include "remote_list_parser.h"
+#include "remote_path.h"
 #include "remote_provider.h"
 #include "cross_remote_search.h"
 #include "schedule_manager.h"
@@ -1077,6 +1078,7 @@ MainWindow::MainWindow(bool initializeRuntime)
       return;
 
     QString rightType = "local";
+    QString rightLabel = rightName;
     if (rightName != "(Local filesystem)") {
       for (int i = 0; i < ui.remotes->count(); ++i) {
         auto *ri = ui.remotes->item(i);
@@ -1086,8 +1088,9 @@ MainWindow::MainWindow(bool initializeRuntime)
         }
       }
     } else {
-      rightName = "/";
+      rightName = LocalFilesystemRemote();
       rightType = "local";
+      rightLabel = "Local filesystem";
     }
 
     auto *splitter = new QSplitter(Qt::Horizontal, ui.tabs);
@@ -1097,7 +1100,7 @@ MainWindow::MainWindow(bool initializeRuntime)
     splitter->setStretchFactor(1, 1);
 
     int index = ui.tabs->addTab(
-        splitter, QString("%1 | %2").arg(leftName, rightName));
+        splitter, QString("%1 | %2").arg(leftName, rightLabel));
     ui.tabs->setCurrentIndex(index);
   });
 
@@ -1668,10 +1671,10 @@ MainWindow::MainWindow(bool initializeRuntime)
     for (const QString &bm : bookmarks) {
       QAction *action = bookmarkMenu->addAction(bm);
       QObject::connect(action, &QAction::triggered, this, [this, bm, makeRemoteWidget]() {
-        int colon = bm.indexOf(':');
-        if (colon <= 0) return;
-        QString remoteName = bm.left(colon);
-        QString remoteType = "unknown";
+        QString remoteName;
+        if (!SplitRemoteTarget(bm, &remoteName, nullptr)) return;
+        QString remoteType =
+            remoteName == LocalFilesystemRemote() ? "local" : "unknown";
         for (int i = 0; i < ui.remotes->count(); ++i) {
           if (ui.remotes->item(i)->text() == remoteName) {
             remoteType = ui.remotes->item(i)->data(Qt::UserRole).toString();

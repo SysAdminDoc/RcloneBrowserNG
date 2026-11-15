@@ -44,6 +44,44 @@ private slots:
     QVERIFY(!IsGooglePhotosRecursiveAlbumPath("album"));
     QVERIFY(!IsGooglePhotosRecursiveAlbumPath("media/by-month"));
   }
+
+  void localFilesystemRemoteIsTheOnTheFlyBackend() {
+    // "/" + ":" + "C:/" is the "/:C:/" path rclone could not list (#20).
+    QCOMPARE(LocalFilesystemRemote() + ":" + "C:/", QString(":local:C:/"));
+  }
+
+  void splitsConfiguredRemoteTargets() {
+    QString remote;
+    QString path;
+    QVERIFY(SplitRemoteTarget("gdrive:Photos/2024", &remote, &path));
+    QCOMPARE(remote, QString("gdrive"));
+    QCOMPARE(path, QString("Photos/2024"));
+    // Only the first colon separates; the rest belongs to the path.
+    QVERIFY(SplitRemoteTarget("s3:bucket/a:b", &remote, &path));
+    QCOMPARE(remote, QString("s3"));
+    QCOMPARE(path, QString("bucket/a:b"));
+  }
+
+  void splitsLocalPaneBookmarks() {
+    QString remote;
+    QString path;
+    QVERIFY2(SplitRemoteTarget(":local:C:/Users/me", &remote, &path),
+             "a bookmark from the local pane must open");
+    QCOMPARE(remote, LocalFilesystemRemote());
+    QCOMPARE(path, QString("C:/Users/me"));
+    // Saved by the old local pane before #20 was fixed.
+    QVERIFY(SplitRemoteTarget("/:D:/Backups", &remote, &path));
+    QCOMPARE(remote, LocalFilesystemRemote());
+    QCOMPARE(path, QString("D:/Backups"));
+  }
+
+  void rejectsTargetsWithoutARemoteName() {
+    QVERIFY(!SplitRemoteTarget("no-colon-here", nullptr, nullptr));
+    QVERIFY(!SplitRemoteTarget(":nothing-after", nullptr, nullptr));
+    QVERIFY(!SplitRemoteTarget("::path", nullptr, nullptr));
+    QVERIFY(!SplitRemoteTarget(":path-only", nullptr, nullptr));
+    QVERIFY(!SplitRemoteTarget(QString(), nullptr, nullptr));
+  }
 };
 
 QTEST_MAIN(RemotePathTest)
