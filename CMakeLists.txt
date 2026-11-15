@@ -599,7 +599,7 @@ if(BUILD_TESTING)
   # that only bundles the platform plugin it shows windows with. A platform
   # that doesn't exist stands in for both.
   add_test(NAME app_version_without_display
-    COMMAND $<TARGET_FILE:RcloneBrowser> --version)
+    COMMAND $<TARGET_FILE:${RCLONE_BROWSER_APP_TARGET}> --version)
   set_tests_properties(app_version_without_display PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=no-such-platform"
     PASS_REGULAR_EXPRESSION "^Rclone Browser NG ${RCLONE_BROWSER_VERSION}"
