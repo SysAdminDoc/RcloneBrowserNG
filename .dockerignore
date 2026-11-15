@@ -1,0 +1,6 @@
+.git
+build
+build-*
+release
+docs/screenshots
+*.user

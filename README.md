@@ -144,6 +144,17 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 7.  `C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
 
+### Docker, for a server with no desktop
+
+The image runs the app on a virtual display and serves it as a web page:
+
+```text
+docker build -t rclone-browser .
+docker run -d --name rclone-browser -p 127.0.0.1:6080:6080 -v rb-config:/config -v /srv:/data rclone-browser
+```
+
+Open http://localhost:6080. Settings and `rclone.conf` live in the `/config` volume, and the folder you mount at `/data` is what the app sees of the host. Anyone who reaches the port gets the app and your remotes, so keep it on 127.0.0.1 or add `-e VNC_PASSWORD=...`, which the page asks for before it connects.
+
 ### clang-tidy
 
 Configure with `cmake -G Ninja -DRCLONE_BROWSER_CLANG_TIDY=ON ..` and every app source goes through clang-tidy with the rules in `.clang-tidy` as it compiles. A finding fails the build. If clang-tidy isn't on PATH, pass `-DRCLONE_BROWSER_CLANG_TIDY_EXE=<path>`.

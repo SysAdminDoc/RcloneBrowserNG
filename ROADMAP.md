@@ -146,7 +146,3 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
 - [ ] P4 Check that the app builds for ppc64le
   Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.
   Acceptance: a cross build for ppc64le succeeds, and any portability fix it needs lands. Sources: kapitainsky#152
-
-- [ ] P5 Use the app from a browser on a machine with no desktop
-  Was blocked on: "major architecture work". Qt 6 ships a VNC platform plugin, and noVNC turns that into a browser page, so a container can serve the real app without a second frontend.
-  Acceptance: a Dockerfile builds an image that runs the app on Qt's VNC platform with noVNC in front, and the app is usable from a browser. Covers the Web UI, Docker container and FreeBSD-without-a-desktop entries. Sources: mmozeiko#51, kapitainsky#247

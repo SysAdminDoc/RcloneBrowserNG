@@ -20,6 +20,8 @@ path = [
   "tests/**",
   "docs/**",
   ".clang-tidy",
+  ".dockerignore",
+  "Dockerfile",
   ".gitattributes",
   ".gitignore",
   ".github/**",
