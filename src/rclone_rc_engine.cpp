@@ -416,6 +416,15 @@ void RcloneRcEngine::coreStats(const QString &group, QObject *context,
   postAsync("core/stats", payload, context, std::move(callback));
 }
 
+void RcloneRcEngine::bandwidthLimit(const QString &rate, QObject *context,
+                                    RcCallback callback) {
+  QJsonObject payload;
+  if (!rate.isEmpty()) {
+    payload.insert("rate", rate);
+  }
+  postAsync("core/bwlimit", payload, context, std::move(callback));
+}
+
 void RcloneRcEngine::stopJob(
     int jobId, QObject *context,
     std::function<void(bool ok, const QString &error)> callback) {
@@ -453,6 +462,24 @@ QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
 
 void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
                                QObject *context, RcCallback callback) {
+  if (mUrl.isEmpty()) {
+    // No daemon yet, so the request would go to a relative URL and fail in a
+    // way that reads like a server error. Answer on the event loop instead,
+    // which is where every other reply arrives.
+    if (callback) {
+      const QPointer<QObject> contextGuard(context);
+      QTimer::singleShot(0, this, [contextGuard, context, callback]() {
+        if (context && contextGuard.isNull()) {
+          return;
+        }
+        callback(QJsonObject(),
+                 QStringLiteral("the rclone remote control daemon is not "
+                                "running"));
+      });
+    }
+    return;
+  }
+
   QNetworkRequest req = request(path);
   QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
   QNetworkReply *reply = mNetwork.post(req, body);

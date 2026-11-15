@@ -41,6 +41,14 @@ public:
                   JobCallback callback);
   void jobStatus(int jobId, QObject *context, RcCallback callback);
   void coreStats(const QString &group, QObject *context, RcCallback callback);
+
+  // Reads the daemon's bandwidth limit, or sets it when rate is not empty.
+  // This is daemon-wide rather than per job: every transfer running on this
+  // daemon shares one limit, and rclone normalises what it is given, so "1M"
+  // comes back as "1Mi". Callers should show what came back rather than what
+  // they sent.
+  void bandwidthLimit(const QString &rate, QObject *context,
+                      RcCallback callback);
   void stopJob(int jobId, QObject *context,
                std::function<void(bool ok, const QString &error)> callback);
 

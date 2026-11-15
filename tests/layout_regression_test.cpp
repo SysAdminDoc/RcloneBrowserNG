@@ -5,6 +5,8 @@
 #include "job_options.h"
 #include "main_window.h"
 #include "remote_widget.h"
+#include "rc_job_widget.h"
+#include "rclone_rc_engine.h"
 #include "transfer_dialog.h"
 #include "utils.h"
 
@@ -217,6 +219,7 @@ private slots:
   void noOrphanedChildWidgets_data() {
     QTest::addColumn<QString>("surface");
     QTest::newRow("TransferDialog") << QStringLiteral("TransferDialog");
+    QTest::newRow("RcJobWidget") << QStringLiteral("RcJobWidget");
     QTest::newRow("RemoteWidget") << QStringLiteral("RemoteWidget");
     QTest::newRow("MainWindow") << QStringLiteral("MainWindow");
   }
@@ -225,7 +228,14 @@ private slots:
     QFETCH(QString, surface);
     IconCache icons(nullptr);
     std::unique_ptr<QWidget> root;
-    if (surface == QLatin1String("TransferDialog")) {
+    if (surface == QLatin1String("RcJobWidget")) {
+      // The bandwidth control is built in code into the details grid, which
+      // is exactly the shape that produced the orphaned widgets this test
+      // exists for.
+      static RcloneRcEngine engine;
+      root.reset(new RcJobWidget(&engine, 1, "rclonebrowser-1", "info",
+                                 QStringList(), "src", "dst"));
+    } else if (surface == QLatin1String("TransferDialog")) {
       root.reset(new TransferDialog(false, false, "remote", QDir(), true));
     } else if (surface == QLatin1String("MainWindow")) {
       root.reset(new MainWindow(false));

@@ -10,13 +10,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P2
 
-- [ ] P2 — Add live bandwidth and concurrency tuning to running RC jobs
-  Why: a running job can only be killed, not slowed; `core/bwlimit` changes it on the live daemon. Moved from Roadmap_Blocked.md — its stated blocker ("depends on rcd engine which hasn't landed") is void; the real prerequisite is the `sync/*` migration above.
-  Evidence: rclone.org/rc `core/bwlimit`; `src/rc_job_widget.cpp` has no tuning controls; upstream request rclone#3898.
-  Touches: `src/rc_job_widget.{h,cpp}`, `src/rclone_rc_engine.{h,cpp}`
-  Acceptance: an RC job's panel offers a bandwidth field that posts `core/bwlimit` and reflects the value the daemon reports back; the change takes effect without restarting the job; the control is hidden for process-backed jobs.
-  Complexity: M
-
 - [ ] P2 — Offer "finish current files, then stop" alongside kill
   Why: the only stop today terminates the process mid-file, wasting partial transfers. Moved from Roadmap_Blocked.md for the same reason as the item above.
   Evidence: `src/job_widget.cpp` stop path terminates the process; rclone.org/rc `job/stop` and `job/stopgroup` stop scheduling new work rather than killing in-flight transfers; rclone#966.

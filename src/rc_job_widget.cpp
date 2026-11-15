@@ -97,6 +97,8 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId,
     QGuiApplication::clipboard()->setText(quotedArgs.join(" "));
   });
 
+  buildBandwidthControl();
+
   QObject::connect(&mPollTimer, &QTimer::timeout, this, &RcJobWidget::poll);
   mPollTimer.start(1000);
 
@@ -107,6 +109,104 @@ RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId,
 RcJobWidget::~RcJobWidget() {}
 
 void RcJobWidget::showDetails() { ui.showDetails->setChecked(true); }
+
+void RcJobWidget::buildBandwidthControl() {
+  // Only jobs running through the daemon can be retuned while they run. A
+  // process-backed transfer is a plain rclone with its limit fixed on the
+  // command line, and JobWidget has no equivalent of this for that reason.
+  auto *row = new QWidget(this);
+  row->setObjectName("bandwidthRow");
+  auto *layout = new QHBoxLayout(row);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(6);
+
+  auto *label = new QLabel("Bandwidth:", row);
+  mBandwidth = new QLineEdit(row);
+  mBandwidth->setObjectName("bandwidthLimit");
+  mBandwidth->setAccessibleName("Bandwidth limit");
+  mBandwidth->setPlaceholderText("off");
+  mBandwidth->setMaximumWidth(120);
+  mBandwidth->setToolTip(
+      "Rate for all transfers running through the remote control daemon, "
+      "in the same form as --bwlimit: 1M, 512k, 10M:1M for upload:download, "
+      "or off. This is shared, not per transfer.");
+
+  mBandwidthApply = new QPushButton("Apply", row);
+  mBandwidthApply->setObjectName("bandwidthApply");
+  mBandwidthApply->setAccessibleName("Apply bandwidth limit");
+
+  mBandwidthNote = new QLabel(row);
+  mBandwidthNote->setObjectName("bandwidthNote");
+  mBandwidthNote->setTextFormat(Qt::PlainText);
+  UiPolish::SetMuted(mBandwidthNote);
+
+  layout->addWidget(label);
+  layout->addWidget(mBandwidth);
+  layout->addWidget(mBandwidthApply);
+  layout->addWidget(mBandwidthNote);
+  layout->addStretch();
+
+  // Row 5 columns 0 and 1 hold Show Output; the rest of that row is free.
+  // gridLayout_2 is a QGridLayout in the .ui and is used as one here, rather
+  // than cast to something it is not.
+  ui.gridLayout_2->addWidget(row, 5, 2, 1, 6);
+
+  QObject::connect(mBandwidthApply, &QPushButton::clicked, this,
+                   &RcJobWidget::applyBandwidthLimit);
+  QObject::connect(mBandwidth, &QLineEdit::returnPressed, this,
+                   &RcJobWidget::applyBandwidthLimit);
+
+  // Show what the daemon currently has rather than an empty box.
+  mEngine->bandwidthLimit(
+      QString(), this,
+      [this](const QJsonObject &response, const QString &error) {
+        showBandwidthLimit(response, error);
+      });
+}
+
+void RcJobWidget::applyBandwidthLimit() {
+  if (!mBandwidth) {
+    return;
+  }
+  QString rate = mBandwidth->text().trimmed();
+  if (rate.isEmpty()) {
+    rate = QStringLiteral("off");
+  }
+  mBandwidthApply->setEnabled(false);
+  mBandwidthNote->setText("Applying...");
+  UiPolish::SetMuted(mBandwidthNote);
+
+  mEngine->bandwidthLimit(
+      rate, this, [this](const QJsonObject &response, const QString &error) {
+        showBandwidthLimit(response, error);
+      });
+}
+
+void RcJobWidget::showBandwidthLimit(const QJsonObject &response,
+                                     const QString &error) {
+  if (!mBandwidth) {
+    return;
+  }
+  mBandwidthApply->setEnabled(true);
+  if (!error.isEmpty()) {
+    mBandwidthNote->setText(error);
+    UiPolish::SetNotice(mBandwidthNote, error);
+    Diagnostics::appendLog("rc-job", error);
+    return;
+  }
+
+  // rclone rewrites what it was given, so "1M" comes back as "1Mi". Showing
+  // the daemon's own answer is the only way the field can be trusted.
+  const QString rate = response.value("rate").toString();
+  mBandwidth->setText(rate == QLatin1String("off") ? QString() : rate);
+  mBandwidthNote->setText(rate == QLatin1String("off")
+                              ? QString("No limit, shared by every transfer "
+                                        "on this daemon.")
+                              : QString("%1 shared by every transfer on this "
+                                        "daemon.")
+                                    .arg(rate));
+  UiPolish::SetMuted(mBandwidthNote);
+}
 
 void RcJobWidget::poll() {
   if (mPollInFlight || !mRunning) {

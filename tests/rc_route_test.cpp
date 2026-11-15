@@ -176,6 +176,63 @@ private slots:
     QCOMPARE(filesUnder(dest), QStringList() << "keep.txt");
   }
 
+  // core/bwlimit is the only live tuning rclone actually offers. Measured on
+  // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
+  // file in flight for eight seconds while a job started afterwards used all
+  // eight, so concurrency is fixed when the sync starts and no control for it
+  // can exist on a running job's panel.
+  void theBandwidthLimitCanBeReadAndChangedOnALiveDaemon() {
+    RcloneRcEngine engine;
+
+    QJsonObject initial;
+    QString initialError;
+    bool got = false;
+    engine.ensureStartedAsync(this, [&](bool ok, const QString &error) {
+      QVERIFY2(ok, qPrintable(error));
+      engine.bandwidthLimit(QString(), this,
+                            [&](const QJsonObject &response,
+                                const QString &responseError) {
+                              initial = response;
+                              initialError = responseError;
+                              got = true;
+                            });
+    });
+    QVERIFY(QTest::qWaitFor([&]() { return got; }, 60000));
+    QVERIFY2(initialError.isEmpty(), qPrintable(initialError));
+    QCOMPARE(initial.value("rate").toString(), QStringLiteral("off"));
+
+    // rclone rewrites the rate it is given, so a panel that echoed back what
+    // the user typed would show "1M" while the daemon holds "1Mi".
+    QJsonObject applied;
+    bool set = false;
+    engine.bandwidthLimit("1M", this,
+                          [&](const QJsonObject &response, const QString &) {
+                            applied = response;
+                            set = true;
+                          });
+    QVERIFY(QTest::qWaitFor([&]() { return set; }, 30000));
+    QCOMPARE(applied.value("rate").toString(), QStringLiteral("1Mi"));
+    QCOMPARE(applied.value("bytesPerSecond").toDouble(), 1048576.0);
+
+    // And it is really on the daemon, not just in the reply.
+    QJsonObject reread;
+    bool again = false;
+    engine.bandwidthLimit(QString(), this,
+                          [&](const QJsonObject &response, const QString &) {
+                            reread = response;
+                            again = true;
+                          });
+    QVERIFY(QTest::qWaitFor([&]() { return again; }, 30000));
+    QCOMPARE(reread.value("rate").toString(), QStringLiteral("1Mi"));
+
+    bool cleared = false;
+    engine.bandwidthLimit("off", this,
+                          [&](const QJsonObject &, const QString &) {
+                            cleared = true;
+                          });
+    QVERIFY(QTest::qWaitFor([&]() { return cleared; }, 30000));
+  }
+
   // Deleting is not a sync operation at all, and there is no sync/delete.
   void aNonSyncCommandStaysOnCoreCommand() {
     const QString source = makeTree("src-delete");

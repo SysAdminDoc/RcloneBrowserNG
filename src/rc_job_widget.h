@@ -51,8 +51,14 @@ private:
   int mErrors = 0;
   int mExitCode = 0;
   QTimer mPollTimer;
+  QLineEdit *mBandwidth = nullptr;
+  QPushButton *mBandwidthApply = nullptr;
+  QLabel *mBandwidthNote = nullptr;
 
   void poll();
+  void buildBandwidthControl();
+  void applyBandwidthLimit();
+  void showBandwidthLimit(const QJsonObject &response, const QString &error);
   void applyStats(const QJsonObject &stats);
   void finish(bool success, const QString &error);
 };
