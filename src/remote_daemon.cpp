@@ -9,8 +9,14 @@ const char *const kUserKey = "Settings/remoteDaemonUser";
 const char *const kPasswordKey = "Settings/remoteDaemonPassword";
 const char *const kCertificateKey = "Settings/remoteDaemonCertificateSha256";
 
-QNetworkAccessManager *manager() {
-  static QPointer<QNetworkAccessManager> instance;
+// One manager per trusted fingerprint. Qt sends a request down a connection
+// it already has open, with no handshake for the certificate check to judge,
+// so a connection one fingerprint let through must never carry a request
+// made under another, such as the first test after the user pastes a new one.
+QNetworkAccessManager *manager(const QString &trusted) {
+  static QHash<QString, QPointer<QNetworkAccessManager>> instances;
+  QPointer<QNetworkAccessManager> &instance =
+      instances[RcCertificate::Normalize(trusted)];
   if (instance.isNull()) {
     instance = new QNetworkAccessManager(QCoreApplication::instance());
   }
@@ -149,7 +155,7 @@ void Call(const Settings &settings, const QString &endpoint,
   };
 
   if (settings.url.isEmpty()) {
-    QTimer::singleShot(0, manager(), [deliver]() {
+    QTimer::singleShot(0, manager(settings.certificateSha256), [deliver]() {
       deliver(QJsonObject(),
               QStringLiteral("No address is set for the remote rclone."));
     });
@@ -165,7 +171,8 @@ void Call(const Settings &settings, const QString &endpoint,
             (settings.user + ":" + settings.password).toUtf8().toBase64());
   }
   RcCertificate::Prepare(request, settings.certificateSha256);
-  QNetworkReply *reply = manager()->post(
+  QNetworkAccessManager *network = manager(settings.certificateSha256);
+  QNetworkReply *reply = network->post(
       request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
   const QString trusted = settings.certificateSha256;
@@ -179,7 +186,7 @@ void Call(const Settings &settings, const QString &endpoint,
   }
 
   const QString url = settings.url;
-  QObject::connect(reply, &QNetworkReply::finished, manager(),
+  QObject::connect(reply, &QNetworkReply::finished, network,
                    [reply, deliver, url, trusted]() {
     reply->deleteLater();
     const QByteArray raw = reply->readAll();

@@ -85,13 +85,17 @@ QString Refusal(const QString &url, const QString &trusted,
 }
 
 void Prepare(QNetworkRequest &request, const QString &trusted) {
-  // The name a certificate is checked against is part of the key Qt keeps
-  // open connections under. It's the host the URL already names, so the
-  // check itself doesn't change.
-  if (!Normalize(trusted).isEmpty() &&
-      request.url().scheme() == QLatin1String("https")) {
-    request.setPeerVerifyName(request.url().host());
+  if (Normalize(trusted).isEmpty() ||
+      request.url().scheme() != QLatin1String("https")) {
+    return;
   }
+  // The name a certificate is checked against is part of the key Qt keeps
+  // open connections under, so pinned and unpinned requests never share
+  // one. It's the host the URL already names, so the check doesn't change.
+  request.setPeerVerifyName(request.url().host());
+  // On an HTTP/2 connection Qt tells only the first queued request about
+  // the handshake, so Guard couldn't stop the others from being sent.
+  request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 }
 
 void Guard(QNetworkReply *reply, const QString &trusted) {
@@ -108,8 +112,9 @@ void Guard(QNetworkReply *reply, const QString &trusted) {
                        reply->setProperty(kRefusedProperty, true);
                      }
                    });
-  // A trusted fingerprint holds for certificates the system does trust too,
-  // and this runs before the login goes out.
+  // A trusted fingerprint holds for certificates the system does trust too.
+  // Over HTTP/1.1 Qt waits for this before sending the request, and the
+  // abort closes the connection, so nothing goes out on it.
   QObject::connect(reply, &QNetworkReply::encrypted, reply, [reply, pinned]() {
     const QString presented = peerFingerprint(reply);
     reply->setProperty(kPresentedProperty, presented);
@@ -125,8 +130,9 @@ QString Problem(QNetworkReply *reply, const QString &url,
   const QString pinned = Normalize(trusted);
   QString shown = reply->property(kPresentedProperty).toString();
   bool refused = reply->property(kRefusedProperty).toBool();
-  // A request on a connection opened earlier gets no handshake signals, and
-  // that connection may predate the fingerprint trusted now.
+  // A request on a connection opened earlier gets no handshake signals.
+  // Callers keep each fingerprint's connections apart, so this is a second
+  // check that the reply really came from the trusted certificate.
   if (!refused && !pinned.isEmpty() &&
       reply->url().scheme() == QLatin1String("https")) {
     const QString peer = peerFingerprint(reply);

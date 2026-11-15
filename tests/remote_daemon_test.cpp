@@ -301,6 +301,21 @@ private slots:
     QVERIFY2(changed.contains("different certificate"), qPrintable(changed));
     QVERIFY2(changed.contains("Trusted: " + other), qPrintable(changed));
     QVERIFY2(changed.contains("Presented: " + fingerprint), qPrintable(changed));
+
+    // A pinned request stays on HTTP/1.1, where every connection's handshake
+    // is judged before anything is sent on it. An unpinned one is left alone.
+    QNetworkRequest pinned(QUrl("https://nas.local:5572/rc/noopauth"));
+    RcCertificate::Prepare(pinned, fingerprint);
+    QCOMPARE(pinned.attribute(QNetworkRequest::Http2AllowedAttribute, true)
+                 .toBool(),
+             false);
+    QCOMPARE(pinned.peerVerifyName(), QString("nas.local"));
+    QNetworkRequest open(QUrl("https://nas.local:5572/rc/noopauth"));
+    RcCertificate::Prepare(open, QString());
+    QCOMPARE(
+        open.attribute(QNetworkRequest::Http2AllowedAttribute, true).toBool(),
+        true);
+    QVERIFY(open.peerVerifyName().isEmpty());
   }
 
   void commandArgumentsCarryTheDaemonsConfig() {
@@ -657,8 +672,23 @@ private slots:
     callAndWait(trusted, "rc/noopauth", QJsonObject(), &error, this);
     QVERIFY2(error.isEmpty(), qPrintable(error));
 
-    // The trusted calls left a connection open, and Qt sends later requests
-    // down it with no handshake to judge.
+    // The trusted calls left a connection open, and Qt would send later
+    // requests down it with no handshake to judge. A call under another
+    // fingerprint has to get a connection of its own and be refused before
+    // the daemon sees it, so this folder is never made.
+    const RemoteDaemon::Request refusedMkdir =
+        RemoteDaemon::Mkdir("rbtestnas", "tls-refused");
+    callAndWait(changed, refusedMkdir.endpoint, refusedMkdir.payload, &error,
+                this);
+    QVERIFY2(error.contains("different certificate"), qPrintable(error));
+    QVERIFY(!served("tls-refused"));
+    // The same call under the trusted fingerprint does make it.
+    const RemoteDaemon::Request trustedMkdir =
+        RemoteDaemon::Mkdir("rbtestnas", "tls-trusted");
+    callAndWait(trusted, trustedMkdir.endpoint, trustedMkdir.payload, &error,
+                this);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(served("tls-trusted"));
     callAndWait(changed, "rc/noopauth", QJsonObject(), &error, this);
     QVERIFY2(error.contains("different certificate"), qPrintable(error));
     refused =

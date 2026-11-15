@@ -107,6 +107,13 @@ void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
       certificateSha256 == mRemoteTrusted) {
     return;
   }
+  // Qt sends a request down a connection it already has open, with no
+  // handshake for the certificate check to judge, so connections opened
+  // under the old fingerprint must not carry requests made under the new.
+  if (RcCertificate::Normalize(certificateSha256) !=
+      RcCertificate::Normalize(mRemoteTrusted)) {
+    mNetwork.clearConnectionCache();
+  }
   mRemoteUrl = url;
   mRemoteUser = user;
   mRemotePass = password;
