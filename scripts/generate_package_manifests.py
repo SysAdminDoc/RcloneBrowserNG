@@ -2,8 +2,9 @@
 """Generate local, non-submitted package-manager manifests.
 
 The release scripts produce platform artifacts but do not publish them. This
-tool turns those artifacts into reviewable Winget, Homebrew Cask, Chocolatey,
-and Flatpak manifest files while carrying the exact artifact URL and SHA256.
+tool turns those artifacts into reviewable Chocolatey, Homebrew Cask and
+Flatpak manifest files while carrying the exact artifact URL and SHA256.
+There is no winget output on purpose: this project doesn't publish there.
 It deliberately has no third-party Python dependencies so it can run in the
 same minimal environment as the local release readiness checks.
 """
@@ -20,12 +21,14 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-PACKAGE_ID = "SysAdminDoc.RcloneBrowserNG"
 PACKAGE_NAME = "Rclone Browser NG"
 HOMEBREW_CASK = "rclone-browser-ng"
 FLATPAK_ID = "io.github.sysadmindoc.rclonebrowserng"
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+# --only/--require take a platform family; this is the manifest set each one
+# produces in `emitted` and the index.
+FAMILY_OUTPUT = {"windows": "chocolatey", "macos": "macos", "flatpak": "flatpak"}
 
 
 @dataclass(frozen=True)
@@ -150,72 +153,6 @@ def write_json(path: Path, value: object) -> None:
     )
 
 
-def generate_winget(output: Path, version: str, artifact: Artifact) -> list[Path]:
-    directory = output / "winget" / PACKAGE_ID / version
-    installer_type = "inno" if artifact.suffix == ".exe" else "zip"
-    installer_lines = [
-        f"PackageIdentifier: {PACKAGE_ID}",
-        f"PackageVersion: {version}",
-        "Installers:",
-        f"- Architecture: x64",
-        f"  InstallerType: {installer_type}",
-        f"  InstallerUrl: {yaml_string(artifact.url)}",
-        f"  InstallerSha256: {artifact.sha256.upper()}",
-    ]
-    if installer_type == "inno":
-        installer_lines.extend(
-            [
-                "  InstallerSwitches:",
-                '    Silent: "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART"',
-                '    SilentWithProgress: "/SILENT /SUPPRESSMSGBOXES /NORESTART"',
-            ]
-        )
-    else:
-        installer_lines.extend(
-            [
-                "  NestedInstallerType: portable",
-                "  NestedInstallerFiles:",
-                "  - RelativeFilePath: RcloneBrowser.exe",
-                "    PortableCommandAlias: rclone-browser",
-            ]
-        )
-    installer_lines.extend(["ManifestType: installer", "ManifestVersion: 1.6.0"])
-    locale = f"""PackageIdentifier: {PACKAGE_ID}
-PackageVersion: {version}
-PackageLocale: en-US
-Publisher: SysAdminDoc
-PublisherUrl: https://github.com/SysAdminDoc
-PackageName: {PACKAGE_NAME}
-PackageUrl: https://github.com/SysAdminDoc/RcloneBrowserNG
-License: MIT
-LicenseUrl: https://github.com/SysAdminDoc/RcloneBrowserNG/blob/main/LICENSE
-ShortDescription: Native Qt desktop browser for rclone remotes
-Description: Rclone Browser NG is a native Qt desktop GUI for browsing, transferring, mounting, and scheduling rclone remotes.
-Tags:
-- rclone
-- cloud
-- backup
-- file-manager
-ManifestType: defaultLocale
-ManifestVersion: 1.6.0
-"""
-    default = f"""PackageIdentifier: {PACKAGE_ID}
-PackageVersion: {version}
-DefaultLocale: en-US
-ManifestType: version
-ManifestVersion: 1.6.0
-"""
-    paths = [
-        directory / f"{PACKAGE_ID}.installer.yaml",
-        directory / f"{PACKAGE_ID}.locale.en-US.yaml",
-        directory / f"{PACKAGE_ID}.yaml",
-    ]
-    write_text(paths[0], "\n".join(installer_lines))
-    write_text(paths[1], locale)
-    write_text(paths[2], default)
-    return paths
-
-
 def generate_homebrew(output: Path, version: str, artifact: Artifact) -> list[Path]:
     path = output / "homebrew" / f"{HOMEBREW_CASK}.rb"
     content = f'''cask "{HOMEBREW_CASK}" do
@@ -317,28 +254,12 @@ modules:
     return [path]
 
 
-def validate_yaml_fields(path: Path, fields: list[str]) -> None:
-    content = path.read_text(encoding="utf-8")
-    for field in fields:
-        if not re.search(rf"(?m)^{re.escape(field)}:", content):
-            raise ValueError(f"{path.name} is missing YAML field {field}")
-
-
 def validate_outputs(
     output: Path,
     version: str,
     emitted: dict[str, list[Path]],
     artifacts: dict[str, Artifact],
 ) -> None:
-    if "windows" in emitted:
-        winget = emitted["windows"]
-        validate_yaml_fields(winget[0], ["PackageIdentifier", "PackageVersion", "Installers"])
-        validate_yaml_fields(winget[1], ["PackageLocale", "ShortDescription"])
-        installer_text = winget[0].read_text(encoding="utf-8")
-        if artifacts["windows"].sha256.upper() not in installer_text:
-            raise ValueError("Winget installer SHA256 does not match the artifact")
-        if version not in installer_text:
-            raise ValueError("Winget installer version does not match VERSION")
     if "macos" in emitted:
         cask_text = emitted["macos"][0].read_text(encoding="utf-8")
         if f'version "{version}"' not in cask_text:
@@ -373,12 +294,10 @@ def generate(
     if "windows" in only:
         windows = artifacts.get("windows-x64-installer") or artifacts.get("windows-x64")
         if windows:
-            artifacts["windows"] = windows
             artifacts["chocolatey"] = windows
-            emitted["windows"] = generate_winget(output, version, windows)
             emitted["chocolatey"] = generate_chocolatey(output, version, windows)
         else:
-            print("[SKIP] Windows manifests (no windows-x64 artifact)")
+            print("[SKIP] Chocolatey package (no windows-x64 artifact)")
     if "macos" in only:
         macos = artifacts.get("macos")
         if macos:
@@ -449,7 +368,7 @@ def main() -> int:
         only = set(args.only or ["windows", "macos", "flatpak"])
         emitted = generate(version, output, artifacts, only)
         required = set(args.require or [])
-        missing = sorted(required - set(emitted))
+        missing = sorted(f for f in required if FAMILY_OUTPUT[f] not in emitted)
         if missing:
             raise ValueError("required package families were not generated: " + ", ".join(missing))
         if not emitted:
@@ -474,8 +393,6 @@ def main() -> int:
             }
             for family, artifact in sorted(
                 {
-                    "windows": artifacts.get("windows-x64-installer")
-                    or artifacts.get("windows-x64"),
                     "chocolatey": artifacts.get("chocolatey"),
                     "macos": artifacts.get("macos"),
                     "flatpak": artifacts.get("source"),

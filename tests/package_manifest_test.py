@@ -56,11 +56,8 @@ class PackageManifestTest(unittest.TestCase):
             index = json.loads((output / "manifest-index.json").read_text())
             self.assertEqual(index["packageVersion"], "9.8.7")
             self.assertFalse(index["submitted"])
-            self.assertEqual(
-                set(index["packages"]), {"chocolatey", "flatpak", "macos", "windows"}
-            )
+            self.assertEqual(set(index["packages"]), {"chocolatey", "flatpak", "macos"})
             for family, key in {
-                "windows": "windows-x64-installer",
                 "chocolatey": "windows-x64-installer",
                 "macos": "macos",
                 "flatpak": "source",
@@ -70,16 +67,18 @@ class PackageManifestTest(unittest.TestCase):
                 for relative_path in index["packages"][family]:
                     self.assertTrue((output / relative_path).is_file())
 
-            winget = output / "winget" / "SysAdminDoc.RcloneBrowserNG" / "9.8.7"
-            installer_text = (winget / "SysAdminDoc.RcloneBrowserNG.installer.yaml").read_text()
-            self.assertIn("InstallerType: inno", installer_text)
-            self.assertIn("https://downloads.example.test/v9.8.7/", installer_text)
+            # The project doesn't publish to winget, so nothing for it is written.
+            self.assertFalse((output / "winget").exists())
 
             nuspec = output / "chocolatey" / "rclone-browser-ng.nuspec"
             ET.parse(nuspec)
             self.assertIn("9.8.7", nuspec.read_text())
             self.assertIn(
                 hashlib.sha256(files["windows-x64-installer"].read_bytes()).hexdigest(),
+                (output / "chocolatey" / "tools" / "chocolateyinstall.ps1").read_text(),
+            )
+            self.assertIn(
+                "https://downloads.example.test/v9.8.7/",
                 (output / "chocolatey" / "tools" / "chocolateyinstall.ps1").read_text(),
             )
 

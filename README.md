@@ -88,7 +88,7 @@ After the platform artifacts and a source archive are present in `release/`, gen
 python scripts/generate_package_manifests.py --release-dir release --output release/package-manifests --require windows --require macos --require flatpak
 ```
 
-The generator emits validated Winget, Chocolatey, Homebrew Cask, and Flatpak files with the exact artifact URLs and SHA256 values. It writes `manifest-index.json` with `"submitted": false`; publishing or submitting those files remains an explicit maintainer action.
+The generator writes Chocolatey, Homebrew Cask and Flatpak files with the exact artifact URLs and SHA256 values, and checks each one before it finishes. It also writes `manifest-index.json` with `"submitted": false`. Nothing gets published or submitted until the maintainer does it by hand.
 
 ## Build instructions
 
