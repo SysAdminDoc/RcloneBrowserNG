@@ -22,6 +22,11 @@ void SetRclone(const QString &rclone);
 QStringList GetRcloneConf();
 void SetRcloneConf(const QString &rcloneConf);
 
+// Reads the rclone path, the rclone.conf path and the password-command
+// switch from the saved settings. The main window and a scheduled
+// --run-task both start from these.
+void LoadRcloneSettings();
+
 void UseRclonePassword(QProcess *process);
 void SetRclonePassword(const QString &rclonePassword);
 bool IsRclonePasswordCommandEnabled();

@@ -119,8 +119,15 @@ QStringList JobOptions::getOptions() const {
     list << "--no-update-modtime";
   }
 
-  list << "--transfers" << transfers;
-  list << "--checkers" << checkers;
+  // A task saved without these counts and timeouts (a hand-written
+  // tasks.json) falls back to rclone's defaults, since an empty value or a
+  // bare "s" stops rclone before it transfers anything.
+  if (!transfers.isEmpty()) {
+    list << "--transfers" << transfers;
+  }
+  if (!checkers.isEmpty()) {
+    list << "--checkers" << checkers;
+  }
 
   if (!bandwidth.isEmpty()) {
     list << "--bwlimit" << bandwidth;
@@ -141,10 +148,18 @@ QStringList JobOptions::getOptions() const {
     list << "--max-depth" << QString::number(maxDepth);
   }
 
-  list << "--contimeout" << (connectTimeout + "s");
-  list << "--timeout" << (idleTimeout + "s");
-  list << "--retries" << retries;
-  list << "--low-level-retries" << lowLevelRetries;
+  if (!connectTimeout.isEmpty()) {
+    list << "--contimeout" << (connectTimeout + "s");
+  }
+  if (!idleTimeout.isEmpty()) {
+    list << "--timeout" << (idleTimeout + "s");
+  }
+  if (!retries.isEmpty()) {
+    list << "--retries" << retries;
+  }
+  if (!lowLevelRetries.isEmpty()) {
+    list << "--low-level-retries" << lowLevelRetries;
+  }
 
   if (deleteExcluded) {
     list << "--delete-excluded";

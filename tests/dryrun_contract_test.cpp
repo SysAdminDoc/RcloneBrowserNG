@@ -242,6 +242,44 @@ private slots:
     QVERIFY2(!ParseHttpUrl("https://", &parsed, &error),
              "hostless HTTPS URL was accepted");
   }
+
+  // A task saved without transfers or checkers (hand-written, or from an
+  // older tasks.json) used to pass "--transfers ''", which stops rclone.
+  void aTaskWithoutTransferCountsUsesRcloneDefaults() {
+    QByteArray bytes = R"({"version":1,"tasks":[{"description":"bare",
+        "jobType":2,"operation":1,"source":"/src","dest":"remote:dst",
+        "isFolder":true,
+        "uniqueId":"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}"}]})";
+    QBuffer in(&bytes);
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&in);
+    QVERIFY2(loaded.error.isEmpty(), qPrintable(loaded.error));
+    QCOMPARE(loaded.tasks.size(), 1);
+
+    const QStringList args = loaded.tasks.first()->getOptions();
+    for (const QString &flag : {"--transfers", "--checkers", "--contimeout",
+                                "--timeout", "--retries", "--low-level-retries"}) {
+      QVERIFY2(!args.contains(flag), qPrintable(flag + " in " + args.join(' ')));
+    }
+    QVERIFY2(!args.contains(QString()) && !args.contains("s"),
+             qPrintable(args.join(' ')));
+
+    JobOptions *jo = loaded.tasks.first();
+    jo->transfers = "4";
+    jo->checkers = "8";
+    jo->connectTimeout = "60";
+    jo->idleTimeout = "300";
+    jo->retries = "3";
+    jo->lowLevelRetries = "10";
+    const QStringList set = jo->getOptions();
+    QCOMPARE(argAfter(set, "--transfers"), QString("4"));
+    QCOMPARE(argAfter(set, "--checkers"), QString("8"));
+    QCOMPARE(argAfter(set, "--contimeout"), QString("60s"));
+    QCOMPARE(argAfter(set, "--timeout"), QString("300s"));
+    QCOMPARE(argAfter(set, "--retries"), QString("3"));
+    QCOMPARE(argAfter(set, "--low-level-retries"), QString("10"));
+    ClearJobOptionsList(&loaded.tasks);
+  }
 };
 
 QTEST_MAIN(DryRunContractTest)

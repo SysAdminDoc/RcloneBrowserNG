@@ -520,10 +520,7 @@ MainWindow::MainWindow(bool initializeRuntime)
     if (settings->contains("MainWindow/geometry")) {
       restoreGeometry(settings->value("MainWindow/geometry").toByteArray());
     }
-    SetRclone(settings->value("Settings/rclone").toString());
-    SetRcloneConf(settings->value("Settings/rcloneConf").toString());
-    SetRclonePasswordCommandEnabled(
-        settings->value("Settings/usePasswordCommand", false).toBool());
+    LoadRcloneSettings();
 
     mAlwaysShowInTray =
         settings->value("Settings/alwaysShowInTray", false).toBool();

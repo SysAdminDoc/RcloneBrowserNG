@@ -270,6 +270,78 @@ int main(int argc, char *argv[]) {
         0x80004004); // exit immediately if folder not writable
   }
 
+  // Scheduled runs and --list-tasks never show a window, so they stay out of
+  // the single-instance handshake below. Otherwise a run that starts while
+  // the app is open only raises that window, and the app can't open while
+  // a scheduled run holds the handshake.
+  int runTaskIdx = app.arguments().indexOf("--run-task");
+  if (runTaskIdx >= 0 && runTaskIdx + 1 < app.arguments().size()) {
+    QString taskName = app.arguments().at(runTaskIdx + 1);
+    auto *store = ListOfJobOptions::getInstance();
+    JobOptions *found = nullptr;
+    for (auto *jo : store->getTasks()) {
+      if (jo->description == taskName) {
+        found = jo;
+        break;
+      }
+    }
+    if (!found) {
+      qCritical().noquote()
+          << "Task not found:" << taskName;
+      QStringList available;
+      for (auto *jo : store->getTasks()) {
+        available << "  " + jo->description;
+      }
+      if (!available.isEmpty()) {
+        qCritical().noquote() << "Available tasks:\n" + available.join("\n");
+      }
+      return 1;
+    }
+    // Only the main window used to read these, so a scheduled run started
+    // an empty program path and reported success without running rclone.
+    LoadRcloneSettings();
+    const QString rclone = GetRclone();
+    const auto fail = [&taskName](const QString &why) {
+      const QString message =
+          QString("The scheduled run of \"%1\" didn't start: %2")
+              .arg(taskName, why);
+      AppLog::Write(AppLog::Level::Error, "schedule", message);
+      AppLog::Flush();
+      QTextStream(stderr) << message << "\n";
+      return 1;
+    };
+    if (rclone.isEmpty()) {
+      return fail("no rclone is set in Preferences.");
+    }
+    QStringList args = GetRcloneConf() + found->getOptions();
+    QProcess proc;
+    proc.setProcessChannelMode(QProcess::ForwardedChannels);
+    UseRclonePassword(&proc);
+    proc.start(rclone, args);
+    if (!proc.waitForStarted(-1)) {
+      return fail(QString("%1 (%2)").arg(proc.errorString(), rclone));
+    }
+    proc.waitForFinished(-1);
+    const int exitCode =
+        proc.exitStatus() == QProcess::NormalExit ? proc.exitCode() : 1;
+    AppLog::Write(exitCode == 0 ? AppLog::Level::Info : AppLog::Level::Error,
+                  "schedule",
+                  QString("The scheduled run of \"%1\" finished, rclone "
+                          "exit code %2.")
+                      .arg(taskName)
+                      .arg(exitCode));
+    AppLog::Flush();
+    return exitCode;
+  }
+
+  if (app.arguments().contains("--list-tasks")) {
+    auto *store = ListOfJobOptions::getInstance();
+    for (auto *jo : store->getTasks()) {
+      QTextStream(stdout) << jo->description << "\n";
+    }
+    return 0;
+  }
+
   QString lockUser = qEnvironmentVariable("USER");
   if (lockUser.isEmpty()) lockUser = qEnvironmentVariable("USERNAME");
   if (lockUser.isEmpty()) lockUser = QString::number(qHash(QDir::homePath()));
@@ -304,46 +376,6 @@ int main(int argc, char *argv[]) {
   if (!lockFile.tryLock(100)) {
     lockFile.removeStaleLockFile();
     lockFile.tryLock(100);
-  }
-
-  int runTaskIdx = app.arguments().indexOf("--run-task");
-  if (runTaskIdx >= 0 && runTaskIdx + 1 < app.arguments().size()) {
-    QString taskName = app.arguments().at(runTaskIdx + 1);
-    auto *store = ListOfJobOptions::getInstance();
-    JobOptions *found = nullptr;
-    for (auto *jo : store->getTasks()) {
-      if (jo->description == taskName) {
-        found = jo;
-        break;
-      }
-    }
-    if (!found) {
-      qCritical().noquote()
-          << "Task not found:" << taskName;
-      QStringList available;
-      for (auto *jo : store->getTasks()) {
-        available << "  " + jo->description;
-      }
-      if (!available.isEmpty()) {
-        qCritical().noquote() << "Available tasks:\n" + available.join("\n");
-      }
-      return 1;
-    }
-    QStringList args = GetRcloneConf() + found->getOptions();
-    QProcess proc;
-    proc.setProcessChannelMode(QProcess::ForwardedChannels);
-    UseRclonePassword(&proc);
-    proc.start(GetRclone(), args);
-    proc.waitForFinished(-1);
-    return proc.exitCode();
-  }
-
-  if (app.arguments().contains("--list-tasks")) {
-    auto *store = ListOfJobOptions::getInstance();
-    for (auto *jo : store->getTasks()) {
-      QTextStream(stdout) << jo->description << "\n";
-    }
-    return 0;
   }
 
   QStringList sendToFiles;

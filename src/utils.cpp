@@ -384,6 +384,14 @@ QStringList GetRcloneConf() {
 
 void SetRcloneConf(const QString &rcloneConf) { gRcloneConf = rcloneConf; }
 
+void LoadRcloneSettings() {
+  auto settings = GetSettings();
+  SetRclone(settings->value("Settings/rclone").toString());
+  SetRcloneConf(settings->value("Settings/rcloneConf").toString());
+  SetRclonePasswordCommandEnabled(
+      settings->value("Settings/usePasswordCommand", false).toBool());
+}
+
 QString GetRclone() {
   QString rclone = gRclone;
   if (IsPortableMode() && QFileInfo(rclone).isRelative()) {
