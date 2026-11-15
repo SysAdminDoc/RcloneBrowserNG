@@ -4,7 +4,8 @@
 
 // The WinFsp check used to warn only at 2.1.25156 and older and recommend
 // 2026 Beta1, which lacks CVE-2026-7162 and six later fixes. Pin the floor
-// against each published build and the shape of the warning.
+// against each published build, the shape of the warning and where it sends
+// people.
 class WinFspFloorTest : public QObject {
   Q_OBJECT
 
@@ -42,6 +43,11 @@ private slots:
     QVERIFY(!WinFspFloor::IsBelowFloor(QString()));
     QVERIFY(!WinFspFloor::IsBelowFloor("  "));
     QVERIFY(!WinFspFloor::IsBelowFloor("unknown"));
+    // A zeroed version resource reads as all zeros. That's not a build.
+    QVERIFY(!WinFspFloor::IsBelowFloor("0.0.0.0"));
+    QVERIFY(!WinFspFloor::IsBelowFloor("0"));
+    // A real build with zero parts still counts.
+    QVERIFY(WinFspFloor::IsBelowFloor("0.0.0.1"));
   }
 
   void warningNamesTheFixesAndTheBuild() {
@@ -52,9 +58,24 @@ private slots:
     QVERIFY(text.contains("six more"));
     QVERIFY(text.contains(WinFspFloor::kMinimumVersion));
     QVERIFY(text.contains("2026 Beta5"));
-    QVERIFY(text.contains("winfsp.dev/rel"));
+    // The fixed builds are only on GitHub. winfsp.dev/rel offers the stable
+    // 2.1.25156, the build being warned about.
+    QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
+    QVERIFY(QString(WinFspFloor::kDownloadUrl)
+                .startsWith("https://github.com/winfsp/winfsp/releases"));
+    QVERIFY(!text.contains("winfsp.dev/rel"));
     // The old text sent people to Beta1, which is still below the floor.
     QVERIFY(!text.contains("Beta1 or newer"));
+  }
+
+  void installAdviceSkipsTheStableBuild() {
+    // The "WinFsp required" box used to suggest winget install
+    // WinFsp.WinFsp, which installs 2.1.25156, right below the floor.
+    const QString text = WinFspFloor::InstallAdvice();
+    QVERIFY(text.contains("2026 Beta5"));
+    QVERIFY(text.contains(WinFspFloor::kDownloadUrl));
+    QVERIFY(!text.contains("winget install"));
+    QVERIFY(!text.contains("winfsp.dev/rel"));
   }
 
   void raisingTheFloorWarnsAgain() {

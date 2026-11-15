@@ -14,14 +14,30 @@ namespace WinFspFloor {
 inline constexpr char kMinimumVersion[] = "2.2.26286";
 inline constexpr char kRecommendedRelease[] = "WinFsp 2026 Beta5";
 
+// Where the recommended build is. winfsp.dev/rel and winget's WinFsp.WinFsp
+// offer only the stable 2.1.25156, the build the warning is about, so
+// sending people there would have them reinstall what they already have.
+inline constexpr char kDownloadUrl[] =
+    "https://github.com/winfsp/winfsp/releases";
+
+// When the floor was last checked against the WinFsp releases, and how long
+// that check stays good. scripts/release_check.py refuses to publish once it
+// is older, as it does for the rclone floor.
+inline constexpr char kReviewedDate[] = "2026-11-15";
+inline constexpr int kReviewIntervalDays = 180;
+
 // True when the DLL's file version ("2.2.26112.0") is below the floor. An
-// empty or unreadable version is not reported, so a failed read never sends
-// anyone after an update they may not need.
+// empty, unreadable or all-zero version is not reported, so a failed read
+// never sends anyone after an update they may not need.
 bool IsBelowFloor(const QString &fileVersion);
 
 // The warning shown once per installed version and floor. Names what the
 // installed build is missing and where to get the fixed one.
 QString Warning(const QString &fileVersion);
+
+// What to tell someone who has no WinFsp at all: the build to install and
+// where it is.
+QString InstallAdvice();
 
 // What "already warned" is keyed on. Includes the floor, so raising it warns
 // people again who were told about an older recommendation.

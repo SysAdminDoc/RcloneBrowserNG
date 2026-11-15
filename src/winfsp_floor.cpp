@@ -8,6 +8,11 @@ bool IsBelowFloor(const QString &fileVersion) {
   if (trimmed.isEmpty() || !trimmed.at(0).isDigit()) {
     return false;
   }
+  // A zeroed version block reads as "0.0.0.0", which says nothing about the
+  // build. compareVersion pads with zeros, so this matches any all-zero form.
+  if (compareVersion(trimmed.toStdString(), "0") == 0) {
+    return false;
+  }
   return compareVersion(trimmed.toStdString(), kMinimumVersion) == 2;
 }
 
@@ -22,10 +27,20 @@ QString Warning(const QString &fileVersion) {
                  "Beta2, and six more reported vulnerabilities were fixed in "
                  "Beta4 and Beta5. The latest stable release, WinFsp 2025, "
                  "has none of these fixes.\n\n"
-                 "Update to %3 or newer from winfsp.dev/rel before using "
-                 "mounts on a shared or untrusted computer. It's marked as a "
-                 "beta, but it's the only build with every fix.")
-      .arg(fileVersion.trimmed(), kMinimumVersion, kRecommendedRelease);
+                 "Update to %3 or newer from %4 before using mounts on a "
+                 "shared or untrusted computer. It's marked as a beta, but "
+                 "it's the only build with every fix. The download on "
+                 "winfsp.dev is still WinFsp 2025.")
+      .arg(fileVersion.trimmed(), kMinimumVersion, kRecommendedRelease,
+           kDownloadUrl);
+}
+
+QString InstallAdvice() {
+  return QString("Mounting requires WinFsp, which is not installed.\n\n"
+                 "Install %1 or newer from %2. It's marked as a beta, but "
+                 "the stable WinFsp 2025 on winfsp.dev and in winget is "
+                 "missing the 2026 security fixes.")
+      .arg(kRecommendedRelease, kDownloadUrl);
 }
 
 QString WarnedKey(const QString &fileVersion) {

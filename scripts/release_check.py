@@ -284,16 +284,45 @@ def check_release_scripts(report: Report, root: Path) -> None:
         report.passed("Windows Qt security-floor validator contract")
 
 
-def check_rclone_security_floor(report: Report, root: Path) -> None:
-    """The app warns about old rclone builds against a hardcoded floor.
+# Every version floor the app warns against. Each one records when it was
+# last checked and how long that check stays good.
+SECURITY_FLOORS = (
+    {
+        "name": "rclone security floor",
+        "path": ("src", "rclone_security_floor.cpp"),
+        "advice": (
+            "Re-check https://github.com/rclone/rclone/security/advisories, then "
+            "update kMinimumVersion, AdvisorySummary and kReviewedDate."
+        ),
+    },
+    {
+        "name": "WinFsp security floor",
+        "path": ("src", "winfsp_floor.h"),
+        "advice": (
+            "Re-check https://github.com/winfsp/winfsp/releases, then update "
+            "kMinimumVersion, kRecommendedRelease, the Warning text in "
+            "winfsp_floor.cpp and kReviewedDate."
+        ),
+    },
+)
+
+
+def check_security_floors(report: Report, root: Path) -> None:
+    """The app warns about old rclone and WinFsp builds against hardcoded floors.
 
     A floor nobody revisits goes stale silently, and a stale floor is worse
-    than none: the previous "1.74.3" was itself an affected version. Fail the
-    release when the recorded review date has aged out.
+    than none: the previous rclone "1.74.3" was itself an affected version,
+    and the old WinFsp floor recommended a beta missing later fixes. Fail the
+    release when a recorded review date has aged out.
     """
-    source = root / "src" / "rclone_security_floor.cpp"
+    for floor in SECURITY_FLOORS:
+        check_security_floor(report, root, floor["name"], Path(*floor["path"]), floor["advice"])
+
+
+def check_security_floor(report: Report, root: Path, name: str, relative: Path, advice: str) -> None:
+    source = root / relative
     if not source.is_file():
-        report.failed_check("rclone security floor", "src/rclone_security_floor.cpp is missing")
+        report.failed_check(name, f"{relative.as_posix()} is missing")
         return
 
     text = read_text(source)
@@ -302,8 +331,8 @@ def check_rclone_security_floor(report: Report, root: Path) -> None:
     interval = re.search(r"kReviewIntervalDays\s*=\s*(\d+)", text)
     if not version or not reviewed or not interval:
         report.failed_check(
-            "rclone security floor",
-            "kMinimumVersion, kReviewedDate or kReviewIntervalDays could not be read",
+            name,
+            f"kMinimumVersion, kReviewedDate or kReviewIntervalDays could not be read from {relative.as_posix()}",
         )
         return
 
@@ -311,7 +340,7 @@ def check_rclone_security_floor(report: Report, root: Path) -> None:
         reviewed_date = date.fromisoformat(reviewed.group(1))
     except ValueError:
         report.failed_check(
-            "rclone security floor",
+            name,
             f"kReviewedDate '{reviewed.group(1)}' is not an ISO-8601 date",
         )
         return
@@ -320,20 +349,18 @@ def check_rclone_security_floor(report: Report, root: Path) -> None:
     age = (date.today() - reviewed_date).days
     if age < 0:
         report.failed_check(
-            "rclone security floor",
+            name,
             f"kReviewedDate {reviewed_date.isoformat()} is in the future",
         )
     elif age > max_age:
         report.failed_check(
-            "rclone security floor",
+            name,
             f"floor {version.group(1)} was last reviewed {age} days ago "
-            f"({reviewed_date.isoformat()}), over the {max_age}-day limit. "
-            "Re-check https://github.com/rclone/rclone/security/advisories, then "
-            "update kMinimumVersion, AdvisorySummary and kReviewedDate.",
+            f"({reviewed_date.isoformat()}), over the {max_age}-day limit. {advice}",
         )
     else:
         report.passed(
-            f"rclone security floor {version.group(1)} reviewed "
+            f"{name} {version.group(1)} reviewed "
             f"{reviewed_date.isoformat()} ({age}d ago)"
         )
 
@@ -649,7 +676,7 @@ def main() -> int:
     version = check_source_contract(report, root)
     check_metadata(report, root)
     check_release_scripts(report, root)
-    check_rclone_security_floor(report, root)
+    check_security_floors(report, root)
     check_qt_branch_policy(report, root)
     write_release_checksums(report, root)
     check_package_manifest_generator(report, root)

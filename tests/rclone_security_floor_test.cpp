@@ -129,10 +129,12 @@ private slots:
   }
 
   void raisingTheFloorWarnsAgain() {
-    // Before the 1.76.0 floor the key was the bare version, so anyone told
-    // about 1.75.1 under the old floor would never hear about this one.
-    QVERIFY(RcloneSecurityFloor::WarnedKey("1.75.1") != "1.75.1");
-    QVERIFY(RcloneSecurityFloor::WarnedKey("1.75.1").contains(
+    // Before the 1.76.0 floor the key was the bare version. Someone on 1.74.3
+    // was warned under the 1.75.1 floor and keyed on "1.74.3", so a bare key
+    // would keep them from hearing that 1.75.1 no longer covers it. (1.75.1
+    // itself sat at the old floor and was never warned.)
+    QVERIFY(RcloneSecurityFloor::WarnedKey("1.74.3") != "1.74.3");
+    QVERIFY(RcloneSecurityFloor::WarnedKey("1.74.3").contains(
         RcloneSecurityFloor::kMinimumVersion));
     // The window hands over "1.75.1", a test may hand over the line as
     // rclone prints it. Both mean the same install.

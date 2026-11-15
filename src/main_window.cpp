@@ -5181,13 +5181,11 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   const QString winFspDll = findWinFspDll();
   if (winFspDll.isEmpty()) {
     QMessageBox box(QMessageBox::Warning, "WinFsp required",
-                    "Mounting requires WinFsp, which is not installed.\n\n"
-                    "Install it with:\n  winget install WinFsp.WinFsp\n\n"
-                    "Or download from https://winfsp.dev",
+                    WinFspFloor::InstallAdvice(),
                     QMessageBox::Ok | QMessageBox::Cancel, this);
     box.setDefaultButton(QMessageBox::Ok);
     if (box.exec() == QMessageBox::Ok) {
-      QDesktopServices::openUrl(QUrl("https://winfsp.dev/rel/"));
+      QDesktopServices::openUrl(QUrl(WinFspFloor::kDownloadUrl));
     }
     return;
   }
