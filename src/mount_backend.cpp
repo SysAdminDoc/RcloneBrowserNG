@@ -22,7 +22,7 @@ bool versionAtLeast(const QString &version, const QString &minimum) {
 
   QVector<int> left = parse(version);
   QVector<int> right = parse(minimum);
-  const int size = qMax(left.size(), right.size());
+  const qsizetype size = qMax(left.size(), right.size());
   left.resize(size);
   right.resize(size);
   for (int i = 0; i < size; ++i) {

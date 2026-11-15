@@ -360,7 +360,7 @@ void FolderCompareDialog::refreshTable() {
     }
   }
 
-  mTable->setRowCount(mVisibleEntryIndexes.size());
+  mTable->setRowCount(static_cast<int>(mVisibleEntryIndexes.size()));
   mEmptyState->setVisible(mVisibleEntryIndexes.isEmpty());
   int matches = 0;
   int missingOnSource = 0;

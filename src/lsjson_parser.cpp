@@ -7,11 +7,11 @@ namespace LsjsonParser {
 QVector<QJsonObject> StreamSplitter::feed(const QByteArray &data) {
   QVector<QJsonObject> objects;
 
-  const int previousSize = mBuffer.size();
+  const qsizetype previousSize = mBuffer.size();
   mBuffer.append(data);
   mHadData = true;
 
-  for (int i = previousSize; i < mBuffer.size(); i++) {
+  for (qsizetype i = previousSize; i < mBuffer.size(); i++) {
     const char c = mBuffer.at(i);
 
     if (mInString) {

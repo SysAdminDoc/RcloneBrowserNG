@@ -54,7 +54,7 @@ QVector<Remote> ParseLong(const QByteArray &output) {
     }
     // Remote names cannot contain a colon, so the first one always ends the
     // name. Everything after it is the padded type and description.
-    const int colon = line.indexOf(QChar(':'));
+    const qsizetype colon = line.indexOf(QChar(':'));
     if (colon <= 0) {
       continue;
     }
@@ -67,7 +67,7 @@ QVector<Remote> ParseLong(const QByteArray &output) {
 
     const QString rest = line.mid(colon + 1).trimmed();
     if (!rest.isEmpty()) {
-      const int space = rest.indexOf(QRegularExpression("\\s"));
+      const qsizetype space = rest.indexOf(QRegularExpression("\\s"));
       if (space < 0) {
         remote.type = rest;
       } else {

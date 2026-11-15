@@ -141,18 +141,18 @@ static unsigned int parseVersionSegment(const std::string &s) {
 unsigned int compareVersion(std::string version1, std::string version2) {
   auto v1 = split(version1, '.');
   auto v2 = split(version2, '.');
-  unsigned int max = v1.size() > v2.size() ? v1.size() : v2.size();
+  const size_t max = v1.size() > v2.size() ? v1.size() : v2.size();
   // pad the shorter version string
   if (v1.size() != max) {
-    for (unsigned int i = max - v1.size(); i--;) {
+    for (size_t i = max - v1.size(); i--;) {
       v1.push_back("0");
     }
   } else {
-    for (unsigned int i = max - v2.size(); i--;) {
+    for (size_t i = max - v2.size(); i--;) {
       v2.push_back("0");
     }
   }
-  for (unsigned int i = 0; i < max; i++) {
+  for (size_t i = 0; i < max; i++) {
     unsigned int n1 = parseVersionSegment(v1[i]);
     unsigned int n2 = parseVersionSegment(v2[i]);
     if (n1 > n2) {
@@ -339,7 +339,7 @@ void WriteSettings(QSettings *settings, QObject *widget) {
       settings->remove(name);
     } else {
       QStringList lines = text.split('\n');
-      settings->beginWriteArray(name, lines.size());
+      settings->beginWriteArray(name, static_cast<int>(lines.size()));
       for (int i = 0; i < lines.count(); i++) {
         settings->setArrayIndex(i);
         settings->setValue("value", lines[i]);
@@ -623,11 +623,11 @@ bool BuildBackupRetentionPlan(const QString &backupDirTemplate, int keepCount,
   }
 
   snapshots.sort(Qt::CaseSensitive);
-  const int removeCount = snapshots.size() - keepCount;
+  const qsizetype removeCount = snapshots.size() - keepCount;
   if (removeCount <= 0 || !deleteTargets) {
     return true;
   }
-  for (int i = 0; i < removeCount; ++i) {
+  for (qsizetype i = 0; i < removeCount; ++i) {
     deleteTargets->append(JoinBackupRetentionPath(parent, snapshots.at(i)));
   }
   return true;

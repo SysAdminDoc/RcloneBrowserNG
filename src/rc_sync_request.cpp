@@ -95,7 +95,7 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
     // can come from the free-text extra options field.
     QString inlineValue;
     bool hasInlineValue = false;
-    const int equals = token.indexOf(QChar('='));
+    const qsizetype equals = token.indexOf(QChar('='));
     if (equals > 0) {
       inlineValue = token.mid(equals + 1);
       hasInlineValue = true;

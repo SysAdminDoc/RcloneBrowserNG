@@ -34,7 +34,7 @@ public:
   void recordHookFailure(const QString &taskLabel, const QString &command,
                          const QString &message, int exitCode,
                          const QDateTime &startedAt);
-  int backgroundErrorCount() const { return mErrorQueue.size(); }
+  int backgroundErrorCount() const { return static_cast<int>(mErrorQueue.size()); }
   QString lastBackgroundErrorMessage() const {
     return mErrorQueue.isEmpty() ? QString() : mErrorQueue.last().message;
   }

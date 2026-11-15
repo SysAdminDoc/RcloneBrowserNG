@@ -22,5 +22,7 @@
 #endif
 
 #ifdef _MSC_VER
-#pragma warning pop
+// Without the parentheses MSVC ignores this line, and its complaint about it
+// is silenced by the push above, so every file built at warning level 0.
+#pragma warning(pop)
 #endif

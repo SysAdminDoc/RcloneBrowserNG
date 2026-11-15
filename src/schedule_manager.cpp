@@ -662,14 +662,14 @@ QSet<int> parseCronField(const QString &field, int minVal, int maxVal) {
       continue;
     }
 
-    int stepIdx = p.indexOf('/');
+    const qsizetype stepIdx = p.indexOf('/');
     int step = 1;
     if (stepIdx >= 0) {
       step = qMax(1, p.mid(stepIdx + 1).toInt());
       p = p.left(stepIdx);
     }
 
-    int dashIdx = p.indexOf('-');
+    const qsizetype dashIdx = p.indexOf('-');
     if (dashIdx >= 0) {
       int lo = qBound(minVal, p.left(dashIdx).toInt(), maxVal);
       int hi = qBound(minVal, p.mid(dashIdx + 1).toInt(), maxVal);

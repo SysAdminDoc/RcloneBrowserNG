@@ -21,7 +21,7 @@ struct Item {
 
   int num() const {
     Q_ASSERT(parent);
-    return parent->childs.indexOf(const_cast<Item *>(this));
+    return static_cast<int>(parent->childs.indexOf(const_cast<Item *>(this)));
   }
 
   Item *parent = nullptr;

@@ -847,10 +847,10 @@ MainWindow::MainWindow(bool initializeRuntime)
 
             QString output = QString::fromUtf8(proc->readAllStandardOutput());
             QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-            safeTable->setRowCount(lines.size());
+            safeTable->setRowCount(static_cast<int>(lines.size()));
             for (int i = 0; i < lines.size(); ++i) {
               QString line = lines[i].trimmed();
-              int colonIdx = line.indexOf(':');
+              const qsizetype colonIdx = line.indexOf(':');
               QString name = colonIdx > 0 ? line.left(colonIdx).trimmed()
                                           : line;
               QString type = colonIdx > 0
@@ -979,7 +979,7 @@ MainWindow::MainWindow(bool initializeRuntime)
             QJsonDocument doc = QJsonDocument::fromJson(
                 diskProc->readAllStandardOutput());
             QJsonArray disks = doc.object().value("diskInfo").toArray();
-            safeDiskTable->setRowCount(disks.size());
+            safeDiskTable->setRowCount(static_cast<int>(disks.size()));
             for (int i = 0; i < disks.size(); ++i) {
               QJsonObject d = disks[i].toObject();
               QString path = d.value("path").toString();
@@ -1955,7 +1955,7 @@ void MainWindow::rcloneGetVersion() {
           // extract rclone version - numbers only
           QString rclone_info1 = version;
           QString rclone_version_no;
-          int lineBreak = rclone_info1.indexOf('\n');
+          const qsizetype lineBreak = rclone_info1.indexOf('\n');
           if (lineBreak != -1) {
             rclone_info1.remove(lineBreak, rclone_info1.length() - lineBreak);
             rclone_version_no = rclone_info1;
@@ -2740,7 +2740,7 @@ bool MainWindow::confirmConfigMutation(const QString &action) {
 
 QDateTime MainWindow::rcloneConfigLastModified() const {
   const QStringList configArgs = GetRcloneConf();
-  const int configIndex = configArgs.indexOf("--config");
+  const qsizetype configIndex = configArgs.indexOf("--config");
   if (configIndex < 0 || configIndex + 1 >= configArgs.count()) {
     return QDateTime();
   }
@@ -2988,19 +2988,19 @@ void MainWindow::rcloneListRemotes() {
             // the Fusion-based dark style changes PM_ListViewIconSize,
             // so the scale has to follow the style actually in use
             if (darkModeIni) {
-              size = darkModeIconScale *
-                     style->pixelMetric(QStyle::PM_ListViewIconSize);
+              size = static_cast<int>(darkModeIconScale *
+                     style->pixelMetric(QStyle::PM_ListViewIconSize));
             } else {
-              size = lightModeiconScale *
-                     style->pixelMetric(QStyle::PM_ListViewIconSize);
+              size = static_cast<int>(lightModeiconScale *
+                     style->pixelMetric(QStyle::PM_ListViewIconSize));
             }
 #else
              // for Linux/BSD PM_ListViewIconSize stays the same
-             size = lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
+             size = static_cast<int>(lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
 #endif
 #else
              // macOS 11+ (deployment target): native dark mode does not change IconSize base
-             size = 1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize);
+             size = static_cast<int>(1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
 #endif
             const int displaySize = qBound(22, size, 34);
             ui.remotes->setIconSize(QSize(displaySize, displaySize));
@@ -3053,7 +3053,7 @@ void MainWindow::rcloneListRemotes() {
                     if (cfg.value("type").toString() != "crypt")
                       continue;
                     QString backing = cfg.value("remote").toString();
-                    int colon = backing.indexOf(':');
+                    const qsizetype colon = backing.indexOf(':');
                     if (colon > 0)
                       cryptBackends.insert(backing.left(colon));
                   }
@@ -4003,7 +4003,7 @@ void MainWindow::showJobHistory() {
   table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
   table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
 
-  table->setRowCount(entries.size());
+  table->setRowCount(static_cast<int>(entries.size()));
   for (int row = 0; row < entries.size(); ++row) {
     const JobHistoryEntry &entry = entries.at(entries.size() - row - 1);
     // "Failed" for every non-zero code hid the difference between a broken
@@ -4070,7 +4070,7 @@ void MainWindow::showJobHistory() {
     if (sel.isEmpty())
       return nullptr;
     int row = sel.first()->row();
-    int idx = entries.size() - row - 1;
+    const qsizetype idx = entries.size() - row - 1;
     if (idx < 0 || idx >= entries.size())
       return nullptr;
     return &entries.at(idx);
@@ -4211,7 +4211,7 @@ void MainWindow::checkStaleness() {
         QDateTime now = QDateTime::currentDateTimeUtc();
         for (const auto &sched : schedules) {
           QDateTime lastRun;
-          for (int i = history.size() - 1; i >= 0; --i) {
+          for (qsizetype i = history.size() - 1; i >= 0; --i) {
             if (history[i].name.contains(sched.taskName) &&
                 history[i].success) {
               lastRun = history[i].finishedAt;
@@ -5193,9 +5193,9 @@ void MainWindow::showErrorQueue() {
     UiPolish::SetTableView(table, "Background errors");
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    table->setRowCount(mErrorQueue.size());
+    table->setRowCount(static_cast<int>(mErrorQueue.size()));
     for (int i = 0; i < mErrorQueue.size(); ++i) {
-      int row = mErrorQueue.size() - 1 - i;
+      const qsizetype row = mErrorQueue.size() - 1 - i;
       const auto &e = mErrorQueue[row];
       table->setItem(i, 0, new QTableWidgetItem(
           e.timestamp.toString("HH:mm:ss")));

@@ -36,7 +36,7 @@ FilterRules BuildSelectionFilter(const QVector<SelectionEntry> &entries) {
   FilterRules result;
 
   QStringList rules;
-  int characters = 0;
+  qsizetype characters = 0;
   for (const SelectionEntry &entry : entries) {
     if (entry.name.isEmpty()) {
       continue;

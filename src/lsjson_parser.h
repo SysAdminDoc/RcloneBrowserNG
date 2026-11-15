@@ -32,7 +32,7 @@ public:
 private:
   QByteArray mBuffer;
   int mBraceDepth = 0;
-  int mObjectStart = -1;
+  qsizetype mObjectStart = -1;
   bool mInString = false;
   bool mHadData = false;
 };

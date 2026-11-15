@@ -836,7 +836,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       ui.tree->selectionModel(), &QItemSelectionModel::selectionChanged, this,
       [=]() {
         auto rows = ui.tree->selectionModel()->selectedRows();
-        int count = rows.size();
+        const qsizetype count = rows.size();
         const QString selectTip = "Select a file or folder first.";
 
         for (auto child : findChildren<QAction *>()) {
@@ -1465,7 +1465,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
             opts->dryRun ? 0 : opts->backupRetainCount;
         const bool verifyAfterTransfer =
             opts->verifyAfterTransfer && !opts->dryRun;
-        for (int i = selectionFilter.arguments.size() - 1; i >= 0; --i) {
+        for (qsizetype i = selectionFilter.arguments.size() - 1; i >= 0; --i) {
           args.prepend(selectionFilter.arguments.at(i));
         }
         QString src = t.getSource();
@@ -2221,7 +2221,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                 table->setEditTriggers(QAbstractItemView::NoEditTriggers);
                 table->horizontalHeader()->setSectionResizeMode(
                     0, QHeaderView::Stretch);
-                table->setRowCount(arr.size());
+                table->setRowCount(static_cast<int>(arr.size()));
 
                 for (int i = 0; i < arr.size(); ++i) {
                   QJsonObject obj = arr[i].toObject();
@@ -2612,7 +2612,7 @@ void RemoteWidget::pushNavHistory(const QModelIndex &index) {
   while (mNavHistory.size() > mNavPos + 1)
     mNavHistory.removeLast();
   mNavHistory.append(QPersistentModelIndex(index));
-  mNavPos = mNavHistory.size() - 1;
+  mNavPos = static_cast<int>(mNavHistory.size()) - 1;
   updateNavButtons();
 }
 

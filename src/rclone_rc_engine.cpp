@@ -268,7 +268,7 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     const QString &source, QObject *context,
     std::function<void(bool)> callback) {
   const QString trimmed = source.trimmed();
-  const int colon = trimmed.indexOf(QChar(':'));
+  const qsizetype colon = trimmed.indexOf(QChar(':'));
   const bool looksRemote = colon > 1;
 
   if (!looksRemote) {
@@ -286,7 +286,7 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     return;
   }
 
-  const int lastSlash = trimmed.lastIndexOf(QChar('/'));
+  const qsizetype lastSlash = trimmed.lastIndexOf(QChar('/'));
   QString fs;
   QString remote;
   if (lastSlash > colon) {

@@ -221,7 +221,7 @@ int ItemModel::rowCount(const QModelIndex &parent) const {
       const_cast<ItemModel *>(this)->load(parent, item);
     }
   }
-  return item->childs.count();
+  return static_cast<int>(item->childs.count());
 }
 
 int ItemModel::columnCount(const QModelIndex &parent) const {
@@ -554,8 +554,8 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
 
         if (!todo.isEmpty()) {
           modified = true;
-          emit beginInsertRows(parentIndex, parent->childs.count(),
-                               parent->childs.count() + todo.count() - 1);
+          emit beginInsertRows(parentIndex, static_cast<int>(parent->childs.count()),
+                               static_cast<int>(parent->childs.count() + todo.count() - 1));
           parent->childs += todo;
           emit endInsertRows();
         }
