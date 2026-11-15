@@ -8,25 +8,46 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import zipfile
 
 
+def _inside(root: Path, path: Path) -> bool:
+    return path == root or root in path.parents
+
+
 def safe_extract(archive: Path, destination: Path) -> None:
+    # zipfile drops the Unix mode that ditto stores, so a macOS .app.zip came
+    # out with a binary that couldn't run and framework symlinks written as
+    # small text files. Both are put back from external_attr here.
     destination_root = destination.resolve()
     with zipfile.ZipFile(archive) as source:
         for member in source.infolist():
             target = (destination / member.filename).resolve()
-            if target != destination_root and destination_root not in target.parents:
+            if not _inside(destination_root, target):
                 raise ValueError(f"archive contains an unsafe path: {member.filename}")
             if member.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
+            mode = (member.external_attr >> 16) if member.create_system == 3 else 0
+            if stat.S_ISLNK(mode):
+                link = source.read(member).decode("utf-8")
+                if os.path.isabs(link) or not _inside(
+                    destination_root, (target.parent / link).resolve()
+                ):
+                    raise ValueError(
+                        f"archive link points outside it: {member.filename} -> {link}"
+                    )
+                target.symlink_to(link)
+                continue
             with source.open(member) as source_stream, target.open("wb") as target_stream:
                 shutil.copyfileobj(source_stream, target_stream)
+            if mode & 0o777:
+                target.chmod(mode & 0o777)
 
 
 def find_binary(root: Path) -> Path:
