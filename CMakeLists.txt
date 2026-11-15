@@ -495,6 +495,7 @@ if(BUILD_TESTING)
     src/schedule_dialog.cpp
     src/run_conditions.cpp
     src/staged_transfer.cpp
+    src/vss_snapshot.cpp
     src/cross_remote_search.cpp
     src/combine_remote.cpp
     src/combine_remote_dialog.cpp
@@ -521,7 +522,7 @@ if(BUILD_TESTING)
   target_compile_definitions(accessibility_smoke_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(accessibility_smoke_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(accessibility_smoke_test version advapi32 iphlpapi)
+    target_link_libraries(accessibility_smoke_test version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   elseif(APPLE)
     find_library(ACCESSIBILITY_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(accessibility_smoke_test ${ACCESSIBILITY_COCOA_LIBRARY})
@@ -539,7 +540,7 @@ if(BUILD_TESTING)
   target_compile_definitions(layout_regression_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(layout_regression_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(layout_regression_test version advapi32 iphlpapi)
+    target_link_libraries(layout_regression_test version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   elseif(APPLE)
     find_library(LAYOUT_REGRESSION_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(layout_regression_test ${LAYOUT_REGRESSION_COCOA_LIBRARY})
@@ -558,7 +559,7 @@ if(BUILD_TESTING)
   target_compile_definitions(remotes_list_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(remotes_list_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   if(WIN32)
-    target_link_libraries(remotes_list_test version advapi32 iphlpapi)
+    target_link_libraries(remotes_list_test version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   elseif(APPLE)
     find_library(REMOTES_LIST_COCOA_LIBRARY Cocoa REQUIRED)
     target_link_libraries(remotes_list_test ${REMOTES_LIST_COCOA_LIBRARY})
