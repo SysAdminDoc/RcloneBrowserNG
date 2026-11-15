@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P0
 
-- [ ] P0 — Raise the rclone security floor to 1.76.0 and name the advisories that reach this app
-  Why: rclone 1.75.2 and 1.76.0 fixed 18 advisories, and 17 of them list 1.75.1, the current floor, as affected. The app itself runs the affected `serve webdav`, `serve s3`, `selfupdate` and network-facing `rcd` paths. The floor only warns, once per rclone version (`src/main_window.cpp:2110-2128`), so raising it locks nobody out.
-  Evidence (Verified): `src/rclone_security_floor.cpp:10-11` (`kMinimumVersion` 1.75.1, `kReviewedDate` 2026-09-04); GHSA-44pm-2q5p-fm63 and GHSA-gj73-fh6v-92fj (serve webdav), GHSA-w3h7-jxxq-vfrp and GHSA-qjw8-8hmp-c3m6 (serve s3), GHSA-w33h-3qgq-8mv8 (selfupdate), GHSA-f8p4-8g4j-q3m2 (RC JSON read before authorization), fixed in 1.75.2 (2026-10-09) or 1.76.0 (2026-11-06); the Serve menu at `src/remote_widget.cpp:2006-2020`.
-  Touches: `src/rclone_security_floor.cpp`, `tests/rclone_security_floor_test.cpp`
-  Acceptance: `kMinimumVersion` is 1.76.0 and `kReviewedDate` 2026-11-15; `AdvisorySummary()` names the serve webdav, serve s3, selfupdate and RC JSON advisories in place of the three from 2026-09-04; the test flags 1.75.2 and passes 1.76.0; a transfer through the local rc engine still completes against rclone 1.76.0, which rejects unauthorized and unknown rc calls before reading the request (the GHSA-f8p4-8g4j-q3m2 fix).
-  Complexity: S
-
 - [ ] P0 — Stop offering `rclone selfupdate` to rclone builds whose updater trusts an unsigned hash
   Why: on rclone 1.75.1 and older, the binary that runs `selfupdate` is the one GHSA-w33h-3qgq-8mv8 describes, so the app's one-click upgrade is the vulnerable path.
   Evidence (Verified): `src/main_window.cpp:5021-5059` adds "Run selfupdate" to the update prompt for any older rclone and starts `rclone selfupdate`; GHSA-w33h-3qgq-8mv8 (high) covers `>=1.55.0, <=1.75.1` and is fixed in 1.75.2.

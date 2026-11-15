@@ -21,11 +21,17 @@ private slots:
     QTest::newRow("1.74.4") << "1.74.4" << true;
     // Patches GHSA-mfvx-7rcj-9m5g but not the 2026-09-04 batch.
     QTest::newRow("1.75.0") << "1.75.0" << true;
-    QTest::newRow("1.75.1") << "1.75.1" << false;
+    // The floor from 2026-09-04 to 2026-11-15. Affected by 17 of the 18
+    // advisories fixed in 1.75.2 and 1.76.0.
+    QTest::newRow("1.75.1") << "1.75.1" << true;
+    // Fixes the 2026-10-09 batch but not GHSA-f8p4-8g4j-q3m2 (rc requests
+    // read before the login is checked), which reaches the app's own rcd.
+    QTest::newRow("1.75.2") << "1.75.2" << true;
     QTest::newRow("1.76.0") << "1.76.0" << false;
+    QTest::newRow("1.77.0") << "1.77.0" << false;
     QTest::newRow("2.0.0") << "2.0.0" << false;
     QTest::newRow("padded") << "1.76" << false;
-    QTest::newRow("whitespace") << "  1.75.1  " << false;
+    QTest::newRow("whitespace") << "  1.76.0  " << false;
   }
 
   void warnsBelowTheFloor() {
@@ -41,11 +47,11 @@ private slots:
     QVERIFY(!RcloneSecurityFloor::IsBelowFloor("   "));
   }
 
-  void floorIsAtLeastTheSeptember2026Batch() {
-    QVERIFY2(!RcloneSecurityFloor::IsBelowFloor("1.75.1"),
+  void floorIsAtLeastTheNovember2026Batch() {
+    QVERIFY2(!RcloneSecurityFloor::IsBelowFloor("1.76.0"),
              "the floor must not sit above a version that is already safe");
-    QVERIFY2(RcloneSecurityFloor::IsBelowFloor("1.75.0"),
-             "1.75.0 predates the 2026-09-04 advisories");
+    QVERIFY2(RcloneSecurityFloor::IsBelowFloor("1.75.2"),
+             "1.75.2 predates the 2026-11-06 advisories");
   }
 
   void reviewDateIsParseableAndNotInTheFuture() {
@@ -60,9 +66,14 @@ private slots:
     // "security fixes are available" tells nobody what they are risking.
     const QString summary = RcloneSecurityFloor::AdvisorySummary();
     QVERIFY(summary.contains(RcloneSecurityFloor::kMinimumVersion));
-    QVERIFY(summary.contains("GHSA-p569-5gjg-9cmj"));
-    QVERIFY(summary.contains("GHSA-xwwr-4h3p-r22c"));
-    QVERIFY(summary.contains("GHSA-mfvx-7rcj-9m5g"));
+    // serve webdav, serve s3, selfupdate and the rc daemon: the advisories
+    // that reach paths the app starts itself.
+    QVERIFY(summary.contains("GHSA-44pm-2q5p-fm63"));
+    QVERIFY(summary.contains("GHSA-gj73-fh6v-92fj"));
+    QVERIFY(summary.contains("GHSA-w3h7-jxxq-vfrp"));
+    QVERIFY(summary.contains("GHSA-qjw8-8hmp-c3m6"));
+    QVERIFY(summary.contains("GHSA-w33h-3qgq-8mv8"));
+    QVERIFY(summary.contains("GHSA-f8p4-8g4j-q3m2"));
   }
 };
 

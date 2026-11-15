@@ -1,14 +1,14 @@
 #include "rclone_security_floor.h"
-
 #include "utils.h"
 
 namespace RcloneSecurityFloor {
 
-// rclone 1.75.1 (2026-09-04) closed eleven advisories at once, two of them
-// critical. The previous floor of 1.74.3 was wrong in both directions: it was
-// three releases behind, and 1.74.3 itself is affected by GHSA-fqj9-69pf-6pjg.
-const char kMinimumVersion[] = "1.75.1";
-const char kReviewedDate[] = "2026-09-04";
+// rclone 1.75.2 (2026-10-09) and 1.76.0 (2026-11-06) closed 18 advisories,
+// and 17 of them list 1.75.1, the previous floor, as affected. Several reach
+// code this app runs itself: serve webdav, serve s3, selfupdate and the rc
+// daemon.
+const char kMinimumVersion[] = "1.76.0";
+const char kReviewedDate[] = "2026-11-15";
 const int kReviewIntervalDays = 180;
 
 bool IsBelowFloor(const QString &version) {
@@ -21,13 +21,16 @@ bool IsBelowFloor(const QString &version) {
 
 QString AdvisorySummary() {
   return QString(
-      "Versions before %1 are affected by rclone security advisories, "
-      "including two rated critical: GHSA-p569-5gjg-9cmj, where a configured "
-      "remote-control auth proxy is silently ignored, and "
-      "GHSA-xwwr-4h3p-r22c, an authentication bypass in serve s3. "
-      "GHSA-mfvx-7rcj-9m5g matters here in particular, because it exposes the "
-      "remote-control daemon's full command line - including the credentials "
-      "Rclone Browser NG passes it - to anything that can reach the port.")
+             "Versions before %1 are affected by rclone security advisories "
+             "that reach features this app uses. Serve WebDAV lets anyone "
+             "create folders above the shared one (GHSA-44pm-2q5p-fm63) and "
+             "skips the login for OPTIONS requests (GHSA-gj73-fh6v-92fj). "
+             "Serve S3 lets a presigned upload link read any bucket "
+             "(GHSA-w3h7-jxxq-vfrp) and can run past its memory limit "
+             "(GHSA-qjw8-8hmp-c3m6). rclone selfupdate trusts a download "
+             "hash nobody signed (GHSA-w33h-3qgq-8mv8), and the "
+             "remote-control daemon reads a request of any size before "
+             "checking the login (GHSA-f8p4-8g4j-q3m2).")
       .arg(kMinimumVersion);
 }
 
