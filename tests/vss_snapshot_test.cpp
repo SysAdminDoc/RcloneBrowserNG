@@ -1,6 +1,7 @@
 #include "vss_snapshot.h"
 
 #include <QTest>
+#include <memory>
 
 #if defined(Q_OS_WIN32)
 #include <windows.h>
@@ -236,9 +237,24 @@ private slots:
     if (qEnvironmentVariable("RB_VSS_E2E") != "1") {
       QSKIP("Set RB_VSS_E2E=1 to make a real snapshot.");
     }
-    const QString app = QDir(QCoreApplication::applicationDirPath())
-                            .filePath("RcloneBrowser.exe");
+    QString app = qEnvironmentVariable("RB_VSS_E2E_APP");
+    if (app.isEmpty()) {
+      app = QDir(QCoreApplication::applicationDirPath())
+                .filePath("RcloneBrowser.exe");
+    }
     QVERIFY2(QFileInfo::exists(app), qPrintable(app));
+    // The helper starts elevated, and an elevated process gets the user's
+    // PATH, not this test's. An exe with no Qt beside it (the build folder)
+    // can't load, and Windows shows a "System Error" box per missing DLL
+    // while the snapshot never comes. Refuse before launching it.
+    const QDir appDir = QFileInfo(app).dir();
+    if (!appDir.exists("Qt6Core.dll") && !appDir.exists("Qt6Cored.dll")) {
+      QFAIL(qPrintable(
+          QString("%1 has no Qt DLLs beside it, so the elevated helper "
+                  "can't start. Run windeployqt on a copy of it and point "
+                  "RB_VSS_E2E_APP at that copy.")
+              .arg(QDir::toNativeSeparators(app))));
+    }
     VssSnapshot::SetHelperProgram(app);
 
     QTemporaryDir source;
@@ -257,6 +273,10 @@ private slots:
         GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
         nullptr);
     QVERIFY(lock != INVALID_HANDLE_VALUE);
+    // Closed on every way out, so a failed check still lets the temporary
+    // folder go instead of leaving it in %TEMP%.
+    const std::unique_ptr<void, decltype(&CloseHandle)> lockGuard(
+        lock, &CloseHandle);
     QVERIFY(!QFile(file).open(QIODevice::ReadOnly));
 
     QObject context;
@@ -271,6 +291,9 @@ private slots:
                       });
     QTRY_VERIFY_WITH_TIMEOUT(done, 200000);
     QVERIFY2(session != nullptr, qPrintable(error));
+    // Deleting the session releases the snapshot, so a failed check below
+    // can't leave one on the drive.
+    std::unique_ptr<VssSession> owned(session);
     const QString sessionDir = session->sessionDir();
     const QString shadowId =
         QString::fromUtf8(ReadFile(VssSnapshot::ReadyFile(sessionDir)))
@@ -295,7 +318,7 @@ private slots:
       QCOMPARE(ReadFile(QDir(dest.path()).filePath("locked.pst")), content);
     }
 
-    delete session;
+    owned.reset();
     QTRY_VERIFY_WITH_TIMEOUT(
         QFileInfo::exists(VssSnapshot::ReleasedFile(sessionDir)), 60000);
     QVERIFY(!PathEntryExists(VssSnapshot::LinkPath(sessionDir)));
@@ -303,7 +326,6 @@ private slots:
         "HKEY_LOCAL_MACHINE\\SOFTWARE\\RcloneBrowserNG\\VssSnapshots",
         QSettings::Registry64Format);
     QVERIFY2(!ledger.contains(shadowId), qPrintable(shadowId));
-    CloseHandle(lock);
 #endif
   }
 };
