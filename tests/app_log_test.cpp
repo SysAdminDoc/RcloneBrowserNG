@@ -1,8 +1,10 @@
 #include "app_log.h"
 #include "rclone_capabilities.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -49,10 +51,17 @@ private slots:
     QVERIFY2(!contents.isEmpty(), "the log file must exist and have content");
     QVERIFY2(contents.contains("[ERROR] job: copy failed"),
              qPrintable(contents));
-    // ISO-8601 UTC, so lines from different machines sort together.
-    QVERIFY2(contents.contains(QDate::currentDate().toString(Qt::ISODate)) ||
-                 contents.contains(
-                     QDate::currentDate().addDays(-1).toString(Qt::ISODate)),
+    // ISO-8601 UTC, so lines from different machines sort together. Compare
+    // against the UTC date: the local date is a day behind every evening in
+    // the Americas, which failed this check after 7 PM Eastern.
+    const QDate utcToday = QDateTime::currentDateTimeUtc().date();
+    QVERIFY2(contents.contains(utcToday.toString(Qt::ISODate)) ||
+                 contents.contains(utcToday.addDays(-1).toString(Qt::ISODate)),
+             qPrintable(contents));
+    QVERIFY2(QRegularExpression("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+                                "\\.\\d{3}Z")
+                 .match(contents)
+                 .hasMatch(),
              qPrintable(contents));
   }
 
