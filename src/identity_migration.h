@@ -11,6 +11,10 @@ struct IdentityMigrationOptions {
   // Standard mode only, for the same reason: portable tasks live next to
   // the executable.
   bool importClassicTasks = true;
+  // Standard mode only: a portable copy never reads the per-user data
+  // folder, so copying tasks.json and job-history.json there only leaves
+  // files on the host.
+  bool copyDataFiles = true;
 };
 
 struct IdentityMigrationResult {

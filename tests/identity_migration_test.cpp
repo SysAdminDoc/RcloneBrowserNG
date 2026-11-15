@@ -335,14 +335,21 @@ private slots:
     QList<JobOptions *> classic{makeTask("Photos", "C:/Pictures", "gdrive:")};
     writeClassicTasks(p.legacyFile("tasks.bin"), classic);
     ClearJobOptionsList(&classic);
+    // A portable copy on a USB stick used to copy these into the host's
+    // profile, a folder it never reads.
+    writeBytes(p.legacyFile("tasks.json"), "{\"version\": 1, \"tasks\": []}");
+    writeBytes(p.legacyFile("job-history.json"), "[]");
 
     IdentityMigrationOptions portable;
     portable.copySettings = false;
     portable.importClassicTasks = false;
+    portable.copyDataFiles = false;
     const IdentityMigrationResult result = p.migrate(portable);
 
     QCOMPARE(result.settingsCopied, 0);
     QCOMPARE(result.classicTasksImported, 0);
+    QCOMPARE(result.filesCopied, QStringList());
+    QVERIFY(!QFileInfo::exists(p.dataDir));
     QVERIFY(!p.current->contains("Settings/rclone"));
     QVERIFY(p.current->contains(kIdentityMigrationKey));
   }

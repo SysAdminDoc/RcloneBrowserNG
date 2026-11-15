@@ -172,13 +172,14 @@ IdentityMigrationResult MigrateFromSharedIdentity(
       QDir::cleanPath(legacyDir.absolutePath())
               .compare(QDir::cleanPath(targetDir.absolutePath()),
                        Qt::CaseInsensitive) != 0;
-  if (distinct && legacyDir.exists()) {
+  if (distinct && legacyDir.exists() &&
+      (options.copyDataFiles || options.importClassicTasks)) {
     QDir().mkpath(targetDir.absolutePath());
     for (const char *name : kOwnFiles) {
       const QString from = legacyDir.filePath(name);
       const QString to = targetDir.filePath(name);
-      if (QFileInfo::exists(from) && !QFileInfo::exists(to) &&
-          QFile::copy(from, to)) {
+      if (options.copyDataFiles && QFileInfo::exists(from) &&
+          !QFileInfo::exists(to) && QFile::copy(from, to)) {
         result.filesCopied << name;
       }
     }
@@ -213,6 +214,7 @@ IdentityMigrationResult RunSharedIdentityMigration() {
   IdentityMigrationOptions options;
   options.copySettings = !portable;
   options.importClassicTasks = !portable;
+  options.copyDataFiles = !portable;
   return MigrateFromSharedIdentity(legacySettings, *settings, legacyDataDir,
                                    dataDir, options);
 }
