@@ -87,6 +87,7 @@ set(SOURCE
   lsjson_parser.cpp
   rclone_exit_code.cpp
   rclone_security_floor.cpp
+  winfsp_floor.cpp
   selection_arguments.cpp
   sync_preview.cpp
   schedule_dialog.cpp
@@ -142,6 +143,7 @@ set(OTHER
   schedule_dialog.h
   vfs_upload_state.h
   vss_snapshot.h
+  winfsp_floor.h
   remote_daemon.h
   progress_dialog.h
   job_widget.h

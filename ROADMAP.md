@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P1
 
-- [ ] P1 — Point the WinFsp warning at the build that carries every published fix
-  Why: the check warns only at 2.1.25156 and older and recommends "2026 Beta1 or newer", but Beta1 lists no CVE-2026-7162 fix, and six more vulnerability fixes landed in Beta4 and Beta5.
-  Evidence (Verified): `src/main_window.cpp:5165-5178`; WinFsp release notes for Beta1 2.2.26112 (2026-04-22), Beta2 2.2.26183 (2026-07-02, first CVE-2026-7162 fix), Beta4 2.2.26215 (2026-08-03, two more fixes) and Beta5 2.2.26286 (2026-10-13, four more); the latest stable is 2.1 from 2025-06-05.
-  Touches: `src/main_window.cpp` (move the version table into new `src/winfsp_floor.{h,cpp}`), new `tests/winfsp_floor_test.cpp`, `CMakeLists.txt`
-  Acceptance: any installed WinFsp below 2.2.26286 gets the warning, which names CVE-2026-3006, CVE-2026-7162 and the later fixes and recommends 2026 Beta5 or newer; 2.2.26286 and later get none; tests cover 2.1.25156, 2.2.26112, 2.2.26215 and 2.2.26286. Whether to recommend a prerelease is Open Question 1 in RESEARCH.md.
-  Complexity: S
-
 - [ ] P1 — Warn on plain-HTTP remote daemons and make a TLS daemon usable
   Why: remote mode sends the rcd user name and password in a Basic auth header on every request, and the README's setup binds rcd to every interface over plain HTTP, while rclone's docs treat rc access as shell access.
   Evidence (Verified): `src/remote_daemon.cpp` (`NormalizeUrl` prepends `http://`, and nothing handles `sslErrors`, so a self-signed `https` daemon can't connect); README "Using an rclone on another computer" (`rclone rcd --rc-addr :5572`, `http://nas.local:5572`); rclone.org/rc: "Access to the rc API is equivalent to shell access as the user running rclone", "Do not bind the rc to a network address you do not control", and `--rc-cert`/`--rc-key` for TLS.

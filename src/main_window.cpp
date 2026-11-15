@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "schedule_dialog.h"
 #include "vss_snapshot.h"
+#include "winfsp_floor.h"
 #ifdef Q_OS_MACOS
 #include "osx_helper.h"
 #endif
@@ -5192,18 +5193,13 @@ void MainWindow::startMount(const QString &remote, const QString &folder,
   }
 
   const QString winFspVersion = windowsFileVersion(winFspDll);
-  if (!winFspVersion.isEmpty() &&
-      compareVersion(winFspVersion.toStdString(), "2.1.25156") != 1) {
+  if (WinFspFloor::IsBelowFloor(winFspVersion)) {
+    const QString warnedKey = WinFspFloor::WarnedKey(winFspVersion);
     if (settings->value("Settings/winFspWarnedVersion").toString() !=
-        winFspVersion) {
-      settings->setValue("Settings/winFspWarnedVersion", winFspVersion);
-      QMessageBox::warning(
-          this, "WinFsp update recommended",
-          QString("Detected WinFsp %1.\n\nWinFsp 2.1.25156 and older are "
-                  "affected by CVE-2026-3006, a local privilege escalation in "
-                  "the kernel driver.\n\nUpdate to WinFsp 2026 Beta1 or newer "
-                  "before using mounts on untrusted systems.")
-              .arg(winFspVersion));
+        warnedKey) {
+      settings->setValue("Settings/winFspWarnedVersion", warnedKey);
+      QMessageBox::warning(this, "WinFsp update recommended",
+                           WinFspFloor::Warning(winFspVersion));
     }
   }
 #elif defined(Q_OS_MACOS)

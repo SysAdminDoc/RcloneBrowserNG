@@ -99,6 +99,18 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME rclone_security_floor_test COMMAND rclone_security_floor_test)
 
+  add_executable(winfsp_floor_test
+    tests/winfsp_floor_test.cpp
+    src/winfsp_floor.cpp
+    src/utils.cpp
+  )
+  target_include_directories(winfsp_floor_test PRIVATE src)
+  target_link_libraries(winfsp_floor_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(winfsp_floor_test advapi32)
+  endif()
+  add_test(NAME winfsp_floor_test COMMAND winfsp_floor_test)
+
   add_executable(selection_arguments_test
     tests/selection_arguments_test.cpp
     src/selection_arguments.cpp
@@ -497,6 +509,7 @@ if(BUILD_TESTING)
     src/rclone_capabilities.cpp
     src/rclone_exit_code.cpp
     src/rclone_security_floor.cpp
+    src/winfsp_floor.cpp
     src/rc_job_widget.cpp
     src/adaptive_bandwidth.cpp
     src/adaptive_bandwidth_driver.cpp
