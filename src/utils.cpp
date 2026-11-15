@@ -180,6 +180,19 @@ QString MakeRcPassword() {
          QString::number(b, 16).rightJustified(16, '0');
 }
 
+QString WindowsPortableIniPath(const QString &applicationFilePath) {
+  const QFileInfo exe(applicationFilePath);
+  QString baseName = exe.baseName();
+  // rclone starts RcloneBrowserPassword.exe from the app's folder to unlock an
+  // encrypted rclone.conf. Looking for its own .ini, it missed a portable
+  // copy's settings and asked Credential Manager for the wrong password.
+  if (baseName.compare(QLatin1String("RcloneBrowserPassword"),
+                       Qt::CaseInsensitive) == 0) {
+    baseName = QStringLiteral("RcloneBrowser");
+  }
+  return exe.dir().filePath(baseName + ".ini");
+}
+
 static QString GetIniFilename() {
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
   auto linuxConfigHome = []() {
@@ -211,8 +224,7 @@ static QString GetIniFilename() {
   return appBundlePath.dir().filePath(appBundlePath.baseName() + ".ini");
 #else
 #ifdef Q_OS_WIN
-  QFileInfo applicationPath(qApp->applicationFilePath());
-  return applicationPath.dir().filePath(applicationPath.baseName() + ".ini");
+  return WindowsPortableIniPath(qApp->applicationFilePath());
 #else
   return QDir(linuxConfigHome()).filePath("rclone-browser/rclone-browser.ini");
 #endif

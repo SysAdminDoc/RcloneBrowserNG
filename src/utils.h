@@ -8,6 +8,9 @@ void ReadSettings(QSettings *settings, QObject *widget);
 void WriteSettings(QSettings *settings, QObject *widget);
 
 bool IsPortableMode();
+// The ini that turns on portable mode on Windows: the app's own name with
+// .ini, next to it. The password helper rclone runs answers to the app's ini.
+QString WindowsPortableIniPath(const QString &applicationFilePath);
 
 QString GetRclone();
 void SetRclone(const QString &rclone);

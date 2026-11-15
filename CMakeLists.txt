@@ -179,6 +179,21 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME identity_migration_test COMMAND identity_migration_test)
 
+  # Runs the built RcloneBrowserPassword.exe the way rclone does, which only
+  # exists on Windows.
+  if(WIN32)
+    add_executable(password_helper_test
+      tests/password_helper_test.cpp
+      src/utils.cpp
+    )
+    target_include_directories(password_helper_test PRIVATE src)
+    target_compile_definitions(password_helper_test PRIVATE
+      PASSWORD_HELPER_EXE="$<TARGET_FILE:RcloneBrowserPassword>")
+    add_dependencies(password_helper_test RcloneBrowserPassword)
+    target_link_libraries(password_helper_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test advapi32)
+    add_test(NAME password_helper_test COMMAND password_helper_test)
+  endif()
+
   add_executable(job_history_test
     tests/job_history_test.cpp
     src/job_history.cpp
