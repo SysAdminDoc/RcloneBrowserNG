@@ -58,8 +58,10 @@ mkdir -p "$BUILD" "$RELEASE"
 
 # Build
 cd "$BUILD"
-cmake "$ROOT" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX"
-cmake --build . --parallel "$JOBS"
+cmake "$ROOT" -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+# -k keeps compiling past the first error, so one run lists every one. The
+# script still stops here when anything failed.
+cmake --build . --parallel "$JOBS" -- -k
 
 APP="$BUILD/build/rclone-browser.app"
 if [ ! -d "$APP" ]; then

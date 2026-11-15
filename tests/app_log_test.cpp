@@ -179,6 +179,9 @@ private slots:
   void portableCopyKeepsItsLogBesideTheTasksFile() {
     // A portable copy on a USB stick wrote its log into the host's profile,
     // while the README says the log sits beside tasks.json.
+#if defined(Q_OS_MACOS)
+    QSKIP("a test binary isn't inside an .app bundle");
+#else
 #if defined(Q_OS_WIN)
     const QString ini =
         WindowsPortableIniPath(QCoreApplication::applicationFilePath());
@@ -196,8 +199,6 @@ private slots:
       QFile seed(ini);
       QVERIFY(seed.open(QIODevice::WriteOnly));
     }
-#elif defined(Q_OS_MACOS)
-    QSKIP("a test binary isn't inside an .app bundle");
 #else
     // An AppImage turns on portable mode with a <name>.AppImage.config folder.
     const QString appImage = mDir.filePath("RcloneBrowser.AppImage");
@@ -224,6 +225,7 @@ private slots:
              QDir::cleanPath(expected));
     QCOMPARE(QFileInfo(AppLog::LogFilePath()).absolutePath(),
              QDir::cleanPath(expected));
+#endif
   }
 };
 
