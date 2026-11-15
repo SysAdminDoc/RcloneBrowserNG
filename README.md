@@ -68,7 +68,7 @@ sha256sum -c SHA256SUMS
 
 The Windows binaries are **not code-signed**, so SmartScreen warns on first run. Verify the checksum, then choose More info and Run anyway. Signing needs a certificate the project does not have yet.
 
-For macOS, Linux and BSD, build from source with the instructions below. Artifacts are built and published by the maintainer from a local machine; this repository does not provide a CI build or artifact-attestation service.
+For macOS, Linux and BSD, build from source with the instructions below. The maintainer builds and publishes artifacts from a local machine, and this repository does not provide a CI build on push or artifact attestation. The one exception is the macOS DMG. There's no Mac on hand, so a workflow that only runs when started by hand builds it on a GitHub-hosted Mac and keeps it as a workflow artifact.
 
 ### Local release verification
 

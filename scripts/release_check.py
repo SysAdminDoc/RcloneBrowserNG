@@ -131,15 +131,27 @@ def check_source_contract(report: Report, root: Path) -> str | None:
         else:
             report.failed_check(label, f"does not match VERSION {version}")
 
+    # The only workflow allowed is the hand-started macOS build, since there is
+    # no Mac to build on locally. Anything that runs on its own or can publish
+    # breaks the local release lane the disclosures describe.
     workflow_dir = root / ".github" / "workflows"
-    workflows = list(workflow_dir.glob("*")) if workflow_dir.is_dir() else []
-    if workflows:
-        report.failed_check(
-            "local-only release lane",
-            ".github/workflows exists; update the release disclosures before publishing",
-        )
+    workflows = sorted(workflow_dir.glob("*")) if workflow_dir.is_dir() else []
+    allowed = {"macos-build.yml"}
+    automatic = re.compile(
+        r"(?m)^\s*(push|pull_request\w*|schedule|release|workflow_run):"
+        r"|contents:\s*write|action-gh-release|gh release"
+    )
+    problems = []
+    for workflow in workflows:
+        text = read_text(workflow)
+        if workflow.name not in allowed:
+            problems.append(f"{workflow.name} is not the macOS build")
+        elif "workflow_dispatch:" not in text or automatic.search(text):
+            problems.append(f"{workflow.name} must only run by hand and never publish")
+    if problems:
+        report.failed_check("local-only release lane", "; ".join(problems))
     else:
-        report.passed("local-only release lane (no GitHub Actions workflows)")
+        report.passed("local-only release lane (macOS DMG workflow is hand-started only)")
 
     return version
 
@@ -648,9 +660,10 @@ def main() -> int:
         report.failed_check("build and executable smoke", "source version is invalid")
 
     print("\nCI-only or intentionally unavailable guarantees:")
-    print("  - GitHub Actions build, test, and publication workflows are not configured.")
+    print("  - No GitHub Actions workflow runs on push. The one workflow builds the macOS DMG")
+    print("    when started by hand and publishes nothing.")
     print("  - CodeQL, clang-tidy CI, Scorecard, and OpenSSF workflow checks are not run.")
-    print("  - Artifact attestations, provenance, checksums, and code signing are not provided.")
+    print("  - Artifact attestations, provenance, and code signing are not provided.")
     print("  - Cross-platform packaging is run only through its platform-specific local script.")
 
     print("\nLocal release readiness report:")

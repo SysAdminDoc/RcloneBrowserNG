@@ -1,0 +1,48 @@
+# Builds the macOS DMG on a GitHub-hosted Mac, since the project has no Mac of
+# its own. It only runs when started by hand, and the DMG is kept as a workflow
+# artifact. Publishing a release stays a separate, manual step.
+name: macOS build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-build
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Qt 6 and CMake
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew install qt@6
+          brew list cmake >/dev/null 2>&1 || brew install cmake
+          "$(brew --prefix qt@6)/bin/qmake6" -query QT_VERSION
+
+      - name: Build, package and smoke-test
+        run: |
+          ./scripts/release_macOS.sh
+          # The script carries on when macdeployqt can't make the DMG, so
+          # check for it here.
+          ls -l release/*.dmg
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-arm64
+          path: |
+            release/*.dmg
+            release/*.app.zip
+          if-no-files-found: error
+          retention-days: 14
