@@ -594,4 +594,14 @@ if(BUILD_TESTING)
   add_test(NAME remotes_list_test COMMAND remotes_list_test)
   set_tests_properties(remotes_list_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 600)
+
+  # --version has to answer on a server with no display, and from a package
+  # that only bundles the platform plugin it shows windows with. A platform
+  # that doesn't exist stands in for both.
+  add_test(NAME app_version_without_display
+    COMMAND $<TARGET_FILE:RcloneBrowser> --version)
+  set_tests_properties(app_version_without_display PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=no-such-platform"
+    PASS_REGULAR_EXPRESSION "^Rclone Browser NG ${RCLONE_BROWSER_VERSION}"
+    TIMEOUT 30)
 endif()

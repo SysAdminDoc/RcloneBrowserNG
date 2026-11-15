@@ -48,6 +48,17 @@ int main(int argc, char *argv[]) {
     return VssSnapshot::RunHelper(QCoreApplication::arguments());
   }
 
+  // Answered before QApplication, which needs a display and a platform
+  // plugin. A server has no display, and the macOS bundle carries only the
+  // cocoa plugin, so a package check with QT_QPA_PLATFORM=offscreen aborted.
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--version") == 0) {
+      QTextStream(stdout) << "Rclone Browser NG " << RCLONE_BROWSER_VERSION
+                          << "\n";
+      return 0;
+    }
+  }
+
   QApplication app(argc, argv);
 
   app.setApplicationDisplayName("Rclone Browser NG");
@@ -77,12 +88,6 @@ int main(int argc, char *argv[]) {
       app.installTranslator(&translator);
       break;
     }
-  }
-
-  if (app.arguments().contains("--version")) {
-    QTextStream(stdout) << "Rclone Browser NG " << RCLONE_BROWSER_VERSION
-                        << "\n";
-    return 0;
   }
 
   if (IsRclonePasswordCommandRequest(app.arguments())) {
