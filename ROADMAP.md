@@ -138,3 +138,10 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/main.cpp`
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
+
+- [ ] P3 — Keep test runs out of the developer's real app data folder
+  Why: six QTest targets rename the app (`rclone-browser-log-test`, `-layout-test`, `-remotes-test` and others) without test mode and then write logs and `job-history.json` through `AppLocalDataLocation`, so every run leaves folders in `%LOCALAPPDATA%` that nothing removes. The two that use test mode leave theirs under `%LOCALAPPDATA%\qttest`. Six such folders were found and cleared on 2026-11-15, the oldest from 2026-09-05.
+  Evidence: `setApplicationName` without `QStandardPaths::setTestModeEnabled` in `tests/app_log_test.cpp`, `async_helpers_test.cpp`, `layout_regression_test.cpp`, `rc_route_test.cpp`, `remote_daemon_test.cpp` and `remotes_list_test.cpp`; `accessibility_smoke_test.cpp` and `adaptive_bandwidth_test.cpp` use test mode, and none of the eight removes its folder. The writers are `src/app_log.cpp:133`, `src/job_history.cpp:84` and `src/identity_migration.cpp:205`.
+  Touches: those eight tests (test mode in `initTestCase` where it's missing, `removeRecursively()` of the app's own folder in `cleanupTestCase`); `identity_migration_test.cpp` needs care because it sets the legacy name on purpose.
+  Acceptance: a full `ctest` run leaves `%LOCALAPPDATA%` with no folder it didn't have before (compare a listing before and after), and every touched test still passes.
+  Complexity: S
