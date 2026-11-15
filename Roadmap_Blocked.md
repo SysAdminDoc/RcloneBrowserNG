@@ -4,16 +4,6 @@ Only work that needs the maintainer's own accounts, identity, money or say-so, o
 
 ---
 
-## P1 Security
-
-- [ ] P1 Rebuild releases on Qt 6.12.1
-  Blocked on: The Qt Company publishing 6.12.1 to download.qt.io. On 2026-11-15 the `qt6_6120` repository was the only 6.12 entry under `online/qtsdkrepository/windows_x86/desktop/`, and there was no `qt6_6121`.
-  Why: CVE-2026-116337 (Qt Network memory exhaustion on a crafted HTTP response) is fixed only in 6.12.1 and 6.8.10. The app reaches it through the remote daemon client and the GitHub update check. Release builds moved to 6.12.0 on 2026-11-15, and `scripts/validate_qt_version.py` prints a warning about this CVE for every 6.12.0 build.
-  Touches: `scripts/validate_qt_version.py` (6.12 `patched_from` to 6.12.1, drop `pending_fix`, add the CVE to `CVES`, `RECOMMENDED`), `tests/qt_version_policy_test.py`, `SECURITY.md`, README build steps, the Qt default in `scripts/release_windows.cmd` and `scripts/codeql_scan.ps1`, a local `C:\Qt\6.12.1\msvc2022_64` install.
-  Acceptance: the validator refuses 6.12.0, passes 6.12.1 with no warning, and the whole test suite passes against 6.12.1.
-
----
-
 ## P1 Distribution
 
 - [ ] P1 Code signing for Windows and macOS releases

@@ -8,20 +8,26 @@ refuse both:
    type confusion and heap overflow) and CVE-2026-9499
    (QTextCodec::codecForName out-of-bounds read) are fixed in 6.8.8 and
    6.11.1. CVE-2026-95620 and CVE-2026-96432 (QNetworkAccessManager over
-   HTTP/2) and CVE-2026-101201 (JSON parsing out-of-bounds read) are fixed in
-   6.11.3. None of the five affects 6.12.0.
+   HTTP/2) are fixed in 6.11.3. None of the four affects 6.12.0.
 2. Its branch has stopped receiving open-source patches, so the next
    vulnerability will never reach it.
 
-Checked against download.qt.io on 2026-09-05: the public open-source archive
-carries 6.8 only up to 6.8.4, so the 6.8.8 fix is commercial-only and 6.8 LTS
+Checked against download.qt.io on 2026-11-15: the public open-source archive
+carries 6.8 only up to 6.8.5, so the 6.8.8 fix is commercial-only and 6.8 LTS
 is not a usable release branch for this project.
 
-Checked 2026-11-15: 6.11's open-source window closed on 2026-09-30, and 6.12
-LTS (released 2026-09-30, open-source patches until 2027-04-01) is the
-branch to ship from. CVE-2026-116337 (Qt Network HTTP response memory
-exhaustion) is fixed only in 6.12.1, which download.qt.io doesn't carry yet,
-so 6.12.0 passes with a warning until it does.
+Checked 2026-11-15: endoflife.date ends 6.11's support on 2026-09-30, and
+6.11.3 (2026-10-26) was its last release. 6.12 LTS (released 2026-09-30,
+open-source patches until 2027-04-01) is the branch to ship from. Two qtbase
+fixes the app reaches have no 6.12 binary yet: CVE-2026-116337 (memory
+exhaustion from an HTTP reply's status line or headers) and CVE-2026-105943
+(NTLM single sign-on on Windows without the server's SPN). download.qt.io
+publishes both as 6.12 source diffs, and they ship in 6.12.1, so 6.12.0
+passes with a warning until then.
+
+Not tracked, because the app can't reach them: CVE-2026-101201 (QBinaryJson
+in Qt5Compat, which the app doesn't link) and CVE-2026-105924 (CBOR to JSON
+conversion; the app reads no CBOR).
 
 Run standalone or import BRANCHES/evaluate from a test.
 """
@@ -38,14 +44,14 @@ import sys
 # Per-branch policy. `patched_from` is the first patch on that branch carrying
 # the fix for every CVE in CVES, or None when no such patch was ever published
 # openly. `oss_support_ends` is when open-source patches stop, from
-# endoflife.date. `pending_fix`, when present, is a (version, CVE) pair for a
-# vulnerability whose fix hasn't been published openly yet: builds below that
-# version pass with a warning, since there is nothing newer to move to.
+# endoflife.date. `pending_fix`, when present, is a (version, CVEs) pair for
+# vulnerabilities whose fixed binary release isn't out yet: builds below that
+# version pass with a warning naming them.
 BRANCHES = {
     (6, 5): {"patched_from": None, "oss_support_ends": date(2023, 10, 9)},
     (6, 6): {"patched_from": None, "oss_support_ends": date(2024, 4, 2)},
     (6, 7): {"patched_from": None, "oss_support_ends": date(2024, 10, 7)},
-    # LTS, but its open-source window closed and the archive stops at 6.8.4,
+    # LTS, but its open-source window closed and the archive stops at 6.8.5,
     # below the 6.8.8 that carries the fixes.
     (6, 8): {"patched_from": None, "oss_support_ends": date(2025, 4, 2)},
     (6, 9): {"patched_from": None, "oss_support_ends": date(2025, 10, 7)},
@@ -56,7 +62,9 @@ BRANCHES = {
         "oss_support_ends": date(2027, 4, 1),
         "pending_fix": (
             (6, 12, 1),
-            "CVE-2026-116337 (Qt Network HTTP response memory exhaustion)",
+            "CVE-2026-116337 (memory exhaustion from an HTTP reply's status "
+            "line or headers) and CVE-2026-105943 (NTLM single sign-on on "
+            "Windows without the server's SPN)",
         ),
     },
 }
@@ -66,10 +74,16 @@ BRANCHES = {
 RECOMMENDED = "6.12.0"
 REVISIT_ON = date(2027, 4, 1)
 
-CVES = (
-    "CVE-2026-6210, CVE-2026-9499, CVE-2026-95620, CVE-2026-96432, "
-    "CVE-2026-101201"
-)
+CVES = "CVE-2026-6210, CVE-2026-9499, CVE-2026-95620, CVE-2026-96432"
+
+
+def pending_cves() -> str:
+    """Every vulnerability the table still waits on a binary release for."""
+    return "; ".join(
+        branch["pending_fix"][1]
+        for branch in BRANCHES.values()
+        if "pending_fix" in branch
+    )
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -95,10 +109,12 @@ def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
         # A branch newer than the table. Unknown rather than bad: say so
         # instead of guessing, so a 6.12 LTS build is not blocked by silence.
         if (major, minor) > max(BRANCHES):
+            pending = pending_cves()
+            also = f", and for {pending}" if pending else ""
             print(
                 f"NOTE: Qt {major}.{minor} is newer than this policy table. "
-                f"Confirm it carries the fixes for {CVES}, then add it to "
-                "scripts/validate_qt_version.py.",
+                f"Confirm it carries the fixes for {CVES}{also}, then add it "
+                "to scripts/validate_qt_version.py.",
                 file=sys.stderr,
             )
             return []
@@ -122,9 +138,11 @@ def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
         fixed_in = ".".join(str(part) for part in pending[0])
         print(
             f"WARNING: Qt {major}.{minor}.{patch} is still affected by "
-            f"{pending[1]}. The fix is in {fixed_in}, which wasn't published "
-            "openly when this table was last checked. Rebuild with it as "
-            "soon as it is, and update scripts/validate_qt_version.py.",
+            f"{pending[1]}. The fixes ship in {fixed_in}, which "
+            "download.qt.io didn't carry when this table was last checked, "
+            "and are published there as source diffs until then. Rebuild "
+            f"with {fixed_in} or a qtbase patched with those diffs, and "
+            "update scripts/validate_qt_version.py.",
             file=sys.stderr,
         )
 
