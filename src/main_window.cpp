@@ -1710,32 +1710,32 @@ MainWindow::MainWindow(bool initializeRuntime)
         QStringList bm = s->value("Settings/bookmarks").toStringList();
         list->addItems(bm);
         layout->addWidget(list);
-        auto *hint = new QLabel("Drag items to reorder. Select and press "
-                                "Delete to remove.", &dlg);
+        auto *hint = new QLabel("Drag items to reorder. Select one and click "
+                                "Remove to take it off the list.",
+                                &dlg);
         hint->setWordWrap(true);
         layout->addWidget(hint);
-        list->installEventFilter(&dlg);
         auto *buttons = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        // The Delete key this dialog used to promise was never wired up.
+        auto *remove =
+            buttons->addButton("Remove", QDialogButtonBox::ActionRole);
+        remove->setEnabled(false);
+        QObject::connect(list, &QListWidget::itemSelectionChanged, remove,
+                         [list, remove]() {
+                           remove->setEnabled(!list->selectedItems().isEmpty());
+                         });
+        QObject::connect(remove, &QPushButton::clicked, list, [list]() {
+          const QList<QListWidgetItem *> selected = list->selectedItems();
+          for (QListWidgetItem *item : selected) {
+            delete list->takeItem(list->row(item));
+          }
+        });
         QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
                          &QDialog::accept);
         QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg,
                          &QDialog::reject);
         layout->addWidget(buttons);
-        dlg.installEventFilter(new QObject(&dlg));
-        auto filter = [list](QObject *, QEvent *ev) -> bool {
-          if (ev->type() == QEvent::KeyPress) {
-            auto *ke = static_cast<QKeyEvent *>(ev);
-            if (ke->key() == Qt::Key_Delete && list->currentItem()) {
-              delete list->takeItem(list->currentRow());
-              return true;
-            }
-          }
-          return false;
-        };
-        QObject::connect(list, &QListWidget::itemSelectionChanged, list,
-                         [list, filter]() { (void)filter; });
-        list->viewport()->installEventFilter(list);
         if (dlg.exec() == QDialog::Accepted) {
           QStringList result;
           for (int i = 0; i < list->count(); ++i)

@@ -5,13 +5,20 @@
 #include "preferences_dialog.h"
 #include "schedule_dialog.h"
 #include "transfer_dialog.h"
+#include "utils.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QDialog>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
+#include <QPushButton>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTest>
+#include <QTimer>
 
 class AccessibilitySmokeTest : public QObject {
   Q_OBJECT
@@ -99,6 +106,76 @@ private slots:
       QVERIFY(!schedule->size().isEmpty());
       QVERIFY(findAccessible(&window, "Unschedule selected task") != nullptr);
     }
+    window.close();
+  }
+
+  // The manager's hint promised a Delete key that was never wired up, so the
+  // only way to drop one bookmark was to clear them all.
+  void bookmarkManagerRemovesTheSelectedBookmark() {
+    const auto cleanup =
+        qScopeGuard([] { GetSettings()->remove("Settings/bookmarks"); });
+    GetSettings()->setValue(
+        "Settings/bookmarks",
+        QStringList{"first:docs", "second:photos", "third:music"});
+
+    MainWindow window(false);
+    QMenu *bookmarks = nullptr;
+    for (QMenu *menu : window.findChildren<QMenu *>()) {
+      if (menu->title() == "&Bookmarks") {
+        bookmarks = menu;
+      }
+    }
+    QVERIFY(bookmarks != nullptr);
+    emit bookmarks->aboutToShow();
+    QAction *manage = nullptr;
+    for (QAction *action : bookmarks->actions()) {
+      if (action->text().startsWith("Manage Bookmarks")) {
+        manage = action;
+      }
+    }
+    QVERIFY(manage != nullptr);
+
+    QString problem;
+    bool removeStartedDisabled = false;
+    bool removeEnabledBySelection = false;
+    QTimer::singleShot(0, &window, [&]() {
+      QDialog *dialog = nullptr;
+      for (QWidget *top : QApplication::topLevelWidgets()) {
+        auto *candidate = qobject_cast<QDialog *>(top);
+        if (candidate && candidate->isVisible() &&
+            candidate->windowTitle() == "Manage Bookmarks") {
+          dialog = candidate;
+        }
+      }
+      if (!dialog) {
+        problem = "the manager dialog never opened";
+        return;
+      }
+      auto *list = dialog->findChild<QListWidget *>();
+      QPushButton *remove = nullptr;
+      for (QPushButton *button : dialog->findChildren<QPushButton *>()) {
+        if (button->text() == "Remove") {
+          remove = button;
+        }
+      }
+      if (!list || !remove) {
+        problem = "the manager has no list or no Remove button";
+        dialog->reject();
+        return;
+      }
+      removeStartedDisabled = !remove->isEnabled();
+      list->setCurrentRow(1);
+      removeEnabledBySelection = remove->isEnabled();
+      remove->click();
+      dialog->accept();
+    });
+    manage->trigger();
+
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QVERIFY(removeStartedDisabled);
+    QVERIFY(removeEnabledBySelection);
+    QCOMPARE(GetSettings()->value("Settings/bookmarks").toStringList(),
+             (QStringList{"first:docs", "third:music"}));
     window.close();
   }
 
