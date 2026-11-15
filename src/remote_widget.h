@@ -5,6 +5,7 @@
 
 class IconCache;
 class ItemModel;
+#include "rc_delete_batch.h"
 #include "rclone_capabilities.h"
 
 class RemoteWidget : public QWidget {
@@ -25,6 +26,8 @@ signals:
                    const QString &remote, const QStringList &args,
                    const QString &backupDirTemplate = QString(),
                    int backupRetainCount = 0);
+  // Several items selected and deleted together.
+  void deleteItems(const RcDeleteBatch::Plan &plan);
   void enqueueTransfer(const QString &message, const QString &source,
                        const QString &dest, const QStringList &args,
                        const QString &backupDirTemplate = QString(),

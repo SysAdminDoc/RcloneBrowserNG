@@ -128,6 +128,15 @@ if(BUILD_TESTING)
   target_link_libraries(rc_sync_request_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME rc_sync_request_test COMMAND rc_sync_request_test)
 
+  add_executable(rc_delete_batch_test
+    tests/rc_delete_batch_test.cpp
+    src/rc_delete_batch.cpp
+    src/rc_sync_request.cpp
+  )
+  target_include_directories(rc_delete_batch_test PRIVATE src)
+  target_link_libraries(rc_delete_batch_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME rc_delete_batch_test COMMAND rc_delete_batch_test)
+
   add_executable(sync_preview_test
     tests/sync_preview_test.cpp
     src/sync_preview.cpp
@@ -272,6 +281,7 @@ if(BUILD_TESTING)
     tests/rc_route_test.cpp
     src/rclone_rc_engine.cpp
     src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
     src/utils.cpp
   )
@@ -289,6 +299,7 @@ if(BUILD_TESTING)
     tests/async_helpers_test.cpp
     src/rclone_rc_engine.cpp
     src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
     src/schedule_manager.cpp
     src/utils.cpp
@@ -400,6 +411,7 @@ if(BUILD_TESTING)
     src/filter_pattern.cpp
     src/job_stats.cpp
     src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
     src/lsjson_parser.cpp
     src/rclone_capabilities.cpp
     src/rclone_exit_code.cpp

@@ -19,6 +19,10 @@ public:
   ~RcJobWidget();
 
   void showDetails();
+  // Marks this card as a job/batch delete. rclone reports such a job as a
+  // success even when items in it failed, so the card reads the per-item
+  // results instead and names each failure.
+  void setBatchLabels(const QStringList &labels) { mBatchLabels = labels; }
   bool wasSuccessful() const { return mSuccess; }
   JobHistoryEntry historyEntry() const;
 
@@ -43,6 +47,7 @@ private:
   QDateTime mFinishedAt;
   QString mGroup;
   QStringList mDisplayArgs;
+  QStringList mBatchLabels;
   QString mInfo;
   QString mSource;
   QString mDest;

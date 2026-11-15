@@ -1138,6 +1138,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         persistentRows.append(QPersistentModelIndex(idx));
       }
 
+      RcDeleteBatch::Plan plan;
+      plan.backendFlags << getDriveSharedArgs();
+      if (!mFeatures.trashFlag.isEmpty()) {
+        plan.backendFlags << mFeatures.trashFlag;
+      } else if (isGoogle) {
+        plan.backendFlags << "--drive-use-trash";
+      }
+      plan.extraOptions = GetDefaultRcloneOptionsList();
+
       for (const auto &pidx : persistentRows) {
         if (!pidx.isValid()) {
           continue;
@@ -1146,25 +1155,30 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         QString path = model->path(idx).path();
         QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
-        QStringList args;
-        args << (model->isFolder(idx) ? "purge" : "delete");
-        args << getDriveSharedArgs();
-        if (!mFeatures.trashFlag.isEmpty()) {
-          args << mFeatures.trashFlag;
-        } else if (isGoogle) {
-          args << "--drive-use-trash";
-        }
-        args << GetDefaultRcloneOptionsList();
-        args << "--verbose";
-        args << "--use-json-log";
-        args << "--stats" << "1s";
-        args << remote + ":" + path;
-
-        emit addTransfer(QString("Delete %1").arg(pathMsg),
-                         remote + ":" + path, QString(), args);
+        RcDeleteBatch::Item item;
+        item.folder = model->isFolder(idx);
+        item.label = pathMsg;
+        item.message = QString("Delete %1").arg(pathMsg);
+        item.target = remote + ":" + path;
+        item.args << (item.folder ? "purge" : "delete");
+        item.args << plan.backendFlags;
+        item.args << plan.extraOptions;
+        item.args << "--verbose";
+        item.args << "--use-json-log";
+        item.args << "--stats" << "1s";
+        item.args << item.target;
+        plan.items.append(item);
       }
 
-      for (int i = persistentRows.size() - 1; i >= 0; i--) {
+      if (plan.items.size() > 1) {
+        emit deleteItems(plan);
+      } else {
+        for (const RcDeleteBatch::Item &item : plan.items) {
+          emit addTransfer(item.message, item.target, QString(), item.args);
+        }
+      }
+
+      for (qsizetype i = persistentRows.size() - 1; i >= 0; i--) {
         if (persistentRows[i].isValid()) {
           QModelIndex idx = QModelIndex(persistentRows[i]);
           model->removeRow(idx.row(), idx.parent());

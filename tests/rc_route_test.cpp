@@ -76,7 +76,7 @@ private:
     }
 
     bool finished = false;
-    QTest::qWaitFor(
+    const bool done = QTest::qWaitFor(
         [&]() {
           engine.jobStatus(result.jobId, this,
                            [&finished](const QJsonObject &status,
@@ -89,7 +89,63 @@ private:
           return finished;
         },
         60000);
+    if (!done) {
+      qWarning("job %lld didn't finish within a minute",
+               static_cast<long long>(result.jobId));
+      *started = false;
+    }
     return result.group;
+  }
+
+  // Deletes keep.txt, the sub folder and a file that isn't there, all under
+  // tree, through one job/batch call, and hands back the finished job's
+  // status.
+  QJsonObject runDeleteBatch(RcloneRcEngine &engine, const QString &tree,
+                             const QStringList &extraOptions,
+                             RcloneRcEngine::StartedJob *started) {
+    RcDeleteBatch::Plan plan;
+    plan.extraOptions = extraOptions;
+    const QList<QPair<QString, bool>> entries = {
+        {"keep.txt", false}, {"sub", true}, {"missing.txt", false}};
+    for (const auto &entry : entries) {
+      RcDeleteBatch::Item item;
+      // The fixture's "local" remote is an alias for the temporary folder.
+      item.target = "local:" + tree + "/" + entry.first;
+      item.label = entry.first;
+      item.folder = entry.second;
+      plan.items.append(item);
+    }
+
+    bool called = false;
+    engine.runDeleteBatch(plan, this,
+                          [&](const RcloneRcEngine::StartedJob &job) {
+                            *started = job;
+                            called = true;
+                          });
+    if (!QTest::qWaitFor([&]() { return called; }, 60000) ||
+        started->jobId < 0) {
+      return QJsonObject();
+    }
+
+    QJsonObject finished;
+    const bool done = QTest::qWaitFor(
+        [&]() {
+          engine.jobStatus(started->jobId, this,
+                           [&finished](const QJsonObject &status,
+                                       const QString &error) {
+                             if (error.isEmpty() &&
+                                 status.value("finished").toBool()) {
+                               finished = status;
+                             }
+                           });
+          return !finished.isEmpty();
+        },
+        60000);
+    if (!done) {
+      qWarning("batch job %lld didn't finish within a minute",
+               static_cast<long long>(started->jobId));
+    }
+    return finished;
   }
 
 private slots:
@@ -245,6 +301,47 @@ private slots:
     const QString group = runAndWait(engine, args, &started);
     QVERIFY2(started, "the command never started");
     QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+  }
+
+  // Several selected items go to rclone as one job/batch call. rclone calls
+  // the whole job a success even when an item in it failed, so the item that
+  // wasn't there has to come out of the per-item results.
+  void severalDeletesGoThroughOneBatchAndNameTheFailure() {
+    const QString root = makeTree("batch-delete");
+
+    RcloneRcEngine engine;
+    RcloneRcEngine::StartedJob started;
+    const QJsonObject status = runDeleteBatch(
+        engine, "batch-delete", QStringList() << "--fast-list", &started);
+    QVERIFY2(started.jobId >= 0, qPrintable(started.error));
+    QVERIFY2(started.group.startsWith("rclonebrowser-"),
+             qPrintable("group was " + started.group));
+    QVERIFY2(!status.isEmpty(), "the batch never finished");
+
+    const QStringList failures =
+        RcDeleteBatch::Failures(status.value("output"), started.batchLabels);
+    QCOMPARE(failures.size(), 1);
+    QVERIFY2(failures.first().startsWith("missing.txt: "),
+             qPrintable(failures.first()));
+
+    QCOMPARE(filesUnder(root), QStringList() << "drop.tmp");
+    QVERIFY(!QDir(root + "/sub").exists());
+  }
+
+  // The default options ride along in the batch's _config. rclone ignores a
+  // _config key it doesn't know without an error, so only deleting nothing
+  // under --dry-run shows the option really arrived.
+  void theDefaultOptionsReachTheBatch() {
+    const QString root = makeTree("batch-dry-run");
+
+    RcloneRcEngine engine;
+    RcloneRcEngine::StartedJob started;
+    const QJsonObject status = runDeleteBatch(
+        engine, "batch-dry-run", QStringList() << "--dry-run", &started);
+    QVERIFY2(started.jobId >= 0, qPrintable(started.error));
+    QVERIFY2(!status.isEmpty(), "the batch never finished");
+
+    QCOMPARE(filesUnder(root).size(), 4);
   }
 };
 

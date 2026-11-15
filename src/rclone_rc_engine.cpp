@@ -400,6 +400,65 @@ void RcloneRcEngine::startCommand(const QStringList &args,
             });
 }
 
+void RcloneRcEngine::runDeleteBatch(const RcDeleteBatch::Plan &plan,
+                                    QObject *context, JobCallback callback) {
+  const QPointer<QObject> contextGuard(context);
+  ensureStartedAsync(context, [this, plan, contextGuard,
+                               callback = std::move(callback)](
+                                  bool ok, const QString &startError) {
+    StartedJob refused;
+    if (!ok) {
+      refused.error = startError;
+    } else if (!mEndpoints.contains(QStringLiteral("job/batch"))) {
+      refused.error = QStringLiteral("this rclone has no job/batch");
+    }
+    RcDeleteBatch::Request request;
+    if (refused.error.isEmpty()) {
+      request = RcDeleteBatch::Build(plan, mOptionIndex);
+      if (!request.usable) {
+        refused.error = request.reason;
+      }
+    }
+    if (!refused.error.isEmpty()) {
+      Diagnostics::appendLog(
+          "rc-engine",
+          QString("one delete job per item: %1").arg(refused.error));
+      if (callback) {
+        callback(refused);
+      }
+      return;
+    }
+
+    const QString group = QString("rclonebrowser-%1").arg(++mGroupCounter);
+    QJsonObject payload = request.payload;
+    payload.insert("_group", group);
+    payload.insert("_async", true);
+    const QStringList display = rcCallForDisplay("job/batch", payload);
+    const QStringList labels = request.labels;
+
+    postAsync("job/batch", payload, contextGuard,
+              [callback, group, display, labels](const QJsonObject &response,
+                                                 const QString &error) {
+                if (!callback) {
+                  return;
+                }
+                StartedJob job;
+                job.group = group;
+                job.displayCommand = display;
+                job.batchLabels = labels;
+                if (!error.isEmpty()) {
+                  job.error = error;
+                } else if (!response.contains("jobid")) {
+                  job.error =
+                      QStringLiteral("rclone rc did not return a job id");
+                } else {
+                  job.jobId = response.value("jobid").toInt(-1);
+                }
+                callback(job);
+              });
+  });
+}
+
 void RcloneRcEngine::jobStatus(int jobId, QObject *context,
                                RcCallback callback) {
   QJsonObject payload;
@@ -452,12 +511,17 @@ QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 
+  return rcCallForDisplay("core/command", payload);
+}
+
+QStringList RcloneRcEngine::rcCallForDisplay(const QString &endpoint,
+                                             const QJsonObject &payload) const {
   return QStringList() << QDir::toNativeSeparators(GetRclone()) << "rc"
                        << "--url" << mUrl << "--user" << mUser << "--pass"
                        << "<redacted>" << "--json"
                        << QString::fromUtf8(QJsonDocument(payload).toJson(
                               QJsonDocument::Compact))
-                       << "core/command";
+                       << endpoint;
 }
 
 void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,

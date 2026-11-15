@@ -37,6 +37,19 @@ using OptionIndex = QHash<QString, OptionSpec>;
 
 OptionIndex IndexOptions(const QJsonObject &optionsInfo);
 
+// CLI flags turned into the _config and _filter objects. Anything that isn't
+// a flag comes back in positional. ok is false, with reason set, as soon as
+// one flag can't be mapped.
+struct Options {
+  bool ok = false;
+  QString reason;
+  QJsonObject config;
+  QJsonObject filter;
+  QStringList positional;
+};
+
+Options MapOptions(const QStringList &tokens, const OptionIndex &index);
+
 struct Request {
   bool usable = false;
   // "sync/copy" and friends.

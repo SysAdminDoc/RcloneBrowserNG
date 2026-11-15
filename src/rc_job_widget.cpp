@@ -231,13 +231,29 @@ void RcJobWidget::poll() {
                 return;
               }
               if (status.value("finished").toBool()) {
-                const bool success = status.value("success").toBool();
-                const QString jobError = status.value("error").toString();
+                bool success = status.value("success").toBool();
+                QString jobError = status.value("error").toString();
                 const QJsonValue output = status.value("output");
                 if (output.isString() && !output.toString().isEmpty()) {
                   QString text = output.toString().trimmed();
                   ui.output->appendPlainText(text);
                   Diagnostics::appendLog("rc-job", text);
+                }
+                if (!mBatchLabels.isEmpty()) {
+                  const QStringList failed =
+                      RcDeleteBatch::Failures(output, mBatchLabels);
+                  for (const QString &line : failed) {
+                    ui.output->appendPlainText(line);
+                    Diagnostics::appendLog("rc-job", line);
+                  }
+                  if (!failed.isEmpty()) {
+                    success = false;
+                    if (jobError.isEmpty()) {
+                      jobError = QString("%1 of %2 items couldn't be deleted.")
+                                     .arg(failed.size())
+                                     .arg(mBatchLabels.size());
+                    }
+                  }
                 }
                 finish(success, jobError);
               }

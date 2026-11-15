@@ -73,6 +73,7 @@ set(SOURCE
   mount_options.cpp
   rclone_rc_engine.cpp
   rclone_capabilities.cpp
+  rc_delete_batch.cpp
   rc_job_widget.cpp
   remote_list_parser.cpp
   remote_path.cpp
@@ -127,6 +128,7 @@ set(OTHER
   mount_options.h
   rclone_rc_engine.h
   rclone_capabilities.h
+  rc_delete_batch.h
   rc_job_widget.h
   remote_path.h
   schedule_dialog.h

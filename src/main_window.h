@@ -4,6 +4,7 @@
 #include "job_history.h"
 #include "job_options.h"
 #include "pch.h"
+#include "rc_delete_batch.h"
 #include "remote_provider.h"
 #include <QQueue>
 #include "staged_transfer.h"
@@ -53,6 +54,7 @@ private slots:
                    const QString &dest, const QStringList &args,
                    const QString &backupDirTemplate = QString(),
                    int backupRetainCount = 0);
+  void deleteItems(const RcDeleteBatch::Plan &plan);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
 

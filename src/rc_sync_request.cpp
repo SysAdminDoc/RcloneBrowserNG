@@ -80,34 +80,14 @@ OptionIndex IndexOptions(const QJsonObject &optionsInfo) {
   return index;
 }
 
-Request Build(const QStringList &args, const QString &group,
-              const OptionIndex &index) {
-  Request request;
+Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
+  Options options;
 
-  if (args.isEmpty()) {
-    request.reason = QStringLiteral("no command");
-    return request;
-  }
-  request.endpoint = endpointFor(args.first());
-  if (request.endpoint.isEmpty()) {
-    request.reason =
-        QString("%1 is not a sync operation").arg(args.first());
-    return request;
-  }
-  if (index.isEmpty()) {
-    request.reason = QStringLiteral("no option metadata from the daemon");
-    return request;
-  }
-
-  QJsonObject config;
-  QJsonObject filter;
-  QStringList positional;
-
-  for (int i = 1; i < args.size(); i++) {
-    QString token = args.at(i);
+  for (int i = 0; i < tokens.size(); i++) {
+    QString token = tokens.at(i);
 
     if (!token.startsWith(QChar('-')) || token == "-") {
-      positional.append(token);
+      options.positional.append(token);
       continue;
     }
 
@@ -139,14 +119,15 @@ Request Build(const QStringList &args, const QString &group,
 
     const auto found = index.constFind(token);
     if (found == index.constEnd()) {
-      request.reason =
+      options.reason =
           QString("%1 is not an option this rclone exposes over the remote "
                   "control API")
               .arg(token);
-      return request;
+      return options;
     }
     const OptionSpec &spec = found.value();
-    QJsonObject &section = spec.section == "filter" ? filter : config;
+    QJsonObject &section =
+        spec.section == "filter" ? options.filter : options.config;
 
     if (spec.type == "bool") {
       if (hasInlineValue) {
@@ -163,22 +144,54 @@ Request Build(const QStringList &args, const QString &group,
     if (hasInlineValue) {
       value = inlineValue;
     } else {
-      if (i + 1 >= args.size()) {
-        request.reason = QString("%1 has no value").arg(token);
-        return request;
+      if (i + 1 >= tokens.size()) {
+        options.reason = QString("%1 has no value").arg(token);
+        return options;
       }
-      value = args.at(++i);
+      value = tokens.at(++i);
     }
 
     bool ok = false;
     const QJsonValue encoded = encode(spec, value, &ok);
     if (!ok) {
-      request.reason =
+      options.reason =
           QString("%1 expects a number and got \"%2\"").arg(token, value);
-      return request;
+      return options;
     }
     insertValue(section, spec, encoded);
   }
+
+  options.ok = true;
+  return options;
+}
+
+Request Build(const QStringList &args, const QString &group,
+              const OptionIndex &index) {
+  Request request;
+
+  if (args.isEmpty()) {
+    request.reason = QStringLiteral("no command");
+    return request;
+  }
+  request.endpoint = endpointFor(args.first());
+  if (request.endpoint.isEmpty()) {
+    request.reason =
+        QString("%1 is not a sync operation").arg(args.first());
+    return request;
+  }
+  if (index.isEmpty()) {
+    request.reason = QStringLiteral("no option metadata from the daemon");
+    return request;
+  }
+
+  const Options options = MapOptions(args.mid(1), index);
+  if (!options.ok) {
+    request.reason = options.reason;
+    return request;
+  }
+  const QJsonObject &config = options.config;
+  const QJsonObject &filter = options.filter;
+  const QStringList &positional = options.positional;
 
   if (positional.size() != 2) {
     request.reason = QString("expected a source and a destination, got %1")

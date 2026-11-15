@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "rc_delete_batch.h"
 #include "rc_sync_request.h"
 #include <functional>
 
@@ -33,12 +34,21 @@ public:
     // taken.
     QStringList displayCommand;
     QString error;
+    // For a job/batch delete, one label per input in input order, so the
+    // job card can name the items rclone couldn't delete.
+    QStringList batchLabels;
   };
 
   using JobCallback = std::function<void(const StartedJob &job)>;
 
   void runCommand(const QStringList &args, QObject *context,
                   JobCallback callback);
+  // Deletes every item in the plan through one job/batch call. A job id of
+  // -1 means the batch couldn't be used (an older rclone, or an option it
+  // can't carry), and error says why, so the caller can fall back to one
+  // job per item.
+  void runDeleteBatch(const RcDeleteBatch::Plan &plan, QObject *context,
+                      JobCallback callback);
   void jobStatus(int jobId, QObject *context, RcCallback callback);
   void coreStats(const QString &group, QObject *context, RcCallback callback);
 
@@ -96,5 +106,9 @@ private:
                        QString *error);
   void postAsync(const QString &path, const QJsonObject &payload,
                  QObject *context, RcCallback callback);
+  // The rclone rc command line equivalent to posting payload to endpoint,
+  // with the password left out.
+  QStringList rcCallForDisplay(const QString &endpoint,
+                               const QJsonObject &payload) const;
   QNetworkRequest request(const QString &path) const;
 };

@@ -2198,6 +2198,8 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
                    &MainWindow::addStream);
   QObject::connect(remote, &RemoteWidget::addTransfer, this,
                    &MainWindow::addTransfer);
+  QObject::connect(remote, &RemoteWidget::deleteItems, this,
+                   &MainWindow::deleteItems);
   QObject::connect(
       remote, &RemoteWidget::enqueueTransfer, this,
       [this](const QString &msg, const QString &src, const QString &dst,
@@ -3754,6 +3756,35 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
   addTransferViaProcess(message, source, dest, args, QString(), QString(),
                         QString(), QString(), backupDirTemplate,
                         backupRetainCount);
+}
+
+void MainWindow::deleteItems(const RcDeleteBatch::Plan &plan) {
+  if (plan.items.isEmpty()) {
+    return;
+  }
+  if (!mRcEngine) {
+    mRcEngine = new RcloneRcEngine(this);
+  }
+
+  mRcEngine->runDeleteBatch(
+      plan, this, [=](const RcloneRcEngine::StartedJob &job) {
+        if (job.jobId >= 0) {
+          const QString source =
+              plan.items.first().target.section(QChar(':'), 0, 0) + ":";
+          auto *widget = new RcJobWidget(
+              mRcEngine, job.jobId, job.group,
+              QString("Delete %1 items").arg(plan.items.size()),
+              job.displayCommand, source, QString());
+          widget->setBatchLabels(job.batchLabels);
+          addRcJobWidget(widget);
+          return;
+        }
+        // The engine has logged why. One job per item is what the app always
+        // did, and it still works on every rclone.
+        for (const RcDeleteBatch::Item &item : plan.items) {
+          addTransfer(item.message, item.target, QString(), item.args);
+        }
+      });
 }
 
 void MainWindow::addRcJobWidget(RcJobWidget *widget,
