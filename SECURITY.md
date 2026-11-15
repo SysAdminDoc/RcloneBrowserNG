@@ -32,35 +32,22 @@ This allows private discussion and coordinated disclosure. You will receive an a
 
 ## Qt branch policy
 
-Release builds ship **Qt 6.11.2**. Revisit this on **2026-09-22**.
+Release builds ship **Qt 6.12.0**. Revisit this on **2027-04-01**.
 
-Two things have to be true of the Qt a release is built with, and both are
-enforced by `scripts/validate_qt_version.py`, which every release script
-calls:
+Two things have to be true of the Qt a release is built with, and both are enforced by `scripts/validate_qt_version.py`, which every release script calls:
 
-1. It carries the fixes for CVE-2026-6210 (QtSvg type confusion and heap
-   overflow) and CVE-2026-9499 (`QTextCodec::codecForName` out-of-bounds
-   read). Both landed in 6.8.8 and 6.11.1.
-2. Its branch still receives open-source patches, so the next vulnerability
-   will actually reach it.
+1. It carries the fixes for the Qt vulnerabilities the app can reach. CVE-2026-6210 (QtSvg type confusion and heap overflow) and CVE-2026-9499 (`QTextCodec::codecForName` out-of-bounds read) landed in 6.8.8 and 6.11.1. CVE-2026-95620 and CVE-2026-96432 (`QNetworkAccessManager` over HTTP/2) and CVE-2026-101201 (JSON parsing out-of-bounds read) landed in 6.11.3, and the app reaches them through the GitHub update checks and the remote daemon. None of the five affects 6.12.0.
+2. Its branch still receives open-source patches, so the next vulnerability will actually reach it.
 
-Qt 6.8 is the current LTS and looks like the obvious choice, but it is not
-usable here. Its open-source window closed on 2025-04-02, and the public
-archive at download.qt.io carries 6.8 only up to **6.8.4** (checked
-2026-09-05). The 6.8.8 that fixes the two CVEs above is available to
-commercial licensees only. Building a release from open-source 6.8 means
-shipping a known-vulnerable QtSvg.
+Qt 6.12 is the current LTS. It came out on 2026-09-30 and gets open-source patches until 2027-04-01 (endoflife.date, checked 2026-11-15). 6.11 stopped getting them the day 6.12 shipped, so even 6.11.3, its last patch, is refused.
 
-That leaves 6.11, whose 6.11.2 is published and patched. Its open-source
-support ends 2026-09-22, and Qt 6.12 (the next LTS) had not been released
-as of 2026-09-05. When 6.12 ships, move to it and add it to the policy table
-in `scripts/validate_qt_version.py`; the validator warns for the last 30 days
-of a branch's window and fails once it has passed.
+One gap is still open. CVE-2026-116337 (Qt Network memory exhaustion from an HTTP response) is fixed in 6.12.1, and on 2026-11-15 download.qt.io carried only 6.12.0. The validator passes 6.12.0 with a warning that names the CVE. Release builds move to 6.12.1 once it's published, and the warning goes away on its own when they do.
 
-Source builds are a separate matter and floor at Qt 6.4, which is what the
-README badge claims and what the oldest supported distribution ships. People
-building for themselves are not distributing binaries; the stricter floor
-applies to what gets published.
+Qt 6.8 LTS was the obvious choice before 6.12, but it was never usable here. Its open-source window closed on 2025-04-02, and the public archive at download.qt.io carries 6.8 only up to **6.8.4** (checked 2026-09-05). The 6.8.8 that fixes the first two CVEs is available to commercial licensees only. Building a release from open-source 6.8 means shipping a known-vulnerable QtSvg.
+
+When the next LTS ships, add it to the policy table in `scripts/validate_qt_version.py`. The validator warns for the last 30 days of a branch's window and fails once it has passed.
+
+Source builds are a separate matter and floor at Qt 6.4, which is what the README badge claims and what the oldest supported distribution ships. People building for themselves aren't distributing binaries, so the stricter floor only applies to what gets published.
 
 ## Security Measures
 

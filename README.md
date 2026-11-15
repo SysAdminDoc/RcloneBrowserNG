@@ -137,11 +137,11 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 
 1.  Install [Visual Studio 2022](https://visualstudio.microsoft.com/) (the "Desktop development with C++" workload is enough, and Build Tools work too)
 2.  Install [CMake](https://cmake.org/)
-3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/). Release packaging needs Qt 6.11.1 or newer (see [SECURITY.md](SECURITY.md)), and these steps assume `C:\Qt\6.11.2`
+3.  Install Qt 6 (64-bit, MSVC) from the [Qt website](https://www.qt.io/download-open-source/). Release packaging needs Qt 6.12 (see [SECURITY.md](SECURITY.md)), and these steps assume `C:\Qt\6.12.0`
 4.  `git clone https://github.com/SysAdminDoc/RcloneBrowserNG.git && cd RcloneBrowserNG`
 5.  `mkdir build && cd build`
-6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64 .. && cmake --build . --config Release`
-7.  `C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
+6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.12.0\msvc2022_64 .. && cmake --build . --config Release`
+7.  `C:\Qt\6.12.0\msvc2022_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
 
 ### Docker, for a server with no desktop

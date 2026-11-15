@@ -4,17 +4,24 @@
 Two separate things can be wrong with a Qt build, and the release lane has to
 refuse both:
 
-1. It carries a known vulnerability. CVE-2026-6210 (QtSvg type confusion and
-   heap overflow) and CVE-2026-9499 (QTextCodec::codecForName out-of-bounds
-   read) are both fixed in 6.8.8 and 6.11.1.
+1. It carries a known vulnerability the app can reach. CVE-2026-6210 (QtSvg
+   type confusion and heap overflow) and CVE-2026-9499
+   (QTextCodec::codecForName out-of-bounds read) are fixed in 6.8.8 and
+   6.11.1. CVE-2026-95620 and CVE-2026-96432 (QNetworkAccessManager over
+   HTTP/2) and CVE-2026-101201 (JSON parsing out-of-bounds read) are fixed in
+   6.11.3. None of the five affects 6.12.0.
 2. Its branch has stopped receiving open-source patches, so the next
    vulnerability will never reach it.
 
 Checked against download.qt.io on 2026-09-05: the public open-source archive
 carries 6.8 only up to 6.8.4, so the 6.8.8 fix is commercial-only and 6.8 LTS
-is not a usable release branch for this project. 6.11.2 is published and
-carries both fixes, which makes 6.11 the branch to ship from until 6.12 LTS
-arrives.
+is not a usable release branch for this project.
+
+Checked 2026-11-15: 6.11's open-source window closed on 2026-09-30, and 6.12
+LTS (released 2026-09-30, open-source patches until 2027-04-01) is the
+branch to ship from. CVE-2026-116337 (Qt Network HTTP response memory
+exhaustion) is fixed only in 6.12.1, which download.qt.io doesn't carry yet,
+so 6.12.0 passes with a warning until it does.
 
 Run standalone or import BRANCHES/evaluate from a test.
 """
@@ -29,8 +36,11 @@ import sys
 
 
 # Per-branch policy. `patched_from` is the first patch on that branch carrying
-# both CVE fixes, or None when no such patch was ever published openly.
-# `oss_support_ends` is when open-source patches stop, from endoflife.date.
+# the fix for every CVE in CVES, or None when no such patch was ever published
+# openly. `oss_support_ends` is when open-source patches stop, from
+# endoflife.date. `pending_fix`, when present, is a (version, CVE) pair for a
+# vulnerability whose fix hasn't been published openly yet: builds below that
+# version pass with a warning, since there is nothing newer to move to.
 BRANCHES = {
     (6, 5): {"patched_from": None, "oss_support_ends": date(2023, 10, 9)},
     (6, 6): {"patched_from": None, "oss_support_ends": date(2024, 4, 2)},
@@ -40,15 +50,26 @@ BRANCHES = {
     (6, 8): {"patched_from": None, "oss_support_ends": date(2025, 4, 2)},
     (6, 9): {"patched_from": None, "oss_support_ends": date(2025, 10, 7)},
     (6, 10): {"patched_from": None, "oss_support_ends": date(2026, 4, 7)},
-    (6, 11): {"patched_from": (6, 11, 1), "oss_support_ends": date(2026, 9, 22)},
+    (6, 11): {"patched_from": (6, 11, 3), "oss_support_ends": date(2026, 9, 30)},
+    (6, 12): {
+        "patched_from": (6, 12, 0),
+        "oss_support_ends": date(2027, 4, 1),
+        "pending_fix": (
+            (6, 12, 1),
+            "CVE-2026-116337 (Qt Network HTTP response memory exhaustion)",
+        ),
+    },
 }
 
 # The branch the project ships from today, and when that choice must be
 # revisited. Keep in step with SECURITY.md.
-RECOMMENDED = "6.11.2"
-REVISIT_ON = date(2026, 9, 22)
+RECOMMENDED = "6.12.0"
+REVISIT_ON = date(2027, 4, 1)
 
-CVES = "CVE-2026-6210, CVE-2026-9499"
+CVES = (
+    "CVE-2026-6210, CVE-2026-9499, CVE-2026-95620, CVE-2026-96432, "
+    "CVE-2026-101201"
+)
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -92,8 +113,19 @@ def evaluate(version: tuple[int, int, int], today: date) -> list[str]:
     elif version < patched_from:
         wanted = ".".join(str(part) for part in patched_from)
         problems.append(
-            f"Qt {major}.{minor}.{patch} is in the {CVES} vulnerable range. "
-            f"Use {wanted} or newer on this branch."
+            f"Qt {major}.{minor}.{patch} is in the vulnerable range of at "
+            f"least one of {CVES}. Use {wanted} or newer on this branch."
+        )
+
+    pending = branch.get("pending_fix")
+    if pending is not None and version < pending[0]:
+        fixed_in = ".".join(str(part) for part in pending[0])
+        print(
+            f"WARNING: Qt {major}.{minor}.{patch} is still affected by "
+            f"{pending[1]}. The fix is in {fixed_in}, which wasn't published "
+            "openly when this table was last checked. Rebuild with it as "
+            "soon as it is, and update scripts/validate_qt_version.py.",
+            file=sys.stderr,
         )
 
     ends = branch["oss_support_ends"]

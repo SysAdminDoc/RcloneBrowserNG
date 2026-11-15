@@ -9,8 +9,10 @@ can be patched today and unpatchable tomorrow.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 from datetime import date
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -27,6 +29,9 @@ spec.loader.exec_module(validator)
 # the policy can be tested without the support-date half firing.
 IN_SUPPORT = date(2026, 6, 1)
 
+# The day 6.12 became the release branch. 6.11 is past its window by then.
+MOVED_TO_612 = date(2026, 11, 15)
+
 
 class QtVersionPolicyTest(unittest.TestCase):
     def reasons(self, version: str, today: date = IN_SUPPORT) -> list[str]:
@@ -36,10 +41,36 @@ class QtVersionPolicyTest(unittest.TestCase):
         self.assertEqual(self.reasons(validator.RECOMMENDED), [])
 
     def test_rejects_the_cve_vulnerable_range(self):
-        # Fixed in 6.11.1, so 6.11.0 is in range.
-        problems = self.reasons("6.11.0")
-        self.assertTrue(problems)
-        self.assertIn("vulnerable range", " ".join(problems))
+        # CVE-2026-6210 and CVE-2026-9499 are fixed in 6.11.1, the HTTP/2 and
+        # JSON ones in 6.11.3, so 6.11.0 and 6.11.2 are both in range.
+        for version in ("6.11.0", "6.11.2"):
+            with self.subTest(version=version):
+                problems = self.reasons(version)
+                self.assertTrue(problems)
+                self.assertIn("vulnerable range", " ".join(problems))
+        self.assertEqual(self.reasons("6.11.3"), [])
+
+    def test_accepts_612_and_refuses_611_on_the_move_date(self):
+        # The acceptance line of the move: every 6.12 passes and every 6.11
+        # is refused, the last patched one included.
+        for version in ("6.12.0", "6.12.1", "6.12.4"):
+            with self.subTest(version=version):
+                self.assertEqual(self.reasons(version, MOVED_TO_612), [])
+        for version in ("6.11.0", "6.11.2", "6.11.3"):
+            with self.subTest(version=version):
+                self.assertTrue(self.reasons(version, MOVED_TO_612))
+
+    def test_warns_about_a_fix_that_is_not_published_yet(self):
+        # CVE-2026-116337 is fixed only in 6.12.1, which download.qt.io did
+        # not carry on 2026-11-15. 6.12.0 passes, but the release lane says
+        # what it is shipping with, and stops saying it once 6.12.1 is used.
+        for version, warns in (("6.12.0", True), ("6.12.1", False)):
+            with self.subTest(version=version):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    problems = self.reasons(version, MOVED_TO_612)
+                self.assertEqual(problems, [])
+                self.assertEqual("CVE-2026-116337" in stderr.getvalue(), warns)
 
     def test_rejects_qt_68_because_the_fix_is_commercial_only(self):
         # Checked against download.qt.io on 2026-09-05: the public archive
@@ -58,27 +89,38 @@ class QtVersionPolicyTest(unittest.TestCase):
                 problems = " ".join(self.reasons(version))
                 self.assertIn("open-source", problems)
 
-    def test_rejects_the_shipping_branch_once_its_window_closes(self):
-        # The point of the item: 6.11.2 is fine today and must be refused
-        # after 2026-09-22, so the release lane cannot quietly keep shipping
-        # from a branch nobody patches any more.
-        self.assertEqual(self.reasons("6.11.2", date(2026, 9, 22)), [])
-        problems = " ".join(self.reasons("6.11.2", date(2026, 9, 23)))
+    def test_rejects_a_branch_once_its_window_closes(self):
+        # A patched build on its branch's last supported day passes, and the
+        # same build a day later is refused, so the release lane cannot
+        # quietly keep shipping from a branch nobody patches any more.
+        # 6.11.3 is the last 6.11 patch, and endoflife.date gives 2026-09-30.
+        self.assertEqual(self.reasons("6.11.3", date(2026, 9, 30)), [])
+        problems = " ".join(self.reasons("6.11.3", date(2026, 10, 1)))
         self.assertIn("open-source patches", problems)
         self.assertIn("SECURITY.md", problems)
+        # The same rule will refuse 6.12 after 2027-04-01.
+        self.assertTrue(self.reasons("6.12.1", date(2027, 4, 2)))
 
     def test_allows_a_branch_newer_than_the_table(self):
-        # 6.12 LTS is not out yet. When it lands the gate must not block it
-        # on silence; it warns and asks for the table to be updated.
-        self.assertEqual(self.reasons("6.12.0", date(2026, 12, 1)), [])
+        # 6.12 is in the table now, so 6.13 stands in for the next branch.
+        # The gate must not block it on silence; it notes it and asks for
+        # the table to be updated.
+        self.assertEqual(self.reasons("6.13.0", date(2027, 3, 1)), [])
 
     def test_rejects_qt5(self):
         problems = " ".join(self.reasons("5.15.17"))
         self.assertIn("requires Qt 6", problems)
 
-    def test_names_both_cves(self):
-        self.assertIn("CVE-2026-6210", validator.CVES)
-        self.assertIn("CVE-2026-9499", validator.CVES)
+    def test_names_every_tracked_cve(self):
+        for cve in (
+            "CVE-2026-6210",
+            "CVE-2026-9499",
+            "CVE-2026-95620",
+            "CVE-2026-96432",
+            "CVE-2026-101201",
+        ):
+            with self.subTest(cve=cve):
+                self.assertIn(cve, validator.CVES)
 
     def test_parse_version_reads_a_qmake_style_string(self):
         self.assertEqual(validator.parse_version("6.11.2"), (6, 11, 2))
@@ -94,21 +136,23 @@ class QtVersionPolicyTest(unittest.TestCase):
         )
         self.assertEqual(good.returncode, 0, good.stderr)
 
-        bad = subprocess.run(
-            [sys.executable, str(VALIDATOR), "--version", "6.8.8"],
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(bad.returncode, 1)
-        self.assertIn("ERROR", bad.stderr)
+        for version in ("6.8.8", "6.11.2"):
+            with self.subTest(version=version):
+                bad = subprocess.run(
+                    [sys.executable, str(VALIDATOR), "--version", version],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(bad.returncode, 1)
+                self.assertIn("ERROR", bad.stderr)
 
     def test_revisit_date_matches_the_shipping_branch_window(self):
         # SECURITY.md quotes this date; it has to be the same one the gate
         # will start failing on.
-        branch = validator.BRANCHES[(6, 11)]
+        branch = validator.BRANCHES[(6, 12)]
         self.assertEqual(validator.REVISIT_ON, branch["oss_support_ends"])
         self.assertEqual(
-            validator.parse_version(validator.RECOMMENDED)[:2], (6, 11)
+            validator.parse_version(validator.RECOMMENDED)[:2], (6, 12)
         )
 
 

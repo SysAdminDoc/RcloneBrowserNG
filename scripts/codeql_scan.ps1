@@ -1,7 +1,7 @@
 param(
   # Where the build, the databases and the SARIF files go. /build*/ is ignored.
   [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'build-codeql'),
-  [string]$QtDir = 'C:\Qt\6.11.2\msvc2022_64',
+  [string]$QtDir = 'C:\Qt\6.12.0\msvc2022_64',
   [string]$CodeQL = '',
   [int]$Ram = 4096,
   [int]$Jobs = 2,

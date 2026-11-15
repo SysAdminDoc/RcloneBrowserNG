@@ -8,14 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P1
 
-- [ ] P1 — Move release builds to Qt 6.12 LTS before the next release
-  Why: `scripts/validate_qt_version.py` refuses Qt 6.11.2 as of today ("stopped receiving open-source patches on 2026-09-22"), so every release lane would stop at the Qt check. Found 2026-11-15 when the macOS workflow picked up Homebrew's Qt 6.12.0 and printed the "newer than this policy table" note.
-  Facts checked 2026-11-15: endoflife.date lists 6.12 as LTS, released 2026-09-30, open-source patches until 2027-04-01, latest 6.12.0. It gives 6.11's end as 2026-09-30, not the table's 2026-09-22, and 6.11.3 exists. The CVE records give CVE-2026-6210 and CVE-2026-9499 as affecting 6.9.0 up to 6.11.1 (and 6.8 below 6.8.8), so 6.12.0 carries both fixes.
-  Touches: `scripts/validate_qt_version.py` (6.12 row with `patched_from` 6.12.0, 6.11 end date, `RECOMMENDED`, `REVISIT_ON`), `SECURITY.md` Qt branch policy, the 6.11.2 paths in the release scripts and README build steps, a local `C:\Qt\6.12.0\msvc2022_64` install.
-  Acceptance: the whole test suite passes against Qt 6.12, the validator passes 6.12.x and refuses 6.11.x, and SECURITY.md matches the table.
-  Complexity: M
-  Note (2026-11-15): the Qt advisory list adds CVE-2026-95620 and CVE-2026-96432 (QNetworkAccessManager over HTTP/2) and CVE-2026-101201 (JSON parsing). All three affect 6.11.2 and neither 6.11.3 nor 6.12.0. The app reaches them through `src/remote_daemon.cpp` and the GitHub API calls in `src/main_window.cpp`. CVE-2026-116337 (Qt Network HTTP response memory exhaustion) is fixed only in 6.8.10 and 6.12.1, and download.qt.io lists only 6.12.0 for the 6.12 branch, so the 6.12 row's `patched_from` moves to 6.12.1 once it ships.
-
 - [ ] P1 — Point the WinFsp warning at the build that carries every published fix
   Why: the check warns only at 2.1.25156 and older and recommends "2026 Beta1 or newer", but Beta1 lists no CVE-2026-7162 fix, and six more vulnerability fixes landed in Beta4 and Beta5.
   Evidence (Verified): `src/main_window.cpp:5165-5178`; WinFsp release notes for Beta1 2.2.26112 (2026-04-22), Beta2 2.2.26183 (2026-07-02, first CVE-2026-7162 fix), Beta4 2.2.26215 (2026-08-03, two more fixes) and Beta5 2.2.26286 (2026-10-13, four more); the latest stable is 2.1 from 2025-06-05.
