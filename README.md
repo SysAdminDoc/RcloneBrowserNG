@@ -21,6 +21,8 @@ Community continuation of [kapitainsky/RcloneBrowser](https://github.com/kapitai
 
 Supports Windows, macOS, GNU/Linux and the BSD family.
 
+![Browsing a remote in Rclone Browser NG](docs/screenshots/browse-light.png)
+
 ## What NG fixes over the abandoned upstream
 
 *   Works with modern rclone (v1.56+) — transfer progress, size, bandwidth and ETA parse correctly again

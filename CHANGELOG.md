@@ -3,6 +3,7 @@
 ### Distribution
 -   NEW: 2.0.0, 2.0.1 and 2.0.2 are tagged, and 2.0.2 is published on the releases page with a Windows installer, a portable zip, a source archive and a `SHA256SUMS` file. Until now the only way to get the app was to build it
 -   NEW: `scripts/release_check.py` writes `release/SHA256SUMS` over whatever artifacts are present, so an unsigned download can still be verified
+-   NEW: The AppStream metadata lists four screenshots, light and dark, so Linux software centers can show what the app looks like before you install it. The README has one as well
 -   CHANGED: Every file in the repository now carries license information, so `reuse lint` passes. The tests and a few root files had none, and the new third-party icons are marked with their own licenses rather than the project's MIT
 -   CHANGED: `git archive` no longer puts the internal planning notes (`ROADMAP.md`, `RESEARCH.md`, `Roadmap_Blocked.md`) into source tarballs
 

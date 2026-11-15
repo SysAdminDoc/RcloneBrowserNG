@@ -13,6 +13,24 @@
   <url type="homepage">https://github.com/SysAdminDoc/RcloneBrowserNG</url>
   <url type="bugtracker">https://github.com/SysAdminDoc/RcloneBrowserNG/issues</url>
   <url type="vcs-browser">https://github.com/SysAdminDoc/RcloneBrowserNG</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Browsing the files on a remote</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/SysAdminDoc/RcloneBrowserNG/master/docs/screenshots/browse-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Your rclone remotes, each with its provider's icon</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/SysAdminDoc/RcloneBrowserNG/master/docs/screenshots/remotes-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Browsing in the dark theme</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/SysAdminDoc/RcloneBrowserNG/master/docs/screenshots/browse-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The remotes list in the dark theme</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/SysAdminDoc/RcloneBrowserNG/master/docs/screenshots/remotes-dark.png</image>
+    </screenshot>
+  </screenshots>
   <releases>
     <!-- Release entries are maintained with the local release process. -->
     <release version="2.0.2" date="2026-08-24">

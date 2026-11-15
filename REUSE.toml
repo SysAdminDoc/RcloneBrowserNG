@@ -18,6 +18,7 @@ path = [
   "Roadmap_Blocked.md",
   "_config.yml",
   "tests/**",
+  "docs/**",
   ".clang-tidy",
   ".gitattributes",
   ".gitignore",
