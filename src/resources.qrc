@@ -39,5 +39,43 @@
     <file>images/yandex_inv.png</file>
     <file>images/azureblob_inv.png</file>
     <file>images/google_photos_inv.png</file>
+    <file>images/alias.png</file>
+    <file>images/alias_inv.png</file>
+    <file>images/archive.png</file>
+    <file>images/archive_inv.png</file>
+    <file>images/box.png</file>
+    <file>images/box_inv.png</file>
+    <file>images/chunker.png</file>
+    <file>images/chunker_inv.png</file>
+    <file>images/cloudinary.png</file>
+    <file>images/cloudinary_inv.png</file>
+    <file>images/combine.png</file>
+    <file>images/combine_inv.png</file>
+    <file>images/compress.png</file>
+    <file>images/compress_inv.png</file>
+    <file>images/filen.png</file>
+    <file>images/filen_inv.png</file>
+    <file>images/hasher.png</file>
+    <file>images/hasher_inv.png</file>
+    <file>images/http.png</file>
+    <file>images/http_inv.png</file>
+    <file>images/huaweidrive.png</file>
+    <file>images/huaweidrive_inv.png</file>
+    <file>images/iclouddrive.png</file>
+    <file>images/iclouddrive_inv.png</file>
+    <file>images/memory.png</file>
+    <file>images/memory_inv.png</file>
+    <file>images/pcloud.png</file>
+    <file>images/pcloud_inv.png</file>
+    <file>images/protondrive.png</file>
+    <file>images/protondrive_inv.png</file>
+    <file>images/smb.png</file>
+    <file>images/smb_inv.png</file>
+    <file>images/union.png</file>
+    <file>images/union_inv.png</file>
+    <file>images/webdav.png</file>
+    <file>images/webdav_inv.png</file>
+    <file>images/zoho.png</file>
+    <file>images/zoho_inv.png</file>
   </qresource>
 </RCC>

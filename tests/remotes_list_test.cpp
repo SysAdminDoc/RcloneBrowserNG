@@ -352,6 +352,58 @@ private slots:
     }
   }
 
+  void commonRemoteTypesGetTheirOwnIcon() {
+    // These all showed the grey question mark, including alias and webdav,
+    // which most setups have.
+    const QStringList types = {
+        "alias",   "archive",     "box",         "chunker",  "cloudinary",
+        "combine", "compress",    "filen",       "hasher",   "http",
+        "huaweidrive", "iclouddrive", "memory",  "pcloud",   "protondrive",
+        "smb",     "union",       "webdav",      "zoho"};
+    const QString configPath =
+        QDir(mConfigDir.path()).filePath("icon-types.conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    for (const QString &type : types) {
+      config.write(QString("[my-%1]\ntype = %1\n\n").arg(type).toUtf8());
+    }
+    config.close();
+    switchToConfig(configPath);
+    struct Restore {
+      QString path;
+      ~Restore() { switchToConfig(path); }
+    } restore{mConfigPath};
+
+    setHideCryptBackends(false);
+    std::unique_ptr<MainWindow> window(new MainWindow(true));
+    auto *remotes = window->findChild<QListWidget *>("remotes");
+    QVERIFY(remotes != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), int(types.size()), 120000);
+
+    const QSize probe(32, 32);
+    auto pixels = [&](const QIcon &icon) {
+      return icon.pixmap(probe).toImage().convertToFormat(
+          QImage::Format_ARGB32);
+    };
+    const QImage unknown =
+        pixels(QIcon(":/remotes/images/unknown.png"));
+    const QImage unknownDark =
+        pixels(QIcon(":/remotes/images/unknown_inv.png"));
+    for (int i = 0; i < remotes->count(); ++i) {
+      QListWidgetItem *item = remotes->item(i);
+      const QString type = item->data(Qt::UserRole).toString();
+      QVERIFY2(types.contains(type), qPrintable(type));
+      const QImage shown = pixels(item->icon());
+      QVERIFY2(shown != unknown && shown != unknownDark,
+               qPrintable(type + " still shows the unknown icon"));
+      // Both themes need a file, since the list swaps to the white set on a
+      // dark palette.
+      QVERIFY2(QFile::exists(":/remotes/images/" + type + ".png") &&
+                   QFile::exists(":/remotes/images/" + type + "_inv.png"),
+               qPrintable(type + " is missing a light or dark icon"));
+    }
+  }
+
   void dualPaneLocalFilesystemListsTheDisk() {
     // Issue #20: the dual pane's "(Local filesystem)" choice opened a pane
     // named "/", so every listing asked rclone for "/:C:/" and failed with

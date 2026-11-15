@@ -3,6 +3,7 @@
 ### Distribution
 -   NEW: 2.0.0, 2.0.1 and 2.0.2 are tagged, and 2.0.2 is published on the releases page with a Windows installer, a portable zip, a source archive and a `SHA256SUMS` file. Until now the only way to get the app was to build it
 -   NEW: `scripts/release_check.py` writes `release/SHA256SUMS` over whatever artifacts are present, so an unsigned download can still be verified
+-   CHANGED: Every file in the repository now carries license information, so `reuse lint` passes. The tests and a few root files had none, and the new third-party icons are marked with their own licenses rather than the project's MIT
 -   CHANGED: `git archive` no longer puts the internal planning notes (`ROADMAP.md`, `RESEARCH.md`, `Roadmap_Blocked.md`) into source tarballs
 
 ### Security
@@ -23,6 +24,7 @@
 -   NEW: A rotating diagnostic log is written to disk, so a scheduled transfer that fails overnight leaves evidence behind instead of only an in-memory list that dies with the process. It lives in `logs/rclonebrowser.log` under the application data folder, rotates at 5 MB keeping three older generations, and records job starts, exit codes, background errors and Qt messages. Secrets are redacted with the same rules the support bundle uses. Preferences has a log level and an Open Log Folder button (kapitainsky#134, kapitainsky#233, mmozeiko#148)
 
 ### Features
+-   NEW: Nineteen more remote types get their own icon in the remotes list instead of the generic one, in both light and dark themes. That covers alias, WebDAV, SMB, HTTP, union, combine, chunker, compress, hasher, archive and memory remotes, plus Box, iCloud Drive, Proton Drive, pCloud, Filen, Zoho, Cloudinary and Huawei Drive. The glyphs come from Material Design Icons (Apache 2.0) and Simple Icons (CC0), credited in `NOTICE`
 -   NEW: Several remotes can be put together as one. Right-click a remote and choose Combine With Other Remotes..., or pick the `combine` type under New Remote, then tick the remotes to include. Each one appears as a folder in the new remote, under its own name or one you choose, and can start at a path inside that remote instead of its top. The app writes the rclone `combine` remote for you and quotes names and paths with spaces the way rclone expects, so the result browses and mounts as a single drive. Folder names that clash or that Windows can't show are refused before anything is written. rclone itself accepts a broken combine remote without a word and only fails once you open it (#18)
 
 ### Bug Fixes

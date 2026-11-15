@@ -11,6 +11,15 @@ path = [
   "README.md",
   "CHANGELOG.md",
   "LICENSE",
+  "NOTICE",
+  "SECURITY.md",
+  "RESEARCH.md",
+  "ROADMAP.md",
+  "Roadmap_Blocked.md",
+  "_config.yml",
+  "tests/**",
+  ".clang-tidy",
+  ".gitattributes",
   ".gitignore",
   ".github/**",
 ]
@@ -26,3 +35,35 @@ SPDX-License-Identifier = "MIT"
 path = ["REUSE.toml"]
 SPDX-FileCopyrightText = "2013-2026 RcloneBrowserNG contributors"
 SPDX-License-Identifier = "MIT"
+
+# Remote-type icons rendered from Material Design Icons (Pictogrammers).
+# Later annotations win, so these override the src/** entry above.
+[[annotations]]
+path = [
+  "src/images/alias.png", "src/images/alias_inv.png",
+  "src/images/archive.png", "src/images/archive_inv.png",
+  "src/images/chunker.png", "src/images/chunker_inv.png",
+  "src/images/combine.png", "src/images/combine_inv.png",
+  "src/images/compress.png", "src/images/compress_inv.png",
+  "src/images/hasher.png", "src/images/hasher_inv.png",
+  "src/images/http.png", "src/images/http_inv.png",
+  "src/images/memory.png", "src/images/memory_inv.png",
+  "src/images/smb.png", "src/images/smb_inv.png",
+  "src/images/union.png", "src/images/union_inv.png",
+  "src/images/webdav.png", "src/images/webdav_inv.png",
+]
+SPDX-FileCopyrightText = "Pictogrammers (Material Design Icons)"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Brand marks from Simple Icons, which releases them under CC0. The brands
+# themselves remain trademarks of their owners.
+[[annotations]]
+path = [
+  "src/images/box.png", "src/images/box_inv.png",
+  "src/images/cloudinary.png", "src/images/cloudinary_inv.png",
+  "src/images/huaweidrive.png", "src/images/huaweidrive_inv.png",
+  "src/images/iclouddrive.png", "src/images/iclouddrive_inv.png",
+  "src/images/protondrive.png", "src/images/protondrive_inv.png",
+]
+SPDX-FileCopyrightText = "Simple Icons contributors"
+SPDX-License-Identifier = "CC0-1.0"

@@ -482,7 +482,8 @@ if(BUILD_TESTING)
     tests/remotes_list_test.cpp
     ${ACCESSIBILITY_SMOKE_SOURCES}
   )
-  set_target_properties(remotes_list_test PROPERTIES AUTOUIC ON)
+  # AUTORCC so the remote icons in resources.qrc exist under test
+  set_target_properties(remotes_list_test PROPERTIES AUTOUIC ON AUTORCC ON)
   target_include_directories(remotes_list_test PRIVATE src tests)
   target_compile_definitions(remotes_list_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
   target_link_libraries(remotes_list_test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
