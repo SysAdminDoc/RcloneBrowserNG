@@ -150,7 +150,9 @@ if exist "%TARGET%.zip" (
 )
 
 rem --- Create installer -------------------------------------------------------
-set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+rem A per-user install (winget's default) lives under LOCALAPPDATA.
+if not defined ISCC set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 if exist "%ISCC%" (
   pushd "%~dp0"
   "%ISCC%" "/dMyAppVersion=%VERSION%" "/dMyAppId={{0AF9BF43-8D44-4AFF-AE60-6CECF1BF0D31}" "/dMyAppDir=%NAME%" "/dMyAppArch=x64" "/O..\release" "/F%NAME%-setup" rclone-browser-win-installer.iss
