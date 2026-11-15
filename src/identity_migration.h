@@ -49,4 +49,6 @@ IdentityMigrationResult MigrateFromSharedIdentity(
 // anything reads settings or saved tasks.
 IdentityMigrationResult RunSharedIdentityMigration();
 
-extern const char kIdentityMigrationKey[];
+// Sized in the header: Qt 6.4's QAnyStringView can't take an array whose
+// length the compiler can't see, which broke the build on Ubuntu 24.04.
+inline constexpr char kIdentityMigrationKey[] = "Migration/sharedIdentity";

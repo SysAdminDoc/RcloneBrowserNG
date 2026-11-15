@@ -12,8 +12,6 @@
 #include <QSet>
 #include <QStandardPaths>
 
-const char kIdentityMigrationKey[] = "Migration/sharedIdentity";
-
 namespace {
 const char kClassicTasksFile[] = "tasks.bin";
 const char kTasksFile[] = "tasks.json";

@@ -442,7 +442,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                    });
 
   QObject::connect(profileDeleteBtn, &QPushButton::clicked, this,
-                   [this, profileCombo]() {
+                   [profileCombo]() {
                      QString name = profileCombo->currentText();
                      if (name.isEmpty() || profileCombo->currentIndex() <= 0)
                        return;
