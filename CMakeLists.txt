@@ -295,6 +295,7 @@ if(BUILD_TESTING)
   add_executable(rc_route_test
     tests/rc_route_test.cpp
     src/rclone_rc_engine.cpp
+    src/rc_certificate.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
@@ -313,6 +314,7 @@ if(BUILD_TESTING)
   add_executable(async_helpers_test
     tests/async_helpers_test.cpp
     src/rclone_rc_engine.cpp
+    src/rc_certificate.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
@@ -358,6 +360,7 @@ if(BUILD_TESTING)
     src/adaptive_bandwidth_driver.cpp
     src/app_log.cpp
     src/rclone_rc_engine.cpp
+    src/rc_certificate.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
@@ -409,6 +412,7 @@ if(BUILD_TESTING)
   add_executable(remote_daemon_test
     tests/remote_daemon_test.cpp
     src/remote_daemon.cpp
+    src/rc_certificate.cpp
     src/remote_list_parser.cpp
     src/job_options_store.cpp
     src/job_options.cpp
@@ -471,6 +475,7 @@ if(BUILD_TESTING)
     src/mount_options.cpp
     src/utils.cpp
     src/remote_daemon.cpp
+    src/rc_certificate.cpp
     src/remote_list_parser.cpp
     src/job_options_store.cpp
     src/job_options.cpp
@@ -500,6 +505,7 @@ if(BUILD_TESTING)
     src/mount_health.cpp
     src/mount_options.cpp
     src/rclone_rc_engine.cpp
+    src/rc_certificate.cpp
     src/app_log.cpp
     src/filter_pattern.cpp
     src/job_stats.cpp

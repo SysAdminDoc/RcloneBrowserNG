@@ -1,4 +1,5 @@
 #include "rclone_rc_engine.h"
+#include "rc_certificate.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
 
@@ -100,13 +101,16 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
 }
 
 void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
-                                     const QString &password) {
-  if (url == mRemoteUrl && user == mRemoteUser && password == mRemotePass) {
+                                     const QString &password,
+                                     const QString &certificateSha256) {
+  if (url == mRemoteUrl && user == mRemoteUser && password == mRemotePass &&
+      certificateSha256 == mRemoteTrusted) {
     return;
   }
   mRemoteUrl = url;
   mRemoteUser = user;
   mRemotePass = password;
+  mRemoteTrusted = certificateSha256;
   mRemoteConfigPath.clear();
   // Whatever answers next is a different rclone with its own tables.
   mEndpoints.clear();
@@ -658,6 +662,8 @@ void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
   QNetworkRequest req = request(path);
   QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
   QNetworkReply *reply = mNetwork.post(req, body);
+  const QString trusted = mRemoteTrusted;
+  RcCertificate::Guard(reply, trusted);
 
   auto *timer = new QTimer(reply);
   timer->setSingleShot(true);
@@ -668,12 +674,23 @@ void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
                    &QNetworkReply::deleteLater);
 
   QObject::connect(
-      reply, &QNetworkReply::finished, context, [reply, callback]() {
+      reply, &QNetworkReply::finished, context,
+      [reply, callback, trusted, url = mUrl]() {
         reply->deleteLater();
 
         const QByteArray raw = reply->readAll();
         const auto networkError = reply->error();
         const QString networkErrorText = reply->errorString();
+
+        // Before the timeout case, since refusing a certificate aborts too.
+        const QString certificateError =
+            RcCertificate::Problem(reply, url, trusted);
+        if (!certificateError.isEmpty()) {
+          if (callback) {
+            callback(QJsonObject(), certificateError);
+          }
+          return;
+        }
 
         if (networkError == QNetworkReply::OperationCanceledError) {
           if (callback) {
@@ -720,6 +737,7 @@ QJsonObject RcloneRcEngine::postSync(const QString &path,
   QNetworkRequest req = request(path);
   QNetworkReply *reply =
       mNetwork.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+  RcCertificate::Guard(reply, mRemoteTrusted);
 
   QEventLoop loop;
   QTimer timer;
@@ -728,6 +746,18 @@ QJsonObject RcloneRcEngine::postSync(const QString &path,
   QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
   timer.start(kRcRequestTimeoutMs);
   loop.exec();
+
+  if (reply->isFinished()) {
+    const QString certificateError =
+        RcCertificate::Problem(reply, mUrl, mRemoteTrusted);
+    if (!certificateError.isEmpty()) {
+      reply->deleteLater();
+      if (error) {
+        *error = certificateError;
+      }
+      return QJsonObject();
+    }
+  }
 
   if (!timer.isActive()) {
     reply->abort();
@@ -770,5 +800,6 @@ QNetworkRequest RcloneRcEngine::request(const QString &path) const {
   const QByteArray credential =
       QString("%1:%2").arg(mUser, mPass).toUtf8().toBase64();
   req.setRawHeader("Authorization", "Basic " + credential);
+  RcCertificate::Prepare(req, mRemoteTrusted);
   return req;
 }

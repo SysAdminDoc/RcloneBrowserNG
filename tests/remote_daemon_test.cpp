@@ -11,9 +11,44 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <memory>
+
 #if defined(Q_OS_WIN32)
 #include <windows.h>
 #endif
+
+namespace {
+
+// A self-signed certificate for CN=nas.local and its key, made for this test
+// alone. The key protects nothing.
+const char kTestCertificate[] =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIBlTCCATugAwIBAgIUK14koTilwcIo2x2hhXBC+4ugFdIwCgYIKoZIzj0EAwIw\n"
+    "FDESMBAGA1UEAwwJbmFzLmxvY2FsMCAXDTI2MTExNTE5MjMzMFoYDzIxMjYxMDIy\n"
+    "MTkyMzMwWjAUMRIwEAYDVQQDDAluYXMubG9jYWwwWTATBgcqhkjOPQIBBggqhkjO\n"
+    "PQMBBwNCAAQ/KYintzCvK23Nqx0Ot305CzU2fR5d8n/bUdyTn4wAz5rur3RHOWio\n"
+    "ENTWpU/ej9ReDt0N3lobhW1iiHOCmQzMo2kwZzAdBgNVHQ4EFgQUYowa4RHJKmML\n"
+    "w2RwMskT560fe4wwHwYDVR0jBBgwFoAUYowa4RHJKmMLw2RwMskT560fe4wwDwYD\n"
+    "VR0TAQH/BAUwAwEB/zAUBgNVHREEDTALggluYXMubG9jYWwwCgYIKoZIzj0EAwID\n"
+    "SAAwRQIgIs0bYHjXUuhk8edhL26+g5ezlrtPaJAHZBi7Wpr2wbcCIQCxoWY4nxDj\n"
+    "cd01mgnxfYQVuWEneFsQnMFwluBAMA/Djg==\n"
+    "-----END CERTIFICATE-----\n";
+const char kTestKey[] =
+    "-----BEGIN PRIVATE KEY-----\n"
+    "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgzxGGp39io8PeV0g3\n"
+    "le5gxdfqF5L9S7nNcQ1o5o47iumhRANCAAQ/KYintzCvK23Nqx0Ot305CzU2fR5d\n"
+    "8n/bUdyTn4wAz5rur3RHOWioENTWpU/ej9ReDt0N3lobhW1iiHOCmQzM\n"
+    "-----END PRIVATE KEY-----\n";
+// What openssl x509 -noout -fingerprint -sha256 prints for it.
+const char kTestFingerprint[] =
+    "91:A5:C5:76:74:45:13:68:A4:01:16:17:CD:96:58:57:"
+    "2F:D3:5F:5D:01:CB:95:88:B0:34:11:B2:3D:E5:43:2C";
+// Another certificate's.
+const char kOtherFingerprint[] =
+    "88:E7:7A:CB:F9:6D:AA:AF:D2:FF:7B:27:9D:A5:D6:13:"
+    "82:D3:9A:DA:3C:19:90:E0:C0:1E:53:F4:3E:69:03:CB";
+
+} // namespace
 
 // The remote rclone mode drives an rclone rcd on another machine. Here that
 // machine is a second rcd on 127.0.0.1 with its own config file, a login, and
@@ -28,7 +63,59 @@ private:
   QString mRclone;
   QString mServed;
   QProcess *mDaemon = nullptr;
+  QProcess *mTlsDaemon = nullptr;
   RemoteDaemon::Settings mRemote;
+
+  static quint16 freePort() {
+    QTcpServer probe;
+    if (!probe.listen(QHostAddress::LocalHost, 0)) {
+      return 0;
+    }
+    const quint16 port = probe.serverPort();
+    probe.close();
+    return port;
+  }
+
+  QProcess *startRcd(const QStringList &args) {
+    auto *daemon = new QProcess(this);
+    daemon->setProcessChannelMode(QProcess::MergedChannels);
+#if defined(Q_OS_WIN32)
+    daemon->setCreateProcessArgumentsModifier(
+        [](QProcess::CreateProcessArguments *args) {
+          args->flags |= CREATE_NO_WINDOW;
+        });
+#endif
+    daemon->start(mRclone, QStringList{"rcd"} + args);
+    return daemon;
+  }
+
+  QString writeText(const QString &name, const char *text) {
+    const QString path = QDir(mDir.path()).filePath(name);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+      return QString();
+    }
+    file.write(text);
+    return path;
+  }
+
+  // Starts the engine on settings and hands back why it couldn't, if it
+  // couldn't.
+  QString startEngine(RcloneRcEngine &engine,
+                      const RemoteDaemon::Settings &settings) {
+    engine.useRemoteDaemon(settings.url, settings.user, settings.password,
+                           settings.certificateSha256);
+    QString error;
+    bool done = false;
+    engine.ensureStartedAsync(this, [&](bool ok, const QString &startError) {
+      error = ok ? QString() : startError;
+      done = true;
+    });
+    if (!QTest::qWaitFor([&]() { return done; }, 40000)) {
+      return QStringLiteral("no answer");
+    }
+    return error;
+  }
 
   static QJsonObject callAndWait(const RemoteDaemon::Settings &settings,
                                  const QString &endpoint,
@@ -95,22 +182,30 @@ private:
     QVERIFY(QTest::qWaitFor([&]() { return called; }, 60000));
     QVERIFY2(started.jobId >= 0, qPrintable(started.error));
 
-    QJsonObject finished;
+    // One status request at a time, and state the callback owns a share of.
+    // A request per poll left answers arriving after this returned, writing
+    // into a stack frame that was gone.
+    auto finished = std::make_shared<QJsonObject>();
+    auto asking = std::make_shared<bool>(false);
     QVERIFY(QTest::qWaitFor(
         [&]() {
-          engine.jobStatus(started.jobId, this,
-                           [&finished](const QJsonObject &status,
-                                       const QString &error) {
-                             if (error.isEmpty() &&
-                                 status.value("finished").toBool()) {
-                               finished = status;
-                             }
-                           });
-          return !finished.isEmpty();
+          if (!*asking) {
+            *asking = true;
+            engine.jobStatus(started.jobId, this,
+                             [finished, asking](const QJsonObject &status,
+                                                const QString &error) {
+                               *asking = false;
+                               if (error.isEmpty() &&
+                                   status.value("finished").toBool()) {
+                                 *finished = status;
+                               }
+                             });
+          }
+          return !finished->isEmpty();
         },
         60000));
-    QVERIFY2(finished.value("success").toBool(),
-             qPrintable(finished.value("error").toString()));
+    QVERIFY2(finished->value("success").toBool(),
+             qPrintable(finished->value("error").toString()));
   }
 
 private slots:
@@ -130,9 +225,11 @@ private slots:
   }
 
   void cleanupTestCase() {
-    if (mDaemon != nullptr) {
-      mDaemon->kill();
-      mDaemon->waitForFinished(5000);
+    for (QProcess *daemon : {mDaemon, mTlsDaemon}) {
+      if (daemon != nullptr) {
+        daemon->kill();
+        daemon->waitForFinished(5000);
+      }
     }
   }
 
@@ -146,6 +243,64 @@ private slots:
     QVERIFY(RemoteDaemon::NormalizeUrl("ftp://nas").isEmpty());
     QVERIFY(RemoteDaemon::NormalizeUrl("http://").isEmpty());
     QVERIFY(RemoteDaemon::NormalizeUrl("   ").isEmpty());
+  }
+
+  // rclone's rc login is as good as a shell on that machine, so plain http
+  // to anything but this computer gets a warning in Preferences.
+  void plainHttpToTheNetworkIsFlagged() {
+    for (const char *url :
+         {"http://192.168.1.5:5572", "nas.local:5572", "http://nas.local:5572/",
+          "http://localhost.example.com:5572", "http://[fd00::5]:5572",
+          "http://10.0.0.1"}) {
+      QVERIFY2(RemoteDaemon::IsPlainHttpToNetwork(url), url);
+      QVERIFY2(RemoteDaemon::PlainHttpWarning(url).contains("--rc-cert"), url);
+    }
+    for (const char *url :
+         {"http://localhost:5572", "http://LOCALHOST:5572",
+          "http://127.0.0.1:5572", "127.0.0.1:5572", "http://127.8.0.1:5572",
+          "http://[::1]:5572", "https://nas.local:5572",
+          "https://192.168.1.5:5572", "ftp://nas.local", "", "http://"}) {
+      QVERIFY2(!RemoteDaemon::IsPlainHttpToNetwork(url), url);
+      QVERIFY2(RemoteDaemon::PlainHttpWarning(url).isEmpty(), url);
+    }
+  }
+
+  void fingerprintsAreNormalizedAndCompared() {
+    const QString fingerprint = QString::fromLatin1(kTestFingerprint);
+    const QString other = QString::fromLatin1(kOtherFingerprint);
+    QString bare = fingerprint;
+    bare.remove(QChar(':'));
+    QString spaced = fingerprint;
+    spaced.replace(QChar(':'), QChar(' '));
+
+    QCOMPARE(RcCertificate::Normalize("sha256 Fingerprint=" + fingerprint),
+             fingerprint);
+    QCOMPARE(RcCertificate::Normalize(bare.toLower()), fingerprint);
+    QCOMPARE(RcCertificate::Normalize("  " + spaced + "\n"), fingerprint);
+    QVERIFY(RcCertificate::Normalize(bare.left(62)).isEmpty());
+    QVERIFY(RcCertificate::Normalize(bare + "AB").isEmpty());
+    QVERIFY(RcCertificate::Normalize(bare.left(63) + "G").isEmpty());
+    QVERIFY(RcCertificate::Normalize(QString()).isEmpty());
+
+    const QSslCertificate certificate(QByteArray(kTestCertificate), QSsl::Pem);
+    QVERIFY(!certificate.isNull());
+    QCOMPARE(RcCertificate::Fingerprint(certificate), fingerprint);
+    QVERIFY(RcCertificate::Fingerprint(QSslCertificate()).isEmpty());
+
+    QVERIFY(RcCertificate::Matches(bare.toLower(), fingerprint));
+    QVERIFY(!RcCertificate::Matches(other, fingerprint));
+    QVERIFY(!RcCertificate::Matches(QString(), QString()));
+    QVERIFY(!RcCertificate::Matches("not hex", "not hex"));
+
+    const QString untrusted =
+        RcCertificate::Refusal("https://nas:5572/", QString(), fingerprint);
+    QVERIFY2(untrusted.contains("doesn't trust"), qPrintable(untrusted));
+    QVERIFY2(untrusted.contains(fingerprint), qPrintable(untrusted));
+    const QString changed =
+        RcCertificate::Refusal("https://nas:5572/", other, fingerprint);
+    QVERIFY2(changed.contains("different certificate"), qPrintable(changed));
+    QVERIFY2(changed.contains("Trusted: " + other), qPrintable(changed));
+    QVERIFY2(changed.contains("Presented: " + fingerprint), qPrintable(changed));
   }
 
   void commandArgumentsCarryTheDaemonsConfig() {
@@ -229,6 +384,9 @@ private slots:
     saved.url = "  nas.local:5572 ";
     saved.user = "admin";
     saved.password = "s3cret pass";
+    QString pasted = QString::fromLatin1(kTestFingerprint).toLower();
+    pasted.remove(QChar(':'));
+    saved.certificateSha256 = pasted;
     RemoteDaemon::Save(saved);
 
     const RemoteDaemon::Settings loaded = RemoteDaemon::Load();
@@ -237,6 +395,7 @@ private slots:
     QCOMPARE(loaded.url, QString("http://nas.local:5572/"));
     QCOMPARE(loaded.user, QString("admin"));
     QCOMPARE(loaded.password, QString("s3cret pass"));
+    QCOMPARE(loaded.certificateSha256, QString::fromLatin1(kTestFingerprint));
     const QString stored =
         GetSettings()->value("Settings/remoteDaemonPassword").toString();
     QVERIFY2(!stored.contains("s3cret"), qPrintable(stored));
@@ -434,6 +593,93 @@ private slots:
 
     runEngineJob(engine, {"copy", "rbtestnas:src", "rbtestnas:dst-native"});
     QVERIFY(served("dst-native/sub/two.txt"));
+  }
+
+  // rclone serving https with a self-signed certificate, the way a NAS would
+  // be set up. Only the fingerprint the user trusted lets it through.
+  void aSelfSignedDaemonNeedsItsFingerprintTrusted() {
+    if (mDaemon == nullptr) {
+      QSKIP("no daemon");
+    }
+    const QString certificate = writeText("tls-cert.pem", kTestCertificate);
+    const QString key = writeText("tls-key.pem", kTestKey);
+    QVERIFY(!certificate.isEmpty());
+    QVERIFY(!key.isEmpty());
+    const quint16 port = freePort();
+    QVERIFY(port != 0);
+    mTlsDaemon = startRcd(
+        {"--config", QDir(mDir.path()).filePath("daemon.conf"), "--rc-addr",
+         QString("127.0.0.1:%1").arg(port), "--rc-cert", certificate,
+         "--rc-key", key, "--rc-min-tls-version", "tls1.2", "--rc-user",
+         "nasuser", "--rc-pass", "nas pass"});
+    QVERIFY2(mTlsDaemon->waitForStarted(10000),
+             qPrintable(mTlsDaemon->errorString()));
+
+    const QString fingerprint = QString::fromLatin1(kTestFingerprint);
+    const QString other = QString::fromLatin1(kOtherFingerprint);
+    RemoteDaemon::Settings untrusted = mRemote;
+    untrusted.url = QString("https://127.0.0.1:%1/").arg(port);
+    untrusted.certificateSha256.clear();
+    RemoteDaemon::Settings trusted = untrusted;
+    trusted.certificateSha256 = fingerprint;
+    RemoteDaemon::Settings changed = untrusted;
+    changed.certificateSha256 = other;
+
+    // Nothing trusted yet. The refusal carries the certificate's fingerprint
+    // for Preferences to offer. Retried until the daemon is listening.
+    QString error = "not up";
+    QJsonObject refused;
+    QVERIFY2(QTest::qWaitFor(
+                 [&]() {
+                   refused = callAndWait(untrusted, "rc/noopauth",
+                                         QJsonObject(), &error, this);
+                   return refused.contains(
+                       RemoteDaemon::kPresentedCertificateKey);
+                 },
+                 30000),
+             qPrintable(error + " / " +
+                        QString::fromUtf8(mTlsDaemon->readAll())));
+    QCOMPARE(refused.value(RemoteDaemon::kPresentedCertificateKey).toString(),
+             fingerprint);
+    QVERIFY2(error.contains("doesn't trust"), qPrintable(error));
+    QVERIFY2(error.contains(fingerprint), qPrintable(error));
+
+    callAndWait(changed, "rc/noopauth", QJsonObject(), &error, this);
+    QVERIFY2(error.contains("different certificate"), qPrintable(error));
+    QVERIFY2(error.contains("Trusted: " + other), qPrintable(error));
+    QVERIFY2(error.contains("Presented: " + fingerprint), qPrintable(error));
+
+    // Trusted, although the certificate is for nas.local, not 127.0.0.1.
+    const QJsonObject version =
+        callAndWait(trusted, "core/version", QJsonObject(), &error, this);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(version.value("version").toString().startsWith("v1."));
+    callAndWait(trusted, "rc/noopauth", QJsonObject(), &error, this);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+
+    // The trusted calls left a connection open, and Qt sends later requests
+    // down it with no handshake to judge.
+    callAndWait(changed, "rc/noopauth", QJsonObject(), &error, this);
+    QVERIFY2(error.contains("different certificate"), qPrintable(error));
+    refused =
+        callAndWait(untrusted, "rc/noopauth", QJsonObject(), &error, this);
+    QVERIFY2(error.contains("doesn't trust"), qPrintable(error));
+    QCOMPARE(refused.value(RemoteDaemon::kPresentedCertificateKey).toString(),
+             fingerprint);
+
+    // Transfers go through the engine, which keeps connections of its own.
+    RcloneRcEngine engine;
+    error = startEngine(engine, untrusted);
+    QVERIFY2(error.contains("doesn't trust"), qPrintable(error));
+    error = startEngine(engine, changed);
+    QVERIFY2(error.contains("different certificate"), qPrintable(error));
+    error = startEngine(engine, trusted);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    writeFile("tls/one.txt");
+    runEngineJob(engine, {"copy", "rbtestnas:tls", "rbtestnas:tls-copied"});
+    QVERIFY(served("tls-copied/one.txt"));
+    error = startEngine(engine, changed);
+    QVERIFY2(error.contains("different certificate"), qPrintable(error));
   }
 };
 

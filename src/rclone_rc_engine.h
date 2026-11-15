@@ -26,9 +26,12 @@ public:
   // Drives an rcd that is already running somewhere else instead of starting
   // one. An empty url goes back to starting a local daemon. A local daemon
   // this engine started is stopped, because its jobs couldn't be reached
-  // through the new address anyway.
+  // through the new address anyway. certificateSha256 is a TLS certificate
+  // fingerprint the user trusted (RcCertificate), and an https daemon with any
+  // other certificate is refused.
   void useRemoteDaemon(const QString &url, const QString &user,
-                       const QString &password);
+                       const QString &password,
+                       const QString &certificateSha256 = QString());
   bool isRemote() const { return !mRemoteUrl.isEmpty(); }
 
   struct StartedJob {
@@ -82,6 +85,7 @@ private:
   QString mRemoteUrl;
   QString mRemoteUser;
   QString mRemotePass;
+  QString mRemoteTrusted;
   // The config file the remote daemon reads, from config/paths.
   QString mRemoteConfigPath;
   // Callers that arrive while the daemon is still coming up wait here rather

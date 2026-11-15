@@ -438,25 +438,41 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
       GetSettings()->value("Settings/remoteDaemonUrl").toString());
   ui.remoteDaemonUser->setText(remoteDaemon.user);
   ui.remoteDaemonPassword->setText(remoteDaemon.password);
+  ui.remoteDaemonCertificate->setText(remoteDaemon.certificateSha256);
   for (QLineEdit *field : {ui.remoteDaemonUrl, ui.remoteDaemonUser,
-                           ui.remoteDaemonPassword}) {
+                           ui.remoteDaemonPassword,
+                           ui.remoteDaemonCertificate}) {
     field->setClearButtonEnabled(true);
   }
   ui.remoteDaemonEnabled->setAccessibleName("Use a remote rclone");
   ui.remoteDaemonUrl->setAccessibleName("Remote rclone address");
   ui.remoteDaemonUser->setAccessibleName("Remote rclone user name");
   ui.remoteDaemonPassword->setAccessibleName("Remote rclone password");
+  ui.remoteDaemonCertificate->setAccessibleName(
+      "Remote rclone trusted certificate fingerprint");
   ui.remoteDaemonTest->setAccessibleName("Test remote rclone connection");
+  ui.remoteDaemonTrust->setAccessibleName(
+      "Trust the remote rclone's certificate");
   ui.remoteDaemonStatus->setAccessibleName("Remote rclone connection result");
+  ui.remoteDaemonTrust->setVisible(false);
   ui.remoteDaemonInfo->setText(
       "Start it on that computer with rclone rcd --rc-addr :5572 "
-      "--rc-user NAME --rc-pass PASSWORD. Its remotes, its disks and its "
-      "config file are what you browse and transfer with, so a local path "
-      "you type means a folder on that computer. Mounts, streams, the "
-      "remote setup tools and the check after a transfer need rclone on "
-      "this computer and are turned off.");
+      "--rc-cert cert.pem --rc-key key.pem --rc-user NAME --rc-pass "
+      "PASSWORD and use an https address here. For a self-signed "
+      "certificate, Test Connection shows its fingerprint so you can trust "
+      "it. Its remotes, its disks and its config file are what you browse "
+      "and transfer with, so a local path you type means a folder on that "
+      "computer. Mounts, streams, the remote setup tools and the check "
+      "after a transfer need rclone on this computer and are turned off.");
   UiPolish::SetMuted(ui.remoteDaemonInfo);
 
+  auto updateRemoteDaemonWarning = [=]() {
+    UiPolish::SetValidationMessage(
+        ui.remoteDaemonWarning, "warning",
+        ui.remoteDaemonEnabled->isChecked()
+            ? RemoteDaemon::PlainHttpWarning(ui.remoteDaemonUrl->text())
+            : QString());
+  };
   auto updateRemoteDaemonFields = [=]() {
     const bool enabled = ui.remoteDaemonEnabled->isChecked();
     for (QWidget *widget :
@@ -465,20 +481,50 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
           static_cast<QWidget *>(ui.remoteDaemonUserLabel),
           static_cast<QWidget *>(ui.remoteDaemonUser),
           static_cast<QWidget *>(ui.remoteDaemonPasswordLabel),
-          static_cast<QWidget *>(ui.remoteDaemonPassword)}) {
+          static_cast<QWidget *>(ui.remoteDaemonPassword),
+          static_cast<QWidget *>(ui.remoteDaemonCertificateLabel),
+          static_cast<QWidget *>(ui.remoteDaemonCertificate)}) {
       widget->setEnabled(enabled);
     }
+    updateRemoteDaemonWarning();
   };
   QObject::connect(ui.remoteDaemonEnabled, &QCheckBox::toggled, this,
                    [=](bool) { updateRemoteDaemonFields(); });
+  QObject::connect(ui.remoteDaemonUrl, &QLineEdit::textChanged, this,
+                   [this, updateRemoteDaemonWarning](const QString &) {
+                     // A refused certificate belongs to the old address.
+                     ui.remoteDaemonTrust->setVisible(false);
+                     updateRemoteDaemonWarning();
+                   });
   updateRemoteDaemonFields();
+
+  QObject::connect(
+      ui.remoteDaemonCertificate, &QLineEdit::editingFinished, this, [this]() {
+        const QString typed = ui.remoteDaemonCertificate->text().trimmed();
+        const QString fingerprint = RcCertificate::Normalize(typed);
+        if (!fingerprint.isEmpty()) {
+          ui.remoteDaemonCertificate->setText(fingerprint);
+        } else if (!typed.isEmpty()) {
+          ui.remoteDaemonStatus->setText(
+              "That isn't a SHA-256 fingerprint, so it won't be saved. Paste "
+              "what openssl x509 -noout -fingerprint -sha256 prints for the "
+              "certificate, or use Test Connection.");
+        }
+      });
+
+  QObject::connect(ui.remoteDaemonTrust, &QPushButton::clicked, this, [this]() {
+    ui.remoteDaemonCertificate->setText(mPresentedCertificate);
+    ui.remoteDaemonTrust->setVisible(false);
+    ui.remoteDaemonTest->click();
+  });
 
   QObject::connect(ui.remoteDaemonTest, &QPushButton::clicked, this, [this]() {
     RemoteDaemon::Settings test = getRemoteDaemon();
     test.url = RemoteDaemon::NormalizeUrl(test.url);
+    ui.remoteDaemonTrust->setVisible(false);
     if (test.url.isEmpty()) {
       ui.remoteDaemonStatus->setText(
-          "Type an address like http://nas.local:5572 first.");
+          "Type an address like https://nas.local:5572 first.");
       return;
     }
     ui.remoteDaemonTest->setEnabled(false);
@@ -488,10 +534,18 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
     // first transfer.
     RemoteDaemon::Call(
         test, "rc/noopauth", QJsonObject(), this,
-        [this, test](const QJsonObject &, const QString &authError) {
+        [this, test](const QJsonObject &refused, const QString &authError) {
           if (!authError.isEmpty()) {
             ui.remoteDaemonTest->setEnabled(true);
             ui.remoteDaemonStatus->setText(authError);
+            mPresentedCertificate =
+                refused.value(RemoteDaemon::kPresentedCertificateKey)
+                    .toString();
+            // Offered only for a certificate nobody trusted yet. A changed
+            // one has to be cleared by hand first, after checking it.
+            ui.remoteDaemonTrust->setVisible(
+                !mPresentedCertificate.isEmpty() &&
+                test.certificateSha256.isEmpty());
             return;
           }
           RemoteDaemon::Call(
@@ -661,5 +715,7 @@ RemoteDaemon::Settings PreferencesDialog::getRemoteDaemon() const {
   settings.url = ui.remoteDaemonUrl->text().trimmed();
   settings.user = ui.remoteDaemonUser->text();
   settings.password = ui.remoteDaemonPassword->text();
+  settings.certificateSha256 =
+      RcCertificate::Normalize(ui.remoteDaemonCertificate->text());
   return settings;
 }

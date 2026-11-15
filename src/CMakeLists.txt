@@ -94,6 +94,7 @@ set(SOURCE
   vfs_upload_state.cpp
   vss_snapshot.cpp
   remote_daemon.cpp
+  rc_certificate.cpp
   progress_dialog.cpp
   job_widget.cpp
   mount_widget.cpp
@@ -145,6 +146,7 @@ set(OTHER
   vss_snapshot.h
   winfsp_floor.h
   remote_daemon.h
+  rc_certificate.h
   progress_dialog.h
   job_widget.h
   mount_widget.h

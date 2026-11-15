@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "rc_certificate.h"
 #include "remote_list_parser.h"
 #include <functional>
 
@@ -15,6 +16,11 @@ struct Settings {
   QString url;
   QString user;
   QString password;
+  // The SHA-256 fingerprint of a TLS certificate the user chose to trust, in
+  // RcCertificate::Normalize's form. A daemon with any other certificate is
+  // refused, even one this computer trusts. Empty means only certificates
+  // this computer already trusts are accepted.
+  QString certificateSha256;
 };
 
 // Reads the Remote rclone settings. enabled is only true when an address is
@@ -27,6 +33,18 @@ bool IsEnabled();
 // "nas:5572" becomes "http://nas:5572/". Returns an empty string for
 // something that isn't an http(s) address with a host.
 QString NormalizeUrl(const QString &url);
+
+// True for an http:// address (or one with no scheme) whose host isn't this
+// computer. The login then crosses the network in the clear on every request,
+// and rclone's rc login is as good as a shell on that machine.
+bool IsPlainHttpToNetwork(const QString &url);
+// The Preferences warning for such an address, empty for any other.
+QString PlainHttpWarning(const QString &url);
+
+// A Call() refused over the daemon's certificate puts the certificate's
+// fingerprint (RcCertificate's form) in its result under this key, so
+// Preferences can offer to trust it.
+inline constexpr char kPresentedCertificateKey[] = "presentedCertificateSha256";
 
 using Callback =
     std::function<void(const QJsonObject &result, const QString &error)>;

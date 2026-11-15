@@ -167,13 +167,32 @@ Nothing is copied or moved. The app adds an rclone [combine](https://rclone.org/
 
 ## Using an rclone on another computer
 
-Start the remote control daemon on that computer with a login:
+rclone's remote control login can run any command on the computer it belongs to, so it shouldn't cross the network over plain http. There are two ways to avoid that.
+
+**https with a certificate.** Start the remote control daemon on that computer with a certificate and its key. A self-signed pair is fine:
 
 ```text
-rclone rcd --rc-addr :5572 --rc-user NAME --rc-pass PASSWORD
+rclone rcd --rc-addr :5572 --rc-cert cert.pem --rc-key key.pem --rc-min-tls-version tls1.2 --rc-user NAME --rc-pass PASSWORD
 ```
 
-Then open **Preferences**, go to **Remote rclone**, tick the box and enter its address (`http://nas.local:5572`, say) with the same user name and password. **Test Connection** checks both before you save. From then on the remotes list, browsing and transfers use that computer's remotes and config, and a local path you type means a folder on that computer. Mounts, streams, the remote setup tools and the check after a transfer need rclone on this computer, so they're greyed out until you turn it off again.
+Then open **Preferences**, go to **Remote rclone**, tick the box and enter its address (`https://nas.local:5572`, say) with the same user name and password. **Test Connection** checks the login before you save. With a self-signed certificate the test stops and shows the certificate's SHA-256 fingerprint. Compare it with what this prints on that computer, then click **Trust Certificate**:
+
+```text
+openssl x509 -in cert.pem -noout -fingerprint -sha256
+```
+
+After that the app only talks to that certificate. If the computer ever presents a different one, the app won't connect, and the status shows both fingerprints. Clear the trusted fingerprint and test again only if you replaced the certificate yourself.
+
+**An SSH tunnel.** Keep the daemon on that computer's own loopback address and reach it through SSH:
+
+```text
+rclone rcd --rc-addr localhost:5572 --rc-user NAME --rc-pass PASSWORD
+ssh -N -L 5572:localhost:5572 you@nas.local
+```
+
+While the tunnel is open, the address is `http://localhost:5572`. A plain `http://` address for any other computer gets a warning under the address field.
+
+Once it's connected, the remotes list, browsing and transfers use that computer's remotes and config, and a local path you type means a folder on that computer. Mounts, streams, the remote setup tools and the check after a transfer need rclone on this computer, so they're greyed out until you turn it off again.
 
 ## Portable vs standard mode
 

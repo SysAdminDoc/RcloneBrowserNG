@@ -47,9 +47,13 @@ public:
   QString getSocksProxy() const;
   bool getUsePasswordCommand() const;
   QString getDefaultExclude() const;
-  // As typed, not yet normalised. url can be empty or not an address.
+  // As typed, not yet normalised. url can be empty or not an address. The
+  // certificate fingerprint is normalised, empty when it isn't one.
   RemoteDaemon::Settings getRemoteDaemon() const;
 
 private:
   Ui::PreferencesDialog ui;
+  // The certificate the last Test Connection was refused over, which Trust
+  // Certificate copies into the field.
+  QString mPresentedCertificate;
 };

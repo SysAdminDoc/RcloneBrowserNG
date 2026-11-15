@@ -440,6 +440,13 @@ QLabel[validationState="error"] {
   color: %16;
   padding: 8px 10px;
 }
+QLabel[validationState="warning"] {
+  background: %15;
+  border: 1px solid %14;
+  border-radius: 6px;
+  color: %7;
+  padding: 8px 10px;
+}
 QLabel[validationState="success"] {
   background: %13;
   border: 1px solid %12;

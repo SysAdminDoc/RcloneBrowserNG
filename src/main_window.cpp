@@ -605,7 +605,8 @@ MainWindow::MainWindow(bool initializeRuntime)
           oldRemote.enabled != newRemoteEnabled ||
           (newRemoteEnabled &&
            (oldRemote.url != newRemoteUrl || oldRemote.user != newRemote.user ||
-            oldRemote.password != newRemote.password));
+            oldRemote.password != newRemote.password ||
+            oldRemote.certificateSha256 != newRemote.certificateSha256));
       if (mJobCount > 0 &&
           (newRclone != oldRclone || newRcloneConf != oldRcloneConf) &&
           !confirmConfigMutation("Changing the rclone executable or config path")) {
@@ -2865,7 +2866,8 @@ void MainWindow::applyRemoteDaemonSettings() {
   }
   const RemoteDaemon::Settings remote = RemoteDaemon::Load();
   mRcEngine->useRemoteDaemon(remote.enabled ? remote.url : QString(),
-                             remote.user, remote.password);
+                             remote.user, remote.password,
+                             remote.certificateSha256);
 }
 
 void MainWindow::updateRemoteDaemonMode(bool closeBrowserTabs) {

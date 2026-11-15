@@ -125,12 +125,20 @@ private slots:
     auto *password = dialog.findChild<QLineEdit *>("remoteDaemonPassword");
     auto *test = dialog.findChild<QPushButton *>("remoteDaemonTest");
     auto *status = dialog.findChild<QLabel *>("remoteDaemonStatus");
+    auto *warning = dialog.findChild<QLabel *>("remoteDaemonWarning");
+    auto *certificate = dialog.findChild<QLineEdit *>("remoteDaemonCertificate");
+    auto *trust = dialog.findChild<QPushButton *>("remoteDaemonTrust");
     verifyManaged(dialog, enabled, "remoteDaemonEnabled");
     verifyManaged(dialog, url, "remoteDaemonUrl");
     verifyManaged(dialog, user, "remoteDaemonUser");
     verifyManaged(dialog, password, "remoteDaemonPassword");
     verifyManaged(dialog, test, "remoteDaemonTest");
     verifyManaged(dialog, status, "remoteDaemonStatus");
+    verifyManaged(dialog, warning, "remoteDaemonWarning");
+    verifyManaged(dialog, certificate, "remoteDaemonCertificate");
+    verifyManaged(dialog, trust, "remoteDaemonTrust");
+    // Offered only after a test meets a certificate nobody trusted.
+    QVERIFY(trust->isHidden());
     for (QWidget *widget : {static_cast<QWidget *>(enabled),
                             static_cast<QWidget *>(url),
                             static_cast<QWidget *>(test)}) {
@@ -145,16 +153,40 @@ private slots:
     enabled->setChecked(false);
     QVERIFY(!url->isEnabled());
     QVERIFY(!password->isEnabled());
+    QVERIFY(!certificate->isEnabled());
 
+    // Plain http to another computer is called out right under the address,
+    // with no dialog in the way.
+    url->setText("http://nas.local:5572");
+    QVERIFY(warning->isHidden());
     enabled->setChecked(true);
+    QVERIFY(certificate->isEnabled());
+    QVERIFY(!warning->isHidden());
+    QVERIFY2(warning->text().contains("--rc-cert"), qPrintable(warning->text()));
+    for (const char *safe : {"https://nas.local:5572", "http://127.0.0.1:5572",
+                             "http://localhost:5572"}) {
+      url->setText(safe);
+      QVERIFY2(warning->isHidden(), safe);
+    }
+
     url->setText("  nas.local:5572  ");
+    QVERIFY(!warning->isHidden());
     user->setText("admin");
     password->setText("pass word");
-    const RemoteDaemon::Settings typed = dialog.getRemoteDaemon();
+    const QString pasted = "sha256 Fingerprint=" + QString(64, QChar('a'));
+    certificate->setText(pasted);
+    RemoteDaemon::Settings typed = dialog.getRemoteDaemon();
     QVERIFY(typed.enabled);
     QCOMPARE(typed.url, QString("nas.local:5572"));
     QCOMPARE(typed.user, QString("admin"));
     QCOMPARE(typed.password, QString("pass word"));
+    const QStringList pairs(32, QString("AA"));
+    QCOMPARE(typed.certificateSha256, pairs.join(QChar(':')));
+    // Something that isn't a fingerprint isn't saved as one.
+    certificate->setText("not a fingerprint");
+    typed = dialog.getRemoteDaemon();
+    QVERIFY(typed.certificateSha256.isEmpty());
+    certificate->clear();
 
     // Something that isn't an address is caught before any request.
     url->setText("ftp://nas.local");

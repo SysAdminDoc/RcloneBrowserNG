@@ -7,6 +7,7 @@ const char *const kEnabledKey = "Settings/remoteDaemon";
 const char *const kUrlKey = "Settings/remoteDaemonUrl";
 const char *const kUserKey = "Settings/remoteDaemonUser";
 const char *const kPasswordKey = "Settings/remoteDaemonPassword";
+const char *const kCertificateKey = "Settings/remoteDaemonCertificateSha256";
 
 QNetworkAccessManager *manager() {
   static QPointer<QNetworkAccessManager> instance;
@@ -58,6 +59,8 @@ Settings Load() {
   loaded.user = settings->value(kUserKey).toString();
   loaded.password = UnprotectJobOptionSensitiveValue(
       settings->value(kPasswordKey).toString());
+  loaded.certificateSha256 =
+      RcCertificate::Normalize(settings->value(kCertificateKey).toString());
   loaded.enabled =
       settings->value(kEnabledKey, false).toBool() && !loaded.url.isEmpty();
   return loaded;
@@ -70,6 +73,8 @@ void Save(const Settings &value) {
   settings->setValue(kUserKey, value.user);
   settings->setValue(kPasswordKey,
                      ProtectJobOptionSensitiveValue(value.password));
+  settings->setValue(kCertificateKey,
+                     RcCertificate::Normalize(value.certificateSha256));
 }
 
 bool IsEnabled() {
@@ -98,6 +103,36 @@ QString NormalizeUrl(const QString &url) {
     text.append(QChar('/'));
   }
   return text;
+}
+
+bool IsPlainHttpToNetwork(const QString &url) {
+  const QString normalized = NormalizeUrl(url);
+  if (normalized.isEmpty()) {
+    return false;
+  }
+  const QUrl parsed(normalized);
+  if (parsed.scheme() != QLatin1String("http")) {
+    return false;
+  }
+  // QUrl lowercases the host and drops an IPv6 address's brackets.
+  const QString host = parsed.host();
+  if (host == QLatin1String("localhost")) {
+    return false;
+  }
+  const QHostAddress address(host);
+  return address.isNull() || !address.isLoopback();
+}
+
+QString PlainHttpWarning(const QString &url) {
+  if (!IsPlainHttpToNetwork(url)) {
+    return QString();
+  }
+  return QStringLiteral(
+      "This address is plain http, so the user name, the password and "
+      "everything you browse cross the network unencrypted. Anyone who "
+      "picks up that login can run commands on that computer. Start rclone "
+      "with --rc-cert and --rc-key and use https, or reach it through an SSH "
+      "tunnel at http://localhost.");
 }
 
 void Call(const Settings &settings, const QString &endpoint,
@@ -129,8 +164,12 @@ void Call(const Settings &settings, const QString &endpoint,
         "Basic " +
             (settings.user + ":" + settings.password).toUtf8().toBase64());
   }
+  RcCertificate::Prepare(request, settings.certificateSha256);
   QNetworkReply *reply = manager()->post(
       request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+
+  const QString trusted = settings.certificateSha256;
+  RcCertificate::Guard(reply, trusted);
 
   if (timeoutMs > 0) {
     auto *timer = new QTimer(reply);
@@ -141,12 +180,24 @@ void Call(const Settings &settings, const QString &endpoint,
 
   const QString url = settings.url;
   QObject::connect(reply, &QNetworkReply::finished, manager(),
-                   [reply, deliver, url]() {
+                   [reply, deliver, url, trusted]() {
     reply->deleteLater();
     const QByteArray raw = reply->readAll();
     const int status =
         reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
+    // Before the timeout case, since refusing a certificate aborts too.
+    QString presented;
+    const QString certificateError =
+        RcCertificate::Problem(reply, url, trusted, &presented);
+    if (!certificateError.isEmpty()) {
+      QJsonObject result;
+      if (!presented.isEmpty()) {
+        result.insert(kPresentedCertificateKey, presented);
+      }
+      deliver(result, certificateError);
+      return;
+    }
     if (reply->error() == QNetworkReply::OperationCanceledError) {
       deliver(QJsonObject(),
               QString("The remote rclone at %1 didn't answer in time.")

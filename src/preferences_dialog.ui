@@ -914,11 +914,21 @@
           <item row="1" column="1">
            <widget class="QLineEdit" name="remoteDaemonUrl">
             <property name="placeholderText">
-             <string>http://nas.local:5572</string>
+             <string>https://nas.local:5572</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
+          <item row="2" column="1">
+           <widget class="QLabel" name="remoteDaemonWarning">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="textInteractionFlags">
+             <set>Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
            <widget class="QLabel" name="remoteDaemonUserLabel">
             <property name="text">
              <string>User name</string>
@@ -928,14 +938,14 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="1">
+          <item row="3" column="1">
            <widget class="QLineEdit" name="remoteDaemonUser">
             <property name="placeholderText">
              <string>--rc-user</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="0">
+          <item row="4" column="0">
            <widget class="QLabel" name="remoteDaemonPasswordLabel">
             <property name="text">
              <string>Password</string>
@@ -945,7 +955,7 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="4" column="1">
            <widget class="QLineEdit" name="remoteDaemonPassword">
             <property name="placeholderText">
              <string>--rc-pass</string>
@@ -955,14 +965,31 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
+          <item row="5" column="0">
+           <widget class="QLabel" name="remoteDaemonCertificateLabel">
+            <property name="text">
+             <string>Trusted certificate</string>
+            </property>
+            <property name="buddy">
+             <cstring>remoteDaemonCertificate</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="remoteDaemonCertificate">
+            <property name="placeholderText">
+             <string>SHA-256 fingerprint, only for a self-signed https certificate</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
            <widget class="QPushButton" name="remoteDaemonTest">
             <property name="text">
              <string>Test Connection</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="1">
+          <item row="6" column="1">
            <widget class="QLabel" name="remoteDaemonStatus">
             <property name="wordWrap">
              <bool>true</bool>
@@ -972,7 +999,14 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="0" colspan="2">
+          <item row="7" column="0">
+           <widget class="QPushButton" name="remoteDaemonTrust">
+            <property name="text">
+             <string>Trust Certificate</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0" colspan="2">
            <widget class="QLabel" name="remoteDaemonInfo">
             <property name="wordWrap">
              <bool>true</bool>
@@ -1062,7 +1096,9 @@
   <tabstop>remoteDaemonUrl</tabstop>
   <tabstop>remoteDaemonUser</tabstop>
   <tabstop>remoteDaemonPassword</tabstop>
+  <tabstop>remoteDaemonCertificate</tabstop>
   <tabstop>remoteDaemonTest</tabstop>
+  <tabstop>remoteDaemonTrust</tabstop>
  </tabstops>
  <resources/>
  <connections>
