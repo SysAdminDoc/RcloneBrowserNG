@@ -143,15 +143,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 Open GitHub issues checked against this list on 2026-09-26. None of the three was on the list before. #17 relates to the P3 README item above about `tasks.json` and `tasks.bin` (PR #15).
 
-### P1
-
-- [ ] P1: Not every remote is listed; the full list flashes during refresh (issue #16)
-  Reported: Achim16, 2026-09-05, v2.0.2 on Windows 10 22H2; hrpv confirmed on 2026-09-07 and said the #13 fix did not work for them either.
-  Why: eight remotes are configured (drive, sftp, two alias, two crypt, OneDrive, pcloud) and the list shows six. sftp and pcloud are missing. Pressing refresh shows all eight for a fraction of a second in the classic order, then the list collapses again, so the remotes are parsed and then filtered out, most likely by a type allowlist or a sort-and-dedupe step that drops types it does not know.
-  Next: reproduce with a config containing sftp and pcloud remotes; find the filter after `rclone listremotes --long`; list every remote regardless of type, sorted by name; a test feeds a config with all eight types and expects eight rows.
-  Evidence: https://github.com/SysAdminDoc/RcloneBrowserNG/issues/16
-  Complexity: S
-
 ### P2
 
 - [ ] P2: Stop sharing the classic RcloneBrowser's AppData folder and settings (issue #17)

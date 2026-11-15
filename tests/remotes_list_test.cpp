@@ -21,6 +21,7 @@
 #include <QTest>
 #include <QTimer>
 
+#include <functional>
 #include <memory>
 
 // A crypt remote's backing remote used to be hidden unconditionally by an
@@ -173,6 +174,87 @@ private slots:
     QVERIFY(notice->text().contains(QLatin1String("Preferences")));
 
     setHideCryptBackends(false);
+  }
+
+  void reportersEightRemotesAreAllListed() {
+    // Issue #16: drive, sftp, two alias, two crypt, OneDrive and pCloud
+    // remotes. 2.0.2 dropped the sftp and pCloud remotes a moment after the
+    // list painted, because the two crypt remotes sit on top of them.
+    const QString configPath =
+        QDir(mConfigDir.path()).filePath("issue16.conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray dir = mConfigDir.path().toUtf8();
+    config.write("[gdrive]\ntype = drive\nscope = drive\n\n"
+                 "[nas]\ntype = sftp\nhost = nas.invalid\nuser = backup\n\n"
+                 "[documents]\ntype = alias\nremote = " + dir + "\n\n"
+                 "[pictures]\ntype = alias\nremote = " + dir + "\n\n"
+                 "[nas-crypt]\ntype = crypt\nremote = nas:vault\n"
+                 "password = 3AXGGH8DsHTe5-vwtLbAOA\n\n"
+                 "[pcloud-crypt]\ntype = crypt\nremote = pcloud:vault\n"
+                 "password = 3AXGGH8DsHTe5-vwtLbAOA\n\n"
+                 "[onedrive]\ntype = onedrive\ndrive_type = personal\n\n"
+                 "[pcloud]\ntype = pcloud\n");
+    config.close();
+
+    auto useConfig = [](const QString &path) {
+      QSettings settings;
+      settings.setValue("Settings/rcloneConf", path);
+      settings.sync();
+      SetRcloneConf(path);
+    };
+    useConfig(configPath);
+    struct Restore {
+      std::function<void()> fn;
+      ~Restore() { fn(); }
+    } restore{[&]() {
+      useConfig(mConfigPath);
+      setHideCryptBackends(false);
+    }};
+
+    const QStringList expected = {"documents",  "gdrive",   "nas",
+                                  "nas-crypt",  "onedrive", "pcloud",
+                                  "pcloud-crypt", "pictures"};
+    auto names = [](QListWidget *remotes, bool visibleOnly) {
+      QStringList out;
+      for (int i = 0; i < remotes->count(); ++i) {
+        if (!visibleOnly || !remotes->item(i)->isHidden()) {
+          out << remotes->item(i)->text();
+        }
+      }
+      out.sort();
+      return out;
+    };
+
+    {
+      setHideCryptBackends(false);
+      std::unique_ptr<MainWindow> window(new MainWindow(true));
+      auto *remotes = window->findChild<QListWidget *>("remotes");
+      QVERIFY(remotes != nullptr);
+      QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), 8, 120000);
+      QTest::qWait(2000);
+      QCOMPARE(names(remotes, true), expected);
+    }
+
+    {
+      // Opting in to hiding takes out exactly the two backing remotes and
+      // says so.
+      setHideCryptBackends(true);
+      std::unique_ptr<MainWindow> window(new MainWindow(true));
+      auto *remotes = window->findChild<QListWidget *>("remotes");
+      QVERIFY(remotes != nullptr);
+      QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), 8, 120000);
+      QTRY_COMPARE_WITH_TIMEOUT(names(remotes, true).size(), 6, 120000);
+      QStringList hidden = expected;
+      for (const QString &name : names(remotes, true)) {
+        hidden.removeAll(name);
+      }
+      QCOMPARE(hidden, QStringList({"nas", "pcloud"}));
+      auto *notice = window->findChild<QLabel *>("remotesHiddenNotice");
+      QVERIFY(notice != nullptr);
+      QVERIFY2(notice->text().contains(QLatin1String("2 remotes are hidden")),
+               qPrintable(notice->text()));
+    }
   }
 
   void dualPaneLocalFilesystemListsTheDisk() {
