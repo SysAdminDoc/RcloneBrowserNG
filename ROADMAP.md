@@ -4,7 +4,23 @@ Actionable work only. Historical and completed roadmap material is archived in C
 
 ## Research-Driven Additions
 
-Added 2026-09-04 from the research pass recorded in RESEARCH.md.
+Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 2026-11-15 pass.
+
+### P0
+
+- [ ] P0 — Raise the rclone security floor to 1.76.0 and name the advisories that reach this app
+  Why: rclone 1.75.2 and 1.76.0 fixed 18 advisories, and 17 of them list 1.75.1, the current floor, as affected. The app itself runs the affected `serve webdav`, `serve s3`, `selfupdate` and network-facing `rcd` paths. The floor only warns, once per rclone version (`src/main_window.cpp:2110-2128`), so raising it locks nobody out.
+  Evidence (Verified): `src/rclone_security_floor.cpp:10-11` (`kMinimumVersion` 1.75.1, `kReviewedDate` 2026-09-04); GHSA-44pm-2q5p-fm63 and GHSA-gj73-fh6v-92fj (serve webdav), GHSA-w3h7-jxxq-vfrp and GHSA-qjw8-8hmp-c3m6 (serve s3), GHSA-w33h-3qgq-8mv8 (selfupdate), GHSA-f8p4-8g4j-q3m2 (RC JSON read before authorization), fixed in 1.75.2 (2026-10-09) or 1.76.0 (2026-11-06); the Serve menu at `src/remote_widget.cpp:2006-2020`.
+  Touches: `src/rclone_security_floor.cpp`, `tests/rclone_security_floor_test.cpp`
+  Acceptance: `kMinimumVersion` is 1.76.0 and `kReviewedDate` 2026-11-15; `AdvisorySummary()` names the serve webdav, serve s3, selfupdate and RC JSON advisories in place of the three from 2026-09-04; the test flags 1.75.2 and passes 1.76.0; a transfer through the local rc engine still completes against rclone 1.76.0, which rejects unauthorized and unknown rc calls before reading the request (the GHSA-f8p4-8g4j-q3m2 fix).
+  Complexity: S
+
+- [ ] P0 — Stop offering `rclone selfupdate` to rclone builds whose updater trusts an unsigned hash
+  Why: on rclone 1.75.1 and older, the binary that runs `selfupdate` is the one GHSA-w33h-3qgq-8mv8 describes, so the app's one-click upgrade is the vulnerable path.
+  Evidence (Verified): `src/main_window.cpp:5021-5059` adds "Run selfupdate" to the update prompt for any older rclone and starts `rclone selfupdate`; GHSA-w33h-3qgq-8mv8 (high) covers `>=1.55.0, <=1.75.1` and is fixed in 1.75.2.
+  Touches: `src/main_window.cpp` (move the choice into a helper beside `src/rclone_security_floor.cpp`), `tests/rclone_security_floor_test.cpp`
+  Acceptance: below 1.75.2 the prompt offers "Open download page" (rclone.org/downloads) with one line saying why, and no selfupdate button; 1.75.2 and later keep "Run selfupdate"; a test covers 1.75.1, 1.75.2 and a `-DEV` version string.
+  Complexity: S
 
 ### P1
 
@@ -13,6 +29,28 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Facts checked 2026-11-15: endoflife.date lists 6.12 as LTS, released 2026-09-30, open-source patches until 2027-04-01, latest 6.12.0. It gives 6.11's end as 2026-09-30, not the table's 2026-09-22, and 6.11.3 exists. The CVE records give CVE-2026-6210 and CVE-2026-9499 as affecting 6.9.0 up to 6.11.1 (and 6.8 below 6.8.8), so 6.12.0 carries both fixes.
   Touches: `scripts/validate_qt_version.py` (6.12 row with `patched_from` 6.12.0, 6.11 end date, `RECOMMENDED`, `REVISIT_ON`), `SECURITY.md` Qt branch policy, the 6.11.2 paths in the release scripts and README build steps, a local `C:\Qt\6.12.0\msvc2022_64` install.
   Acceptance: the whole test suite passes against Qt 6.12, the validator passes 6.12.x and refuses 6.11.x, and SECURITY.md matches the table.
+  Complexity: M
+  Note (2026-11-15): the Qt advisory list adds CVE-2026-95620 and CVE-2026-96432 (QNetworkAccessManager over HTTP/2) and CVE-2026-101201 (JSON parsing). All three affect 6.11.2 and neither 6.11.3 nor 6.12.0. The app reaches them through `src/remote_daemon.cpp` and the GitHub API calls in `src/main_window.cpp`. CVE-2026-116337 (Qt Network HTTP response memory exhaustion) is fixed only in 6.8.10 and 6.12.1, and download.qt.io lists only 6.12.0 for the 6.12 branch, so the 6.12 row's `patched_from` moves to 6.12.1 once it ships.
+
+- [ ] P1 — Point the WinFsp warning at the build that carries every published fix
+  Why: the check warns only at 2.1.25156 and older and recommends "2026 Beta1 or newer", but Beta1 lists no CVE-2026-7162 fix, and six more vulnerability fixes landed in Beta4 and Beta5.
+  Evidence (Verified): `src/main_window.cpp:5165-5178`; WinFsp release notes for Beta1 2.2.26112 (2026-04-22), Beta2 2.2.26183 (2026-07-02, first CVE-2026-7162 fix), Beta4 2.2.26215 (2026-08-03, two more fixes) and Beta5 2.2.26286 (2026-10-13, four more); the latest stable is 2.1 from 2025-06-05.
+  Touches: `src/main_window.cpp` (move the version table into new `src/winfsp_floor.{h,cpp}`), new `tests/winfsp_floor_test.cpp`, `CMakeLists.txt`
+  Acceptance: any installed WinFsp below 2.2.26286 gets the warning, which names CVE-2026-3006, CVE-2026-7162 and the later fixes and recommends 2026 Beta5 or newer; 2.2.26286 and later get none; tests cover 2.1.25156, 2.2.26112, 2.2.26215 and 2.2.26286. Whether to recommend a prerelease is Open Question 1 in RESEARCH.md.
+  Complexity: S
+
+- [ ] P1 — Warn on plain-HTTP remote daemons and make a TLS daemon usable
+  Why: remote mode sends the rcd user name and password in a Basic auth header on every request, and the README's setup binds rcd to every interface over plain HTTP, while rclone's docs treat rc access as shell access.
+  Evidence (Verified): `src/remote_daemon.cpp` (`NormalizeUrl` prepends `http://`, and nothing handles `sslErrors`, so a self-signed `https` daemon can't connect); README "Using an rclone on another computer" (`rclone rcd --rc-addr :5572`, `http://nas.local:5572`); rclone.org/rc: "Access to the rc API is equivalent to shell access as the user running rclone", "Do not bind the rc to a network address you do not control", and `--rc-cert`/`--rc-key` for TLS.
+  Touches: `src/remote_daemon.{h,cpp}`, `src/preferences_dialog.{ui,cpp}`, `README.md`, `tests/remote_daemon_test.cpp`
+  Acceptance: Preferences shows an inline warning label (no dialog) when the address is `http://` to anything but loopback; an `https://` daemon with a self-signed certificate connects once the user accepts the SHA-256 fingerprint shown in Preferences, and a changed fingerprint refuses the connection with a status message showing both; the README guide shows `--rc-cert`/`--rc-key` with `--rc-min-tls-version tls1.2`, plus an SSH tunnel to an rcd bound to localhost; the placeholder becomes `https://nas.local:5572`; tests cover loopback, LAN and https classification and fingerprint matching. Open Question 3 in RESEARCH.md asks whether fingerprint trust is acceptable.
+  Complexity: M
+
+- [ ] P1 — Cap deletions on saved and scheduled syncs
+  Why: a scheduled sync whose source comes back empty (an unmounted drive, an expired token) deletes the destination, and the dry-run deletion preview only helps someone who is at the screen.
+  Evidence (Verified): no `--max-delete` anywhere in `src/` or `tests/`; rclone docs: past `--max-delete` "a fatal error will be generated and rclone will stop the operation in progress", and exit code 7 is a fatal error; rclone 1.76.0 fixed "rc ignoring global `--dry-run` and `--max-delete` settings"; Airclone README: "A repeating Sync always carries a delete cap, and tripping it pauses every schedule until you look"; Alto v0.9.0 mass-deletion protection; Bisync Hub's `TOO_MANY_DELETES` (forum 54406). The P2 transfer-efficiency item covers speed flags only.
+  Touches: `src/job_options.{h,cpp}`, `src/job_options_store.cpp`, `src/transfer_dialog.{ui,cpp}`, `src/rclone_exit_code.cpp`, `src/job_history.cpp`, `src/main.cpp` (`--run-task`), `tests/job_options_store_test.cpp`, `tests/dryrun_contract_test.cpp`, `tests/rc_sync_request_test.cpp`, `tests/exit_code_test.cpp`
+  Acceptance: Sync offers "Stop if more than N files would be deleted", which adds `--max-delete N` and reaches `_config` on the rc route through `options/info`; the saved-task store round-trips it with a schema bump; a run stopped by the cap (exit 7 with rclone's cap error in its output) shows as "Stopped by delete cap" in job history, and a scheduled run sends its failure webhook; the copy-command output includes the flag; against an rclone older than 1.76.0 the rc route is tested with a real daemon and falls back to the CLI route if the cap isn't honored (needs live validation). The default is Open Question 2 in RESEARCH.md.
   Complexity: M
 
 ### P2
@@ -58,6 +96,7 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/mount_widget.{ui,cpp}`, `src/rclone_rc_engine.{h,cpp}`, `src/vfs_upload_state.{h,cpp}`
   Acceptance: a mounted remote's panel offers "Refresh listing" (posting `vfs/refresh` with `recursive`) and shows the pending-upload count and cache size from `vfs/queue` and `vfs/stats`, refreshed on a timer; the existing dirty-cache unmount warning quotes the same numbers.
   Complexity: M
+  Note (2026-11-15): the author of Monti, another rclone GUI, wrote it after a "VFS cache that had grown to 40 GB" went unnoticed (forum.rclone.org topic 54504).
 
 - [ ] P2 — Fan a saved task out to several destinations
   Why: one source to many destinations is a paid feature in the closest direct competitor and maps cleanly onto the existing saved-task and staged-queue model.
@@ -72,6 +111,48 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/remote_provider.{h,cpp}`, `src/main_window.cpp`, new `src/provider_form.{h,cpp}`, `CMakeLists.txt`, new `tests/provider_form_test.cpp`
   Acceptance: choosing a provider renders a form generated from its options, with the widget picked by `Type`, advanced options on a second tab, `Exclusive` options as a closed combo of `Examples`, `Sensitive` and `IsPassword` fields masked and excluded from the copy-command output, and options filtered by `MatchProvider` against the selected provider variant; simple backends (local, alias, crypt, S3, SFTP, WebDAV) are created entirely in-app; backends that need OAuth or extra steps fall into the `--continue` state loop and surface each question in the same form, still opening a browser for OAuth; the terminal handoff remains as the explicit fallback; a test drives the form against a recorded `config/providers` payload and asserts widget type, visibility and masking per option.
   Complexity: L
+
+- [ ] P2 — Follow rclone 1.76 glob classes and `--bwlimit` time rules
+  Why: rclone 1.76.0 made `[!...]` a negated class and `[^...]` exclude `/`, and it rejects timetable times without a colon or with signed digits, so the filter explainer now describes two pattern forms wrongly and a saved timetable can stop a job at start.
+  Evidence (Verified): rclone 1.76.0 changelog ("Reject `--bwlimit` times without a colon or with signed digits", plus the two glob entries); `src/filter_pattern.cpp:89-107` replaces a class with its first character; `src/transfer_dialog.cpp:42-90` takes free-text times and builds `--bwlimit "..."` without checking them.
+  Touches: `src/filter_pattern.cpp`, `tests/filter_pattern_test.cpp`, `src/transfer_dialog.cpp` (move the timetable check into a testable function), new `tests/bwlimit_timetable_test.cpp`, `CMakeLists.txt`
+  Acceptance: the explainer gives a correct example for `[abc]`, `[!abc]` and `[^abc]` and says `[^...]` never matches `/`; the timetable editor marks a time like `0800` or `+08:00` inline, and neither the preview nor the saved task ever contains one; tests cover both.
+  Complexity: S
+
+- [ ] P2 — Use fuse-t's FSKit backend only when its extension is enabled
+  Why: on macOS 26 the app adds `-o backend=fskit` to every fuse-t mount where the user hasn't picked a backend, but fuse-t calls FSKit experimental and has the user enable the extension by hand.
+  Evidence: `src/mount_backend.cpp:160-167` (Verified); fuse-t 1.1.0 release notes: "Run fuse-t.app from /Applications and follow instructions to manually enable the FSKit extension" (Verified); what a mount does with the extension off (Needs live validation, Open Question 4 in RESEARCH.md); detecting the extension through `pluginkit` (Assumption).
+  Touches: `src/mount_backend.{h,cpp}`, `tests/mount_backend_test.cpp`
+  Acceptance: with the extension enabled the mount uses `backend=fskit`; with it off the app uses fuse-t's default backend and the mount card shows one line on enabling FSKit; checked on a macOS 26 Mac with fuse-t 1.2.9.
+  Complexity: S
+
+- [ ] P2 — Keep the computer awake while jobs run
+  Why: a laptop that sleeps mid-sync stops the job, and both a native rclone GUI and a mature backup GUI now block sleep while they work.
+  Evidence: no `SetThreadExecutionState`, IOKit power assertion or inhibit call in `src/` (Verified); Vorta v0.12.0 "Block system sleep while a backup is running (#2410)" (Verified); RcloneExplorer 5.4.3 "the computer stays awake during transfers through the desktop portal" (Verified); Rclone Manager v0.3.3 power management (Verified).
+  Touches: new `src/sleep_inhibitor.{h,cpp}`, `src/main_window.cpp` (job start and finish), `src/preferences_dialog.{ui,cpp}`, `src/CMakeLists.txt` (IOKit on macOS, QtDBus on Linux)
+  Acceptance: a "Keep the computer awake while transfers run" preference, on by default, holds one inhibitor from the first job start to the last job end, and mounts alone don't hold it; Windows uses `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`, macOS an `IOPMAssertionCreateWithName` assertion of type `PreventUserIdleSystemSleep`, Linux the `org.freedesktop.portal.Inhibit` portal; `powercfg /requests`, `pmset -g assertions` and `systemd-inhibit --list` show it during a job and not after.
+  Complexity: M
+
+- [ ] P2 — Start RcloneBrowserNG at login
+  Why: auto-mount on launch only survives a reboot if the app starts by itself, and users of four other projects ask for exactly that.
+  Evidence (Verified): auto-mount at `src/main_window.cpp:350-363` and `--minimized` at `src/main.cpp:449-453`, but no login entry anywhere (LaunchAgents are written only for schedules, `src/schedule_manager.cpp:459`); kapitainsky/RcloneBrowser #250; Reddit r/rclone 1wayift; rclone #9245; Zarestia-Dev/rclone-manager #91; HN 46075442 on paying for "auto-remount on login". PR #14 made start-minimized depend on always-show-in-tray.
+  Touches: new `src/login_item.{h,cpp}`, `src/preferences_dialog.{ui,cpp}`, `src/main_window.cpp`, new `tests/login_item_test.cpp`, `CMakeLists.txt`
+  Acceptance: a "Start at login" preference writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` on Windows, a LaunchAgent plist on macOS and `~/.config/autostart/rclone-browser-ng.desktop` on Linux, each launching this binary with `--minimized`, and turns on always-show-in-tray with it; the checkbox reads its state from the entry and repairs one that points at a moved binary; a portable copy registers its own path; an auto-mount that fails at login shows a tray message naming the remote and rclone's error (rclone #9899); tests cover entry generation per platform.
+  Complexity: M
+
+- [ ] P2 — Announce job start, progress and finish to screen readers
+  Why: a blind user asked for a screen-reader-accessible rclone app with "accurate progress info", and NG's job cards change without telling assistive technology.
+  Evidence: Reddit r/rclone 1v14e3v (Verified); `QAccessibleAnnouncementEvent` is "Since: Qt 6.8", while source builds floor at Qt 6.4 (`CMakeLists.txt:17`) (Verified); `src/` sets accessible names but posts no announcements (Verified).
+  Touches: `src/job_widget.cpp`, `src/rc_job_widget.cpp`, `src/main_window.cpp`, `tests/accessibility_smoke_test.cpp`
+  Acceptance: on Qt 6.8 and newer, starting, finishing and failing a job each post a polite `QAccessibleAnnouncementEvent` naming the job and result, and progress is announced at most every 25%; on older Qt a status label's accessible-name change carries the same text; an NVDA and Narrator pass on Windows 11 (add remote, browse, upload, job finish) hears each one, with findings recorded in CHANGELOG or as ROADMAP items; the smoke test asserts the events fire.
+  Complexity: M
+
+- [ ] P2 — Show what a finished sync, copy or move changed
+  Why: after a run the job card gives counts but not which files were added, replaced or deleted, which a per-run report in Rclone Manager v0.3.6 and a forum request both cover.
+  Evidence (Verified): `rclone sync --combined FILE` writes one line per file marked `=`, `-`, `+`, `*` or `!` (rclone_sync.md at v1.76.0); rclone 1.76.0 added report parameters (`combined`, `missingOnSrc`, `missingOnDst`, `match`, `differ`, `error`, `destAfter`) to `sync/sync`, `sync/copy` and `sync/move`; `src/folder_compare.cpp:315` already reads `check --combined -` output; Rclone Manager v0.3.6 File Report; forum.rclone.org topic 53728.
+  Touches: `src/job_options.cpp`, `src/rc_sync_request.cpp`, `src/job_widget.cpp`, `src/rc_job_widget.cpp`, `src/job_history.cpp`, `src/folder_compare.cpp` (share the parser), new `tests/run_report_test.cpp`
+  Acceptance: each sync, copy or move keeps a report in the app data folder (CLI `--combined`, rc `combined` on rclone 1.76.0 and later); the job card's "Changes" view lists added, replaced, deleted and failed files with a filter; reports are pruned with job history; with an older rc daemon the view says the report needs rclone 1.76.0.
+  Complexity: M
 
 ### P3
 
@@ -95,6 +176,7 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/folder_compare.{h,cpp}`, `src/job_widget.cpp`, new conflict dialog
   Acceptance: after a bisync run that reported conflicts, the job panel offers "Review conflicts", listing each pair with size, modification time and hash, and per-file keep-path1 / keep-path2 / keep-both actions that issue the corresponding copy or delete.
   Complexity: L
+  Note (2026-11-15): Rclone Manager v0.3.6 shipped resolution of Check and BiSync conflicts, and Bisync Hub (forum.rclone.org topic 54406) asks for the same thing.
 
 - [ ] P3 — Add an in-app update path for the application itself
   Why: the app checks GitHub and opens a browser, which is the least likely of the update routes to be followed through; rclone gets `selfupdate` but the GUI does not.
@@ -102,7 +184,7 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/main_window.cpp`, `scripts/release_AppImage.sh`, `scripts/release_windows.cmd`
   Acceptance: on Linux the AppImage offers "Download and apply update" using the embedded zsync metadata and verifies the SHA256 before swapping; on Windows and macOS the app downloads the release asset, verifies its `SHA256SUMS` entry, and opens the verified installer; a failed hash aborts with a visible error.
   Complexity: M
-  Note: depends on the P0 release-publishing item; there is nothing to update to until releases exist.
+  Note (2026-11-15): the release-publishing dependency is met. v2.0.2 was published on 2026-09-05 with a `SHA256SUMS` file, so there is something to update to.
 
 - [ ] P3 — Fix the latent memory-safety and lifetime defects found in the audit
   Why: none is reachable today, but each is one call-site change away from an out-of-bounds access or a per-invocation leak, and the project has no sanitizer build to catch them.
@@ -124,6 +206,7 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/CMakeLists.txt`, whichever sources the newly enabled warnings flag
   Acceptance: `/wd4189` is removed and the resulting warnings are fixed rather than suppressed; `/wd4100` is either removed or matched by `-Wno-unused-parameter` on the other compilers so both legs agree; a Release build is clean on MSVC and GCC.
   Complexity: S
+  Note (2026-11-15): PR #19 (giflw, merged 2026-11-14) needed source changes to build with warnings as errors, so outside contributors do build that way.
 
 - [ ] P3 — Require Qt Test only when tests are being built
   Why: `find_package` demands the Test component unconditionally, so a Qt installation without QtTest cannot configure the application even with testing disabled.
@@ -144,4 +227,18 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Evidence: `setApplicationName` without `QStandardPaths::setTestModeEnabled` in `tests/app_log_test.cpp`, `async_helpers_test.cpp`, `layout_regression_test.cpp`, `rc_route_test.cpp`, `remote_daemon_test.cpp` and `remotes_list_test.cpp`; `accessibility_smoke_test.cpp` and `adaptive_bandwidth_test.cpp` use test mode, and none of the eight removes its folder. The writers are `src/app_log.cpp:133`, `src/job_history.cpp:84` and `src/identity_migration.cpp:205`.
   Touches: those eight tests (test mode in `initTestCase` where it's missing, `removeRecursively()` of the app's own folder in `cleanupTestCase`); `identity_migration_test.cpp` needs care because it sets the legacy name on purpose.
   Acceptance: a full `ctest` run leaves `%LOCALAPPDATA%` with no folder it didn't have before (compare a listing before and after), and every touched test still passes.
+  Complexity: S
+
+- [ ] P3 — Add "Stop all jobs" and "Unmount all" to the tray menu
+  Why: when a remote stops answering, every running job and mount has to be stopped one card at a time from the main window, and a mount that can't reach its remote can make Windows Explorer very unresponsive.
+  Evidence (Verified): the tray menu has only Show, Job History, Watch Folders and Quit (`src/main_window.cpp:1641-1661`); Rclone Manager v0.3.3 "Emergency Stop" ("immediately unmounts all remotes and halts all active serves"); forum.rclone.org topic 54067.
+  Touches: `src/main_window.cpp`, `src/job_widget.cpp`, `src/mount_widget.cpp`, `src/stream_widget.cpp`, `src/remote_widget.cpp` (serves)
+  Acceptance: both actions run at once with no dialog and finish with a tray message giving the count stopped; "Unmount all" skips any mount whose VFS cache still has uploads pending and names it in that message, so the existing dirty-cache warning is never bypassed; both entries are disabled when there's nothing to stop.
+  Complexity: S
+
+- [ ] P3 — Preview files in remote mode through `operations/getfile`
+  Why: preview is local-only today, so a user browsing a remote daemon sees the action disabled, and rclone 1.76.0 added an rc call that returns a file's contents.
+  Evidence (Verified): `src/remote_widget.cpp:1828-1836` (the local-only tooltip); rclone 1.76.0 rc docs for `operations/getfile`: `maxSize` "can only lower the built-in maximum" (default 2097152, 2 MiB) and `base64` returns the contents base64-encoded.
+  Touches: `src/remote_daemon.{h,cpp}`, `src/remote_widget.cpp`, `tests/remote_daemon_test.cpp`
+  Acceptance: against a daemon at 1.76.0 or newer, preview fetches files of 2 MiB or less with `base64` and shows them in the existing preview; a larger file says it's over the limit; an older daemon keeps the local-only tooltip; tests cover the version gate and base64 decoding.
   Complexity: S
