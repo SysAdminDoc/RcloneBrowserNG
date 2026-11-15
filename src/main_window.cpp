@@ -140,9 +140,10 @@ void setStagedTransferItem(QListWidgetItem *item,
 
 } // namespace
 
-// Fusion-based dark theme used on Windows, Linux and older macOS.
-// Includes Disabled and PlaceholderText roles so secondary states
-// stay readable in dark mode.
+#if !defined(Q_OS_MACOS)
+// Fusion-based dark theme used on Windows and Linux. macOS follows the
+// system appearance instead. Includes Disabled and PlaceholderText roles so
+// secondary states stay readable in dark mode.
 static void applyDarkTheme() {
   qApp->setStyle(QStyleFactory::create("Fusion"));
 
@@ -175,6 +176,7 @@ static void applyDarkTheme() {
 
   UiPolish::ApplyApplicationStyle(true);
 }
+#endif
 
 MainWindow::MainWindow(bool initializeRuntime)
     : mInitializeRuntime(initializeRuntime) {
