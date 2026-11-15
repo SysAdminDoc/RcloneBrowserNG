@@ -14,10 +14,20 @@ else()
   set(CMAKE_CXX_STANDARD 17)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   add_definitions("-pedantic -Wall -Wextra -Werror -Wno-deprecated-declarations")
-  add_compile_options(-fstack-protector-strong -fcf-protection=full)
+  add_compile_options(-fstack-protector-strong)
+  # -fcf-protection is x86 only. Apple Silicon and ARM Linux compilers refuse
+  # it outright, which stopped the build there.
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-fcf-protection=full RCLONE_BROWSER_HAVE_CF_PROTECTION)
+  if(RCLONE_BROWSER_HAVE_CF_PROTECTION)
+    add_compile_options(-fcf-protection=full)
+  endif()
   add_definitions(-D_FORTIFY_SOURCE=3)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-  add_link_options(-Wl,-z,relro,-z,now)
+  # RELRO is an ELF feature. Apple's linker has no -z options.
+  if(NOT APPLE)
+    add_link_options(-Wl,-z,relro,-z,now)
+  endif()
 endif()
 
 if (APPLE)
