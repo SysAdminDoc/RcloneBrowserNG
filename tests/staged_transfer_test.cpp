@@ -21,6 +21,7 @@ private slots:
     original.backupDirTemplate = "C:/backups/{date}";
     original.backupRetainCount = 7;
     original.verifyAfterTransfer = true;
+    original.vssSnapshot = true;
     original.hooksTrusted = true;
 
     const QJsonDocument document =
@@ -51,6 +52,7 @@ private slots:
              original.backupRetainCount);
     QCOMPARE(restored.first().verifyAfterTransfer,
              original.verifyAfterTransfer);
+    QCOMPARE(restored.first().vssSnapshot, original.vssSnapshot);
     QCOMPARE(restored.first().hooksTrusted, original.hooksTrusted);
   }
 
@@ -77,6 +79,7 @@ private slots:
     QCOMPARE(restored.first().backupRetainCount, 3);
     QVERIFY(restored.first().heartbeatUrl.isEmpty());
     QVERIFY(!restored.first().verifyAfterTransfer);
+    QVERIFY(!restored.first().vssSnapshot);
   }
 
   void rejectsUnprotectedVersion2Secrets() {

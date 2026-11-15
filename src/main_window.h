@@ -14,13 +14,14 @@ class JobWidget;
 class RcJobWidget;
 class RcloneRcEngine;
 class RemoteWidget;
+class VssSession;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
   explicit MainWindow(bool initializeRuntime = true);
-  ~MainWindow();
+  ~MainWindow() override;
 
   // Shows the tray icon even when "Always show in tray" is off. Called
   // before the window is hidden at startup so a minimized start always
@@ -53,7 +54,9 @@ private slots:
   void addTransfer(const QString &message, const QString &source,
                    const QString &dest, const QStringList &args,
                    const QString &backupDirTemplate = QString(),
-                   int backupRetainCount = 0);
+                   int backupRetainCount = 0,
+                   bool verifyAfterTransfer = false,
+                   bool vssSnapshot = false);
   void deleteItems(const RcDeleteBatch::Plan &plan);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
@@ -145,7 +148,23 @@ private:
                              const QString &taskName = QString(),
                              const QString &backupDirTemplate = QString(),
                              int backupRetainCount = 0,
-                             bool verifyAfterTransfer = false);
+                             bool verifyAfterTransfer = false,
+                             bool vssSnapshot = false);
+  // The part of addTransferViaProcess after the concurrency check. With a
+  // snapshot, args already read through it and the job's card owns it.
+  void startTransferProcess(const QString &message, const QString &source,
+                            const QString &dest, const QStringList &args,
+                            const QString &heartbeatUrl,
+                            const QString &postCommand,
+                            const QString &webhookUrl,
+                            const QString &taskName,
+                            const QString &backupDirTemplate,
+                            int backupRetainCount, bool verifyAfterTransfer,
+                            VssSession *snapshot);
+  void snapshotFailed(const QString &message, const QString &source,
+                      const QString &dest, const QString &error,
+                      const QString &heartbeatUrl,
+                      const QString &webhookUrl, const QString &taskName);
   void addRcJobWidget(RcJobWidget *widget,
                       const QString &heartbeatUrl = QString(),
                       const QString &webhookUrl = QString(),

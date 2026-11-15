@@ -25,7 +25,9 @@ signals:
   void addTransfer(const QString &message, const QString &source,
                    const QString &remote, const QStringList &args,
                    const QString &backupDirTemplate = QString(),
-                   int backupRetainCount = 0);
+                   int backupRetainCount = 0,
+                   bool verifyAfterTransfer = false,
+                   bool vssSnapshot = false);
   // Several items selected and deleted together.
   void deleteItems(const RcDeleteBatch::Plan &plan);
   void enqueueTransfer(const QString &message, const QString &source,
@@ -38,7 +40,8 @@ signals:
                        const QString &webhookUrl = QString(),
                        const QString &taskName = QString(),
                        bool verifyAfterTransfer = false,
-                       bool hooksTrusted = false);
+                       bool hooksTrusted = false,
+                       bool vssSnapshot = false);
   void addMount(const QString &remote, const QString &folder);
   void addStream(const QString &remote, const QString &stream);
   void requestReconnect(const QString &remote);

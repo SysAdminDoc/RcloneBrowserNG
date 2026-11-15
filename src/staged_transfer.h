@@ -16,6 +16,7 @@ struct StagedTransfer {
   int backupRetainCount = 0;
   bool verifyAfterTransfer = false;
   bool hooksTrusted = false;
+  bool vssSnapshot = false;
 };
 
 namespace StagedTransferStore {

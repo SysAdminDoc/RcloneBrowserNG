@@ -31,6 +31,7 @@ QJsonObject toJson(const StagedTransfer &transfer) {
   object.insert("backupRetainCount", transfer.backupRetainCount);
   object.insert("verifyAfterTransfer", transfer.verifyAfterTransfer);
   object.insert("hooksTrusted", transfer.hooksTrusted);
+  object.insert("vssSnapshot", transfer.vssSnapshot);
   return object;
 }
 
@@ -142,10 +143,18 @@ bool readEntry(const QJsonObject &object, bool legacy, StagedTransfer *transfer,
     }
     return false;
   }
+  if (object.contains("vssSnapshot") &&
+      !object.value("vssSnapshot").isBool()) {
+    if (error) {
+      *error = "staged vssSnapshot must be boolean";
+    }
+    return false;
+  }
   transfer->backupRetainCount = object.value("backupRetainCount").toInt(0);
   transfer->verifyAfterTransfer =
       object.value("verifyAfterTransfer").toBool(false);
   transfer->hooksTrusted = object.value("hooksTrusted").toBool(false);
+  transfer->vssSnapshot = object.value("vssSnapshot").toBool(false);
   return true;
 }
 

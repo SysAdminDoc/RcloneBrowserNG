@@ -91,6 +91,7 @@ set(SOURCE
   sync_preview.cpp
   schedule_dialog.cpp
   vfs_upload_state.cpp
+  vss_snapshot.cpp
   progress_dialog.cpp
   job_widget.cpp
   mount_widget.cpp
@@ -139,6 +140,7 @@ set(OTHER
   remote_path.h
   schedule_dialog.h
   vfs_upload_state.h
+  vss_snapshot.h
   progress_dialog.h
   job_widget.h
   mount_widget.h
@@ -170,7 +172,7 @@ if(WIN32)
   add_executable(RcloneBrowser WIN32 ${SOURCE} ${OTHER} ${UI} ${QRC})
   target_link_libraries(RcloneBrowser Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
   # iphlpapi: network interface counters for adaptive bandwidth.
-  target_link_libraries(RcloneBrowser version advapi32 iphlpapi)
+  target_link_libraries(RcloneBrowser version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp
     identity_migration.cpp job_options_store.cpp job_options.cpp)
   target_link_libraries(RcloneBrowserPassword Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network advapi32)

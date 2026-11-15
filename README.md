@@ -49,6 +49,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Cohesive light and dark native interface with clear focus states, status badges, context-aware action hints, inline validation and polished empty/loading/error feedback
 *   Drag & drop from your file explorer to upload
 *   Change a running transfer's speed limit, or let it slow down on its own while other apps use the network
+*   On Windows, copy files another program has open (an Outlook data file, a database) by reading them from a shadow copy of the drive
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
 *   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
 *   Put several remotes together as one, so they browse and mount as a single drive

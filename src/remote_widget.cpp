@@ -1415,16 +1415,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           opts->dryRun ? 0 : opts->backupRetainCount;
       const bool verifyAfterTransfer =
           opts->verifyAfterTransfer && !opts->dryRun;
+      const bool vssSnapshot = opts->snapshotApplies() && !opts->dryRun;
       QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
       if (t.wasEnqueued()) {
         emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
                              backupRetainCount, opts->heartbeatUrl,
                              opts->preCommand, opts->postCommand,
                              opts->webhookUrl, opts->description,
-                             verifyAfterTransfer, opts->hooksTrusted);
+                             verifyAfterTransfer, opts->hooksTrusted,
+                             vssSnapshot);
       } else {
         emit addTransfer(msg, src, dst, args, backupDirTemplate,
-                         backupRetainCount);
+                         backupRetainCount, verifyAfterTransfer,
+                         vssSnapshot);
       }
     }
   });
@@ -1479,7 +1482,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                                verifyAfterTransfer, opts->hooksTrusted);
         } else {
           emit addTransfer(msg, src, dst, args, backupDirTemplate,
-                           backupRetainCount);
+                           backupRetainCount, verifyAfterTransfer);
         }
       }
     } else {
@@ -1505,7 +1508,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                                verifyAfterTransfer, opts->hooksTrusted);
         } else {
           emit addTransfer(msg, src, dst, args, backupDirTemplate,
-                           backupRetainCount);
+                           backupRetainCount, verifyAfterTransfer);
         }
       }
     }
@@ -1645,16 +1648,20 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
               opts->dryRun ? 0 : opts->backupRetainCount;
           const bool verifyAfterTransfer =
               opts->verifyAfterTransfer && !opts->dryRun;
+          const bool vssSnapshot =
+              opts->snapshotApplies() && !opts->dryRun;
           const QString msg = QString("%1 from %2").arg(t.getMode()).arg(src);
           if (t.wasEnqueued()) {
             emit enqueueTransfer(msg, src, dst, args, backupDirTemplate,
                                  backupRetainCount, opts->heartbeatUrl,
                                  opts->preCommand, opts->postCommand,
                                  opts->webhookUrl, opts->description,
-                                 verifyAfterTransfer, opts->hooksTrusted);
+                                 verifyAfterTransfer, opts->hooksTrusted,
+                                 vssSnapshot);
           } else {
             emit addTransfer(msg, src, dst, args, backupDirTemplate,
-                             backupRetainCount);
+                             backupRetainCount, verifyAfterTransfer,
+                             vssSnapshot);
           }
         }
       });

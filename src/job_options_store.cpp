@@ -338,6 +338,7 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["backupRetainCount"] = jo.backupRetainCount;
   obj["conflictResolve"] = jo.conflictResolve;
   obj["verifyAfterTransfer"] = jo.verifyAfterTransfer;
+  obj["vssSnapshot"] = jo.vssSnapshot;
   return obj;
 }
 
@@ -400,6 +401,7 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   jo->backupRetainCount = obj["backupRetainCount"].toInt();
   jo->conflictResolve = obj["conflictResolve"].toString();
   jo->verifyAfterTransfer = obj["verifyAfterTransfer"].toBool(false);
+  jo->vssSnapshot = obj["vssSnapshot"].toBool(false);
   return jo;
 }
 } // namespace

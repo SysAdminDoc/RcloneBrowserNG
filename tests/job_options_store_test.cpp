@@ -21,6 +21,7 @@ JobOptions *makeTask() {
   jo->backupDir = "remote:backups/{date}";
   jo->backupRetainCount = 7;
   jo->conflictResolve = "newer";
+  jo->vssSnapshot = true;
   jo->uniqueId = QUuid::fromString("{11111111-2222-3333-4444-555555555555}");
   return jo;
 }
@@ -63,6 +64,7 @@ void verifyTaskMatches(const JobOptions *task, bool expectWatchFolder = true,
     QCOMPARE(task->backupRetainCount, 0);
     QVERIFY2(task->conflictResolve.isEmpty(),
              "legacy conflict strategy should be empty");
+    QVERIFY2(!task->vssSnapshot, "legacy tasks never used a snapshot");
   }
   QCOMPARE(task->uniqueId,
            QUuid::fromString("{11111111-2222-3333-4444-555555555555}"));
@@ -95,6 +97,50 @@ private slots:
     verifyTaskMatches(loaded.tasks.first());
     ClearJobOptionsList(&loaded.tasks);
     ClearJobOptionsList(&tasks);
+  }
+
+  // tasks.json, the file the app saves to.
+  void jsonRoundTrip() {
+    QList<JobOptions *> tasks;
+    tasks.append(makeTask());
+    tasks.first()->verifyAfterTransfer = true;
+
+    QByteArray bytes;
+    QBuffer out(&bytes);
+    QVERIFY(out.open(QIODevice::WriteOnly));
+    QString error;
+    QVERIFY2(WriteJobOptionsStoreJson(&out, tasks, &error), qPrintable(error));
+    out.close();
+
+    QBuffer in(&bytes);
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&in);
+    QVERIFY2(loaded.error.isEmpty(), qPrintable(loaded.error));
+    QCOMPARE(loaded.tasks.size(), 1);
+    const JobOptions *task = loaded.tasks.first();
+    verifyTaskMatches(task);
+    QVERIFY2(task->vssSnapshot, "snapshot option lost");
+    QVERIFY2(task->snapshotApplies(), "a Sync task reads its source only");
+    QVERIFY2(task->verifyAfterTransfer, "verify option lost");
+    ClearJobOptionsList(&loaded.tasks);
+    ClearJobOptionsList(&tasks);
+  }
+
+  void snapshotOnlyForReadOnlySources() {
+    JobOptions jo(false);
+    jo.vssSnapshot = true;
+    jo.operation = JobOptions::Copy;
+    QVERIFY(jo.snapshotApplies());
+    jo.operation = JobOptions::Sync;
+    QVERIFY(jo.snapshotApplies());
+    // Both change the source, which a snapshot can't take.
+    jo.operation = JobOptions::Move;
+    QVERIFY(!jo.snapshotApplies());
+    jo.operation = JobOptions::Bisync;
+    QVERIFY(!jo.snapshotApplies());
+    jo.operation = JobOptions::Copy;
+    jo.vssSnapshot = false;
+    QVERIFY(!jo.snapshotApplies());
   }
 
   void legacyFormatMigration() {

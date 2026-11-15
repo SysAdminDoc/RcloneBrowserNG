@@ -73,6 +73,15 @@ public:
   int backupRetainCount = 0;
   QString conflictResolve;
   bool verifyAfterTransfer = false;
+  // Windows: read a local source through a Volume Shadow Copy, so files
+  // another program holds open still copy.
+  bool vssSnapshot = false;
+
+  // Copy and Sync only read the source. Move deletes from it and Bisync
+  // writes to it, and a snapshot can't be changed.
+  bool snapshotApplies() const {
+    return vssSnapshot && (operation == Copy || operation == Sync);
+  }
 
   void setJobType(bool isDownload) {
     jobType = (isDownload) ? Download : Upload;

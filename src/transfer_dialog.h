@@ -51,6 +51,7 @@ private:
   QSpinBox *mBackupRetain = nullptr;
   QCheckBox *mWatchFolder = nullptr;
   QCheckBox *mVerifyAfter = nullptr;
+  QCheckBox *mVssSnapshot = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
   QLabel *mExcludeExplanation = nullptr;
@@ -63,6 +64,9 @@ private:
   bool wouldDeleteAtDestination() const;
   bool showDeletionSummary(const SyncPreview::Summary &summary);
   void startRemoteTypesProbe();
+  // Enables the snapshot option only for a source and operation it can
+  // serve, and says why in the tooltip when it can't.
+  void updateSnapshotOption();
 
   bool mIsDownload;
   bool mDryRun = false;

@@ -26,6 +26,7 @@
 #include "rclone_capabilities.h"
 #include "utils.h"
 #include "schedule_dialog.h"
+#include "vss_snapshot.h"
 #ifdef Q_OS_MACOS
 #include "osx_helper.h"
 #endif
@@ -94,6 +95,7 @@ constexpr int kStagedWebhookRole = Qt::UserRole + 9;
 constexpr int kStagedTaskNameRole = Qt::UserRole + 10;
 constexpr int kStagedVerifyRole = Qt::UserRole + 11;
 constexpr int kStagedHooksTrustedRole = Qt::UserRole + 12;
+constexpr int kStagedVssRole = Qt::UserRole + 13;
 
 StagedTransfer stagedTransferFromItem(const QListWidgetItem *item) {
   StagedTransfer transfer;
@@ -113,6 +115,7 @@ StagedTransfer stagedTransferFromItem(const QListWidgetItem *item) {
   transfer.taskName = item->data(kStagedTaskNameRole).toString();
   transfer.verifyAfterTransfer = item->data(kStagedVerifyRole).toBool();
   transfer.hooksTrusted = item->data(kStagedHooksTrustedRole).toBool();
+  transfer.vssSnapshot = item->data(kStagedVssRole).toBool();
   return transfer;
 }
 
@@ -135,6 +138,7 @@ void setStagedTransferItem(QListWidgetItem *item,
   item->setData(kStagedTaskNameRole, transfer.taskName);
   item->setData(kStagedVerifyRole, transfer.verifyAfterTransfer);
   item->setData(kStagedHooksTrustedRole, transfer.hooksTrusted);
+  item->setData(kStagedVssRole, transfer.vssSnapshot);
   item->setToolTip(QString("%1 -> %2").arg(transfer.source, transfer.dest));
 }
 
@@ -2209,7 +2213,7 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
              int backupRetainCount, const QString &heartbeatUrl,
              const QString &preCommand, const QString &postCommand,
              const QString &webhookUrl, const QString &taskName,
-             bool verifyAfterTransfer, bool hooksTrusted) {
+             bool verifyAfterTransfer, bool hooksTrusted, bool vssSnapshot) {
         StagedTransfer transfer;
         transfer.message = msg;
         transfer.source = src;
@@ -2224,6 +2228,7 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
         transfer.backupRetainCount = backupRetainCount;
         transfer.verifyAfterTransfer = verifyAfterTransfer;
         transfer.hooksTrusted = hooksTrusted;
+        transfer.vssSnapshot = vssSnapshot;
         auto *item = new QListWidgetItem(mStagingList);
         setStagedTransferItem(item, transfer);
         setStatusMessage(QString("Enqueued: %1 (%2 staged)")
@@ -3393,8 +3398,18 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   bool verifyAfter = jo->verifyAfterTransfer && !dryrun &&
                      (jo->operation == JobOptions::Copy ||
                       jo->operation == JobOptions::Sync);
+  const bool snapshot = jo->snapshotApplies() && !dryrun;
 
   auto launchTransfer = [=]() {
+  if (verifyAfter || snapshot) {
+    // Only the process route runs the check afterwards and reads through
+    // a snapshot.
+    addTransferViaProcess(message, source, dest, args, heartbeatUrl,
+                          postCommand, webhookUrl, taskName,
+                          backupDirTemplate, backupRetainCount, verifyAfter,
+                          snapshot);
+    return;
+  }
   bool hasHooks =
       !heartbeatUrl.isEmpty() || !postCommand.isEmpty() || !webhookUrl.isEmpty();
   if (!args.isEmpty() && hasHooks) {
@@ -3540,7 +3555,8 @@ void MainWindow::runStagedTransfer(const StagedTransfer &transfer) {
         transfer.message, transfer.source, transfer.dest, transfer.args,
         transfer.heartbeatUrl, transfer.postCommand, transfer.webhookUrl,
         transfer.taskName, transfer.backupDirTemplate,
-        transfer.backupRetainCount, transfer.verifyAfterTransfer);
+        transfer.backupRetainCount, transfer.verifyAfterTransfer,
+        transfer.vssSnapshot);
   };
 
   if (transfer.preCommand.isEmpty()) {
@@ -3732,7 +3748,17 @@ void MainWindow::editSelectedTask() {
 void MainWindow::addTransfer(const QString &message, const QString &source,
                              const QString &dest, const QStringList &args,
                              const QString &backupDirTemplate,
-                             int backupRetainCount) {
+                             int backupRetainCount, bool verifyAfterTransfer,
+                             bool vssSnapshot) {
+  if (verifyAfterTransfer || vssSnapshot) {
+    // An rc job card can't start the check afterwards or hold a snapshot,
+    // so these always take the process route.
+    addTransferViaProcess(message, source, dest, args, QString(), QString(),
+                          QString(), QString(), backupDirTemplate,
+                          backupRetainCount, verifyAfterTransfer,
+                          vssSnapshot);
+    return;
+  }
   if (!args.isEmpty()) {
     if (!mRcEngine) {
       mRcEngine = new RcloneRcEngine(this);
@@ -3850,7 +3876,8 @@ void MainWindow::addTransferViaProcess(
                                        const QString &taskName,
                                        const QString &backupDirTemplate,
                                        int backupRetainCount,
-                                       bool verifyAfterTransfer) {
+                                       bool verifyAfterTransfer,
+                                       bool vssSnapshot) {
   auto settings = GetSettings();
   int maxConcurrent =
       settings->value("Settings/maxConcurrentTransfers", 0).toInt();
@@ -3867,6 +3894,7 @@ void MainWindow::addTransferViaProcess(
     queued.backupDirTemplate = backupDirTemplate;
     queued.backupRetainCount = backupRetainCount;
     queued.verifyAfterTransfer = verifyAfterTransfer;
+    queued.vssSnapshot = vssSnapshot;
     mTransferQueue.enqueue(queued);
     setStatusMessage(
         QString("Queued: %1 (%2 in queue)")
@@ -3876,13 +3904,97 @@ void MainWindow::addTransferViaProcess(
   }
   ++mRunningTransfers;
 
-  QProcess *transfer = new QProcess(this);
+  if (!vssSnapshot) {
+    startTransferProcess(message, source, dest, args, heartbeatUrl,
+                         postCommand, webhookUrl, taskName,
+                         backupDirTemplate, backupRetainCount,
+                         verifyAfterTransfer, nullptr);
+    return;
+  }
+
+  setStatusMessage(QString("Making a snapshot of %1 for %2…")
+                       .arg(VssSnapshot::VolumeRoot(source), message));
+  AppLog::Write(AppLog::Level::Info, "job",
+                QString("snapshot requested: %1 (%2)").arg(message, source));
+  VssSession::Begin(
+      source, this,
+      [=](VssSession *session, const QString &error) {
+        if (!session) {
+          snapshotFailed(message, source, dest, error, heartbeatUrl,
+                         webhookUrl, taskName);
+          return;
+        }
+        AppLog::Write(AppLog::Level::Info, "job",
+                      QString("snapshot ready: %1").arg(message));
+        startTransferProcess(
+            message, source, dest,
+            VssSnapshot::WithSource(args, session->pathFor(source)),
+            heartbeatUrl, postCommand, webhookUrl, taskName,
+            backupDirTemplate, backupRetainCount, verifyAfterTransfer,
+            session);
+      });
+}
+
+void MainWindow::snapshotFailed(const QString &message, const QString &source,
+                                const QString &dest, const QString &error,
+                                const QString &heartbeatUrl,
+                                const QString &webhookUrl,
+                                const QString &taskName) {
+  const QString text =
+      QString("%1 didn't start because the snapshot failed. %2")
+          .arg(message, error);
+  AppLog::Write(AppLog::Level::Error, "job", text);
+  setStatusMessage(text);
+  mSystemTray.showMessage("Snapshot failed", text, QSystemTrayIcon::Warning,
+                          10000);
+  JobHistoryEntry entry;
+  entry.startedAt = QDateTime::currentDateTimeUtc();
+  entry.finishedAt = entry.startedAt;
+  entry.name = message;
+  entry.source = source;
+  entry.dest = dest;
+  entry.success = false;
+  entry.exitCode = 1;
+  entry.statusLabel = "Snapshot failed";
+  entry.transferDetail << error;
+  persistJobHistory(entry);
+  if (!heartbeatUrl.isEmpty()) {
+    sendHeartbeat(heartbeatUrl, false);
+  }
+  if (!webhookUrl.isEmpty()) {
+    sendWebhook(webhookUrl, taskName, false);
+  }
+  if (mRunningTransfers > 0) {
+    --mRunningTransfers;
+  }
+  mLastJobFailed = true;
+  updateJobIndicators();
+  auto *box = new QMessageBox(QMessageBox::Warning, "Snapshot failed", text,
+                              QMessageBox::Ok, this);
+  box->setAttribute(Qt::WA_DeleteOnClose);
+  box->open();
+  drainTransferQueue();
+}
+
+void MainWindow::startTransferProcess(
+    const QString &message, const QString &source, const QString &dest,
+    const QStringList &args, const QString &heartbeatUrl,
+    const QString &postCommand, const QString &webhookUrl,
+    const QString &taskName, const QString &backupDirTemplate,
+    int backupRetainCount, bool verifyAfterTransfer, VssSession *snapshot) {
+  auto *transfer = new QProcess(this);
   transfer->setProcessChannelMode(QProcess::MergedChannels);
   QStringList processArgs = GetRcloneConf() + args;
 
   AppLog::Write(AppLog::Level::Info, "job",
                 QString("started: %1 (%2 -> %3)").arg(message, source, dest));
   auto *widget = new JobWidget(transfer, message, args, source, dest);
+  // The card owns the snapshot, so closing it can't leave one behind.
+  const QPointer<VssSession> session = snapshot;
+  const bool readsSnapshot = snapshot != nullptr;
+  if (snapshot) {
+    snapshot->releaseWith(widget);
+  }
 
   auto *line = new QFrame();
   line->setFrameShape(QFrame::HLine);
@@ -3919,19 +4031,42 @@ void MainWindow::addTransferViaProcess(
                 source.contains("crypt", Qt::CaseInsensitive);
             QString checkCmd = isCrypt ? "cryptcheck" : "check";
             QStringList checkArgs;
-            checkArgs << checkCmd << GetRcloneConf() << "--use-json-log"
-                      << "--stats" << "1s" << "--stats-file-name-length"
-                      << "0" << source << dest;
-            addTransfer(QString("Verify %1").arg(source), source, dest,
-                        checkArgs);
+            checkArgs << checkCmd << "--use-json-log" << "--stats" << "1s"
+                      << "--stats-file-name-length" << "0";
+            if (session) {
+              // Checks the copy against the snapshot it came from, since
+              // the live files may have changed since. The check's card
+              // takes the snapshot over.
+              checkArgs << session->pathFor(source) << dest;
+              ++mRunningTransfers;
+              startTransferProcess(QString("Verify %1").arg(source), source,
+                                   dest, checkArgs, QString(), QString(),
+                                   QString(), QString(), QString(), 0,
+                                   false, session);
+            } else {
+              checkArgs << source << dest;
+              addTransfer(QString("Verify %1").arg(source), source, dest,
+                          checkArgs);
+            }
             setStatusMessage("Verification started.");
           }
+        }
+        if (session && session->parent() == widget) {
+          session->release();
         }
         noteJobFinished(widget->wasSuccessful());
       });
 
   QObject::connect(widget, &JobWidget::retryRequested, this, [=]() {
     QStringList args = widget->retryArgs();
+    if (readsSnapshot) {
+      // The old snapshot is gone, so the retry takes a new one.
+      addTransferViaProcess(
+          widget->retryInfo(), widget->retrySource(), widget->retryDest(),
+          VssSnapshot::WithSource(args, widget->retrySource()), QString(),
+          QString(), QString(), QString(), QString(), 0, false, true);
+      return;
+    }
     addTransfer(widget->retryInfo(), widget->retrySource(),
                 widget->retryDest(), args);
   });
@@ -4261,7 +4396,7 @@ void MainWindow::drainTransferQueue() {
                           queued.postCommand, queued.webhookUrl,
                           queued.taskName, queued.backupDirTemplate,
                           queued.backupRetainCount,
-                          queued.verifyAfterTransfer);
+                          queued.verifyAfterTransfer, queued.vssSnapshot);
   }
 }
 

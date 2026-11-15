@@ -380,6 +380,17 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME staged_transfer_test COMMAND staged_transfer_test)
 
+  add_executable(vss_snapshot_test
+    tests/vss_snapshot_test.cpp
+    src/vss_snapshot.cpp
+  )
+  target_include_directories(vss_snapshot_test PRIVATE src)
+  target_link_libraries(vss_snapshot_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(vss_snapshot_test advapi32 wbemuuid ole32 oleaut32)
+  endif()
+  add_test(NAME vss_snapshot_test COMMAND vss_snapshot_test)
+
   add_executable(backend_features_test
     tests/backend_features_test.cpp
     src/rclone_capabilities.cpp

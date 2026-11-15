@@ -5,6 +5,10 @@
 #include "main_window.h"
 #include "run_conditions.h"
 #include "utils.h"
+#include "vss_snapshot.h"
+
+#include <cstring>
+#include <memory>
 
 namespace {
 bool writePasswordCommandOutput(const QString &password) {
@@ -35,6 +39,14 @@ int main(int argc, char *argv[]) {
 #if defined(Q_OS_WIN32)
   SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
 #endif
+
+  // The elevated half of a locked-file snapshot, started by the app
+  // itself. It never shows a window, so it gets no QApplication and stays
+  // out of the single-instance handshake.
+  if (argc > 1 && std::strcmp(argv[1], VssSnapshot::kHelperFlag) == 0) {
+    const QCoreApplication helper(argc, argv);
+    return VssSnapshot::RunHelper(QCoreApplication::arguments());
+  }
 
   QApplication app(argc, argv);
 
@@ -330,6 +342,29 @@ int main(int argc, char *argv[]) {
       return fail("no rclone is set in Preferences.");
     }
     QStringList args = GetRcloneConf() + found->getOptions();
+    // Deleting the session ends the snapshot, on every way out of here.
+    std::unique_ptr<VssSession> snapshot;
+    if (found->snapshotApplies()) {
+      QString snapshotError;
+      bool snapshotDone = false;
+      QEventLoop wait;
+      VssSession::Begin(found->source, &app,
+                        [&](VssSession *session, const QString &error) {
+                          snapshot.reset(session);
+                          snapshotError = error;
+                          snapshotDone = true;
+                          wait.quit();
+                        });
+      // Begin answers straight away when the source can't be snapshotted.
+      if (!snapshotDone) {
+        wait.exec();
+      }
+      if (!snapshot) {
+        return fail("the snapshot failed. " + snapshotError);
+      }
+      args = VssSnapshot::WithSource(args,
+                                     snapshot->pathFor(found->source));
+    }
     QProcess proc;
     proc.setProcessChannelMode(QProcess::ForwardedChannels);
     UseRclonePassword(&proc);

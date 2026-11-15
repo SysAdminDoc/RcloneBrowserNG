@@ -7,6 +7,7 @@
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
 #include "utils.h"
+#include "vss_snapshot.h"
 
 TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                                const QString &remote, const QDir &path,
@@ -374,7 +375,24 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       "Run rclone check (or cryptcheck for crypt remotes) after a "
       "successful transfer to verify file integrity.");
   mVerifyAfter->setAccessibleName("Verify integrity after transfer");
-  ui.gridLayout->addWidget(mVerifyAfter, 18, 1);
+  mVssSnapshot = new QCheckBox("Read locked files from a snapshot", this);
+  mVssSnapshot->setAccessibleName("Read locked files from a snapshot");
+#if !defined(Q_OS_WIN32)
+  mVssSnapshot->hide();
+#endif
+  auto *afterRow = new QHBoxLayout();
+  afterRow->setContentsMargins(0, 0, 0, 0);
+  afterRow->addWidget(mVerifyAfter);
+  afterRow->addWidget(mVssSnapshot);
+  afterRow->addStretch();
+  ui.gridLayout->addLayout(afterRow, 18, 1);
+  QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
+                   &TransferDialog::updateSnapshotOption);
+  for (QRadioButton *mode : {ui.rbCopy, ui.rbMove, ui.rbSync, ui.rbBisync}) {
+    QObject::connect(mode, &QRadioButton::toggled, this,
+                     &TransferDialog::updateSnapshotOption);
+  }
+  updateSnapshotOption();
 
   auto *profileLabel = new QLabel("Profile:", this);
   profileLabel->setToolTip(
@@ -1178,6 +1196,29 @@ QString TransferDialog::getMode() const {
 
 QString TransferDialog::getSource() const { return ui.textSource->text(); }
 
+void TransferDialog::updateSnapshotOption() {
+  if (!mVssSnapshot) {
+    return;
+  }
+  const QString about = QStringLiteral(
+      "Windows makes a shadow copy of the source drive before the job "
+      "starts, so files another program has open, like an Outlook data "
+      "file or a database, still get copied. Windows asks for "
+      "administrator approval each time the job starts, and the snapshot "
+      "is deleted when the job ends.");
+  QString reason =
+      VssSnapshot::UnavailableReason(ui.textSource->text().trimmed());
+  if (reason.isEmpty() && !ui.rbCopy->isChecked() &&
+      !ui.rbSync->isChecked()) {
+    reason = QStringLiteral(
+        "Snapshots work with Copy and Sync. Move and Bisync change the "
+        "source, and a snapshot can't be changed.");
+  }
+  mVssSnapshot->setEnabled(reason.isEmpty());
+  mVssSnapshot->setToolTip(reason.isEmpty() ? about
+                                            : reason + "\n\n" + about);
+}
+
 QString TransferDialog::getDest() const { return ui.textDest->text(); }
 
 void TransferDialog::clearValidation() {
@@ -1323,6 +1364,8 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->conflictResolve =
       mConflictResolve->currentData().toString();
   mJobOptions->verifyAfterTransfer = mVerifyAfter->isChecked();
+  mJobOptions->vssSnapshot =
+      mVssSnapshot->isChecked() && mVssSnapshot->isEnabled();
 
   return mJobOptions;
 }
@@ -1397,6 +1440,8 @@ void TransferDialog::putJobOptions() {
   mWebhookUrl->setText(mJobOptions->webhookUrl);
   mWatchFolder->setChecked(mJobOptions->watchFolder);
   mVerifyAfter->setChecked(mJobOptions->verifyAfterTransfer);
+  mVssSnapshot->setChecked(mJobOptions->vssSnapshot);
+  updateSnapshotOption();
   mBackupDir->setText(mJobOptions->backupDir);
   mBackupRetain->setValue(mJobOptions->backupRetainCount);
   int conflictIdx =
