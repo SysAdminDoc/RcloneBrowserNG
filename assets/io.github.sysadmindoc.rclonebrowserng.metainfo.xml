@@ -33,6 +33,11 @@
   </screenshots>
   <releases>
     <!-- Release entries are maintained with the local release process. -->
+    <release version="2.1.0" date="2026-11-15">
+      <description>
+        <p>Browse and transfer through an rclone running on another computer, with its TLS certificate pinned. Combine several remotes into one, copy files other programs hold open on Windows, and let schedules wait for AC power or an unmetered network. Scheduled tasks run rclone again, and NG keeps its own settings apart from classic Rclone Browser. The app warns about rclone older than 1.76.0 and WinFsp older than 2026 Beta5, and Windows builds use a Qt 6.12.0 carrying Qt's latest security fixes.</p>
+      </description>
+    </release>
     <release version="2.0.2" date="2026-08-24">
       <description>
         <p>Bug fix release: starting minimized now always shows the tray icon so the application stays reachable, including when launched with the minimized or tray command line flags or with settings written by older builds.</p>
