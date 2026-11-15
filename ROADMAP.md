@@ -8,6 +8,13 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 ### P1
 
+- [ ] P1 — Move release builds to Qt 6.12 LTS before the next release
+  Why: `scripts/validate_qt_version.py` refuses Qt 6.11.2 as of today ("stopped receiving open-source patches on 2026-09-22"), so every release lane would stop at the Qt check. Found 2026-11-15 when the macOS workflow picked up Homebrew's Qt 6.12.0 and printed the "newer than this policy table" note.
+  Facts checked 2026-11-15: endoflife.date lists 6.12 as LTS, released 2026-09-30, open-source patches until 2027-04-01, latest 6.12.0. It gives 6.11's end as 2026-09-30, not the table's 2026-09-22, and 6.11.3 exists. The CVE records give CVE-2026-6210 and CVE-2026-9499 as affecting 6.9.0 up to 6.11.1 (and 6.8 below 6.8.8), so 6.12.0 carries both fixes.
+  Touches: `scripts/validate_qt_version.py` (6.12 row with `patched_from` 6.12.0, 6.11 end date, `RECOMMENDED`, `REVISIT_ON`), `SECURITY.md` Qt branch policy, the 6.11.2 paths in the release scripts and README build steps, a local `C:\Qt\6.12.0\msvc2022_64` install.
+  Acceptance: the whole test suite passes against Qt 6.12, the validator passes 6.12.x and refuses 6.11.x, and SECURITY.md matches the table.
+  Complexity: M
+
 ### P2
 
 - [ ] P2 — Offer "finish current files, then stop" alongside kill
@@ -127,7 +134,7 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 - [ ] P3 — Give the CLI a `--help` and reject unknown arguments
   Why: the app accepts six command-line flags, prints none of them, and silently launches the GUI when given a typo, which contradicts the project's own rule that failures must not be silent.
-  Evidence: `src/main.cpp:56` handles `--version`; `:296` `--run-task`; `:328` `--list-tasks`; `:337` `--send-to`; `:349-350` `--minimized` and `--tray`; no `--help` and no unknown-argument branch.
+  Evidence: `src/main.cpp:55` handles `--version` before `QApplication` exists; `:295` `--run-task`; `:393` `--list-tasks`; `:438` `--send-to`; `:450-451` `--minimized` and `--tray`; no `--help` and no unknown-argument branch. `--help` belongs with `--version`, so it works with no display.
   Touches: `src/main.cpp`
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
