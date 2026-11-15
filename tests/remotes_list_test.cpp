@@ -3,6 +3,7 @@
 #include "job_history.h"
 #include "test_rclone.h"
 #include "main_window.h"
+#include "remote_daemon.h"
 #include "remote_widget.h"
 #include "utils.h"
 
@@ -25,6 +26,7 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -504,6 +506,99 @@ private slots:
                               qPrintable(dialogs.join("\n---\n")), 120000);
     QVERIFY2(dialogs.isEmpty(), qPrintable(dialogs.join("\n---\n")));
     QVERIFY2(listed(), qPrintable(firstFolder));
+  }
+
+  // With a remote rclone set in Preferences, the window lists and browses
+  // that rclone's remotes, not the ones in the local config, and turns off
+  // the setup buttons that would edit this computer's config instead.
+  void remoteDaemonModeBrowsesTheOtherRclone() {
+    setHideCryptBackends(false);
+    QTemporaryDir farDir;
+    QVERIFY(farDir.isValid());
+    QDir(farDir.path()).mkpath("served/Projects");
+    // Not "far": windef.h defines that away.
+    QFile servedFile(QDir(farDir.path()).filePath("served/far.txt"));
+    QVERIFY(servedFile.open(QIODevice::WriteOnly));
+    servedFile.write("x");
+    servedFile.close();
+    const QString daemonConfig = QDir(farDir.path()).filePath("daemon.conf");
+    QFile config(daemonConfig);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    config.write("[nasonly]\ntype = alias\nremote = " +
+                 QDir(farDir.path()).filePath("served").toUtf8() + "\n");
+    config.close();
+
+    QTcpServer probe;
+    QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+    const quint16 port = probe.serverPort();
+    probe.close();
+    QProcess daemon;
+#if defined(Q_OS_WIN32)
+    daemon.setCreateProcessArgumentsModifier(
+        [](QProcess::CreateProcessArguments *args) {
+          args->flags |= CREATE_NO_WINDOW;
+        });
+#endif
+    daemon.start(mRclone, {"rcd", "--config", daemonConfig, "--rc-addr",
+                           QString("127.0.0.1:%1").arg(port), "--rc-user",
+                           "far", "--rc-pass", "far pass"});
+    QVERIFY(daemon.waitForStarted(10000));
+    auto stopDaemon = qScopeGuard([&daemon]() {
+      RemoteDaemon::Save(RemoteDaemon::Settings());
+      daemon.kill();
+      daemon.waitForFinished(5000);
+    });
+
+    RemoteDaemon::Settings remote;
+    remote.enabled = true;
+    remote.url = QString("http://127.0.0.1:%1").arg(port);
+    remote.user = "far";
+    remote.password = "far pass";
+    RemoteDaemon::Save(remote);
+    // Late answers to the polls can land after this test returns.
+    auto up = std::make_shared<bool>(false);
+    auto answers = [this, up]() {
+      RemoteDaemon::Call("rc/noopauth", QJsonObject(), this,
+                         [up](const QJsonObject &, const QString &error) {
+                           *up = *up || error.isEmpty();
+                         });
+      return *up;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(answers(), 30000);
+
+    std::unique_ptr<MainWindow> window(new MainWindow(true));
+    auto *remotes = window->findChild<QListWidget *>("remotes");
+    auto *tabs = window->findChild<QTabWidget *>("tabs");
+    QVERIFY(remotes != nullptr);
+    QVERIFY(tabs != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(remoteNames(remotes), QStringList{"nasonly"},
+                              60000);
+    QVERIFY(!window->findChild<QPushButton *>("config")->isEnabled());
+    QVERIFY(!window->findChild<QPushButton *>("newRemote")->isEnabled());
+
+    auto *open = window->findChild<QPushButton *>("open");
+    QVERIFY(open != nullptr);
+    remotes->setCurrentRow(0);
+    remotes->item(0)->setSelected(true);
+    const int tabsBefore = tabs->count();
+    open->click();
+    QTRY_COMPARE_WITH_TIMEOUT(tabs->count(), tabsBefore + 1, 30000);
+    auto *pane = qobject_cast<RemoteWidget *>(tabs->currentWidget());
+    QVERIFY(pane != nullptr);
+    auto *model = pane->findChild<ItemModel *>();
+    QVERIFY(model != nullptr);
+
+    auto listedNames = [model]() {
+      QStringList names;
+      const QModelIndex root = model->index(0, 0, QModelIndex());
+      for (int row = 0; row < model->rowCount(root); ++row) {
+        names << model->index(row, 0, root).data(Qt::DisplayRole).toString();
+      }
+      names.sort();
+      return names;
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(listedNames(),
+                              (QStringList{"Projects", "far.txt"}), 60000);
   }
 
   void failingPostCommandIsReportedRatherThanSwallowed() {

@@ -113,6 +113,12 @@ public:
   Item *get(const QModelIndex &index) const;
 private:
   void load(const QPersistentModelIndex &parentIndex, Item *parent);
+  void loadFromDaemon(const QPersistentModelIndex &parentIndex, Item *parent,
+                      Item *loading, QTimer *timer);
+  // Merges a finished listing into parent and takes ownership of items.
+  void finishLoad(const QPersistentModelIndex &parentIndex, Item *parent,
+                  Item *loading, QTimer *timer, QVector<Item *> items,
+                  const QStringList &loadErrors);
 
   void sortRecursive(Item *item, const ItemSorter &sorter);
   void sort(const QModelIndex &parent, Item *item);

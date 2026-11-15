@@ -6,6 +6,7 @@
 #include "job_options_store.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
+#include "remote_daemon.h"
 #include "utils.h"
 #include "vss_snapshot.h"
 
@@ -647,22 +648,12 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
       JobOptions *opts = getJobOptions();
       opts->dryRun = true;
-      QStringList args = GetRcloneConf() + opts->getOptions();
+      const QStringList command = opts->getOptions();
+      QStringList args = GetRcloneConf() + command;
       opts->dryRun = false;
 
-      auto *proc = new QProcess(this);
-      proc->setProcessChannelMode(QProcess::MergedChannels);
-      UseRclonePassword(proc);
-      proc->start(GetRclone(), args, QIODevice::ReadOnly);
-
-      QObject::connect(
-          proc,
-          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-              &QProcess::finished),
-          this, [=](int code, QProcess::ExitStatus) {
-            proc->deleteLater();
+      auto showOutput = [=](int code, const QByteArray &raw) {
             mPreviewButton->setEnabled(true);
-            QByteArray raw = proc->readAll();
             QStringList output;
             for (const QByteArray &line : raw.split('\n')) {
               QByteArray trimmed = line.trimmed();
@@ -682,6 +673,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
             } else {
               mPreview->setPlainText(output.join('\n'));
             }
+          };
+
+      if (RemoteDaemon::IsEnabled()) {
+        RemoteDaemon::RunCommand(command, this, showOutput);
+        return;
+      }
+
+      auto *proc = new QProcess(this);
+      proc->setProcessChannelMode(QProcess::MergedChannels);
+      UseRclonePassword(proc);
+      proc->start(GetRclone(), args, QIODevice::ReadOnly);
+
+      QObject::connect(
+          proc,
+          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+              &QProcess::finished),
+          this, [proc, showOutput](int code, QProcess::ExitStatus) {
+            proc->deleteLater();
+            showOutput(code, proc->readAll());
           });
     });
   }
@@ -784,6 +794,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   ui.buttonDest->setVisible(isDownload);
   ui.buttonDefaultDest->setVisible(isDownload);
+
+  if (RemoteDaemon::IsEnabled()) {
+    // The local side of the transfer is the remote rclone's computer. The
+    // folder pickers, the check afterwards and the folder watcher only see
+    // this one.
+    const QString typePath = QStringLiteral(
+        "Type a path on the remote rclone's computer. The folder pickers "
+        "only see this one.");
+    for (QToolButton *button :
+         {ui.buttonSourceFile, ui.buttonSourceFolder, ui.buttonDefaultSource,
+          ui.buttonDest, ui.buttonDefaultDest}) {
+      button->setEnabled(false);
+      button->setToolTip(typePath);
+    }
+    for (QCheckBox *option : {mVerifyAfter, mWatchFolder}) {
+      option->setEnabled(false);
+      option->setToolTip(RemoteDaemon::LocalOnlyReason());
+    }
+  }
 
   // Info only - should not be edited
   // would be nice to display it only for Google Drive - todo
@@ -921,14 +950,52 @@ void TransferDialog::acceptWithDeletionPreview() {
   JobOptions *opts = getJobOptions();
   const bool wasDryRun = opts->dryRun;
   opts->dryRun = true;
-  QStringList args = GetRcloneConf() + opts->getOptions();
+  QStringList command = opts->getOptions();
   opts->dryRun = wasDryRun;
-  if (!args.contains("--use-json-log")) {
-    args << "--use-json-log";
+  if (!command.contains("--use-json-log")) {
+    command << "--use-json-log";
   }
+  const QStringList args = GetRcloneConf() + command;
 
   mPreviewInFlight = true;
   ui.buttonBox->setEnabled(false);
+
+  const bool remoteDaemon = RemoteDaemon::IsEnabled();
+  auto finish = [this, remoteDaemon](int code, const QByteArray &raw) {
+    mPreviewInFlight = false;
+    ui.buttonBox->setEnabled(true);
+
+    const SyncPreview::Summary summary = SyncPreview::Parse(raw);
+    if (code != 0 && !summary.deletesAnything()) {
+      QString reason = summary.error;
+      if (reason.isEmpty() && remoteDaemon) {
+        // A remote rclone that couldn't be reached answers in plain text.
+        reason = QString::fromUtf8(raw).trimmed().section(QChar('\n'), -1);
+      }
+      showValidation(ui.textSource,
+                     reason.isEmpty()
+                         ? QString("rclone could not check what would be "
+                                   "deleted (exit %1).").arg(code)
+                         : reason);
+      return;
+    }
+
+    // Nothing is being removed, so there is nothing to warn about.
+    if (!summary.deletesAnything()) {
+      accept();
+      return;
+    }
+
+    if (showDeletionSummary(summary)) {
+      accept();
+    }
+  };
+
+  if (remoteDaemon) {
+    // The paths are on the remote rclone's machine, so it runs the dry run.
+    RemoteDaemon::RunCommand(command, this, finish);
+    return;
+  }
 
   auto *proc = new QProcess(this);
   proc->setProcessChannelMode(QProcess::MergedChannels);
@@ -952,31 +1019,10 @@ void TransferDialog::acceptWithDeletionPreview() {
       proc,
       static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
           &QProcess::finished),
-      this, [this, proc](int code, QProcess::ExitStatus) {
+      this, [proc, finish](int code, QProcess::ExitStatus) {
         const QByteArray raw = proc->readAll();
         proc->deleteLater();
-        mPreviewInFlight = false;
-        ui.buttonBox->setEnabled(true);
-
-        const SyncPreview::Summary summary = SyncPreview::Parse(raw);
-        if (code != 0 && !summary.deletesAnything()) {
-          showValidation(ui.textSource,
-                         summary.error.isEmpty()
-                             ? QString("rclone could not check what would be "
-                                       "deleted (exit %1).").arg(code)
-                             : summary.error);
-          return;
-        }
-
-        // Nothing is being removed, so there is nothing to warn about.
-        if (!summary.deletesAnything()) {
-          accept();
-          return;
-        }
-
-        if (showDeletionSummary(summary)) {
-          accept();
-        }
+        finish(code, raw);
       });
 
   proc->start(GetRclone(), args, QIODevice::ReadOnly);
@@ -1209,7 +1255,9 @@ void TransferDialog::updateSnapshotOption() {
       "administrator approval each time the job starts, and the snapshot "
       "is deleted when the job ends.");
   QString reason =
-      VssSnapshot::UnavailableReason(ui.textSource->text().trimmed());
+      RemoteDaemon::IsEnabled()
+          ? RemoteDaemon::LocalOnlyReason()
+          : VssSnapshot::UnavailableReason(ui.textSource->text().trimmed());
   if (reason.isEmpty() && !ui.rbCopy->isChecked() &&
       !ui.rbSync->isChecked()) {
     reason = QStringLiteral(

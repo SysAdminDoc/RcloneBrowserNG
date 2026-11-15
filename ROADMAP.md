@@ -151,7 +151,3 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
 - [ ] P5 Use the app from a browser on a machine with no desktop
   Was blocked on: "major architecture work". Qt 6 ships a VNC platform plugin, and noVNC turns that into a browser page, so a container can serve the real app without a second frontend.
   Acceptance: a Dockerfile builds an image that runs the app on Qt's VNC platform with noVNC in front, and the app is usable from a browser. Covers the Web UI, Docker container and FreeBSD-without-a-desktop entries. Sources: mmozeiko#51, kapitainsky#247
-
-- [ ] P5 Connect to an rclone `rcd` running on another machine
-  Was blocked on: "major architecture work". Listing, transfers and mounts all start a local rclone process today, so this needs an rc-only mode for each of them.
-  Acceptance: the app can point at a remote `rcd` URL with credentials and browse and transfer through it. Sources: mmozeiko#38

@@ -23,6 +23,14 @@ public:
   // with no progress and nothing to cancel.
   void ensureStartedAsync(QObject *context, StartCallback callback);
 
+  // Drives an rcd that is already running somewhere else instead of starting
+  // one. An empty url goes back to starting a local daemon. A local daemon
+  // this engine started is stopped, because its jobs couldn't be reached
+  // through the new address anyway.
+  void useRemoteDaemon(const QString &url, const QString &user,
+                       const QString &password);
+  bool isRemote() const { return !mRemoteUrl.isEmpty(); }
+
   struct StartedJob {
     int jobId = -1;
     // The stats group to poll. The two routes name their groups differently:
@@ -71,6 +79,11 @@ private:
   QString mUrl;
   QString mUser;
   QString mPass;
+  QString mRemoteUrl;
+  QString mRemoteUser;
+  QString mRemotePass;
+  // The config file the remote daemon reads, from config/paths.
+  QString mRemoteConfigPath;
   // Callers that arrive while the daemon is still coming up wait here rather
   // than each starting one of their own.
   QVector<StartCallback> mPendingStarts;
@@ -97,6 +110,10 @@ private:
   void resolveSourceIsDirectory(const QString &source, QObject *context,
                                 const std::function<void(bool)> &callback);
   void loadCapabilities(const std::function<void()> &done);
+  void connectRemote();
+  void finishRemoteConnect();
+  // The --config pair a core/command run needs to see the daemon's remotes.
+  QStringList commandConfig() const;
   void spawnDaemon();
   void pollUntilReady(const QElapsedTimer &deadline);
   void finishStart(bool ok, const QString &error);

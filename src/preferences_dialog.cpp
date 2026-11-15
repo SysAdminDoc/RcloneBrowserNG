@@ -2,6 +2,7 @@
 #include "app_log.h"
 #include "interface_polish.h"
 #include "mount_options.h"
+#include "remote_daemon.h"
 #include "utils.h"
 
 PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
@@ -430,6 +431,83 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
                    [=](bool) { updateProxyFields(); });
   updateProxyFields();
 
+  const RemoteDaemon::Settings remoteDaemon = RemoteDaemon::Load();
+  ui.remoteDaemonEnabled->setChecked(
+      GetSettings()->value("Settings/remoteDaemon", false).toBool());
+  ui.remoteDaemonUrl->setText(
+      GetSettings()->value("Settings/remoteDaemonUrl").toString());
+  ui.remoteDaemonUser->setText(remoteDaemon.user);
+  ui.remoteDaemonPassword->setText(remoteDaemon.password);
+  for (QLineEdit *field : {ui.remoteDaemonUrl, ui.remoteDaemonUser,
+                           ui.remoteDaemonPassword}) {
+    field->setClearButtonEnabled(true);
+  }
+  ui.remoteDaemonEnabled->setAccessibleName("Use a remote rclone");
+  ui.remoteDaemonUrl->setAccessibleName("Remote rclone address");
+  ui.remoteDaemonUser->setAccessibleName("Remote rclone user name");
+  ui.remoteDaemonPassword->setAccessibleName("Remote rclone password");
+  ui.remoteDaemonTest->setAccessibleName("Test remote rclone connection");
+  ui.remoteDaemonStatus->setAccessibleName("Remote rclone connection result");
+  ui.remoteDaemonInfo->setText(
+      "Start it on that computer with rclone rcd --rc-addr :5572 "
+      "--rc-user NAME --rc-pass PASSWORD. Its remotes, its disks and its "
+      "config file are what you browse and transfer with, so a local path "
+      "you type means a folder on that computer. Mounts, streams, the "
+      "remote setup tools and the check after a transfer need rclone on "
+      "this computer and are turned off.");
+  UiPolish::SetMuted(ui.remoteDaemonInfo);
+
+  auto updateRemoteDaemonFields = [=]() {
+    const bool enabled = ui.remoteDaemonEnabled->isChecked();
+    for (QWidget *widget :
+         {static_cast<QWidget *>(ui.remoteDaemonUrlLabel),
+          static_cast<QWidget *>(ui.remoteDaemonUrl),
+          static_cast<QWidget *>(ui.remoteDaemonUserLabel),
+          static_cast<QWidget *>(ui.remoteDaemonUser),
+          static_cast<QWidget *>(ui.remoteDaemonPasswordLabel),
+          static_cast<QWidget *>(ui.remoteDaemonPassword)}) {
+      widget->setEnabled(enabled);
+    }
+  };
+  QObject::connect(ui.remoteDaemonEnabled, &QCheckBox::toggled, this,
+                   [=](bool) { updateRemoteDaemonFields(); });
+  updateRemoteDaemonFields();
+
+  QObject::connect(ui.remoteDaemonTest, &QPushButton::clicked, this, [this]() {
+    RemoteDaemon::Settings test = getRemoteDaemon();
+    test.url = RemoteDaemon::NormalizeUrl(test.url);
+    if (test.url.isEmpty()) {
+      ui.remoteDaemonStatus->setText(
+          "Type an address like http://nas.local:5572 first.");
+      return;
+    }
+    ui.remoteDaemonTest->setEnabled(false);
+    ui.remoteDaemonStatus->setText(QString("Connecting to %1...").arg(test.url));
+    // rc/noopauth answers only with the right login, which core/version
+    // doesn't ask for, so a wrong password shows up here and not on the
+    // first transfer.
+    RemoteDaemon::Call(
+        test, "rc/noopauth", QJsonObject(), this,
+        [this, test](const QJsonObject &, const QString &authError) {
+          if (!authError.isEmpty()) {
+            ui.remoteDaemonTest->setEnabled(true);
+            ui.remoteDaemonStatus->setText(authError);
+            return;
+          }
+          RemoteDaemon::Call(
+              test, "core/version", QJsonObject(), this,
+              [this, test](const QJsonObject &version, const QString &error) {
+                ui.remoteDaemonTest->setEnabled(true);
+                ui.remoteDaemonStatus->setText(
+                    error.isEmpty()
+                        ? RemoteDaemon::DescribeVersion(version, test.url)
+                        : error);
+              },
+              10000);
+        },
+        10000);
+  });
+
   // Issue #13: the fixed 760x560 minimum can sit below the tab content's
   // real minimum once the application stylesheet (dark theme) or larger
   // fonts inflate control metrics; the Interface page then gets compressed
@@ -575,4 +653,13 @@ bool PreferencesDialog::getUseProxy() const {
 
 bool PreferencesDialog::getUsePasswordCommand() const {
   return ui.usePasswordCommand->isChecked();
+}
+
+RemoteDaemon::Settings PreferencesDialog::getRemoteDaemon() const {
+  RemoteDaemon::Settings settings;
+  settings.enabled = ui.remoteDaemonEnabled->isChecked();
+  settings.url = ui.remoteDaemonUrl->text().trimmed();
+  settings.user = ui.remoteDaemonUser->text();
+  settings.password = ui.remoteDaemonPassword->text();
+  return settings;
 }

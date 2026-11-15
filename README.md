@@ -53,6 +53,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
 *   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
 *   Put several remotes together as one, so they browse and mount as a single drive
+*   Work through an rclone running on another computer, like a NAS, with its remotes and its disks
 *   Optional tray icon with finished-transfer notifications
 *   Portable mode keeps the app, rclone and its config on a memory stick
 *   Google Drive "shared with me" support
@@ -152,6 +153,16 @@ Configure with `cmake -G Ninja -DRCLONE_BROWSER_CLANG_TIDY=ON ..` and every app 
 To see several remotes as one drive, right-click a remote in the list and choose **Combine With Other Remotes...**, or click **New Remote...** and pick the `combine` type. Tick the remotes you want and name the new one. Each remote becomes a folder inside it, and you can rename that folder or point it at a path inside the remote instead of the whole thing.
 
 Nothing is copied or moved. The app adds an rclone [combine](https://rclone.org/combine/) remote to your `rclone.conf`, which you open like any other remote. Its Mount button puts all of them on one drive letter or mount point.
+
+## Using an rclone on another computer
+
+Start the remote control daemon on that computer with a login:
+
+```text
+rclone rcd --rc-addr :5572 --rc-user NAME --rc-pass PASSWORD
+```
+
+Then open **Preferences**, go to **Remote rclone**, tick the box and enter its address (`http://nas.local:5572`, say) with the same user name and password. **Test Connection** checks both before you save. From then on the remotes list, browsing and transfers use that computer's remotes and config, and a local path you type means a folder on that computer. Mounts, streams, the remote setup tools and the check after a transfer need rclone on this computer, so they're greyed out until you turn it off again.
 
 ## Portable vs standard mode
 

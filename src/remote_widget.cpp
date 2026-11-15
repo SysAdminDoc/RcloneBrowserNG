@@ -8,6 +8,7 @@
 #include "mount_options.h"
 #include "progress_dialog.h"
 #include "rclone_capabilities.h"
+#include "remote_daemon.h"
 #include "remote_path.h"
 #include "selection_arguments.h"
 #include "stream_widget.h"
@@ -24,6 +25,24 @@ QStringList RemoteWidget::getDriveSharedArgs() const {
 }
 
 namespace {
+// New folder, rename and move with a remote rclone: one API call instead of
+// a local rclone process. No timeout, since moving a big folder takes as long
+// as it takes.
+void RunOnRemoteDaemon(QWidget *owner, const QString &title,
+                       const RemoteDaemon::Request &request,
+                       const std::function<void()> &done) {
+  RemoteDaemon::Call(
+      request.endpoint, request.payload, owner,
+      [owner, title, done](const QJsonObject &, const QString &error) {
+        if (!error.isEmpty()) {
+          QMessageBox::warning(owner, title, error);
+          return;
+        }
+        done();
+      },
+      0);
+}
+
 QString fingerprintFromLsjson(const QByteArray &data) {
   QJsonParseError parseError;
   const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
@@ -410,6 +429,12 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 #ifndef Q_OS_WIN
   isLocal = false;
 #endif
+  // With a remote rclone the "local" disk is the daemon's, which may not
+  // use backslashes at all.
+  const bool remoteDaemon = RemoteDaemon::IsEnabled();
+  if (remoteDaemon) {
+    isLocal = false;
+  }
   mIsLocal = isLocal;
 
   auto settings = GetSettings();
@@ -432,7 +457,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           "Clean up trash or old versions for this remote (rclone cleanup).");
       trashButton->setAccessibleName("Clean up remote trash");
     }
-    if (!isGoogle) {
+    if (!isGoogle || remoteDaemon) {
       trashButton->hide();
     }
     QObject::connect(trashButton, &QPushButton::clicked, this, [this, remote, trashButton, isGoogle]() {
@@ -975,6 +1000,15 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         tipFor(ui.export_, exportTip, folderDisabled);
         tipFor(ui.link, linkTip,
                loading ? loadingLocked : (multiSelect ? singleOnly : linkTip));
+        if (remoteDaemon) {
+          // These start rclone on this computer, which can't see the remote
+          // rclone's remotes or disks.
+          for (QAction *action : {ui.mount, ui.stream, ui.getSize, ui.getTree,
+                                  ui.export_, ui.link}) {
+            action->setEnabled(false);
+            setActionTooltip(action, RemoteDaemon::LocalOnlyReason());
+          }
+        }
       });
 
   QObject::connect(ui.refresh, &QAction::triggered, this, [=]() {
@@ -1009,6 +1043,17 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
       QString folder = isLocal ? path.filePath(name)
                                : JoinRemotePath(path.path(), name);
       QString folderMsg = isLocal ? QDir::toNativeSeparators(folder) : folder;
+
+      if (remoteDaemon) {
+        const QPersistentModelIndex refreshIndex(index);
+        RunOnRemoteDaemon(this, "New Folder",
+                          RemoteDaemon::Mkdir(remote, folder), [=]() {
+                            if (refreshIndex.isValid()) {
+                              model->refresh(refreshIndex);
+                            }
+                          });
+        return;
+      }
 
       QProcess process;
       UseRclonePassword(&process);
@@ -1051,6 +1096,20 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           isLocal ? model->path(index.parent()).filePath(name)
                   : JoinRemotePath(model->path(index.parent()).path(), name);
 
+      if (remoteDaemon) {
+        const QPersistentModelIndex renamed(index);
+        RunOnRemoteDaemon(
+            this, "Rename",
+            RemoteDaemon::MoveTo(remote, path, targetPath,
+                                 model->isFolder(index)),
+            [=]() {
+              if (renamed.isValid()) {
+                model->rename(renamed, name);
+              }
+            });
+        return;
+      }
+
       QProcess process;
       UseRclonePassword(&process);
       process.setProgram(GetRclone());
@@ -1087,6 +1146,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         this, "Move", QString("Move:\n%1\n\nto remote path").arg(pathMsg),
         QLineEdit::Normal, name);
     if (!name.isEmpty()) {
+      if (remoteDaemon) {
+        const QPersistentModelIndex moved(index);
+        RunOnRemoteDaemon(
+            this, "Move",
+            RemoteDaemon::MoveTo(remote, path, name, model->isFolder(index)),
+            [=]() {
+              if (moved.isValid()) {
+                model->refresh(moved);
+              }
+            });
+        return;
+      }
+
       QProcess process;
       UseRclonePassword(&process);
       process.setProgram(GetRclone());
@@ -1751,6 +1823,19 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           versionsAction = menu.addAction("Versions...");
           versionsAction->setToolTip(
               "Browse prior versions of this file (requires backend versioning support).");
+        }
+
+        if (remoteDaemon) {
+          for (QAction *action :
+               {editAction, previewAction, propsAction, versionsAction,
+                compareAction, dedupeAction, archiveAction, speedAction,
+                copyUrlAction, serveAction}) {
+            if (action) {
+              action->setEnabled(false);
+              action->setToolTip(RemoteDaemon::LocalOnlyReason());
+            }
+          }
+          menu.setToolTipsVisible(true);
         }
 
         QAction *chosen = menu.exec(ui.tree->viewport()->mapToGlobal(pos));

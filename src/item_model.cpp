@@ -1,6 +1,7 @@
 #include "item_model.h"
 #include "icon_cache.h"
 #include "lsjson_parser.h"
+#include "remote_daemon.h"
 #include "remote_path.h"
 #include "utils.h"
 #include <algorithm>
@@ -16,6 +17,24 @@ static void advanceSpinner(QString &text) {
   size_t next = idx == spinnerCount - 1 ? 0 : idx + 1;
   text[spinnerPos] = spinner[next];
 }
+
+Item *itemFromEntry(Item *parent, const QJsonObject &object) {
+  const LsjsonParser::Entry entry =
+      LsjsonParser::DecodeEntry(object, parent->path.path());
+  Item *child = new Item();
+  child->parent = parent;
+  child->isFolder = entry.isFolder;
+  child->name = entry.name;
+  child->path.setPath(entry.path);
+  child->size = entry.size;
+  child->modified = entry.modified;
+  return child;
+}
+
+// A listing of a very large folder over the network can take minutes, the
+// same as `rclone lsjson` would, but a server that stopped answering shouldn't
+// leave the spinner going forever.
+constexpr int kDaemonListTimeoutMs = 5 * 60 * 1000;
 
 } // namespace
 
@@ -392,6 +411,10 @@ bool ItemModel::canDropMimeData(const QMimeData *data, Qt::DropAction action,
   if (!data->hasUrls()) {
     return false;
   }
+  // A dropped file is on this computer, where a remote rclone can't read it.
+  if (RemoteDaemon::IsEnabled()) {
+    return false;
+  }
 
   auto urls = data->urls();
   if (urls.isEmpty())
@@ -423,34 +446,6 @@ Item *ItemModel::get(const QModelIndex &index) const {
 }
 
 void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
-  auto proc = new QProcess(this);
-
-  // Thin adapter over LsjsonParser so the splitting and field decoding live
-  // somewhere a test can reach them.
-  struct StreamParser {
-    LsjsonParser::StreamSplitter splitter;
-    QVector<Item *> items;
-
-    bool hadData() const { return splitter.hadData(); }
-
-    void feed(const QByteArray &data, Item *p) {
-      for (const QJsonObject &object : splitter.feed(data)) {
-        const LsjsonParser::Entry entry =
-            LsjsonParser::DecodeEntry(object, p->path.path());
-        Item *child = new Item();
-        child->parent = p;
-        child->isFolder = entry.isFolder;
-        child->name = entry.name;
-        child->path.setPath(entry.path);
-        child->size = entry.size;
-        child->modified = entry.modified;
-        items.append(child);
-      }
-    }
-  };
-
-  auto *parser = new StreamParser();
-
   Item *loading = new Item();
   loading->state = Item::Special;
   loading->name = "... loading [-]";
@@ -463,6 +458,38 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
     auto loadingIndex = createIndex(loading->num(), 0, loading);
     emit dataChanged(loadingIndex, loadingIndex, QVector<int>{Qt::DisplayRole});
   });
+
+  parent->state = Item::Loading1;
+
+  emit beginInsertRows(parentIndex, 0, 0);
+  parent->childs.prepend(loading);
+  emit endInsertRows();
+
+  timer->start(100);
+
+  if (RemoteDaemon::IsEnabled()) {
+    loadFromDaemon(parentIndex, parent, loading, timer);
+    return;
+  }
+
+  auto proc = new QProcess(this);
+
+  // Thin adapter over LsjsonParser so the splitting and field decoding live
+  // somewhere a test can reach them.
+  struct StreamParser {
+    LsjsonParser::StreamSplitter splitter;
+    QVector<Item *> items;
+
+    bool hadData() const { return splitter.hadData(); }
+
+    void feed(const QByteArray &data, Item *p) {
+      for (const QJsonObject &object : splitter.feed(data)) {
+        items.append(itemFromEntry(p, object));
+      }
+    }
+  };
+
+  auto *parser = new StreamParser();
 
   QObject::connect(proc, &QProcess::readyReadStandardOutput, this, [=]() {
     parser->feed(proc->readAllStandardOutput(), parent);
@@ -489,95 +516,11 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
           loadErrors.append("Failed to parse listing");
         }
 
-        QVector<Item *> &cache = parser->items;
-
-        parent->state = Item::Ready;
-
-        timer->stop();
-        timer->deleteLater();
-
-        if (!loadErrors.isEmpty()) {
-          emit loadFailed(parent->path.path(), loadErrors.join('\n'));
-        }
-
-        if (parent->isDeleted) {
-          qDeleteAll(cache);
-          delete parser;
-          delete parent;
-          return;
-        }
-
-        QHash<QString, int> existing;
-        for (int i = 0; i < parent->childs.count(); i++) {
-          if (parent->childs[i] != loading) {
-            existing.insert(parent->childs[i]->name, i);
-          }
-        }
-
-        QVector<Item *> todo;
-        bool modified = false;
-        for (auto &item : cache) {
-          auto it = existing.find(item->name);
-          if (it == existing.end()) {
-            if (!item->isFolder && mFileIcons) {
-              QString ext = QFileInfo(item->name).suffix();
-              if (!mLoadedIcons.contains(ext)) {
-                item->state = Item::LoadingIcon;
-                emit getIcon(item, parentIndex);
-              }
-            }
-            todo.append(item);
-            item = nullptr;
-          } else {
-            Item *old = parent->childs[it.value()];
-            if (old->isFolder != item->isFolder ||
-                old->modified != item->modified || old->size != item->size) {
-              old->state = Item::Unknown;
-              old->isFolder = item->isFolder;
-              old->modified = item->modified;
-              old->size = item->size;
-              modified = true;
-              emit dataChanged(createIndex(it.value(), 0, parent),
-                               createIndex(it.value(), 2, parent),
-                               QVector<int>{Qt::DisplayRole});
-            }
-            existing.erase(it);
-          }
-        }
-
-        qDeleteAll(cache);
+        const QVector<Item *> items = parser->items;
         delete parser;
-
-        for (int i = 0; i < parent->childs.count(); i++) {
-          if (parent->childs[i] == loading ||
-              existing.contains(parent->childs[i]->name)) {
-            emit beginRemoveRows(parentIndex, i, i);
-            delete parent->childs.takeAt(i);
-            emit endRemoveRows();
-            i--;
-          }
-        }
-
-        if (!todo.isEmpty()) {
-          modified = true;
-          emit beginInsertRows(parentIndex, static_cast<int>(parent->childs.count()),
-                               static_cast<int>(parent->childs.count() + todo.count() - 1));
-          parent->childs += todo;
-          emit endInsertRows();
-        }
-
-        if (modified) {
-          sort(parentIndex, parent);
-        }
+        finishLoad(parentIndex, parent, loading, timer, items, loadErrors);
       });
 
-  parent->state = Item::Loading1;
-
-  emit beginInsertRows(parentIndex, 0, 0);
-  parent->childs.prepend(loading);
-  emit endInsertRows();
-
-  timer->start(100);
   UseRclonePassword(proc);
 
   QStringList args;
@@ -601,6 +544,118 @@ void ItemModel::load(const QPersistentModelIndex &parentIndex, Item *parent) {
   args << GetDefaultRcloneOptionsList()
        << mRemote + ":" + parent->path.path();
   proc->start(GetRclone(), args, QIODevice::ReadOnly);
+}
+
+void ItemModel::loadFromDaemon(const QPersistentModelIndex &parentIndex,
+                               Item *parent, Item *loading, QTimer *timer) {
+  // The default rclone options in Preferences are command line flags for the
+  // rclone on this computer, so they don't come along here.
+  const QJsonObject payload = RemoteDaemon::ListPayload(
+      mRemote + ":" + parent->path.path(), GetShowHidden().isEmpty(),
+      mDriveShared,
+      mGooglePhotos && IsGooglePhotosRecursiveAlbumPath(parent->path.path()));
+  RemoteDaemon::Call(
+      "operations/list", payload, this,
+      [this, parentIndex, parent, loading, timer](const QJsonObject &result,
+                                                  const QString &error) {
+        QVector<Item *> items;
+        QStringList loadErrors;
+        if (!error.isEmpty()) {
+          loadErrors.append(error);
+        }
+        const QJsonArray list = result.value("list").toArray();
+        for (const QJsonValue &value : list) {
+          if (value.isObject()) {
+            items.append(itemFromEntry(parent, value.toObject()));
+          }
+        }
+        finishLoad(parentIndex, parent, loading, timer, items, loadErrors);
+      },
+      kDaemonListTimeoutMs);
+}
+
+void ItemModel::finishLoad(const QPersistentModelIndex &parentIndex,
+                           Item *parent, Item *loading, QTimer *timer,
+                           QVector<Item *> items,
+                           const QStringList &loadErrors) {
+  QVector<Item *> &cache = items;
+
+  parent->state = Item::Ready;
+
+  timer->stop();
+  timer->deleteLater();
+
+  if (!loadErrors.isEmpty()) {
+    emit loadFailed(parent->path.path(), loadErrors.join('\n'));
+  }
+
+  if (parent->isDeleted) {
+    qDeleteAll(cache);
+    delete parent;
+    return;
+  }
+
+  QHash<QString, int> existing;
+  for (int i = 0; i < parent->childs.count(); i++) {
+    if (parent->childs[i] != loading) {
+      existing.insert(parent->childs[i]->name, i);
+    }
+  }
+
+  QVector<Item *> todo;
+  bool modified = false;
+  for (auto &item : cache) {
+    auto it = existing.find(item->name);
+    if (it == existing.end()) {
+      if (!item->isFolder && mFileIcons) {
+        QString ext = QFileInfo(item->name).suffix();
+        if (!mLoadedIcons.contains(ext)) {
+          item->state = Item::LoadingIcon;
+          emit getIcon(item, parentIndex);
+        }
+      }
+      todo.append(item);
+      item = nullptr;
+    } else {
+      Item *old = parent->childs[it.value()];
+      if (old->isFolder != item->isFolder ||
+          old->modified != item->modified || old->size != item->size) {
+        old->state = Item::Unknown;
+        old->isFolder = item->isFolder;
+        old->modified = item->modified;
+        old->size = item->size;
+        modified = true;
+        emit dataChanged(createIndex(it.value(), 0, parent),
+                         createIndex(it.value(), 2, parent),
+                         QVector<int>{Qt::DisplayRole});
+      }
+      existing.erase(it);
+    }
+  }
+
+  qDeleteAll(cache);
+
+  for (int i = 0; i < parent->childs.count(); i++) {
+    if (parent->childs[i] == loading ||
+        existing.contains(parent->childs[i]->name)) {
+      emit beginRemoveRows(parentIndex, i, i);
+      delete parent->childs.takeAt(i);
+      emit endRemoveRows();
+      i--;
+    }
+  }
+
+  if (!todo.isEmpty()) {
+    modified = true;
+    emit beginInsertRows(parentIndex, static_cast<int>(parent->childs.count()),
+                         static_cast<int>(parent->childs.count() + todo.count() - 1));
+    parent->childs += todo;
+    emit endInsertRows();
+  }
+
+  if (modified) {
+    sort(parentIndex, parent);
+  }
 }
 
 void ItemModel::sortRecursive(Item *item, const ItemSorter &sorter) {

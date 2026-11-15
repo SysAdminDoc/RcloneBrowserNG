@@ -11,6 +11,7 @@
 #include "app_log.h"
 #include "rclone_exit_code.h"
 #include "rclone_security_floor.h"
+#include "remote_daemon.h"
 #include "remote_list_parser.h"
 #include "remote_path.h"
 #include "remote_provider.h"
@@ -356,6 +357,15 @@ MainWindow::MainWindow(bool initializeRuntime)
         }
         autoMount->setToolTip(
             "Mount this remote automatically when the app starts.");
+        if (RemoteDaemon::IsEnabled()) {
+          // Each of these starts rclone on this computer.
+          for (QAction *action :
+               {testConn, storageUsage, duplicate, combine, autoMount}) {
+            action->setEnabled(false);
+            action->setToolTip(RemoteDaemon::LocalOnlyReason());
+          }
+          menu.setToolTipsVisible(true);
+        }
         auto *chosen = menu.exec(ui.remotes->viewport()->mapToGlobal(pos));
         if (chosen == testConn) {
           setStatusMessage(QString("Testing %1...").arg(remoteName));
@@ -514,6 +524,7 @@ MainWindow::MainWindow(bool initializeRuntime)
   ui.config->setToolTip("Open rclone config in a terminal.");
   ui.newRemote->setToolTip("Create a remote using the provider list from the installed rclone.");
   ui.refresh->setToolTip("Reload remotes from rclone.conf.");
+  updateRemoteDaemonMode(false);
   ui.open->setToolTip("Open the selected remote in a browser tab.");
   UiPolish::SetPrimaryButton(ui.open);
 
@@ -586,10 +597,33 @@ MainWindow::MainWindow(bool initializeRuntime)
     if (dialog.exec() == QDialog::Accepted) {
       const QString newRclone = dialog.getRclone().trimmed();
       const QString newRcloneConf = dialog.getRcloneConf().trimmed();
+      const RemoteDaemon::Settings oldRemote = RemoteDaemon::Load();
+      const RemoteDaemon::Settings newRemote = dialog.getRemoteDaemon();
+      const QString newRemoteUrl = RemoteDaemon::NormalizeUrl(newRemote.url);
+      const bool newRemoteEnabled =
+          newRemote.enabled && !newRemoteUrl.isEmpty();
+      // Which rclone answers changes, so open tabs and running jobs belong
+      // to the old one.
+      const bool remoteChanged =
+          oldRemote.enabled != newRemoteEnabled ||
+          (newRemoteEnabled &&
+           (oldRemote.url != newRemoteUrl || oldRemote.user != newRemote.user ||
+            oldRemote.password != newRemote.password));
       if (mJobCount > 0 &&
           (newRclone != oldRclone || newRcloneConf != oldRcloneConf) &&
           !confirmConfigMutation("Changing the rclone executable or config path")) {
         return;
+      }
+      if (mJobCount > 0 && remoteChanged &&
+          !confirmConfigMutation("Switching to another rclone")) {
+        return;
+      }
+      if (newRemote.enabled && newRemoteUrl.isEmpty()) {
+        QMessageBox::warning(
+            this, "Remote rclone",
+            QString("%1 isn't an address the app can use, so the remote "
+                    "rclone stays off. Use one like http://nas.local:5572.")
+                .arg(newRemote.url));
       }
 
       settings->setValue("Settings/rclone", newRclone);
@@ -655,6 +689,9 @@ MainWindow::MainWindow(bool initializeRuntime)
       if (oldUsePasswordCommand && !dialog.getUsePasswordCommand()) {
         ClearRcloneConfigPassword();
       }
+      RemoteDaemon::Save(newRemote);
+      applyRemoteDaemonSettings();
+      updateRemoteDaemonMode(remoteChanged);
       mFirstTime = true;
       rcloneGetVersion();
 
@@ -1948,6 +1985,26 @@ void MainWindow::rcloneGetVersion() {
   bool firstTime = mFirstTime;
   mFirstTime = false;
 
+  if (RemoteDaemon::IsEnabled()) {
+    const RemoteDaemon::Settings remote = RemoteDaemon::Load();
+    setStatusMessage(QString("Connecting to the remote rclone at %1...")
+                         .arg(remote.url));
+    RemoteDaemon::Call(
+        remote, "core/version", QJsonObject(), this,
+        [this, remote](const QJsonObject &version, const QString &error) {
+          if (!error.isEmpty()) {
+            setStatusMessage(error);
+            ui.remotes->clear();
+            showRemotesEmptyState("Can't reach the remote rclone", error);
+            appendBackgroundError("Remote rclone", error);
+            return;
+          }
+          setStatusMessage(RemoteDaemon::DescribeVersion(version, remote.url));
+          rcloneListRemotes();
+        });
+    return;
+  }
+
   auto *p = new QProcess();
 
   QObject::connect(
@@ -2189,13 +2246,19 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
   if (!isLocal) {
     auto defaultFeatures = BackendFeatures::defaultForType(type);
     remote->applyBackendFeatures(defaultFeatures);
-    QPointer<RemoteWidget> safeRemote(remote);
-    BackendFeatureCache::queryAsync(
-        name, [safeRemote, defaultFeatures](const BackendFeatures &features) {
-          if (safeRemote)
-            safeRemote->applyBackendFeatures(
-                BackendFeatures::withTypeDefaults(features, defaultFeatures));
-        });
+    // The probe asks the rclone on this computer, which a remote rclone's
+    // remotes aren't in. The type's defaults stand for those.
+    if (!RemoteDaemon::IsEnabled()) {
+      QPointer<RemoteWidget> safeRemote(remote);
+      BackendFeatureCache::queryAsync(
+          name,
+          [safeRemote, defaultFeatures](const BackendFeatures &features) {
+            if (safeRemote)
+              safeRemote->applyBackendFeatures(
+                  BackendFeatures::withTypeDefaults(features,
+                                                    defaultFeatures));
+          });
+    }
   }
 
   QObject::connect(remote, &RemoteWidget::addMount, this,
@@ -2239,6 +2302,14 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
       });
   QObject::connect(remote, &RemoteWidget::requestReconnect, this,
                    [this](const QString &remoteName) {
+                     if (RemoteDaemon::IsEnabled()) {
+                       setStatusMessage(
+                           QString("Reconnect %1 with rclone config "
+                                   "reconnect on the remote rclone's "
+                                   "computer.")
+                               .arg(remoteName));
+                       return;
+                     }
                      const QDateTime configBefore = rcloneConfigLastModified();
                      startDetachedTerminalCommand(QStringList()
                                                       << "config"
@@ -2251,6 +2322,10 @@ RemoteWidget *MainWindow::createRemoteWidgetInstance(const QString &name,
 }
 
 void MainWindow::rcloneConfig() {
+  if (RemoteDaemon::IsEnabled()) {
+    setStatusMessage(RemoteDaemon::LocalOnlyReason());
+    return;
+  }
   if (!confirmConfigMutation("Opening rclone config")) {
     return;
   }
@@ -2261,6 +2336,10 @@ void MainWindow::rcloneConfig() {
 }
 
 void MainWindow::createRemote() {
+  if (RemoteDaemon::IsEnabled()) {
+    setStatusMessage(RemoteDaemon::LocalOnlyReason());
+    return;
+  }
   if (!confirmConfigMutation("Creating a new remote")) {
     return;
   }
@@ -2767,6 +2846,47 @@ void MainWindow::noteConfigReloadIfChanged(const QDateTime &before) {
   }
 }
 
+RcloneRcEngine *MainWindow::rcEngine() {
+  if (!mRcEngine) {
+    mRcEngine = new RcloneRcEngine(this);
+    applyRemoteDaemonSettings();
+  }
+  return mRcEngine;
+}
+
+void MainWindow::applyRemoteDaemonSettings() {
+  if (!mRcEngine) {
+    return; // rcEngine() applies them when it makes one
+  }
+  const RemoteDaemon::Settings remote = RemoteDaemon::Load();
+  mRcEngine->useRemoteDaemon(remote.enabled ? remote.url : QString(),
+                             remote.user, remote.password);
+}
+
+void MainWindow::updateRemoteDaemonMode(bool closeBrowserTabs) {
+  const bool remote = RemoteDaemon::IsEnabled();
+  ui.config->setEnabled(!remote);
+  ui.newRemote->setEnabled(!remote);
+  ui.config->setToolTip(remote ? RemoteDaemon::LocalOnlyReason()
+                               : "Open rclone config in a terminal.");
+  ui.newRemote->setToolTip(
+      remote ? RemoteDaemon::LocalOnlyReason()
+             : "Create a remote using the provider list from the installed "
+               "rclone.");
+  ui.refresh->setToolTip(remote ? "Reload remotes from the remote rclone."
+                                : "Reload remotes from rclone.conf.");
+  if (!closeBrowserTabs) {
+    return;
+  }
+  // The first three tabs are the app's own. The rest browse remotes of the
+  // rclone that was in use until now.
+  for (int i = ui.tabs->count() - 1; i >= 3; --i) {
+    QWidget *tab = ui.tabs->widget(i);
+    ui.tabs->removeTab(i);
+    tab->deleteLater();
+  }
+}
+
 void MainWindow::setStatusMessage(const QString &message) {
   mStatusMessage->setText(message);
   mStatusMessage->setToolTip(message);
@@ -2919,6 +3039,28 @@ void MainWindow::rcloneListRemotes() {
   ui.remotes->clear();
   mHiddenCryptBackends = 0;
   updateRemotesHiddenNotice();
+  if (RemoteDaemon::IsEnabled()) {
+    showRemotesEmptyState("Loading remotes",
+                          "Reading remotes from the remote rclone...");
+    // config/dump names every remote and its type, and it carries what the
+    // crypt check needs too, so one call does both.
+    RemoteDaemon::Call(
+        "config/dump", QJsonObject(), this,
+        [this](const QJsonObject &dump, const QString &error) {
+          if (!error.isEmpty()) {
+            showRemotesEmptyState("Could not load remotes", error);
+            return;
+          }
+          // A refresh can overtake this call, so its list starts empty too.
+          ui.remotes->clear();
+          showRemotes(RemoteDaemon::RemotesFromDump(dump));
+          if (shouldHideCryptBackends()) {
+            hideCryptBackends(dump);
+          }
+        });
+    return;
+  }
+
   showRemotesEmptyState("Loading remotes",
                         "Reading remotes from rclone.conf...");
 
@@ -2930,8 +3072,6 @@ void MainWindow::rcloneListRemotes() {
           &QProcess::finished),
       this, [=](int code, QProcess::ExitStatus) {
         if (code == 0) {
-          QStyle *style = qApp->style();
-
           const QByteArray bytes = p->readAllStandardOutput();
           QVector<RemoteListParser::Remote> parsed;
           if (mListRemotesJson) {
@@ -2947,99 +3087,13 @@ void MainWindow::rcloneListRemotes() {
             parsed = RemoteListParser::ParseLong(bytes);
           }
 
-          auto settings = GetSettings();
-          bool darkModeIni = settings->value("Settings/darkModeIni").toBool();
-          QString iconSize = settings->value("Settings/iconSize").toString();
-
-          for (const RemoteListParser::Remote &remote : parsed) {
-            const QString name = remote.name;
-            const QString type = remote.type;
-            const QString tooltip = RemoteListParser::TooltipFor(remote);
-
-            int size = 0;
-
-            // medium scale by default
-            double darkModeIconScale = 1.333;
-            double lightModeiconScale = 2;
-
-            // set icons scale based on iconSize value
-            if (iconSize == "small") {
-              lightModeiconScale = 1.5;
-              darkModeIconScale = 1;
-            }
-
-            if (iconSize == "medium") {
-              lightModeiconScale = 2;
-              darkModeIconScale = 1.333;
-            }
-
-            if (iconSize == "large") {
-              lightModeiconScale = 3;
-              darkModeIconScale = 2;
-            }
-
-            // only the Windows and older-macOS size paths consume these
-            Q_UNUSED(darkModeIni);
-            Q_UNUSED(darkModeIconScale);
-
-            // use the inverted (light) icon set whenever the effective UI
-            // is dark - covers the app's own dark mode AND OS-level dark
-            // themes (Windows 10/11, macOS Mojave+), which the old
-            // setting-based check missed
-            bool darkUi =
-                qApp->palette().color(QPalette::Base).lightness() < 128;
-            QString img_add = darkUi ? "_inv" : "";
-
-#if !defined(Q_OS_MACOS)
-#if defined(Q_OS_WIN)
-            // the Fusion-based dark style changes PM_ListViewIconSize,
-            // so the scale has to follow the style actually in use
-            if (darkModeIni) {
-              size = static_cast<int>(darkModeIconScale *
-                     style->pixelMetric(QStyle::PM_ListViewIconSize));
-            } else {
-              size = static_cast<int>(lightModeiconScale *
-                     style->pixelMetric(QStyle::PM_ListViewIconSize));
-            }
-#else
-             // for Linux/BSD PM_ListViewIconSize stays the same
-             size = static_cast<int>(lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
-#endif
-#else
-             // macOS 11+ (deployment target): native dark mode does not change IconSize base
-             size = static_cast<int>(1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
-#endif
-            const int displaySize = qBound(22, size, 34);
-            ui.remotes->setIconSize(QSize(displaySize, displaySize));
-
-            const QString iconType = QString(type).replace(' ', '_');
-            QString path =
-                ":/remotes/images/" + iconType + img_add + ".png";
-            QIcon icon(QFile(path).exists()
-                           ? path
-                           : ":/remotes/images/unknown" + img_add + ".png");
-
-            auto *item = new QListWidgetItem(icon, name);
-            item->setData(Qt::UserRole, type);
-            item->setToolTip(tooltip);
-            item->setSizeHint(QSize(0, displaySize + 14));
-            ui.remotes->addItem(item);
-          }
+          showRemotes(parsed);
 
           // Off by default. Hiding a remote the user configured, with no way
           // to bring it back, is what produced the "only 8 of my 15 remotes
           // are listed" report; the crypt backends stay visible unless asked
           // for.
-          bool hasCrypt =
-              settings->value("Settings/hideCryptBackends", false).toBool();
-          if (hasCrypt) {
-            hasCrypt = false;
-            for (int i = 0; i < ui.remotes->count(); ++i) {
-              if (ui.remotes->item(i)->data(Qt::UserRole).toString() == "crypt")
-                hasCrypt = true;
-            }
-          }
-          if (hasCrypt) {
+          if (shouldHideCryptBackends()) {
             auto *dump = new QProcess(this);
             QObject::connect(
                 dump,
@@ -3053,93 +3107,13 @@ void MainWindow::rcloneListRemotes() {
                       QJsonDocument::fromJson(dump->readAllStandardOutput());
                   if (!doc.isObject())
                     return;
-                  QSet<QString> cryptBackends;
-                  QJsonObject root = doc.object();
-                  for (auto it = root.begin(); it != root.end(); ++it) {
-                    QJsonObject cfg = it.value().toObject();
-                    if (cfg.value("type").toString() != "crypt")
-                      continue;
-                    QString backing = cfg.value("remote").toString();
-                    const qsizetype colon = backing.indexOf(':');
-                    if (colon > 0)
-                      cryptBackends.insert(backing.left(colon));
-                  }
-                  if (cryptBackends.isEmpty())
-                    return;
-                  int hiddenCount = 0;
-                  for (int i = 0; i < ui.remotes->count(); ++i) {
-                    auto *item = ui.remotes->item(i);
-                    if (cryptBackends.contains(item->text())) {
-                      item->setHidden(true);
-                      item->setData(Qt::UserRole + 1, true);
-                      ++hiddenCount;
-                    }
-                  }
-                  // Say so. Remotes vanishing a second after the list paints,
-                  // with nothing to explain it, is what the field report was.
-                  if (hiddenCount > 0) {
-                    mHiddenCryptBackends = hiddenCount;
-                    updateRemotesHiddenNotice();
-                  }
+                  hideCryptBackends(doc.object());
                 });
             UseRclonePassword(dump);
             dump->start(GetRclone(),
                         QStringList() << "config" << "dump" << GetRcloneConf()
                                       << "--ask-password=false",
                         QIODevice::ReadOnly);
-          }
-
-          if (ui.remotes->count() == 0) {
-            showRemotesEmptyState(
-                "No remotes yet",
-                "Create a remote or open rclone config to connect storage.");
-            if (!mTabsRestored) {
-              QTimer::singleShot(0, this, &MainWindow::createRemote);
-            }
-          } else {
-            hideRemotesEmptyState();
-          }
-
-          if (!mTabsRestored) {
-            mTabsRestored = true;
-            auto tabSettings = GetSettings();
-            QStringList saved =
-                tabSettings->value("MainWindow/openTabs").toStringList();
-            for (const QString &tabName : saved) {
-              for (int i = 0; i < ui.remotes->count(); ++i) {
-                auto *item = ui.remotes->item(i);
-                if (item->text() == tabName &&
-                    (item->flags() & Qt::ItemIsEnabled)) {
-                  QString type = item->data(Qt::UserRole).toString();
-                  auto *remote =
-                      createRemoteWidgetInstance(tabName, type, ui.tabs);
-                  ui.tabs->addTab(remote, tabName);
-                  break;
-                }
-              }
-            }
-
-            auto autoSettings = GetSettings();
-            QStringList autoMounts =
-                autoSettings->value("Settings/autoMountRemotes")
-                    .toStringList();
-            QString defaultMount =
-                autoSettings->value("Settings/lastMountPoint").toString();
-            for (const QString &name : autoMounts) {
-              bool found = false;
-              for (int ri = 0; ri < ui.remotes->count(); ++ri) {
-                if (ui.remotes->item(ri)->text() == name &&
-                    (ui.remotes->item(ri)->flags() & Qt::ItemIsEnabled)) {
-                  found = true;
-                  break;
-                }
-              }
-              if (!found)
-                continue;
-              if (defaultMount.isEmpty())
-                continue;
-              addMount(name + ":", defaultMount);
-            }
           }
         } else {
           if (p->error() != QProcess::FailedToStart) {
@@ -3169,6 +3143,202 @@ void MainWindow::rcloneListRemotes() {
            << "--ask-password=false";
   p->start(GetRclone(), listArgs, QIODevice::ReadOnly);
 }
+
+void MainWindow::showRemotes(
+    const QVector<RemoteListParser::Remote> &parsed) {
+  QStyle *style = qApp->style();
+  auto settings = GetSettings();
+  bool darkModeIni = settings->value("Settings/darkModeIni").toBool();
+  QString iconSize = settings->value("Settings/iconSize").toString();
+
+  for (const RemoteListParser::Remote &remote : parsed) {
+    const QString name = remote.name;
+    const QString type = remote.type;
+    const QString tooltip = RemoteListParser::TooltipFor(remote);
+
+    int size = 0;
+
+    // medium scale by default
+    double darkModeIconScale = 1.333;
+    double lightModeiconScale = 2;
+
+    // set icons scale based on iconSize value
+    if (iconSize == "small") {
+      lightModeiconScale = 1.5;
+      darkModeIconScale = 1;
+    }
+
+    if (iconSize == "medium") {
+      lightModeiconScale = 2;
+      darkModeIconScale = 1.333;
+    }
+
+    if (iconSize == "large") {
+      lightModeiconScale = 3;
+      darkModeIconScale = 2;
+    }
+
+    // only the Windows and older-macOS size paths consume these
+    Q_UNUSED(darkModeIni);
+    Q_UNUSED(darkModeIconScale);
+
+    // use the inverted (light) icon set whenever the effective UI
+    // is dark - covers the app's own dark mode AND OS-level dark
+    // themes (Windows 10/11, macOS Mojave+), which the old
+    // setting-based check missed
+    bool darkUi =
+        qApp->palette().color(QPalette::Base).lightness() < 128;
+    QString img_add = darkUi ? "_inv" : "";
+
+#if !defined(Q_OS_MACOS)
+#if defined(Q_OS_WIN)
+    // the Fusion-based dark style changes PM_ListViewIconSize,
+    // so the scale has to follow the style actually in use
+    if (darkModeIni) {
+      size = static_cast<int>(darkModeIconScale *
+             style->pixelMetric(QStyle::PM_ListViewIconSize));
+    } else {
+      size = static_cast<int>(lightModeiconScale *
+             style->pixelMetric(QStyle::PM_ListViewIconSize));
+    }
+#else
+     // for Linux/BSD PM_ListViewIconSize stays the same
+     size = static_cast<int>(lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
+#endif
+#else
+     // macOS 11+ (deployment target): native dark mode does not change IconSize base
+     size = static_cast<int>(1.5 * lightModeiconScale * style->pixelMetric(QStyle::PM_ListViewIconSize));
+#endif
+    const int displaySize = qBound(22, size, 34);
+    ui.remotes->setIconSize(QSize(displaySize, displaySize));
+
+    const QString iconType = QString(type).replace(' ', '_');
+    QString path =
+        ":/remotes/images/" + iconType + img_add + ".png";
+    QIcon icon(QFile(path).exists()
+                   ? path
+                   : ":/remotes/images/unknown" + img_add + ".png");
+
+    auto *item = new QListWidgetItem(icon, name);
+    item->setData(Qt::UserRole, type);
+    item->setToolTip(tooltip);
+    item->setSizeHint(QSize(0, displaySize + 14));
+    ui.remotes->addItem(item);
+  }
+
+  const bool remoteDaemon = RemoteDaemon::IsEnabled();
+  if (ui.remotes->count() == 0) {
+    if (remoteDaemon) {
+      // There's no config here to add one to. The remotes live in the
+      // remote rclone's config file.
+      showRemotesEmptyState(
+          "No remotes yet",
+          "The remote rclone has no remotes. Add them with rclone config on "
+          "that computer, then refresh.");
+    } else {
+      showRemotesEmptyState(
+          "No remotes yet",
+          "Create a remote or open rclone config to connect storage.");
+      if (!mTabsRestored) {
+        QTimer::singleShot(0, this, &MainWindow::createRemote);
+      }
+    }
+  } else {
+    hideRemotesEmptyState();
+  }
+
+  if (!mTabsRestored) {
+    mTabsRestored = true;
+    auto tabSettings = GetSettings();
+    QStringList saved =
+        tabSettings->value("MainWindow/openTabs").toStringList();
+    for (const QString &tabName : saved) {
+      for (int i = 0; i < ui.remotes->count(); ++i) {
+        auto *item = ui.remotes->item(i);
+        if (item->text() == tabName &&
+            (item->flags() & Qt::ItemIsEnabled)) {
+          QString type = item->data(Qt::UserRole).toString();
+          auto *remote =
+              createRemoteWidgetInstance(tabName, type, ui.tabs);
+          ui.tabs->addTab(remote, tabName);
+          break;
+        }
+      }
+    }
+
+    if (remoteDaemon) {
+      // A mount runs rclone on this computer, which doesn't have these
+      // remotes.
+      return;
+    }
+
+    auto autoSettings = GetSettings();
+    QStringList autoMounts =
+        autoSettings->value("Settings/autoMountRemotes")
+            .toStringList();
+    QString defaultMount =
+        autoSettings->value("Settings/lastMountPoint").toString();
+    for (const QString &name : autoMounts) {
+      bool found = false;
+      for (int ri = 0; ri < ui.remotes->count(); ++ri) {
+        if (ui.remotes->item(ri)->text() == name &&
+            (ui.remotes->item(ri)->flags() & Qt::ItemIsEnabled)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+        continue;
+      if (defaultMount.isEmpty())
+        continue;
+      addMount(name + ":", defaultMount);
+    }
+  }
+}
+
+bool MainWindow::shouldHideCryptBackends() {
+  auto settings = GetSettings();
+  if (!settings->value("Settings/hideCryptBackends", false).toBool()) {
+    return false;
+  }
+  for (int i = 0; i < ui.remotes->count(); ++i) {
+    if (ui.remotes->item(i)->data(Qt::UserRole).toString() == "crypt") {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MainWindow::hideCryptBackends(const QJsonObject &root) {
+  QSet<QString> cryptBackends;
+  for (auto it = root.begin(); it != root.end(); ++it) {
+    QJsonObject cfg = it.value().toObject();
+    if (cfg.value("type").toString() != "crypt")
+      continue;
+    QString backing = cfg.value("remote").toString();
+    const qsizetype colon = backing.indexOf(':');
+    if (colon > 0)
+      cryptBackends.insert(backing.left(colon));
+  }
+  if (cryptBackends.isEmpty())
+    return;
+  int hiddenCount = 0;
+  for (int i = 0; i < ui.remotes->count(); ++i) {
+    auto *item = ui.remotes->item(i);
+    if (cryptBackends.contains(item->text())) {
+      item->setHidden(true);
+      item->setData(Qt::UserRole + 1, true);
+      ++hiddenCount;
+    }
+  }
+  // Say so. Remotes vanishing a second after the list paints,
+  // with nothing to explain it, is what the field report was.
+  if (hiddenCount > 0) {
+    mHiddenCryptBackends = hiddenCount;
+    updateRemotesHiddenNotice();
+  }
+}
+
 
 bool MainWindow::getConfigPassword(QProcess *p) {
   QString output = p->readAllStandardError().trimmed();
@@ -3401,9 +3571,10 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   const bool snapshot = jo->snapshotApplies() && !dryrun;
 
   auto launchTransfer = [=]() {
-  if (verifyAfter || snapshot) {
+  if (verifyAfter || snapshot || RemoteDaemon::IsEnabled()) {
     // Only the process route runs the check afterwards and reads through
-    // a snapshot.
+    // a snapshot. With a remote rclone it hands the job to that daemon
+    // without a second try as a process, which could run it twice.
     addTransferViaProcess(message, source, dest, args, heartbeatUrl,
                           postCommand, webhookUrl, taskName,
                           backupDirTemplate, backupRetainCount, verifyAfter,
@@ -3413,10 +3584,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   bool hasHooks =
       !heartbeatUrl.isEmpty() || !postCommand.isEmpty() || !webhookUrl.isEmpty();
   if (!args.isEmpty() && hasHooks) {
-    if (!mRcEngine) {
-      mRcEngine = new RcloneRcEngine(this);
-    }
-    mRcEngine->runCommand(
+    rcEngine()->runCommand(
         args, this, [=](const RcloneRcEngine::StartedJob &job) {
           if (job.jobId >= 0) {
             auto *widget =
@@ -3750,9 +3918,10 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
                              const QString &backupDirTemplate,
                              int backupRetainCount, bool verifyAfterTransfer,
                              bool vssSnapshot) {
-  if (verifyAfterTransfer || vssSnapshot) {
+  if (verifyAfterTransfer || vssSnapshot || RemoteDaemon::IsEnabled()) {
     // An rc job card can't start the check afterwards or hold a snapshot,
-    // so these always take the process route.
+    // so these always take the process route. That route also owns the
+    // remote rclone case, where nothing may fall back to a local process.
     addTransferViaProcess(message, source, dest, args, QString(), QString(),
                           QString(), QString(), backupDirTemplate,
                           backupRetainCount, verifyAfterTransfer,
@@ -3760,11 +3929,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
     return;
   }
   if (!args.isEmpty()) {
-    if (!mRcEngine) {
-      mRcEngine = new RcloneRcEngine(this);
-    }
-
-    mRcEngine->runCommand(
+    rcEngine()->runCommand(
         args, this, [=](const RcloneRcEngine::StartedJob &job) {
           if (job.jobId >= 0) {
             auto *widget =
@@ -3790,11 +3955,7 @@ void MainWindow::deleteItems(const RcDeleteBatch::Plan &plan) {
   if (plan.items.isEmpty()) {
     return;
   }
-  if (!mRcEngine) {
-    mRcEngine = new RcloneRcEngine(this);
-  }
-
-  mRcEngine->runDeleteBatch(
+  rcEngine()->runDeleteBatch(
       plan, this, [=](const RcloneRcEngine::StartedJob &job) {
         if (job.jobId >= 0) {
           const QString source =
@@ -3868,6 +4029,62 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
   noteJobStarted();
 }
 
+void MainWindow::startRemoteDaemonTransfer(
+    const QString &message, const QString &source, const QString &dest,
+    const QStringList &args, const QString &heartbeatUrl,
+    const QString &postCommand, const QString &webhookUrl,
+    const QString &taskName, const QString &backupDirTemplate,
+    int backupRetainCount, bool verifyAfterTransfer, bool vssSnapshot) {
+  if (verifyAfterTransfer || vssSnapshot) {
+    // Both run on this computer: the check is a second rclone process and
+    // the snapshot is of this computer's disk.
+    const QString skipped =
+        verifyAfterTransfer && vssSnapshot
+            ? QStringLiteral("the check afterwards and the snapshot")
+            : (verifyAfterTransfer ? QStringLiteral("the check afterwards")
+                                   : QStringLiteral("the snapshot"));
+    AppLog::Write(AppLog::Level::Warning, "job",
+                  QString("%1: skipped %2, which need rclone on this "
+                          "computer")
+                      .arg(message, skipped));
+    setStatusMessage(QString("%1 runs on the remote rclone without %2.")
+                         .arg(message, skipped));
+  }
+  if (args.isEmpty()) {
+    appendBackgroundError(message, "There was no rclone command to run.");
+    return;
+  }
+  rcEngine()->runCommand(
+      args, this, [=](const RcloneRcEngine::StartedJob &job) {
+        if (job.jobId < 0) {
+          appendBackgroundError(
+              message, job.error.isEmpty()
+                           ? QStringLiteral(
+                                 "The remote rclone didn't start this job.")
+                           : job.error);
+          setStatusMessage(
+              QString("%1 didn't start on the remote rclone.").arg(message));
+          if (!heartbeatUrl.isEmpty()) {
+            sendHeartbeat(heartbeatUrl, false);
+          }
+          if (!webhookUrl.isEmpty()) {
+            sendWebhook(webhookUrl, taskName, false);
+          }
+          return;
+        }
+        auto *widget = new RcJobWidget(mRcEngine, job.jobId, job.group,
+                                       message, job.displayCommand, source,
+                                       dest);
+        addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
+                       backupDirTemplate, backupRetainCount);
+        if (!postCommand.isEmpty()) {
+          QObject::connect(widget, &RcJobWidget::finished, this, [=]() {
+            runPostCommand(postCommand, taskName);
+          });
+        }
+      });
+}
+
 void MainWindow::addTransferViaProcess(
     const QString &message, const QString &source, const QString &dest,
     const QStringList &args, const QString &heartbeatUrl,
@@ -3878,6 +4095,13 @@ void MainWindow::addTransferViaProcess(
                                        int backupRetainCount,
                                        bool verifyAfterTransfer,
                                        bool vssSnapshot) {
+  if (RemoteDaemon::IsEnabled()) {
+    startRemoteDaemonTransfer(message, source, dest, args, heartbeatUrl,
+                              postCommand, webhookUrl, taskName,
+                              backupDirTemplate, backupRetainCount,
+                              verifyAfterTransfer, vssSnapshot);
+    return;
+  }
   auto settings = GetSettings();
   int maxConcurrent =
       settings->value("Settings/maxConcurrentTransfers", 0).toInt();
@@ -4555,6 +4779,11 @@ void MainWindow::pruneBackupRetention(const QString &backupDirTemplate,
                                 &parentPath, &deleteTargets)) {
     return;
   }
+  if (RemoteDaemon::IsEnabled()) {
+    setStatusMessage("Backup retention skipped. It needs rclone on this "
+                     "computer.");
+    return;
+  }
 
   auto *listProc = new QProcess(this);
   listProc->setProcessChannelMode(QProcess::SeparateChannels);
@@ -5226,6 +5455,15 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
     return;
 
   bringToFront();
+
+  if (RemoteDaemon::IsEnabled()) {
+    QMessageBox::warning(
+        this, "Send To",
+        "These files are on this computer, and the remote rclone can only "
+        "read files on its own computer. Turn off the remote rclone in "
+        "Preferences to upload them.");
+    return;
+  }
 
   QStringList remoteNames;
   for (int i = 0; i < ui.remotes->count(); ++i) {

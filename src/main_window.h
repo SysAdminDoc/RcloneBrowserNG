@@ -5,6 +5,7 @@
 #include "job_options.h"
 #include "pch.h"
 #include "rc_delete_batch.h"
+#include "remote_list_parser.h"
 #include "remote_provider.h"
 #include <QQueue>
 #include "staged_transfer.h"
@@ -122,6 +123,18 @@ private:
   void createCombineRemote(const QString &initialName,
                            const QString &preselected);
   void showRemotesEmptyState(const QString &title, const QString &detail);
+  // Fills the remotes list, from rclone listremotes or from the remote
+  // rclone's config/dump.
+  void showRemotes(const QVector<RemoteListParser::Remote> &parsed);
+  bool shouldHideCryptBackends();
+  void hideCryptBackends(const QJsonObject &dump);
+  // The engine, made on first use and pointed at the remote rclone when one
+  // is set in Preferences.
+  RcloneRcEngine *rcEngine();
+  void applyRemoteDaemonSettings();
+  // Puts the window in or out of remote rclone mode: the config buttons and
+  // the browser tabs belong to whichever rclone was in use before.
+  void updateRemoteDaemonMode(bool closeBrowserTabs);
   void hideRemotesEmptyState();
   void updateRemotesHiddenNotice();
   void showTasksEmptyState(const QString &title, const QString &detail);
@@ -140,6 +153,17 @@ private:
                    const QStringList &mountBackendArgs);
 
   void addEmptyJobsMessage();
+  // With a remote rclone every job runs there as an rc job. There is no
+  // rclone here to fall back to, so a job it refuses is reported instead.
+  void startRemoteDaemonTransfer(const QString &message, const QString &source,
+                                 const QString &dest, const QStringList &args,
+                                 const QString &heartbeatUrl,
+                                 const QString &postCommand,
+                                 const QString &webhookUrl,
+                                 const QString &taskName,
+                                 const QString &backupDirTemplate,
+                                 int backupRetainCount,
+                                 bool verifyAfterTransfer, bool vssSnapshot);
   void addTransferViaProcess(const QString &message, const QString &source,
                              const QString &dest, const QStringList &args,
                              const QString &heartbeatUrl = QString(),

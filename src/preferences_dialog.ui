@@ -871,6 +871,135 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tab_remoteDaemon">
+      <attribute name="title">
+       <string>Remote rclone</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_remoteDaemon">
+       <item>
+        <widget class="QGroupBox" name="groupBox_remoteDaemon">
+         <property name="title">
+          <string>Remote rclone</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_remoteDaemon">
+          <property name="leftMargin">
+           <number>12</number>
+          </property>
+          <property name="topMargin">
+           <number>12</number>
+          </property>
+          <property name="rightMargin">
+           <number>12</number>
+          </property>
+          <property name="bottomMargin">
+           <number>12</number>
+          </property>
+          <item row="0" column="0" colspan="2">
+           <widget class="QCheckBox" name="remoteDaemonEnabled">
+            <property name="text">
+             <string>Use an rclone running on another computer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="remoteDaemonUrlLabel">
+            <property name="text">
+             <string>Address</string>
+            </property>
+            <property name="buddy">
+             <cstring>remoteDaemonUrl</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="remoteDaemonUrl">
+            <property name="placeholderText">
+             <string>http://nas.local:5572</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="remoteDaemonUserLabel">
+            <property name="text">
+             <string>User name</string>
+            </property>
+            <property name="buddy">
+             <cstring>remoteDaemonUser</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="remoteDaemonUser">
+            <property name="placeholderText">
+             <string>--rc-user</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="remoteDaemonPasswordLabel">
+            <property name="text">
+             <string>Password</string>
+            </property>
+            <property name="buddy">
+             <cstring>remoteDaemonPassword</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="remoteDaemonPassword">
+            <property name="placeholderText">
+             <string>--rc-pass</string>
+            </property>
+            <property name="echoMode">
+             <enum>QLineEdit::Password</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QPushButton" name="remoteDaemonTest">
+            <property name="text">
+             <string>Test Connection</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLabel" name="remoteDaemonStatus">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="textInteractionFlags">
+             <set>Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" colspan="2">
+           <widget class="QLabel" name="remoteDaemonInfo">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="textInteractionFlags">
+             <set>Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_remoteDaemon">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>
@@ -929,6 +1058,11 @@
   <tabstop>https_proxy</tabstop>
   <tabstop>no_proxy</tabstop>
   <tabstop>socks_proxy</tabstop>
+  <tabstop>remoteDaemonEnabled</tabstop>
+  <tabstop>remoteDaemonUrl</tabstop>
+  <tabstop>remoteDaemonUser</tabstop>
+  <tabstop>remoteDaemonPassword</tabstop>
+  <tabstop>remoteDaemonTest</tabstop>
  </tabstops>
  <resources/>
  <connections>

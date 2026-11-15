@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "remote_daemon.h"
 #include "ui_preferences_dialog.h"
 
 class PreferencesDialog : public QDialog {
@@ -46,6 +47,8 @@ public:
   QString getSocksProxy() const;
   bool getUsePasswordCommand() const;
   QString getDefaultExclude() const;
+  // As typed, not yet normalised. url can be empty or not an address.
+  RemoteDaemon::Settings getRemoteDaemon() const;
 
 private:
   Ui::PreferencesDialog ui;

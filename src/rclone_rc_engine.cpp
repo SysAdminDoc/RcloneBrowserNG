@@ -14,10 +14,10 @@ QString makeRcUrl(quint16 port) {
 // rclone process with only these arguments, so the daemon's own --config and
 // --password-command don't reach it, and a remote that only exists in the
 // config chosen in Preferences fails with "didn't find section in config
-// file". GetRcloneConf() always returns flag/value pairs.
-QJsonArray coreCommandArguments(const QStringList &args) {
+// file". conf is flag/value pairs, the way GetRcloneConf() returns them.
+QJsonArray coreCommandArguments(const QStringList &args,
+                                const QStringList &conf) {
   QJsonArray commandArgs;
-  const QStringList conf = GetRcloneConf();
   for (int i = 0; i + 1 < conf.size(); i += 2) {
     if (!args.contains(conf.at(i))) {
       commandArgs.append(conf.at(i));
@@ -73,6 +73,11 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
   mPendingStarts.append(std::move(guarded));
   mStarting = true;
 
+  if (isRemote()) {
+    connectRemote();
+    return;
+  }
+
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
     // The daemon looks alive. Confirm it still answers before reusing it,
     // and only respawn if the ping fails.
@@ -92,6 +97,84 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
   }
 
   spawnDaemon();
+}
+
+void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
+                                     const QString &password) {
+  if (url == mRemoteUrl && user == mRemoteUser && password == mRemotePass) {
+    return;
+  }
+  mRemoteUrl = url;
+  mRemoteUser = user;
+  mRemotePass = password;
+  mRemoteConfigPath.clear();
+  // Whatever answers next is a different rclone with its own tables.
+  mEndpoints.clear();
+  mOptionIndex = RcSyncRequest::OptionIndex();
+  mUrl.clear();
+  if (mProcess) {
+    if (mProcess->state() != QProcess::NotRunning) {
+      mProcess->kill();
+      mProcess->waitForFinished(1000);
+    }
+    mProcess->deleteLater();
+    mProcess = nullptr;
+  }
+}
+
+void RcloneRcEngine::connectRemote() {
+  mUrl = mRemoteUrl;
+  mUser = mRemoteUser;
+  mPass = mRemotePass;
+  // rc/noopauth needs a login, as core/command does, so this fails for the
+  // same reasons a transfer would rather than after it's been posted.
+  postAsync("rc/noopauth", QJsonObject(), this,
+            [this](const QJsonObject &, const QString &pingError) {
+              if (!mStarting) {
+                return;
+              }
+              if (!pingError.isEmpty()) {
+                finishStart(false,
+                            QString("Couldn't reach the remote rclone at "
+                                    "%1: %2")
+                                .arg(mRemoteUrl, pingError));
+                return;
+              }
+              if (!mRemoteConfigPath.isEmpty()) {
+                finishRemoteConnect();
+                return;
+              }
+              // core/command starts a second rclone on that machine, and it
+              // reads the default config unless told which one the daemon
+              // has. An rclone too old for config/paths gets the default.
+              postAsync("config/paths", QJsonObject(), this,
+                        [this](const QJsonObject &paths, const QString &) {
+                          mRemoteConfigPath =
+                              paths.value("config").toString();
+                          finishRemoteConnect();
+                        });
+            });
+}
+
+void RcloneRcEngine::finishRemoteConnect() {
+  if (!mStarting) {
+    return;
+  }
+  if (mEndpoints.isEmpty() || mOptionIndex.isEmpty()) {
+    loadCapabilities([this]() { finishStart(true, QString()); });
+    return;
+  }
+  finishStart(true, QString());
+}
+
+QStringList RcloneRcEngine::commandConfig() const {
+  if (!isRemote()) {
+    return GetRcloneConf();
+  }
+  if (mRemoteConfigPath.isEmpty()) {
+    return QStringList();
+  }
+  return QStringList() << "--config" << mRemoteConfigPath;
 }
 
 void RcloneRcEngine::spawnDaemon() {
@@ -291,14 +374,14 @@ void RcloneRcEngine::resolveSourceIsDirectory(
   const qsizetype colon = trimmed.indexOf(QChar(':'));
   const bool looksRemote = colon > 1;
 
-  if (!looksRemote) {
+  if (!looksRemote && !isRemote()) {
     // A local path can be answered without troubling the daemon.
     if (callback) {
       callback(QFileInfo(trimmed).isDir());
     }
     return;
   }
-  if (trimmed.endsWith(QChar(':'))) {
+  if (looksRemote && trimmed.endsWith(QChar(':'))) {
     // The root of a remote is a directory by definition.
     if (callback) {
       callback(true);
@@ -306,15 +389,33 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     return;
   }
 
-  const qsizetype lastSlash = trimmed.lastIndexOf(QChar('/'));
   QString fs;
   QString remote;
-  if (lastSlash > colon) {
-    fs = trimmed.left(lastSlash);
-    remote = trimmed.mid(lastSlash + 1);
+  if (looksRemote) {
+    const qsizetype lastSlash = trimmed.lastIndexOf(QChar('/'));
+    if (lastSlash > colon) {
+      fs = trimmed.left(lastSlash);
+      remote = trimmed.mid(lastSlash + 1);
+    } else {
+      fs = trimmed.left(colon + 1);
+      remote = trimmed.mid(colon + 1);
+    }
   } else {
-    fs = trimmed.left(colon + 1);
-    remote = trimmed.mid(colon + 1);
+    // A local path on a remote daemon is a path on that machine, so only the
+    // daemon can say what it is.
+    const qsizetype separator = qMax(trimmed.lastIndexOf(QChar('/')),
+                                     trimmed.lastIndexOf(QChar('\\')));
+    if (separator < 0) {
+      if (callback) {
+        callback(false);
+      }
+      return;
+    }
+    fs = trimmed.left(separator);
+    if (fs.isEmpty() || fs.endsWith(QChar(':'))) {
+      fs = trimmed.left(separator + 1); // "/" or "C:\"
+    }
+    remote = trimmed.mid(separator + 1);
   }
   if (remote.isEmpty()) {
     if (callback) {
@@ -384,7 +485,7 @@ void RcloneRcEngine::startCommand(const QStringList &args,
   Q_UNUSED(group);
   QJsonObject payload;
   payload.insert("command", args.first());
-  payload.insert("arg", coreCommandArguments(args));
+  payload.insert("arg", coreCommandArguments(args, commandConfig()));
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 
@@ -517,7 +618,7 @@ QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
   if (!args.isEmpty()) {
     payload.insert("command", args.first());
   }
-  payload.insert("arg", coreCommandArguments(args));
+  payload.insert("arg", coreCommandArguments(args, commandConfig()));
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 

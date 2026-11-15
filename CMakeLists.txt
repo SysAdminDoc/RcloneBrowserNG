@@ -394,6 +394,28 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME vss_snapshot_test COMMAND vss_snapshot_test)
 
+  add_executable(remote_daemon_test
+    tests/remote_daemon_test.cpp
+    src/remote_daemon.cpp
+    src/remote_list_parser.cpp
+    src/job_options_store.cpp
+    src/job_options.cpp
+    src/rclone_rc_engine.cpp
+    src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  target_include_directories(remote_daemon_test PRIVATE src tests)
+  target_compile_definitions(remote_daemon_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(remote_daemon_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(remote_daemon_test advapi32)
+  endif()
+  add_test(NAME remote_daemon_test COMMAND remote_daemon_test)
+  set_tests_properties(remote_daemon_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+
   add_executable(backend_features_test
     tests/backend_features_test.cpp
     src/rclone_capabilities.cpp
@@ -436,6 +458,10 @@ if(BUILD_TESTING)
     src/interface_polish.cpp
     src/mount_options.cpp
     src/utils.cpp
+    src/remote_daemon.cpp
+    src/remote_list_parser.cpp
+    src/job_options_store.cpp
+    src/job_options.cpp
   )
   # AUTOUIC is enabled directory-scoped in src/; this target compiles the
   # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.
@@ -496,6 +522,7 @@ if(BUILD_TESTING)
     src/run_conditions.cpp
     src/staged_transfer.cpp
     src/vss_snapshot.cpp
+    src/remote_daemon.cpp
     src/cross_remote_search.cpp
     src/combine_remote.cpp
     src/combine_remote_dialog.cpp

@@ -115,6 +115,55 @@ private slots:
     QVERIFY(dialog.getHideCryptBackends());
   }
 
+  void remoteDaemonSettingsHaveTheirOwnTab() {
+    PreferencesDialog dialog;
+    auto *tab = dialog.findChild<QWidget *>("tab_remoteDaemon");
+    QVERIFY(tab != nullptr);
+    auto *enabled = dialog.findChild<QCheckBox *>("remoteDaemonEnabled");
+    auto *url = dialog.findChild<QLineEdit *>("remoteDaemonUrl");
+    auto *user = dialog.findChild<QLineEdit *>("remoteDaemonUser");
+    auto *password = dialog.findChild<QLineEdit *>("remoteDaemonPassword");
+    auto *test = dialog.findChild<QPushButton *>("remoteDaemonTest");
+    auto *status = dialog.findChild<QLabel *>("remoteDaemonStatus");
+    verifyManaged(dialog, enabled, "remoteDaemonEnabled");
+    verifyManaged(dialog, url, "remoteDaemonUrl");
+    verifyManaged(dialog, user, "remoteDaemonUser");
+    verifyManaged(dialog, password, "remoteDaemonPassword");
+    verifyManaged(dialog, test, "remoteDaemonTest");
+    verifyManaged(dialog, status, "remoteDaemonStatus");
+    for (QWidget *widget : {static_cast<QWidget *>(enabled),
+                            static_cast<QWidget *>(url),
+                            static_cast<QWidget *>(test)}) {
+      QVERIFY(tab->isAncestorOf(widget));
+    }
+    QCOMPARE(password->echoMode(), QLineEdit::Password);
+
+    // The address fields follow the checkbox.
+    enabled->setChecked(true);
+    QVERIFY(url->isEnabled());
+    QVERIFY(password->isEnabled());
+    enabled->setChecked(false);
+    QVERIFY(!url->isEnabled());
+    QVERIFY(!password->isEnabled());
+
+    enabled->setChecked(true);
+    url->setText("  nas.local:5572  ");
+    user->setText("admin");
+    password->setText("pass word");
+    const RemoteDaemon::Settings typed = dialog.getRemoteDaemon();
+    QVERIFY(typed.enabled);
+    QCOMPARE(typed.url, QString("nas.local:5572"));
+    QCOMPARE(typed.user, QString("admin"));
+    QCOMPARE(typed.password, QString("pass word"));
+
+    // Something that isn't an address is caught before any request.
+    url->setText("ftp://nas.local");
+    QTest::mouseClick(test, Qt::LeftButton);
+    QVERIFY2(status->text().contains("Type an address"),
+             qPrintable(status->text()));
+    QVERIFY(test->isEnabled());
+  }
+
   void mountPresetShowsExactFlags() {
     PreferencesDialog dialog;
     auto *preset = dialog.findChild<QComboBox *>("mountPreset");

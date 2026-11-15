@@ -92,6 +92,7 @@ set(SOURCE
   schedule_dialog.cpp
   vfs_upload_state.cpp
   vss_snapshot.cpp
+  remote_daemon.cpp
   progress_dialog.cpp
   job_widget.cpp
   mount_widget.cpp
@@ -141,6 +142,7 @@ set(OTHER
   schedule_dialog.h
   vfs_upload_state.h
   vss_snapshot.h
+  remote_daemon.h
   progress_dialog.h
   job_widget.h
   mount_widget.h
