@@ -11,6 +11,10 @@ bool IsPortableMode();
 // The ini that turns on portable mode on Windows: the app's own name with
 // .ini, next to it. The password helper rclone runs answers to the app's ini.
 QString WindowsPortableIniPath(const QString &applicationFilePath);
+// Where portable mode keeps tasks.json and the logs folder: next to the
+// executable (next to the .app bundle on macOS), or the AppImage's config
+// folder on Linux.
+QString PortableDataDirectory();
 
 QString GetRclone();
 void SetRclone(const QString &rclone);

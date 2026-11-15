@@ -20,7 +20,8 @@ enum class Level {
 // file. Safe to call once, early in main().
 void Install();
 
-// <AppLocalDataLocation>/logs, created on demand.
+// <AppLocalDataLocation>/logs, or beside tasks.json in portable mode,
+// created on demand.
 QString LogDirectory();
 QString LogFilePath();
 

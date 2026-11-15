@@ -127,8 +127,10 @@ int MaxBytes() { return kMaxBytes; }
 int Generations() { return kGenerations; }
 
 QString LogDirectory() {
-  QDir dir(QStandardPaths::writableLocation(
-      QStandardPaths::AppLocalDataLocation));
+  // Beside tasks.json, so a portable copy doesn't leave its log on the host.
+  QDir dir(IsPortableMode() ? PortableDataDirectory()
+                            : QStandardPaths::writableLocation(
+                                  QStandardPaths::AppLocalDataLocation));
   const QString path = dir.absoluteFilePath("logs");
   QDir().mkpath(path);
   return path;

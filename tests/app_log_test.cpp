@@ -1,5 +1,6 @@
 #include "app_log.h"
 #include "rclone_capabilities.h"
+#include "utils.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -173,6 +174,56 @@ private slots:
     QTest::failOnWarning(QRegularExpression("Can't open the log file"));
     AppLog::Write(AppLog::Level::Error, "app", "first line");
     AppLog::Write(AppLog::Level::Error, "app", "second line");
+  }
+
+  void portableCopyKeepsItsLogBesideTheTasksFile() {
+    // A portable copy on a USB stick wrote its log into the host's profile,
+    // while the README says the log sits beside tasks.json.
+#if defined(Q_OS_WIN)
+    const QString ini =
+        WindowsPortableIniPath(QCoreApplication::applicationFilePath());
+    QVERIFY2(!QFileInfo::exists(ini), qPrintable(ini));
+    const QString expected =
+        QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("logs");
+    const bool logsExisted = QFileInfo::exists(expected);
+    const auto restore = qScopeGuard([ini, expected, logsExisted] {
+      QFile::remove(ini);
+      if (!logsExisted) {
+        QDir(expected).removeRecursively();
+      }
+    });
+    {
+      QFile seed(ini);
+      QVERIFY(seed.open(QIODevice::WriteOnly));
+    }
+#elif defined(Q_OS_MACOS)
+    QSKIP("a test binary isn't inside an .app bundle");
+#else
+    // An AppImage turns on portable mode with a <name>.AppImage.config folder.
+    const QString appImage = mDir.filePath("RcloneBrowser.AppImage");
+    const QByteArray oldConfig = qgetenv("XDG_CONFIG_HOME");
+    const QByteArray oldAppImage = qgetenv("APPIMAGE");
+    const auto restore = qScopeGuard([oldConfig, oldAppImage] {
+      if (oldConfig.isNull()) {
+        qunsetenv("XDG_CONFIG_HOME");
+      } else {
+        qputenv("XDG_CONFIG_HOME", oldConfig);
+      }
+      if (oldAppImage.isNull()) {
+        qunsetenv("APPIMAGE");
+      } else {
+        qputenv("APPIMAGE", oldAppImage);
+      }
+    });
+    qputenv("XDG_CONFIG_HOME", QFile::encodeName(appImage + ".config"));
+    qputenv("APPIMAGE", QFile::encodeName(appImage));
+    const QString expected = appImage + ".config/rclone-browser/logs";
+#endif
+    QVERIFY(IsPortableMode());
+    QCOMPARE(QDir::cleanPath(AppLog::LogDirectory()),
+             QDir::cleanPath(expected));
+    QCOMPARE(QFileInfo(AppLog::LogFilePath()).absolutePath(),
+             QDir::cleanPath(expected));
   }
 };
 

@@ -52,24 +52,7 @@ QString ListOfJobOptions::GetPersistenceFilePath() {
   QDir outputDir;
 
   if (IsPortableMode()) {
-    // in portable mode tasks' file will be saved in the same folder as
-    // excecutable
-#ifdef Q_OS_MACOS
-    // on macOS excecutable file is located in
-    // ./rclone-browser.app/Contents/MasOS/
-    // to get actual bundle folder we have
-    // to traverse three levels up
-    outputDir = QDir(qApp->applicationDirPath() + "/../../..");
-#else
-#ifdef Q_OS_WIN
-    // not macOS
-    outputDir = QDir(qApp->applicationDirPath());
-#else
-    QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
-    outputDir = QDir(xdg_config_home + "/rclone-browser");
-#endif
-#endif
-
+    outputDir = QDir(PortableDataDirectory());
   } else {
 
     // get data location folder from Qt  - OS dependend

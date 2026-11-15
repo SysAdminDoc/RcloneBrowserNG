@@ -174,7 +174,7 @@ NG doesn't rename or delete a tasks file it can't read. It leaves an unreadable 
 
 To turn on portable mode, put an `.ini` file with the executable's name next to it. For `RcloneBrowser.exe` that's `RcloneBrowser.ini`, and on macOS it goes next to the `.app` bundle. For a Linux AppImage, make a folder named `<appimage>.config` next to the AppImage file, as the [AppImage portable-mode spec](https://docs.appimage.org/user-guide/portable-mode.html) describes.
 
-Portable mode keeps all configuration next to the application, and the rclone binary and `rclone.conf` paths can be relative to the executable, so everything can live on a USB stick. It uses the same files it always has.
+Portable mode keeps all configuration and the app log next to the application, and the rclone binary and `rclone.conf` paths can be relative to the executable, so everything can live on a USB stick. It uses the same files it always has.
 
 ## History
 

@@ -231,6 +231,19 @@ static QString GetIniFilename() {
 #endif
 }
 
+QString PortableDataDirectory() {
+#ifdef Q_OS_MACOS
+  // The executable is in ./RcloneBrowser.app/Contents/MacOS, so the folder
+  // holding the bundle is three levels up.
+  return QDir::cleanPath(qApp->applicationDirPath() + "/../../..");
+#elif defined(Q_OS_WIN)
+  return qApp->applicationDirPath();
+#else
+  return QDir::cleanPath(qEnvironmentVariable("XDG_CONFIG_HOME") +
+                         "/rclone-browser");
+#endif
+}
+
 bool IsPortableMode() {
   QString ini = GetIniFilename();
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
