@@ -222,7 +222,10 @@ QString CreateReturnText(long code) {
     return QStringLiteral("Another snapshot is being made. Try again in a "
                           "minute.");
   case 10:
-    return QStringLiteral("A program on this PC blocked the snapshot.");
+    return QStringLiteral(
+        "Windows called off the snapshot before it finished. A very busy "
+        "drive or another backup program can cause this, so try again in a "
+        "few minutes.");
   default:
     return QStringLiteral("Windows couldn't make a snapshot (code %1).")
         .arg(code);
@@ -274,7 +277,9 @@ public:
     return true;
   }
 
-  bool create(const QString &volume, QString *shadowId, QString *error) {
+  bool create(const QString &volume, QString *shadowId, long *code,
+              QString *error) {
+    *code = -1;
     const Bstr className(QStringLiteral("Win32_ShadowCopy"));
     const Bstr methodName(QStringLiteral("Create"));
     ComPtr<IWbemClassObject> shadowClass;
@@ -303,6 +308,7 @@ public:
     }
     if (hr == static_cast<HRESULT>(WBEM_E_ACCESS_DENIED) ||
         hr == E_ACCESSDENIED) {
+      *code = 1;
       *error = CreateReturnText(1);
       return false;
     }
@@ -314,10 +320,10 @@ public:
     VARIANT returned;
     VariantInit(&returned);
     hr = out->Get(L"ReturnValue", 0, &returned, nullptr, nullptr);
-    const long code = SUCCEEDED(hr) ? returned.lVal : -1;
+    *code = SUCCEEDED(hr) ? returned.lVal : -1;
     VariantClear(&returned);
-    if (code != 0) {
-      *error = CreateReturnText(code);
+    if (*code != 0) {
+      *error = CreateReturnText(*code);
       return false;
     }
     VARIANT id;
@@ -326,6 +332,7 @@ public:
     *shadowId = SUCCEEDED(hr) ? VariantString(id) : QString();
     VariantClear(&id);
     if (!IsShadowId(*shadowId)) {
+      *code = -1;
       *error = QStringLiteral("Windows made a snapshot but didn't say which.");
       return false;
     }
@@ -459,6 +466,22 @@ private:
 } // namespace
 #endif
 
+bool RetryableCreateCode(long code) { return code == 9 || code == 10; }
+
+bool CreateWithRetry(const std::function<bool(long *code)> &attempt,
+                     const std::function<void()> &pause, int attempts) {
+  for (int tried = 1;; ++tried) {
+    long code = -1;
+    if (attempt(&code)) {
+      return true;
+    }
+    if (tried >= attempts || !RetryableCreateCode(code)) {
+      return false;
+    }
+    pause();
+  }
+}
+
 int RunHelper(const QStringList &arguments) {
   HelperRequest request;
   if (!ParseHelperArguments(arguments, &request)) {
@@ -493,7 +516,14 @@ int RunHelper(const QStringList &arguments) {
   DeleteAbandoned(wmi);
 
   QString shadowId;
-  if (!wmi.create(request.volume, &shadowId, &error)) {
+  // A scheduled backup that lands on a busy moment would otherwise fail
+  // on a veto that's gone ten seconds later.
+  const bool made = CreateWithRetry(
+      [&](long *code) {
+        return wmi.create(request.volume, &shadowId, code, &error);
+      },
+      [] { Sleep(10000); });
+  if (!made) {
     return fail(error);
   }
   const std::wstring mutexName = MutexName(shadowId).toStdWString();

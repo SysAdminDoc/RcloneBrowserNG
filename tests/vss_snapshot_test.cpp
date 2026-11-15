@@ -116,6 +116,50 @@ private slots:
     QCOMPARE(parsed.parentPid, qint64(4242));
   }
 
+  // A real run here got code 10 while a build was writing to C: (Volsnap
+  // logged that the shadow storage couldn't grow in time) and passed on the
+  // next try. Codes that won't change fail at once.
+  void createRetriesOnlyWhatClearsUp() {
+    QVERIFY(VssSnapshot::RetryableCreateCode(9));
+    QVERIFY(VssSnapshot::RetryableCreateCode(10));
+    for (const long code : {-1L, 1L, 2L, 3L, 4L, 5L, 6L, 8L, 11L, 12L, 13L}) {
+      QVERIFY2(!VssSnapshot::RetryableCreateCode(code),
+               qPrintable(QString::number(code)));
+    }
+
+    QList<long> codes;
+    int calls = 0;
+    int pauses = 0;
+    const auto attempt = [&](long *code) {
+      *code = codes.value(calls++, 0);
+      return *code == 0;
+    };
+    const auto pause = [&] { ++pauses; };
+
+    codes = {10, 0};
+    QVERIFY(VssSnapshot::CreateWithRetry(attempt, pause));
+    QCOMPARE(calls, 2);
+    QCOMPARE(pauses, 1);
+
+    codes = {1};
+    calls = pauses = 0;
+    QVERIFY(!VssSnapshot::CreateWithRetry(attempt, pause));
+    QCOMPARE(calls, 1);
+    QCOMPARE(pauses, 0);
+
+    codes = {9, 10, 10};
+    calls = pauses = 0;
+    QVERIFY(!VssSnapshot::CreateWithRetry(attempt, pause));
+    QCOMPARE(calls, 2);
+    QCOMPARE(pauses, 1);
+
+    codes = {0};
+    calls = pauses = 0;
+    QVERIFY(VssSnapshot::CreateWithRetry(attempt, pause));
+    QCOMPARE(calls, 1);
+    QCOMPARE(pauses, 0);
+  }
+
   void helperArgumentsRejectBadInput() {
     const QString dir = QDir::tempPath() + "/rclone-browser-vss/one";
     const QString flag = VssSnapshot::kHelperFlag;

@@ -63,6 +63,18 @@ QString SessionRoot();
 // The elevated side. Returns the process exit code.
 int RunHelper(const QStringList &arguments);
 
+// Win32_ShadowCopy.Create codes that clear up on their own within seconds:
+// another snapshot being made (9), and a provider calling the snapshot off
+// (10), which Windows does when a busy drive keeps the shadow storage from
+// growing in time.
+bool RetryableCreateCode(long code);
+
+// Calls attempt until it succeeds, fails with a code RetryableCreateCode
+// turns down, or has run attempts times, with pause between tries. attempt
+// sets *code to the Create code, 0 on success.
+bool CreateWithRetry(const std::function<bool(long *code)> &attempt,
+                     const std::function<void()> &pause, int attempts = 2);
+
 // The program Begin() starts elevated: this app, unless a test points it
 // at a build of the app from outside.
 void SetHelperProgram(const QString &path);
