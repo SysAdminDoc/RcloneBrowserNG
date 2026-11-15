@@ -120,7 +120,7 @@ bool BackendFeatureCache::has(const QString &remote) const {
 
 void BackendFeatureCache::queryAsync(
     const QString &remote,
-    std::function<void(const BackendFeatures &)> callback) {
+    const std::function<void(const BackendFeatures &)> &callback) {
   auto &cache = instance();
   if (cache.has(remote)) {
     if (callback)

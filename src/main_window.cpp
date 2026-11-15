@@ -1081,7 +1081,7 @@ MainWindow::MainWindow(bool initializeRuntime)
       if ((ri->flags() & Qt::ItemIsEnabled) && !ri->isHidden())
         remoteNames << ri->text();
     }
-    bool ok;
+    bool ok = false;
     QString rightName = QInputDialog::getItem(
         this, "Dual Pane",
         QString("Right panel remote (left is %1):").arg(leftName),
@@ -1303,7 +1303,7 @@ MainWindow::MainWindow(bool initializeRuntime)
                    [=]() { editSelectedTask(); });
 
   QObject::connect(ui.buttonCopyTaskCmd, &QPushButton::clicked, this, [=]() {
-    JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
+    auto *item = static_cast<JobOptionsListWidgetItem *>(
         ui.tasksListWidget->currentItem());
     if (!item || !item->GetData())
       return;
@@ -1948,7 +1948,7 @@ void MainWindow::rcloneGetVersion() {
   bool firstTime = mFirstTime;
   mFirstTime = false;
 
-  QProcess *p = new QProcess();
+  auto *p = new QProcess();
 
   QObject::connect(
       p,
@@ -2078,7 +2078,7 @@ void MainWindow::rcloneGetVersion() {
 
           if (error.contains("RCLONE_CONFIG_PASS")) {
             // encrypted rclone.conf - ask for the password and retry
-            bool ok;
+            bool ok = false;
             QString password = QInputDialog::getText(
                 this, qApp->applicationDisplayName(),
                 "Enter password for your encrypted rclone "
@@ -2609,7 +2609,7 @@ bool MainWindow::startDetachedTerminalCommand(const QStringList &args,
   Q_UNUSED(errorTitle);
   const QStringList fullArgs = GetRcloneConf() + args;
 
-  QProcess *p = new QProcess(this);
+  auto *p = new QProcess(this);
 
   QObject::connect(p,
                    static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
@@ -2922,7 +2922,7 @@ void MainWindow::rcloneListRemotes() {
   showRemotesEmptyState("Loading remotes",
                         "Reading remotes from rclone.conf...");
 
-  QProcess *p = new QProcess();
+  auto *p = new QProcess();
 
   QObject::connect(
       p,
@@ -2956,7 +2956,7 @@ void MainWindow::rcloneListRemotes() {
             const QString type = remote.type;
             const QString tooltip = RemoteListParser::TooltipFor(remote);
 
-            int size;
+            int size = 0;
 
             // medium scale by default
             double darkModeIconScale = 1.333;
@@ -3019,7 +3019,7 @@ void MainWindow::rcloneListRemotes() {
                            ? path
                            : ":/remotes/images/unknown" + img_add + ".png");
 
-            QListWidgetItem *item = new QListWidgetItem(icon, name);
+            auto *item = new QListWidgetItem(icon, name);
             item->setData(Qt::UserRole, type);
             item->setToolTip(tooltip);
             item->setSizeHint(QSize(0, displaySize + 14));
@@ -3173,7 +3173,7 @@ void MainWindow::rcloneListRemotes() {
 bool MainWindow::getConfigPassword(QProcess *p) {
   QString output = p->readAllStandardError().trimmed();
   if (output.contains("RCLONE_CONFIG_PASS")) {
-    bool ok;
+    bool ok = false;
     QString password = QInputDialog::getText(
         this, qApp->applicationDisplayName(),
         "Enter password for your encrypted rclone configuration file:",
@@ -3328,7 +3328,7 @@ void MainWindow::listTasks() {
   ListOfJobOptions *ljo = ListOfJobOptions::getInstance();
 
   for (JobOptions *jo : ljo->getTasks()) {
-    JobOptionsListWidgetItem *item = new JobOptionsListWidgetItem(
+    auto *item = new JobOptionsListWidgetItem(
         jo,
         jo->jobType == JobOptions::JobType::Download ? mDownloadIcon
                                                      : mUploadIcon,
@@ -3724,7 +3724,7 @@ void MainWindow::rebuildWatchTrayMenu() {
 
 void MainWindow::editSelectedTask() {
   auto selection = ui.tasksListWidget->selectionModel()->currentIndex();
-  JobOptionsListWidgetItem *item = static_cast<JobOptionsListWidgetItem *>(
+  auto *item = static_cast<JobOptionsListWidgetItem *>(
       ui.tasksListWidget->currentItem());
   if (!item || !item->GetData()) {
     return;
@@ -4116,10 +4116,10 @@ void MainWindow::showJobHistory() {
   dialog.setWindowTitle("Job History");
   dialog.resize(980, 420);
   UiPolish::SetWindowDefaults(&dialog, QSize(760, 360));
-  QVBoxLayout *layout = new QVBoxLayout(&dialog);
+  auto *layout = new QVBoxLayout(&dialog);
   layout->setContentsMargins(12, 12, 12, 12);
   layout->setSpacing(8);
-  QTableWidget *table = new QTableWidget(&dialog);
+  auto *table = new QTableWidget(&dialog);
   table->setColumnCount(9);
   table->setHorizontalHeaderLabels(QStringList()
                                    << "Finished"
@@ -4179,19 +4179,19 @@ void MainWindow::showJobHistory() {
   } else {
     layout->addWidget(table);
   }
-  QHBoxLayout *actionRow = new QHBoxLayout();
-  QPushButton *viewDetail = new QPushButton("View Detail", &dialog);
+  auto *actionRow = new QHBoxLayout();
+  auto *viewDetail = new QPushButton("View Detail", &dialog);
   viewDetail->setToolTip("View per-file transfer detail for the selected job.");
   viewDetail->setEnabled(false);
-  QPushButton *exportDetail = new QPushButton("Export Detail", &dialog);
+  auto *exportDetail = new QPushButton("Export Detail", &dialog);
   exportDetail->setToolTip(
       "Export per-file transfer detail to a text file with secrets redacted.");
   exportDetail->setEnabled(false);
-  QPushButton *restartBtn = new QPushButton("Restart", &dialog);
+  auto *restartBtn = new QPushButton("Restart", &dialog);
   restartBtn->setToolTip(
       "Rerun this transfer with its original arguments.");
   restartBtn->setEnabled(false);
-  QPushButton *dryRunBtn = new QPushButton("Dry Run", &dialog);
+  auto *dryRunBtn = new QPushButton("Dry Run", &dialog);
   dryRunBtn->setToolTip(
       "Preview this transfer without making changes.");
   dryRunBtn->setEnabled(false);
@@ -4233,12 +4233,12 @@ void MainWindow::showJobHistory() {
         QString("Transfer Detail: %1").arg(entry->name));
     detailDlg.resize(700, 450);
     UiPolish::SetWindowDefaults(&detailDlg, QSize(560, 380));
-    QVBoxLayout *dlayout = new QVBoxLayout(&detailDlg);
-    QPlainTextEdit *text = new QPlainTextEdit(&detailDlg);
+    auto *dlayout = new QVBoxLayout(&detailDlg);
+    auto *text = new QPlainTextEdit(&detailDlg);
     text->setReadOnly(true);
     text->setPlainText(RedactedJobDetail(*entry));
     dlayout->addWidget(text);
-    QPushButton *close = new QPushButton("Close", &detailDlg);
+    auto *close = new QPushButton("Close", &detailDlg);
     QObject::connect(close, &QPushButton::clicked, &detailDlg,
                      &QDialog::accept);
     dlayout->addWidget(close);
@@ -4300,7 +4300,7 @@ void MainWindow::showJobHistory() {
   QObject::connect(dryRunBtn, &QPushButton::clicked, &dialog,
                    [&]() { restartFromHistory(true); });
 
-  QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
   UiPolish::SetDialogButtonBox(buttons);
   QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
   layout->addWidget(buttons);
@@ -4987,7 +4987,7 @@ void MainWindow::launchMount(const QString &remote, const QString &folder,
                              const QStringList &mountOptions,
                              const QString &mountCommand,
                              const QStringList &mountBackendArgs) {
-  QProcess *mount = new QProcess(this);
+  auto *mount = new QProcess(this);
   mount->setProcessChannelMode(QProcess::MergedChannels);
 
   // Windows unmounts via the rclone remote-control endpoint. Authenticate it
@@ -5239,7 +5239,7 @@ void MainWindow::handleSendToFiles(const QStringList &files) {
     return;
   }
 
-  bool ok;
+  bool ok = false;
   QString remote = QInputDialog::getItem(
       this, "Upload to Remote", "Choose destination remote:", remoteNames, 0,
       false, &ok);

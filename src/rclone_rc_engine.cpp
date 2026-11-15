@@ -149,13 +149,13 @@ void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline) {
             });
 }
 
-void RcloneRcEngine::loadCapabilities(std::function<void()> done) {
+void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
   postAsync("rc/list", QJsonObject(), this,
             [this, done](const QJsonObject &listed, const QString &listError) {
               if (listError.isEmpty()) {
                 const QJsonArray commands =
                     listed.value("commands").toArray();
-                for (const QJsonValue &entry : commands) {
+                for (const auto &entry : commands) {
                   mEndpoints.insert(entry.toObject().value("Path").toString());
                 }
               }
@@ -235,7 +235,7 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
     // still works; it just has no stats group of its own.
     Diagnostics::appendLog("rc-engine",
                            QString("core/command route: %1").arg(request.reason));
-    startCommand(args, QString(), context, std::move(callback));
+    startCommand(args, QString(), context, callback);
     return;
   }
   if (!mEndpoints.contains(request.endpoint)) {
@@ -243,7 +243,7 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
         "rc-engine",
         QString("core/command route: this rclone has no %1")
             .arg(request.endpoint));
-    startCommand(args, QString(), context, std::move(callback));
+    startCommand(args, QString(), context, callback);
     return;
   }
 
@@ -257,16 +257,16 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
               "rc-engine",
               QStringLiteral("core/command route: the source is a single "
                              "file, which sync/* cannot take"));
-          startCommand(args, QString(), contextGuard, std::move(callback));
+          startCommand(args, QString(), contextGuard, callback);
           return;
         }
-        startSync(args, request, contextGuard, std::move(callback));
+        startSync(args, request, contextGuard, callback);
       });
 }
 
 void RcloneRcEngine::resolveSourceIsDirectory(
     const QString &source, QObject *context,
-    std::function<void(bool)> callback) {
+    const std::function<void(bool)> &callback) {
   const QString trimmed = source.trimmed();
   const qsizetype colon = trimmed.indexOf(QChar(':'));
   const bool looksRemote = colon > 1;
@@ -329,7 +329,7 @@ void RcloneRcEngine::resolveSourceIsDirectory(
 
 void RcloneRcEngine::startSync(const QStringList &args,
                                const RcSyncRequest::Request &request,
-                               QObject *context, JobCallback callback) {
+                               QObject *context, const JobCallback &callback) {
   const QStringList display = rcCommandForDisplay(args);
   const QString group = request.payload.value("_group").toString();
   const QString endpoint = request.endpoint;
@@ -360,7 +360,7 @@ void RcloneRcEngine::startSync(const QStringList &args,
 
 void RcloneRcEngine::startCommand(const QStringList &args,
                                   const QString &group, QObject *context,
-                                  JobCallback callback) {
+                                  const JobCallback &callback) {
   Q_UNUSED(group);
   QJsonArray commandArgs;
   for (int i = 1; i < args.size(); i++) {
@@ -460,33 +460,33 @@ void RcloneRcEngine::runDeleteBatch(const RcDeleteBatch::Plan &plan,
 }
 
 void RcloneRcEngine::jobStatus(int jobId, QObject *context,
-                               RcCallback callback) {
+                               const RcCallback &callback) {
   QJsonObject payload;
   payload.insert("jobid", jobId);
-  postAsync("job/status", payload, context, std::move(callback));
+  postAsync("job/status", payload, context, callback);
 }
 
 void RcloneRcEngine::coreStats(const QString &group, QObject *context,
-                               RcCallback callback) {
+                               const RcCallback &callback) {
   QJsonObject payload;
   if (!group.isEmpty()) {
     payload.insert("group", group);
   }
-  postAsync("core/stats", payload, context, std::move(callback));
+  postAsync("core/stats", payload, context, callback);
 }
 
 void RcloneRcEngine::bandwidthLimit(const QString &rate, QObject *context,
-                                    RcCallback callback) {
+                                    const RcCallback &callback) {
   QJsonObject payload;
   if (!rate.isEmpty()) {
     payload.insert("rate", rate);
   }
-  postAsync("core/bwlimit", payload, context, std::move(callback));
+  postAsync("core/bwlimit", payload, context, callback);
 }
 
 void RcloneRcEngine::stopJob(
     int jobId, QObject *context,
-    std::function<void(bool ok, const QString &error)> callback) {
+    const std::function<void(bool ok, const QString &error)> &callback) {
   QJsonObject payload;
   payload.insert("jobid", jobId);
   postAsync("job/stop", payload, context,
@@ -525,7 +525,7 @@ QStringList RcloneRcEngine::rcCallForDisplay(const QString &endpoint,
 }
 
 void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
-                               QObject *context, RcCallback callback) {
+                               QObject *context, const RcCallback &callback) {
   if (mUrl.isEmpty()) {
     // No daemon yet, so the request would go to a relative URL and fail in a
     // way that reads like a server error. Answer on the event loop instead,

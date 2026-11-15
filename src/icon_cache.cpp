@@ -26,7 +26,7 @@ void IconCache::getIcon(Item *item, const QPersistentModelIndex &parent) {
     // the shell API, not on the thread that constructed this object
     static thread_local bool comInitialized = false;
     if (!comInitialized) {
-      CoInitializeEx(NULL, COINIT_MULTITHREADED);
+      CoInitializeEx(nullptr, COINIT_MULTITHREADED);
       comInitialized = true;
     }
 

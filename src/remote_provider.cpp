@@ -27,7 +27,7 @@ QVector<RemoteProvider> ParseRemoteProviders(const QByteArray &json,
   QVector<RemoteProvider> result;
   result.reserve(providers.size());
 
-  for (const QJsonValue &value : providers) {
+  for (const auto &value : providers) {
     const QJsonObject object = value.toObject();
     if (object.isEmpty() || object.value(QLatin1String("Hide")).toBool()) {
       continue;

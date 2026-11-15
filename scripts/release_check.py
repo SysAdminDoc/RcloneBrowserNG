@@ -662,7 +662,8 @@ def main() -> int:
     print("\nCI-only or intentionally unavailable guarantees:")
     print("  - No GitHub Actions workflow runs on push. The one workflow builds the macOS DMG")
     print("    when started by hand and publishes nothing.")
-    print("  - CodeQL, clang-tidy CI, Scorecard, and OpenSSF workflow checks are not run.")
+    print("  - clang-tidy runs only in a build configured with -DRCLONE_BROWSER_CLANG_TIDY=ON.")
+    print("  - CodeQL, Scorecard, and OpenSSF workflow checks are not run.")
     print("  - Artifact attestations, provenance, and code signing are not provided.")
     print("  - Cross-platform packaging is run only through its platform-specific local script.")
 

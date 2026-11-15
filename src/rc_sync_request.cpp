@@ -58,7 +58,7 @@ OptionIndex IndexOptions(const QJsonObject &optionsInfo) {
   for (const QString &section : {QStringLiteral("main"),
                                  QStringLiteral("filter")}) {
     const QJsonArray options = optionsInfo.value(section).toArray();
-    for (const QJsonValue &entry : options) {
+    for (const auto &entry : options) {
       const QJsonObject option = entry.toObject();
       const QString name = option.value("Name").toString();
       const QString fieldName = option.value("FieldName").toString();

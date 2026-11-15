@@ -7,7 +7,7 @@ class CrossRemoteSearchDialog : public QDialog {
 
 public:
   CrossRemoteSearchDialog(const QStringList &remoteNames, QWidget *parent);
-  ~CrossRemoteSearchDialog();
+  ~CrossRemoteSearchDialog() override;
 
 signals:
   void openLocation(const QString &remotePath);

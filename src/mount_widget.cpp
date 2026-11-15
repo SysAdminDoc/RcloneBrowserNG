@@ -429,7 +429,7 @@ void MountWidget::beginUnmount() {
 #if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD)
   runUnmountHelper("umount", QStringList() << ui.folder->text());
 #elif defined(Q_OS_WIN32)
-  QProcess *p = new QProcess();
+  auto *p = new QProcess();
   QStringList args;
   args << "rc";
   args << "core/quit";

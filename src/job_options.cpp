@@ -2,6 +2,8 @@
 #include "utils.h"
 #include <qexception.h>
 #include <qlogging.h>
+
+#include <utility>
 #ifdef _WIN32
 #pragma warning(disable : 4505)
 #endif
@@ -219,4 +221,4 @@ QStringList JobOptions::getOptions() const {
 }
 
 SerializationException::SerializationException(QString msg)
-    : QException(), Message(msg) {}
+    : QException(), Message(std::move(msg)) {}

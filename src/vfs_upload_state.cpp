@@ -64,7 +64,7 @@ VfsUploadState ParseVfsQueueState(const QByteArray &json) {
   state.valid = true;
   const QJsonArray queue = root.value("queue").toArray();
   state.pendingFiles = queue.size();
-  for (const QJsonValue &value : queue) {
+  for (const auto &value : queue) {
     if (!value.isObject()) {
       return invalidState("vfs/queue contained a non-object queue item");
     }

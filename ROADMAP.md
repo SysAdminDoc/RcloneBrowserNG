@@ -136,10 +136,6 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
 
 Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, so they are ordinary work.
 
-- [ ] P2 Run clang-tidy locally against the existing `.clang-tidy`
-  Was blocked on: no Linux CI runner and no clang-tidy on the workstation. LLVM installs from winget and clang-tidy reads a Ninja `compile_commands.json`.
-  Acceptance: a CMake option runs clang-tidy over `src/`, generated moc/uic files are excluded, and every finding is fixed or suppressed with a reason.
-
 - [ ] P2 Run CodeQL locally with a traced C++ build
   Was blocked on: restoring GitHub Actions, which the repo dropped on purpose. The CodeQL CLI traces a local build just as well.
   Acceptance: a `security-extended` C++ analysis of a traced build runs to completion and every result is fixed or explained.
@@ -147,10 +143,6 @@ Re-tested 2026-11-14. None of these needs the maintainer's accounts or say-so, s
 - [ ] P2 Build the macOS DMG on a macOS runner
   Was blocked on: having no Mac. A manually triggered workflow on a GitHub-hosted macOS runner is the one CI build the project's rules allow, and the repo is public, so it costs nothing.
   Acceptance: a `workflow_dispatch` workflow runs `scripts/release_macOS.sh` and uploads the DMG as a workflow artifact (not a release), and one run passes.
-
-- [ ] P3 VSS snapshot option for locked files on Windows
-  Was blocked on: being hard to test. Only the elevated end-to-end run needs a UAC click; everything up to it can be built and tested.
-  Acceptance: a local-source task can opt into snapshotting locked files, the snapshot needs elevation and is always cleaned up, and the option explains itself when unavailable.
 
 - [ ] P4 Check that the app builds for ppc64le
   Was blocked on: ppc64le CI runners. Ubuntu's cross toolchain and ppc64el Qt packages build it from x86.

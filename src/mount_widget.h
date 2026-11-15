@@ -14,7 +14,7 @@ public:
               const QString &rcUser = QString(),
               const QString &rcPass = QString(), bool keepMounted = true,
               QWidget *parent = nullptr);
-  ~MountWidget();
+  ~MountWidget() override;
 
   bool keepMounted() const;
   bool remountRequested() const;

@@ -59,9 +59,11 @@ public:
       }
       return mOrder == Qt::AscendingOrder ? a->modified < b->modified
                                           : b->modified < a->modified;
+
+    default:
+      Q_ASSERT(false);
+      return false;
     }
-    Q_ASSERT(false);
-    return false;
   }
 
 private:
@@ -286,8 +288,10 @@ QVariant ItemModel::data(const QModelIndex &index, int role) const {
       }
     case 2:
       return item->modified;
+    default:
+      Q_ASSERT(false);
+      break;
     }
-    Q_ASSERT(false);
   }
   return QVariant();
 }
@@ -302,6 +306,8 @@ QVariant ItemModel::headerData(int section, Qt::Orientation orientation,
       return "Size";
     case 2:
       return "Modified";
+    default:
+      break;
     }
   }
 

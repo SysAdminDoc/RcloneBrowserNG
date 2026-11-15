@@ -25,7 +25,7 @@ QVector<Remote> ParseJson(const QByteArray &output, QString *error) {
   QVector<Remote> remotes;
   const QJsonArray array = document.array();
   remotes.reserve(array.size());
-  for (const QJsonValue &value : array) {
+  for (const auto &value : array) {
     if (!value.isObject()) {
       continue;
     }
@@ -81,7 +81,7 @@ QVector<Remote> ParseLong(const QByteArray &output) {
 }
 
 QString TooltipFor(const Remote &remote) {
-  const QString type = remote.type.isEmpty() ? QStringLiteral("unknown type")
+  QString type = remote.type.isEmpty() ? QStringLiteral("unknown type")
                                              : remote.type;
   if (remote.description.trimmed().isEmpty()) {
     return type;

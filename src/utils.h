@@ -50,7 +50,7 @@ QStringList GetShowHidden();
 
 QString GetNiceSize(quint64 size);
 
-unsigned int compareVersion(std::string, std::string);
+unsigned int compareVersion(const std::string&, const std::string&);
 
 // Windows mount remote-control endpoint. The port is derived from the mount
 // folder so the same mount can be located again at unmount time; a random

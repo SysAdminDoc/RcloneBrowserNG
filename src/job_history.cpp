@@ -57,11 +57,11 @@ JobHistoryEntry fromObject(const QJsonObject &obj) {
   entry.exitCode = obj.value("exitCode").toInt();
   entry.statusLabel = obj.value("statusLabel").toString();
   QJsonArray detail = obj.value("transferDetail").toArray();
-  for (const QJsonValue &val : detail) {
+  for (const auto &val : detail) {
     entry.transferDetail.append(val.toString());
   }
   QJsonArray argsArr = obj.value("args").toArray();
-  for (const QJsonValue &val : argsArr) {
+  for (const auto &val : argsArr) {
     entry.args.append(val.toString());
   }
   return entry;
@@ -113,7 +113,7 @@ QVector<JobHistoryEntry> ReadJobHistory(QIODevice *device, QString *error) {
     return {};
   }
 
-  for (const QJsonValue &value : doc.array()) {
+  for (const auto &value : doc.array()) {
     if (!value.isObject()) {
       if (error) {
         *error = "Job history contained a non-object entry.";

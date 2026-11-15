@@ -25,7 +25,7 @@ public:
   JobWidget(QProcess *process, const QString &info, const QStringList &args,
             const QString &source, const QString &dest,
             QWidget *parent = nullptr);
-  ~JobWidget();
+  ~JobWidget() override;
 
   void showDetails();
   bool wasSuccessful() const { return mSuccess; }

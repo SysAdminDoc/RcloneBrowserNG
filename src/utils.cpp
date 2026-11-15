@@ -138,18 +138,18 @@ static unsigned int parseVersionSegment(const std::string &s) {
   return value;
 }
 
-unsigned int compareVersion(std::string version1, std::string version2) {
+unsigned int compareVersion(const std::string &version1, const std::string &version2) {
   auto v1 = split(version1, '.');
   auto v2 = split(version2, '.');
   const size_t max = v1.size() > v2.size() ? v1.size() : v2.size();
   // pad the shorter version string
   if (v1.size() != max) {
     for (size_t i = max - v1.size(); i--;) {
-      v1.push_back("0");
+      v1.emplace_back("0");
     }
   } else {
     for (size_t i = max - v2.size(); i--;) {
-      v2.push_back("0");
+      v2.emplace_back("0");
     }
   }
   for (size_t i = 0; i < max; i++) {
@@ -280,27 +280,27 @@ std::unique_ptr<QSettings> GetSettings() {
 void ReadSettings(QSettings *settings, QObject *widget) {
   QString name = widget->objectName();
   if (!name.isEmpty() && settings->contains(name)) {
-    if (QRadioButton *obj = qobject_cast<QRadioButton *>(widget)) {
+    if (auto *obj = qobject_cast<QRadioButton *>(widget)) {
       obj->setChecked(settings->value(name).toBool());
       return;
     }
-    if (QCheckBox *obj = qobject_cast<QCheckBox *>(widget)) {
+    if (auto *obj = qobject_cast<QCheckBox *>(widget)) {
       obj->setChecked(settings->value(name).toBool());
       return;
     }
-    if (QComboBox *obj = qobject_cast<QComboBox *>(widget)) {
+    if (auto *obj = qobject_cast<QComboBox *>(widget)) {
       obj->setCurrentIndex(settings->value(name).toInt());
       return;
     }
-    if (QSpinBox *obj = qobject_cast<QSpinBox *>(widget)) {
+    if (auto *obj = qobject_cast<QSpinBox *>(widget)) {
       obj->setValue(settings->value(name).toInt());
       return;
     }
-    if (QLineEdit *obj = qobject_cast<QLineEdit *>(widget)) {
+    if (auto *obj = qobject_cast<QLineEdit *>(widget)) {
       obj->setText(settings->value(name).toString());
       return;
     }
-    if (QPlainTextEdit *obj = qobject_cast<QPlainTextEdit *>(widget)) {
+    if (auto *obj = qobject_cast<QPlainTextEdit *>(widget)) {
       int count = settings->beginReadArray(name);
       QStringList lines;
       lines.reserve(count);
@@ -322,19 +322,19 @@ void ReadSettings(QSettings *settings, QObject *widget) {
 
 void WriteSettings(QSettings *settings, QObject *widget) {
   QString name = widget->objectName();
-  if (QCheckBox *obj = qobject_cast<QCheckBox *>(widget)) {
+  if (auto *obj = qobject_cast<QCheckBox *>(widget)) {
     settings->setValue(name, obj->isChecked());
     return;
   }
-  if (QComboBox *obj = qobject_cast<QComboBox *>(widget)) {
+  if (auto *obj = qobject_cast<QComboBox *>(widget)) {
     settings->setValue(name, obj->currentIndex());
     return;
   }
-  if (QSpinBox *obj = qobject_cast<QSpinBox *>(widget)) {
+  if (auto *obj = qobject_cast<QSpinBox *>(widget)) {
     settings->setValue(name, obj->value());
     return;
   }
-  if (QLineEdit *obj = qobject_cast<QLineEdit *>(widget)) {
+  if (auto *obj = qobject_cast<QLineEdit *>(widget)) {
     if (obj->text().isEmpty()) {
       settings->remove(name);
     } else {
@@ -342,11 +342,11 @@ void WriteSettings(QSettings *settings, QObject *widget) {
     }
     return;
   }
-  if (QRadioButton *obj = qobject_cast<QRadioButton *>(widget)) {
+  if (auto *obj = qobject_cast<QRadioButton *>(widget)) {
     settings->setValue(name, obj->isChecked());
     return;
   }
-  if (QPlainTextEdit *obj = qobject_cast<QPlainTextEdit *>(widget)) {
+  if (auto *obj = qobject_cast<QPlainTextEdit *>(widget)) {
     QString text = obj->toPlainText().trimmed();
     if (text.isEmpty()) {
       settings->remove(name);

@@ -11,7 +11,7 @@ public:
                  const QString &message, QProcess *process,
                  QWidget *parent = nullptr, bool close = true,
                  bool trim = false);
-  ~ProgressDialog();
+  ~ProgressDialog() override;
 
   void expand();
   void allowToClose();

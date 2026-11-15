@@ -143,6 +143,10 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 7.  `C:\Qt\6.11.2\msvc2022_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
 
+### clang-tidy
+
+Configure with `cmake -G Ninja -DRCLONE_BROWSER_CLANG_TIDY=ON ..` and every app source goes through clang-tidy with the rules in `.clang-tidy` as it compiles. A finding fails the build. If clang-tidy isn't on PATH, pass `-DRCLONE_BROWSER_CLANG_TIDY_EXE=<path>`.
+
 ## Combining remotes
 
 To see several remotes as one drive, right-click a remote in the list and choose **Combine With Other Remotes...**, or click **New Remote...** and pick the `combine` type. Tick the remotes you want and name the new one. Each remote becomes a folder inside it, and you can rename that folder or point it at a path inside the remote instead of the whole thing.

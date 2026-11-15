@@ -197,3 +197,27 @@ else()
   install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/${APPID}.desktop" DESTINATION "share/applications")
   install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/${APPID}.metainfo.xml" DESTINATION "share/metainfo")
 endif()
+
+# cmake -G Ninja -DRCLONE_BROWSER_CLANG_TIDY=ON ... lints every app source as
+# it compiles. Needs a Makefile or Ninja generator.
+if(RCLONE_BROWSER_CLANG_TIDY)
+  find_program(RCLONE_BROWSER_CLANG_TIDY_EXE NAMES clang-tidy)
+  if(NOT RCLONE_BROWSER_CLANG_TIDY_EXE)
+    message(FATAL_ERROR "RCLONE_BROWSER_CLANG_TIDY is ON but clang-tidy wasn't found. "
+      "Put it on PATH or set RCLONE_BROWSER_CLANG_TIDY_EXE.")
+  endif()
+  # Findings fail the build.
+  set(_rb_tidy "${RCLONE_BROWSER_CLANG_TIDY_EXE}" "--warnings-as-errors=*")
+  if(MSVC)
+    # clang-tidy parses the compile line CMake hands it in gcc mode before
+    # switching to clang-cl, and drops every /option as a file name on the
+    # way. Without /EHsc, clang-cl rejects every try and throw.
+    list(APPEND _rb_tidy "--extra-arg=/EHsc")
+  endif()
+  if(WIN32)
+    set(_rb_tidy_targets RcloneBrowser RcloneBrowserPassword)
+  else()
+    set(_rb_tidy_targets rclone-browser)
+  endif()
+  set_target_properties(${_rb_tidy_targets} PROPERTIES CXX_CLANG_TIDY "${_rb_tidy}")
+endif()

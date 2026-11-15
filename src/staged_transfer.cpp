@@ -90,7 +90,7 @@ bool readEntry(const QJsonObject &object, bool legacy, StagedTransfer *transfer,
   transfer->source = object.value("source").toString();
   transfer->dest = object.value("dest").toString();
   transfer->args.clear();
-  for (const QJsonValue &value : object.value("args").toArray()) {
+  for (const auto &value : object.value("args").toArray()) {
     if (!value.isString()) {
       if (error) {
         *error = "staged args must contain only strings";
@@ -207,7 +207,7 @@ bool Deserialize(const QJsonDocument &document,
     return false;
   }
   const bool legacy = version == 1;
-  for (const QJsonValue &value : root.value("staged").toArray()) {
+  for (const auto &value : root.value("staged").toArray()) {
     if (!value.isObject()) {
       if (error) {
         *error = "staged store contains a non-object entry";

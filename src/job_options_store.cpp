@@ -62,28 +62,28 @@ constexpr qint32 kStoreSchemaVersion = 1;
 constexpr qint32 kMaxTaskCount = 100000;
 
 QDataStream &operator>>(QDataStream &in, JobOptions::Operation &e) {
-  quint32 v;
+  quint32 v = 0;
   in >> v;
   e = static_cast<JobOptions::Operation>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::SyncTiming &e) {
-  quint32 v;
+  quint32 v = 0;
   in >> v;
   e = static_cast<JobOptions::SyncTiming>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::CompareOption &e) {
-  quint32 v;
+  quint32 v = 0;
   in >> v;
   e = static_cast<JobOptions::CompareOption>(v);
   return in;
 }
 
 QDataStream &operator>>(QDataStream &in, JobOptions::JobType &e) {
-  quint32 v;
+  quint32 v = 0;
   in >> v;
   e = static_cast<JobOptions::JobType>(v);
   return in;
@@ -117,7 +117,7 @@ void readJobOptions(QDataStream &stream, JobOptions &jo,
     throw SerializationException("incorrect class");
   }
 
-  qint32 actualVersion;
+  qint32 actualVersion = 0;
   stream >> actualVersion;
   if (actualVersion > JobOptions::classVersion) {
     throw SerializationException("stored version is newer");
@@ -479,7 +479,7 @@ QString keepCopyOf(const QString &path) {
   const QByteArray bytes = source.readAll();
   source.close();
   for (int n = 1; n < 100; ++n) {
-    const QString candidate =
+    QString candidate =
         path + ".unreadable" + (n > 1 ? QString::number(n) : QString());
     QFile existing(candidate);
     if (!existing.exists()) {

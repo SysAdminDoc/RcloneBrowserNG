@@ -43,7 +43,7 @@ QString trailingArgs(const QStringList &extraArgs) {
 // the name is escaped instead of ending the argument.
 QString windowsQuote(const QString &s) {
   QString out = "\"";
-  int backslashes = 0;
+  qsizetype backslashes = 0;
   for (const QChar ch : s) {
     if (ch == '\\') {
       ++backslashes;
@@ -71,7 +71,7 @@ QString systemdQuote(const QString &s) {
   return '"' + out + '"';
 }
 
-void dispatchScheduleCallback(QPointer<QObject> context,
+void dispatchScheduleCallback(const QPointer<QObject> &context,
                               std::function<void()> callback) {
   if (!context) {
     return;

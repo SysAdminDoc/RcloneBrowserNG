@@ -6,7 +6,7 @@ class ListOfJobOptions : public QObject {
   Q_OBJECT
 
 protected:
-  ~ListOfJobOptions() = default;
+  ~ListOfJobOptions() override = default;
   ListOfJobOptions();
 
 public:

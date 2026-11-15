@@ -8,7 +8,7 @@ class IconCache : public QObject {
   Q_OBJECT
 public:
   IconCache(QObject *parent = nullptr);
-  ~IconCache();
+  ~IconCache() override;
 
 public slots:
   void getIcon(Item *item, const QPersistentModelIndex &parent);

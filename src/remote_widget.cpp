@@ -472,7 +472,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                 return;
               }
               QStringList items;
-              for (const QJsonValue &val : arr) {
+              for (const auto &val : arr) {
                 QJsonObject obj = val.toObject();
                 QString path = obj.value("Path").toString();
                 qint64 size = obj.value("Size").toVariant().toLongLong();
@@ -687,7 +687,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   ui.tree->header()->setHighlightSections(false);
   ui.tree->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-  ItemModel *model = new ItemModel(iconCache, remote, isGooglePhotos, this);
+  auto *model = new ItemModel(iconCache, remote, isGooglePhotos, this);
   mModel = model;
   QObject::connect(ui.checkBoxShared, &QCheckBox::toggled, model,
                    &ItemModel::setDriveShared);
@@ -954,7 +954,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
             loading ? loadingLocked
                     : (multiSelect ? singleOnly
                                    : (topLevel ? rootLocked : sharedLocked));
-        const QString moveDisabled = renameDisabled;
+        const QString &moveDisabled = renameDisabled;
         const QString folderDisabled =
             loading ? loadingLocked : (multiSelect ? singleOnly : folderOnly);
         const QString streamDisabled =
@@ -1151,7 +1151,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         if (!pidx.isValid()) {
           continue;
         }
-        QModelIndex idx = QModelIndex(pidx);
+        auto idx = QModelIndex(pidx);
         QString path = model->path(idx).path();
         QString pathMsg = isLocal ? QDir::toNativeSeparators(path) : path;
 
@@ -1180,7 +1180,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
 
       for (qsizetype i = persistentRows.size() - 1; i >= 0; i--) {
         if (persistentRows[i].isValid()) {
-          QModelIndex idx = QModelIndex(persistentRows[i]);
+          auto idx = QModelIndex(persistentRows[i]);
           model->removeRow(idx.row(), idx.parent());
         }
       }
@@ -1798,7 +1798,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                                       dialog.destinationPath());
           }
         } else if (chosen == archiveAction) {
-          bool ok;
+          bool ok = false;
           QString age = QInputDialog::getText(
               this, "Archive", "Move files older than:", QLineEdit::Normal,
               "30d", &ok);
@@ -1832,7 +1832,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           progress.allowToClose();
           progress.exec();
         } else if (chosen == copyUrlAction) {
-          bool ok;
+          bool ok = false;
           QString url = QInputDialog::getText(
               this, "Download URL",
               "HTTP/HTTPS URL to download to this remote folder:",
@@ -1866,7 +1866,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           QStringList modes;
           modes << "interactive" << "skip" << "first" << "newest" << "oldest"
                 << "largest" << "smallest" << "rename";
-          bool ok;
+          bool ok = false;
           QString mode = QInputDialog::getItem(
               this, "Dedupe",
               "Dedupe mode (how to resolve duplicates):", modes, 1,
@@ -1895,7 +1895,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           auto copySettings = GetSettings();
           QString lastDest =
               copySettings->value("Settings/lastRemoteToRemoteDest").toString();
-          bool ok;
+          bool ok = false;
           QString dest = QInputDialog::getText(
               this, "Copy to Remote",
               "Destination remote:path (e.g. backupremote:folder):",
@@ -1919,7 +1919,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
         } else if (chosen == serveAction) {
           QStringList protocols;
           protocols << "http" << "webdav" << "ftp" << "dlna" << "s3" << "nfs";
-          bool ok;
+          bool ok = false;
           QString protocol = QInputDialog::getItem(
               this, "Serve", "Protocol:", protocols, 0, false, &ok);
           if (!ok)
@@ -1938,7 +1938,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           }
           args << getDriveSharedArgs() << GetDefaultRcloneOptionsList()
                << target;
-          QProcess *proc = new QProcess(this);
+          auto *proc = new QProcess(this);
           proc->setProcessChannelMode(QProcess::MergedChannels);
           UseRclonePassword(proc);
           proc->start(GetRclone(), args, QIODevice::ReadOnly);
@@ -1979,7 +1979,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
           if (!item)
             return;
           quint64 size = item->size;
-          constexpr quint64 kMaxPreviewBytes = 50 * 1024 * 1024;
+          constexpr quint64 kMaxPreviewBytes = 50ULL * 1024 * 1024;
           if (size > kMaxPreviewBytes) {
             QMessageBox::information(
                 this, "Preview",
@@ -2141,7 +2141,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
                   QFile f(tempFile);
                   if (f.open(QIODevice::ReadOnly)) {
                     text->setPlainText(
-                        QString::fromUtf8(f.read(2 * 1024 * 1024)));
+                        QString::fromUtf8(f.read(qint64{2} * 1024 * 1024)));
                   }
                   UiPolish::SetOutputView(text, "File preview");
                   layout->addWidget(text);
@@ -2501,7 +2501,7 @@ void RemoteWidget::showBreadcrumbForIndex(const QModelIndex &index) {
       mBreadcrumbLayout->addWidget(separator);
     }
 
-    QPersistentModelIndex persistent = chain.at(i);
+    const QPersistentModelIndex &persistent = chain.at(i);
     auto *button = new QToolButton(mBreadcrumbBar);
     button->setToolButtonStyle(Qt::ToolButtonTextOnly);
     button->setAutoRaise(true);

@@ -9,7 +9,7 @@ class StreamWidget : public QWidget {
 public:
   StreamWidget(QProcess *rclone, QProcess *player, const QString &remote,
                const QString &stream, QWidget *parent = nullptr);
-  ~StreamWidget();
+  ~StreamWidget() override;
 
 public slots:
   void cancel();

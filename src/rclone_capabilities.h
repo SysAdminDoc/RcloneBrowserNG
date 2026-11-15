@@ -31,7 +31,7 @@ public:
   bool has(const QString &remote) const;
 
   static void queryAsync(const QString &remote,
-                         std::function<void(const BackendFeatures &)> callback);
+                         const std::function<void(const BackendFeatures &)> &callback);
 
 private:
   BackendFeatureCache() = default;

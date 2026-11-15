@@ -346,7 +346,7 @@ void CrossRemoteSearchDialog::consumeSearchOutput(QProcess *proc,
       line.chop(1);
     QJsonDocument doc = QJsonDocument::fromJson(line);
     if (doc.isArray()) {
-      for (const QJsonValue &value : doc.array()) {
+      for (const auto &value : doc.array()) {
         if (value.isObject()) {
           addObject(value.toObject());
         }

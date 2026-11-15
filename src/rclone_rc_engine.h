@@ -13,7 +13,7 @@ public:
       std::function<void(const QJsonObject &result, const QString &error)>;
 
   explicit RcloneRcEngine(QObject *parent = nullptr);
-  ~RcloneRcEngine();
+  ~RcloneRcEngine() override;
 
   using StartCallback = std::function<void(bool ok, const QString &error)>;
 
@@ -49,8 +49,9 @@ public:
   // job per item.
   void runDeleteBatch(const RcDeleteBatch::Plan &plan, QObject *context,
                       JobCallback callback);
-  void jobStatus(int jobId, QObject *context, RcCallback callback);
-  void coreStats(const QString &group, QObject *context, RcCallback callback);
+  void jobStatus(int jobId, QObject *context, const RcCallback &callback);
+  void coreStats(const QString &group, QObject *context,
+                 const RcCallback &callback);
 
   // Reads the daemon's bandwidth limit, or sets it when rate is not empty.
   // This is daemon-wide rather than per job: every transfer running on this
@@ -58,9 +59,9 @@ public:
   // comes back as "1Mi". Callers should show what came back rather than what
   // they sent.
   void bandwidthLimit(const QString &rate, QObject *context,
-                      RcCallback callback);
+                      const RcCallback &callback);
   void stopJob(int jobId, QObject *context,
-               std::function<void(bool ok, const QString &error)> callback);
+               const std::function<void(bool ok, const QString &error)> &callback);
 
   QStringList rcCommandForDisplay(const QStringList &args) const;
 
@@ -83,19 +84,19 @@ private:
   int mGroupCounter = 0;
 
   void startCommand(const QStringList &args, const QString &group,
-                    QObject *context, JobCallback callback);
+                    QObject *context, const JobCallback &callback);
   void startTransfer(const QStringList &args, QObject *context,
                      JobCallback callback);
   void startSync(const QStringList &args,
                  const RcSyncRequest::Request &request, QObject *context,
-                 JobCallback callback);
+                 const JobCallback &callback);
   // sync/* takes a directory Fs. The CLI splits a single file into a
   // directory plus a leaf and copies just that file, while sync/copy fails
   // the job with "is a file not a directory", so a file source has to stay
   // on the core/command route.
   void resolveSourceIsDirectory(const QString &source, QObject *context,
-                                std::function<void(bool)> callback);
-  void loadCapabilities(std::function<void()> done);
+                                const std::function<void(bool)> &callback);
+  void loadCapabilities(const std::function<void()> &done);
   void spawnDaemon();
   void pollUntilReady(const QElapsedTimer &deadline);
   void finishStart(bool ok, const QString &error);
@@ -105,7 +106,7 @@ private:
   QJsonObject postSync(const QString &path, const QJsonObject &payload,
                        QString *error);
   void postAsync(const QString &path, const QJsonObject &payload,
-                 QObject *context, RcCallback callback);
+                 QObject *context, const RcCallback &callback);
   // The rclone rc command line equivalent to posting payload to endpoint,
   // with the password left out.
   QStringList rcCallForDisplay(const QString &endpoint,

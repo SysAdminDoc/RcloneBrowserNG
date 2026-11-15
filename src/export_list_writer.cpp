@@ -29,7 +29,7 @@ QString csvField(QString value) {
 }
 
 QString formattedModTime(const QJsonObject &entry) {
-  const QString raw = entry.value("ModTime").toString();
+  QString raw = entry.value("ModTime").toString();
   QDateTime dt = QDateTime::fromString(raw, Qt::ISODateWithMs);
   if (!dt.isValid()) {
     dt = QDateTime::fromString(raw, Qt::ISODate);
@@ -75,7 +75,7 @@ bool WriteExportListFromLsjson(QIODevice *device, const QByteArray &json,
 
   QTextStream out(device);
 
-  for (const QJsonValue &value : doc.array()) {
+  for (const auto &value : doc.array()) {
     if (!value.isObject()) {
       return fail("rclone lsjson output contained a non-object entry.");
     }

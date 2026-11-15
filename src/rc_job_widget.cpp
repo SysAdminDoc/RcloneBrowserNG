@@ -410,12 +410,10 @@ void RcJobWidget::finish(bool success, const QString &error) {
   ui.cancel->setEnabled(true);
   UiPolish::SetCompactToolButton(ui.cancel, "Close transfer card",
                                  "Remove this transfer from the jobs list.");
-  if (mUserCancelled) {
+  if (mUserCancelled || (!success && error == "Cancelled.")) {
     UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
   } else if (success) {
     UiPolish::SetStatus(ui.showDetails, "success", "Finished");
-  } else if (error == "Cancelled.") {
-    UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
   } else {
     if (!error.isEmpty()) {
       ui.output->appendPlainText(error);

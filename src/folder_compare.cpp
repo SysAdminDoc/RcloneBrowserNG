@@ -1,5 +1,7 @@
 #include "folder_compare.h"
 
+#include <utility>
+
 #include "interface_polish.h"
 #include "utils.h"
 
@@ -121,7 +123,7 @@ FolderCompareDialog::FolderCompareDialog(
     const QStringList &driveSharedArgs,
     EnqueueTransferCallback enqueueTransfer, QWidget *parent)
     : QDialog(parent), mDriveSharedArgs(driveSharedArgs),
-      mEnqueueTransfer(enqueueTransfer) {
+      mEnqueueTransfer(std::move(enqueueTransfer)) {
   setWindowTitle("Compare Folders");
   resize(1000, 620);
   UiPolish::SetWindowDefaults(this, QSize(860, 520));

@@ -38,7 +38,7 @@ LogLine ParseLogLine(const QByteArray &raw) {
 
   const QJsonArray transferring = stats.value("transferring").toArray();
   line.stats.transferring.reserve(transferring.size());
-  for (const QJsonValue &value : transferring) {
+  for (const auto &value : transferring) {
     const QJsonObject entry = value.toObject();
     TransferringFile file;
     file.name = entry.value("name").toString();

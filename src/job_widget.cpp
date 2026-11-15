@@ -274,8 +274,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
         visibleRows++;
 
         auto it = mActive.find(file.name);
-        QLabel *label;
-        QProgressBar *bar;
+        QLabel *label = nullptr;
+        QProgressBar *bar = nullptr;
         if (it == mActive.end()) {
           label = new QLabel();
           label->setText(JobStats::ElideTransferName(file.name));

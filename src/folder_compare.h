@@ -32,7 +32,7 @@ public:
                       const QStringList &driveSharedArgs,
                       EnqueueTransferCallback enqueueTransfer,
                       QWidget *parent = nullptr);
-  ~FolderCompareDialog();
+  ~FolderCompareDialog() override;
 
   QString sourcePath() const;
   QString destinationPath() const;

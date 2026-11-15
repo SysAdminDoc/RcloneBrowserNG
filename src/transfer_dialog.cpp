@@ -189,6 +189,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       ui.spinCheckers->setValue(4);
       ui.textBandwidth->setText("1M");
       break;
+    default:
+      break;
     }
     presetCombo->setCurrentIndex(0);
   });
@@ -1280,6 +1282,8 @@ JobOptions *TransferDialog::getJobOptions() {
     case 2:
       mJobOptions->syncTiming = JobOptions::Before;
       break;
+    default:
+      break;
     }
   }
 
@@ -1303,6 +1307,8 @@ JobOptions *TransferDialog::getJobOptions() {
       break;
     case 4:
       mJobOptions->compareOption = JobOptions::ChecksumIgnoreSize;
+      break;
+    default:
       break;
     }
   } else {

@@ -47,7 +47,7 @@ class ItemModel : public QAbstractItemModel {
 public:
   ItemModel(IconCache *icons, const QString &remote, bool googlePhotos,
             QObject *parent);
-  ~ItemModel();
+  ~ItemModel() override;
 
   const QDir &path(const QModelIndex &index) const;
   bool isLoading(const QModelIndex &index) const;

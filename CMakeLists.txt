@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 project(rclone-browser)
 include(CTest)
 
+option(RCLONE_BROWSER_CLANG_TIDY
+  "Run clang-tidy with the rules in .clang-tidy on the app sources while building" OFF)
+
 if(WIN32)
   cmake_policy(SET CMP0020 NEW)
 endif()

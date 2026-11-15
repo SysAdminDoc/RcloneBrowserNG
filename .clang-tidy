@@ -4,6 +4,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   performance-*,
+  -performance-enum-size,
   modernize-use-override,
   modernize-use-nullptr,
   modernize-use-auto,
@@ -15,7 +16,10 @@ Checks: >
 
 WarningsAsErrors: ''
 
-HeaderFilterRegex: 'src/.*\.h$'
+# The project's own headers in src/, with either path separator. Generated
+# uic and moc headers live under *_autogen and are left alone.
+HeaderFilterRegex: 'src[/\\][^/\\]+\.h$'
+ExcludeHeaderFilterRegex: '_autogen'
 
 CheckOptions:
   - key: modernize-use-auto.MinTypeNameLength

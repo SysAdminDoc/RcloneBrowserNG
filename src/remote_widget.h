@@ -14,7 +14,7 @@ class RemoteWidget : public QWidget {
 public:
   RemoteWidget(IconCache *icons, const QString &remote, bool isLocal,
                bool isGoogle, bool isGooglePhotos, QWidget *parent = nullptr);
-  ~RemoteWidget();
+  ~RemoteWidget() override;
 
   QStringList getDriveSharedArgs() const;
   void refreshCurrentDir();

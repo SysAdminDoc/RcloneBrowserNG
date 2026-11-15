@@ -12,7 +12,7 @@ public:
   TransferDialog(bool isDownload, bool isDrop, const QString &remote,
                  const QDir &path, bool isFolder, QWidget *parent = nullptr,
                  JobOptions *task = nullptr, bool editMode = false);
-  ~TransferDialog();
+  ~TransferDialog() override;
 
   void setSource(const QString &path);
 

@@ -17,7 +17,7 @@ public:
               const QString &info, const QStringList &displayArgs,
               const QString &source, const QString &dest,
               QWidget *parent = nullptr);
-  ~RcJobWidget();
+  ~RcJobWidget() override;
 
   void showDetails();
   // Marks this card as a job/batch delete. rclone reports such a job as a

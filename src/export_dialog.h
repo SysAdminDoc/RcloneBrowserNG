@@ -9,7 +9,7 @@ class ExportDialog : public QDialog {
 public:
   ExportDialog(const QString &remote, const QDir &path,
                QWidget *parent = nullptr);
-  ~ExportDialog();
+  ~ExportDialog() override;
 
   QString getDestination() const;
   bool onlyFilenames() const;
