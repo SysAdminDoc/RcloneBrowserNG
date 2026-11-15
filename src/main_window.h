@@ -114,6 +114,8 @@ private:
                                            QWidget *parent);
   void setStatusMessage(const QString &message);
   void showCreateRemoteDialog(const QVector<RemoteProvider> &providers);
+  void createCombineRemote(const QString &initialName,
+                           const QString &preselected);
   void showRemotesEmptyState(const QString &title, const QString &detail);
   void hideRemotesEmptyState();
   void updateRemotesHiddenNotice();

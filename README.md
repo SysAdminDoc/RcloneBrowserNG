@@ -48,6 +48,7 @@ Supports Windows, macOS, GNU/Linux and the BSD family.
 *   Drag & drop from your file explorer to upload
 *   Stream media files to a player such as [mpv](https://mpv.io/) or [VLC](https://www.videolan.org)
 *   Mount and unmount remotes (Windows needs [WinFsp](https://winfsp.dev/); macOS can use macFUSE 5.2+, fuse-t, or rclone `nfsmount` when available)
+*   Put several remotes together as one, so they browse and mount as a single drive
 *   Optional tray icon with finished-transfer notifications
 *   Portable mode — keep the app, rclone and its config on a memory stick
 *   Google Drive "shared with me" support
@@ -132,6 +133,12 @@ For macOS mounts, install a current userspace backend: macFUSE 5.2 or newer, fus
 6.  `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_CONFIGURATION_TYPES="Release" -DCMAKE_PREFIX_PATH=C:\Qt\6.8.8\msvc2019_64 .. && cmake --build . --config Release`
 7.  `C:\Qt\6.8.8\msvc2019_64\bin\windeployqt.exe --no-translations ".\build\Release\RcloneBrowser.exe"`
 8.  `build\Release` now contains `RcloneBrowser.exe` and everything required to run it
+
+## Combining remotes
+
+To see several remotes as one drive, right-click a remote in the list and choose **Combine With Other Remotes...**, or click **New Remote...** and pick the `combine` type. Tick the remotes you want and name the new one. Each remote becomes a folder inside it, and you can rename that folder or point it at a path inside the remote instead of the whole thing.
+
+Nothing is copied or moved. The app adds an rclone [combine](https://rclone.org/combine/) remote to your `rclone.conf`, which you open like any other remote. Its Mount button puts all of them on one drive letter or mount point.
 
 ## Portable vs standard mode
 

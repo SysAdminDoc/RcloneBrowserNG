@@ -131,16 +131,3 @@ Added 2026-09-04 from the research pass recorded in RESEARCH.md.
   Touches: `src/main.cpp`
   Acceptance: `--help` prints every supported flag with one line each and exits 0; an unrecognised argument beginning with `--` prints the same list to stderr and exits non-zero; a smoke test asserts both exit codes.
   Complexity: S
-
-## Issue Intake (2026-09-26)
-
-Open GitHub issues checked against this list on 2026-09-26. None of the three was on the list before.
-
-### P3
-
-- [ ] P3: Explain how to mount a combine remote (issue #18)
-  Reported: lonnietc, 2026-09-11, question.
-  Why: the reporter wants several backends in a single mount through rclone's `combine` backend and asks how to do it from NG.
-  Next: `combine` is configured in rclone.conf like any other remote and then appears as one remote, so the answer is a README section with a worked config plus a check that the remote list shows it (which #16 may be hiding). If the type is filtered out today, fixing #16 fixes this too.
-  Evidence: https://github.com/SysAdminDoc/RcloneBrowserNG/issues/18; https://rclone.org/combine/
-  Complexity: S

@@ -1,3 +1,4 @@
+#include "combine_remote_dialog.h"
 #include "item_model.h"
 #include "job_history.h"
 #include "test_rclone.h"
@@ -5,18 +6,25 @@
 #include "remote_widget.h"
 #include "utils.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTabWidget>
+#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -69,6 +77,93 @@ private:
     QSettings settings;
     settings.setValue("Settings/hideCryptBackends", hide);
     settings.sync();
+  }
+
+  static void switchToConfig(const QString &path) {
+    QSettings settings;
+    settings.setValue("Settings/rcloneConf", path);
+    settings.sync();
+    SetRcloneConf(path);
+  }
+
+  // "one" holds a.txt, "two two" holds Old Photos/b.txt.
+  QString writeCombineFixture(const QString &fileName) {
+    QDir root(mConfigDir.path());
+    root.mkpath("combine-a");
+    root.mkpath("combine-b/Old Photos");
+    for (const QString &relative :
+         {QStringLiteral("combine-a/a.txt"),
+          QStringLiteral("combine-b/Old Photos/b.txt")}) {
+      QFile file(root.filePath(relative));
+      if (file.open(QIODevice::WriteOnly)) {
+        file.write("x");
+      }
+    }
+    const QString path = root.filePath(fileName);
+    QFile config(path);
+    if (config.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      config.write("[one]\ntype = alias\nremote = " +
+                   root.filePath("combine-a").toUtf8() +
+                   "\n\n[two two]\ntype = alias\nremote = " +
+                   root.filePath("combine-b").toUtf8() + "\n");
+    }
+    return path;
+  }
+
+  QStringList rcloneLsf(const QString &config, const QString &target) const {
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(mRclone, QStringList{"--config", config, "lsf", target});
+    if (!process.waitForFinished(60000)) {
+      process.kill();
+      return {"timed out"};
+    }
+    QStringList lines = QString::fromUtf8(process.readAll())
+                            .split('\n', Qt::SkipEmptyParts);
+    for (QString &line : lines) {
+      line = line.trimmed();
+    }
+    if (process.exitCode() != 0) {
+      lines.prepend(QString("exit %1").arg(process.exitCode()));
+    }
+    lines.sort();
+    return lines;
+  }
+
+  static QStringList remoteNames(QListWidget *remotes) {
+    QStringList names;
+    for (int i = 0; i < remotes->count(); ++i) {
+      names << remotes->item(i)->text();
+    }
+    return names;
+  }
+
+  static void setCombineRow(CombineRemoteDialog *dialog, const QString &remote,
+                            bool ticked, const QString &folder,
+                            const QString &path) {
+    QTableWidget *table = dialog->table();
+    for (int row = 0; row < table->rowCount(); ++row) {
+      if (table->item(row, CombineRemoteDialog::IncludeColumn)->text() !=
+          remote) {
+        continue;
+      }
+      table->item(row, CombineRemoteDialog::IncludeColumn)
+          ->setCheckState(ticked ? Qt::Checked : Qt::Unchecked);
+      if (!folder.isEmpty()) {
+        table->item(row, CombineRemoteDialog::FolderColumn)->setText(folder);
+      }
+      if (!path.isEmpty()) {
+        table->item(row, CombineRemoteDialog::PathColumn)->setText(path);
+      }
+    }
+  }
+
+  static void clickOk(QWidget *dialog) {
+    if (auto *buttons = dialog->findChild<QDialogButtonBox *>()) {
+      if (auto *ok = buttons->button(QDialogButtonBox::Ok)) {
+        ok->click();
+      }
+    }
   }
 
 private slots:
@@ -407,6 +502,150 @@ private slots:
     QTest::qWait(3000);
     QCOMPARE(window->backgroundErrorCount(), errorsBefore);
     QCOMPARE(JobHistoryStore::Load().size(), historyBefore);
+  }
+
+  void combineFromTheRemoteMenuMakesOneRemote() {
+    // Issue #18: putting several remotes into one mount needs an rclone
+    // "combine" remote, which rclone's own setup only offers as a single
+    // quoted line to type. Right-click a remote, tick another, and the new
+    // remote has to show both through the real rclone.
+    const QString configPath = writeCombineFixture("combine-menu.conf");
+    switchToConfig(configPath);
+    struct Restore {
+      std::function<void()> fn;
+      ~Restore() { fn(); }
+    } restore{[&]() { switchToConfig(mConfigPath); }};
+
+    std::unique_ptr<MainWindow> window(new MainWindow(true));
+    window->show();
+    auto *remotes = window->findChild<QListWidget *>("remotes");
+    QVERIFY(remotes != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), 2, 120000);
+    QListWidgetItem *twoTwo = nullptr;
+    for (int i = 0; i < remotes->count(); ++i) {
+      if (remotes->item(i)->text() == QLatin1String("two two")) {
+        twoTwo = remotes->item(i);
+      }
+    }
+    QVERIFY(twoTwo != nullptr);
+
+    QStringList messages;
+    bool picked = false;
+    bool filled = false;
+    QStringList preticked;
+    QTimer watcher;
+    QObject::connect(&watcher, &QTimer::timeout, [&]() {
+      if (auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget())) {
+        for (QAction *action : menu->actions()) {
+          if (action->text() == QLatin1String("Combine With Other Remotes...")) {
+            picked = true;
+            menu->setActiveAction(action);
+            QTest::keyClick(menu, Qt::Key_Return);
+            return;
+          }
+        }
+      }
+      for (QWidget *top : QApplication::topLevelWidgets()) {
+        if (auto *dialog = qobject_cast<CombineRemoteDialog *>(top)) {
+          if (dialog->isVisible() && !filled) {
+            filled = true;
+            for (const CombineUpstream &upstream : dialog->upstreams()) {
+              preticked << upstream.remote;
+            }
+            dialog->nameField()->setText("together");
+            setCombineRow(dialog, "one", true, QString(), QString());
+            setCombineRow(dialog, "two two", true, "Pictures", "Old Photos");
+            clickOk(dialog);
+          }
+        } else if (auto *box = qobject_cast<QMessageBox *>(top)) {
+          if (box->isVisible()) {
+            messages << box->text();
+            box->done(QMessageBox::Ok);
+          }
+        }
+      }
+    });
+    watcher.start(50);
+
+    emit remotes->customContextMenuRequested(
+        remotes->visualItemRect(twoTwo).center());
+    QVERIFY2(picked, "the remote's menu offers to combine it");
+    QVERIFY2(filled, "choosing it opens the combine dialog");
+    QCOMPARE(preticked, QStringList({"two two"}));
+
+    QTRY_VERIFY2_WITH_TIMEOUT(remoteNames(remotes).contains("together") ||
+                                  !messages.isEmpty(),
+                              qPrintable(messages.join("\n")), 120000);
+    QVERIFY2(messages.isEmpty(), qPrintable(messages.join("\n")));
+
+    QCOMPARE(rcloneLsf(configPath, "together:"),
+             QStringList({"Pictures/", "one/"}));
+    QCOMPARE(rcloneLsf(configPath, "together:one"), QStringList({"a.txt"}));
+    QCOMPARE(rcloneLsf(configPath, "together:Pictures"),
+             QStringList({"b.txt"}));
+  }
+
+  void newRemoteOfTypeCombineOpensTheGuidedDialog() {
+    const QString configPath = writeCombineFixture("combine-new.conf");
+    switchToConfig(configPath);
+    struct Restore {
+      std::function<void()> fn;
+      ~Restore() { fn(); }
+    } restore{[&]() { switchToConfig(mConfigPath); }};
+
+    std::unique_ptr<MainWindow> window(new MainWindow(true));
+    auto *remotes = window->findChild<QListWidget *>("remotes");
+    auto *newRemote = window->findChild<QPushButton *>("newRemote");
+    QVERIFY(remotes != nullptr);
+    QVERIFY(newRemote != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(remotes->count(), 2, 120000);
+
+    QStringList messages;
+    bool askedForType = false;
+    QString nameCarriedOver;
+    QTimer watcher;
+    QObject::connect(&watcher, &QTimer::timeout, [&]() {
+      for (QWidget *top : QApplication::topLevelWidgets()) {
+        if (!top->isVisible()) {
+          continue;
+        }
+        if (auto *dialog = qobject_cast<CombineRemoteDialog *>(top)) {
+          if (nameCarriedOver.isNull()) {
+            nameCarriedOver = dialog->nameField()->text();
+            setCombineRow(dialog, "one", true, QString(), QString());
+            setCombineRow(dialog, "two two", true, QString(), QString());
+            clickOk(dialog);
+          }
+        } else if (auto *box = qobject_cast<QMessageBox *>(top)) {
+          messages << box->text();
+          box->done(QMessageBox::Ok);
+        } else if (qobject_cast<QProgressDialog *>(top) == nullptr &&
+                   top->windowTitle() == QLatin1String("Create Remote") &&
+                   !askedForType) {
+          askedForType = true;
+          for (auto *edit : top->findChildren<QLineEdit *>()) {
+            if (edit->parentWidget() == top) {
+              edit->setText("everything");
+            }
+          }
+          auto *provider = top->findChild<QComboBox *>();
+          QVERIFY(provider != nullptr);
+          provider->setCurrentText("combine");
+          clickOk(top);
+        }
+      }
+    });
+    watcher.start(50);
+
+    newRemote->click();
+    QTRY_VERIFY2_WITH_TIMEOUT(remoteNames(remotes).contains("everything") ||
+                                  !messages.isEmpty(),
+                              qPrintable(messages.join("\n")), 120000);
+    QVERIFY2(messages.isEmpty(), qPrintable(messages.join("\n")));
+    QVERIFY(askedForType);
+    QCOMPARE(nameCarriedOver, QStringLiteral("everything"));
+    QCOMPARE(rcloneLsf(configPath, "everything:"),
+             QStringList({"one/", "two two/"}));
   }
 };
 

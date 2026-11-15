@@ -93,6 +93,8 @@ set(SOURCE
   schedule_manager.cpp
   staged_transfer.cpp
   cross_remote_search.cpp
+  combine_remote.cpp
+  combine_remote_dialog.cpp
 )
 
 set(OTHER
@@ -130,6 +132,8 @@ set(OTHER
   schedule_manager.h
   staged_transfer.h
   cross_remote_search.h
+  combine_remote.h
+  combine_remote_dialog.h
   item_model.h
 )
 

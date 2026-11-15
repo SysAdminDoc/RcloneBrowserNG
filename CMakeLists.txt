@@ -214,6 +214,16 @@ if(BUILD_TESTING)
   target_link_libraries(interface_polish_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME interface_polish_test COMMAND interface_polish_test)
 
+  add_executable(combine_remote_test
+    tests/combine_remote_test.cpp
+    src/combine_remote.cpp
+    src/combine_remote_dialog.cpp
+    src/interface_polish.cpp
+  )
+  target_include_directories(combine_remote_test PRIVATE src tests)
+  target_link_libraries(combine_remote_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME combine_remote_test COMMAND combine_remote_test)
+
   add_executable(mount_backend_test
     tests/mount_backend_test.cpp
     src/mount_backend.cpp
@@ -401,6 +411,8 @@ if(BUILD_TESTING)
     src/schedule_dialog.cpp
     src/staged_transfer.cpp
     src/cross_remote_search.cpp
+    src/combine_remote.cpp
+    src/combine_remote_dialog.cpp
     src/main_window.ui
     src/remote_widget.ui
     src/transfer_dialog.ui

@@ -14,6 +14,8 @@
 #include "remote_list_parser.h"
 #include "remote_path.h"
 #include "remote_provider.h"
+#include "combine_remote.h"
+#include "combine_remote_dialog.h"
 #include "cross_remote_search.h"
 #include "schedule_manager.h"
 #include "remote_widget.h"
@@ -334,6 +336,9 @@ MainWindow::MainWindow(bool initializeRuntime)
         storageUsage->setToolTip(
             "Show storage consumption for this remote.");
         auto *duplicate = menu.addAction("Duplicate Remote...");
+        auto *combine = menu.addAction("Combine With Other Remotes...");
+        combine->setToolTip("Make a new remote that shows this one and others "
+                            "as folders, so they can be mounted as one drive.");
         menu.addSeparator();
         auto *autoMount = menu.addAction("Auto-mount on launch");
         autoMount->setCheckable(true);
@@ -470,6 +475,10 @@ MainWindow::MainWindow(bool initializeRuntime)
                           .arg(remoteName, err.left(500)));
                 }
               });
+        } else if (chosen == combine) {
+          if (confirmConfigMutation("Creating a combined remote")) {
+            createCombineRemote(QString(), remoteName);
+          }
         } else if (chosen == autoMount) {
           auto s = GetSettings();
           QStringList autoMounts =
@@ -2485,6 +2494,12 @@ void MainWindow::showCreateRemoteDialog(
   const int providerIndex = resolveProviderIndex();
   const QString providerPrefix = provider->itemData(providerIndex).toString();
   const QString remoteName = name->text().trimmed();
+  if (providerPrefix == "combine") {
+    // rclone's own prompt wants the upstreams typed as one quoted line, which
+    // is where people get stuck, so pick them from the existing remotes.
+    createCombineRemote(remoteName, QString());
+    return;
+  }
   const QDateTime configBefore = rcloneConfigLastModified();
   if (startDetachedTerminalCommand(QStringList()
                                        << "config"
@@ -2494,6 +2509,76 @@ void MainWindow::showCreateRemoteDialog(
     setStatusMessage(QString("Creating remote %1 (%2)...")
                          .arg(remoteName, providerPrefix));
   }
+}
+
+void MainWindow::createCombineRemote(const QString &initialName,
+                                     const QString &preselected) {
+  QList<CombineCandidate> candidates;
+  QStringList existingNames;
+  for (int i = 0; i < ui.remotes->count(); ++i) {
+    const QListWidgetItem *item = ui.remotes->item(i);
+    // Filtered or hidden rows are still configured remotes, so they count.
+    candidates << CombineCandidate{item->text(),
+                                   item->data(Qt::UserRole).toString()};
+    existingNames << item->text();
+  }
+  if (candidates.isEmpty()) {
+    QMessageBox::information(
+        this, "Combine Remotes",
+        "Set up the remotes you want to combine first. Each one then shows "
+        "up here and becomes a folder of the combined remote.");
+    return;
+  }
+
+  CombineRemoteDialog dialog(candidates, existingNames, initialName,
+                             preselected, this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  const QString remoteName = dialog.remoteName();
+  const QStringList args =
+      GetRcloneConf() + CombineCreateArguments(remoteName, dialog.upstreams());
+  const QDateTime configBefore = rcloneConfigLastModified();
+
+  auto *proc = new QProcess(this);
+  proc->setProcessChannelMode(QProcess::MergedChannels);
+  UseRclonePassword(proc);
+  QObject::connect(proc, &QProcess::errorOccurred, this,
+                   [=](QProcess::ProcessError error) {
+                     if (error != QProcess::FailedToStart) {
+                       return;
+                     }
+                     proc->deleteLater();
+                     setStatusMessage(QString());
+                     QMessageBox::warning(
+                         this, "Combine Remotes",
+                         QString("Could not start rclone to create \"%1\".")
+                             .arg(remoteName));
+                   });
+  QObject::connect(
+      proc,
+      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+          &QProcess::finished),
+      this, [=](int code, QProcess::ExitStatus status) {
+        proc->deleteLater();
+        if (code == 0 && status == QProcess::NormalExit) {
+          noteConfigReloadIfChanged(configBefore);
+          rcloneListRemotes();
+          setStatusMessage(
+              QString("Created %1. Open it to browse everything together, or "
+                      "use Mount to open it as one drive.")
+                  .arg(remoteName));
+          return;
+        }
+        setStatusMessage(QString());
+        const QString err = QString::fromUtf8(proc->readAll()).trimmed();
+        QMessageBox::warning(
+            this, "Combine Remotes",
+            QString("Could not create \"%1\".\n\n%2")
+                .arg(remoteName, err.left(500)));
+      });
+  setStatusMessage(QString("Creating %1...").arg(remoteName));
+  proc->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
 QString MainWindow::terminalRcloneConfigCommand(const QStringList &args) const {
