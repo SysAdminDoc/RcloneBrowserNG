@@ -359,6 +359,7 @@ void RcJobWidget::poll() {
                 mElapsedDone += duration >= 0
                                     ? duration
                                     : mAttemptClock.elapsed() / 1000.0;
+                mJobEndTime = status.value("endTime").toString();
                 showElapsed();
                 const RcJobResult::Result result =
                     RcJobResult::Read(status, mBatchLabels);
@@ -376,6 +377,9 @@ void RcJobWidget::poll() {
                 const bool success = result.success;
                 const QString jobError = result.error;
                 const int exitCode = result.exitCode;
+                // A limit stop reads as a success with no error, yet it's the
+                // error the job returned.
+                const QString returned = status.value("error").toString();
                 // rclone can record lastError, and count the last transfers,
                 // after the stats read at the top of this poll and before
                 // the job reports finished. Read them once more so a
@@ -383,8 +387,8 @@ void RcJobWidget::poll() {
                 // is final. Polling stays held off until finish().
                 mPollInFlight = true;
                 readGroup(
-                    [this, success, jobError,
-                     exitCode](const QJsonObject &finalStats,
+                    [this, success, jobError, exitCode,
+                     returned](const QJsonObject &finalStats,
                                const QString &finalError) {
                       mPollInFlight = false;
                       const bool haveStats = finalError.isEmpty();
@@ -405,8 +409,26 @@ void RcJobWidget::poll() {
                           !finalStats.value("fatalError").toBool() &&
                           finalStats.value("retryError").toBool() &&
                           !mRetryFlagCarried;
-                      if ((!success || retryableStop) &&
-                          retryAfterFailure(finalStats, haveStats, jobError)) {
+                      // A try that returned nothing can still have counted
+                      // errors of that kind with no limit in play. cmd.Run
+                      // then takes the group's last error as the try's and
+                      // retries or fails on it as on a returned one
+                      // (cmd/cmd.go:256-259), so the run doesn't end at 0.
+                      const bool countedError =
+                          success && exitCode == 0 && haveStats &&
+                          !mRetryEndpoint.isEmpty() &&
+                          finalStats.value("errors").toInt() > mErrorBase;
+                      const QString tryError =
+                          countedError
+                              ? finalStats.value("lastError").toString()
+                              : (retryableStop ? returned : jobError);
+                      if ((!success || retryableStop || countedError) &&
+                          retryAfterFailure(finalStats, haveStats, tryError,
+                                            retryableStop)) {
+                        return;
+                      }
+                      if (countedError) {
+                        finish(false, tryError);
                         return;
                       }
                       // A success with an exit code is a limit stop (8 or
@@ -526,7 +548,8 @@ void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
 }
 
 bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
-                                    const QString &jobError) {
+                                    const QString &jobError,
+                                    bool uncountedStop) {
   // core/command's child rclone runs this loop itself, and a batch delete
   // has nothing to post again. bisync runs cmd.Run with Retry off
   // (cmd/bisync/cmd.go), which tries once and logs none of these lines.
@@ -566,7 +589,12 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   }
   QString lastError =
       haveStats ? stats.value("lastError").toString() : QString();
-  if (haveStats && attemptErrors == 0) {
+  if (uncountedStop && haveStats) {
+    // cmd.Run's CountError counts the stop the try returned, so it's one
+    // error more and the last one (cmd/cmd.go:256).
+    attemptErrors++;
+    lastError = jobError;
+  } else if (haveStats && attemptErrors == 0) {
     // cmd.Run counts the error the run returned when nothing counted it
     // yet, as a sync's own checks before it starts return theirs.
     switch (RcJobResult::ClassifyUncounted(jobError)) {
@@ -624,8 +652,9 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   // well, where the card has no next try to wait for.
   mRetryAfterMs = 0;
   if (mAttempt < mAttempts && !mCancelBeforeRetry) {
-    const RcJobResult::RetryAfter wait =
-        RcJobResult::RetryAfterWait(QStringList{lastError, jobError});
+    const RcJobResult::RetryAfter wait = RcJobResult::RetryAfterWait(
+        QStringList{stats.value("lastError").toString(), lastError, jobError},
+        mJobEndTime);
     if (wait.waitMs > 0) {
       mRetryAfterMs = wait.waitMs;
       const QString waitLine =
@@ -658,8 +687,11 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   if (mCancelBeforeRetry) {
     // Cancel was clicked after the job ended and before its last stats
     // came back. There was no job left to stop, but there's a retry not
-    // to start.
-    mUserCancelled = true;
+    // to start. A limit stop the job ended on stays the run's result, as
+    // the history records it a success.
+    if (!uncountedStop) {
+      mUserCancelled = true;
+    }
     ui.output->appendPlainText(
         QStringLiteral("Cancelled before the next attempt started."));
     return false;

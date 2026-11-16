@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -181,9 +182,17 @@ private slots:
     QTest::newRow("only the first") << false;
   }
 
+  // cmd.Run counts the stop the try returned on top of the group's errors,
+  // so its attempt line has one error more and names the stop, whatever the
+  // group counted last (measured on v1.76.0 with a destination file that
+  // couldn't be hashed: the CLI's count was the group's plus one, and every
+  // line ended "and: max transfer limit reached as set by --max-transfer").
   void aSoftStopWithItsOwnRetryErrorIsRetried() {
     QFETCH(bool, laterRetryable);
     const QString stop = "max transfer limit reached as set by --max-transfer";
+    const QString counted = "hash: failed to open: The process cannot access "
+                            "the file because it is being used by another "
+                            "process.";
     int current = 1;
     const FakeRun run = runFakeCard(
         [&](const QString &path, const QJsonObject &body,
@@ -199,7 +208,7 @@ private slots:
           reply(QJsonObject{{"errors", 2},
                             {"fatalError", false},
                             {"retryError", current == 1 || laterRetryable},
-                            {"lastError", stop}});
+                            {"lastError", counted}});
         });
     QVERIFY2(run.finished, qPrintable(run.output));
     QVERIFY(run.success);
@@ -207,16 +216,78 @@ private slots:
     QCOMPARE(run.resubmits, laterRetryable ? 2 : 1);
     QCOMPARE(run.resubmittedAll.value(0).value("_group").toString(),
              QString("rclonebrowser-1-attempt-2"));
-    QVERIFY2(run.output.contains("Attempt 1/3 failed with 2 errors and: " +
+    QVERIFY2(run.output.contains("Attempt 1/3 failed with 3 errors and: " +
                                  stop),
              qPrintable(run.output));
-    QCOMPARE(run.output.contains("Attempt 3/3 failed with 2 errors and: " +
+    QCOMPARE(run.output.contains("Attempt 3/3 failed with 3 errors and: " +
                                  stop),
              laterRetryable);
+    QVERIFY2(!run.output.contains(counted), qPrintable(run.output));
     QCOMPARE(run.output.count(
                  "Can't retry any of the errors - not attempting retries"),
              laterRetryable ? 0 : 1);
     QVERIFY2(!run.output.contains("succeeded"), qPrintable(run.output));
+  }
+
+  // A copy that couldn't set a destination file's modtime returns nothing,
+  // and the job succeeds, but the group counted the error. cmd.Run takes
+  // that last error as the try's, so the CLI tried 3 times and exited 1
+  // ("Attempt n/3 failed with 1 errors and: chtimes ...: Access is
+  // denied.", measured on v1.76.0) where the card used to say Finished.
+  void aSuccessThatCountedErrorsIsRetried_data() {
+    QTest::addColumn<bool>("retryable");
+    QTest::addColumn<bool>("secondClean");
+    QTest::addColumn<int>("resubmits");
+    QTest::addColumn<bool>("success");
+    QTest::addColumn<int>("exitCode");
+    QTest::newRow("every try") << true << false << 2 << false << 1;
+    QTest::newRow("the next try clean") << true << true << 1 << true << 0;
+    QTest::newRow("nothing to retry") << false << false << 0 << false << 6;
+  }
+
+  void aSuccessThatCountedErrorsIsRetried() {
+    QFETCH(bool, retryable);
+    QFETCH(bool, secondClean);
+    QFETCH(int, resubmits);
+    QFETCH(bool, success);
+    QFETCH(int, exitCode);
+    const QString counted = "chtimes \\\\?\\C:\\dst\\a.txt: Access is denied.";
+    int current = 1;
+    const FakeRun run = runFakeCard([&](const QString &path,
+                                        const QJsonObject &body,
+                                        const FakeRcServer::Reply &reply) {
+      if (path == "job/status") {
+        current = body.value("jobid").toInt();
+        reply(QJsonObject{{"finished", true},
+                          {"success", true},
+                          {"error", QString()},
+                          {"output", QJsonObject()}});
+        return;
+      }
+      if (secondClean && current > 1) {
+        reply(QJsonObject{{"errors", 0}});
+        return;
+      }
+      reply(QJsonObject{{"errors", 1},
+                        {"fatalError", false},
+                        {"retryError", retryable},
+                        {"lastError", counted}});
+    });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QCOMPARE(run.success, success);
+    QCOMPARE(run.entry.success, success);
+    QCOMPARE(run.entry.exitCode, exitCode);
+    QCOMPARE(run.resubmits, resubmits);
+    QCOMPARE(run.output.contains("Attempt 1/3 failed with 1 errors and: " +
+                                 counted),
+             retryable);
+    QCOMPARE(run.output.contains("Attempt 3/3 failed with 1 errors and: " +
+                                 counted),
+             retryable && !secondClean);
+    QCOMPARE(run.output.contains("Attempt 2/3 succeeded"), secondClean);
+    QCOMPARE(run.output.contains(
+                 "Can't retry any of the errors - not attempting retries"),
+             !retryable);
   }
 
   // Measured with the CLI on v1.76.0: every --cutoff-mode ends a
@@ -1103,12 +1174,14 @@ private slots:
     QFETCH(bool, lastSucceeds);
     QFETCH(qint64, sleepMs);
     QFETCH(QString, elapsed);
+    bool lastOk = false;
     const FakeRun run = runFakeCard(
         [&](const QString &path, const QJsonObject &body,
             const FakeRcServer::Reply &reply) {
           if (path == "job/status") {
             const qsizetype job = body.value("jobid").toInt();
             const bool ok = lastSucceeds && job == durations.size();
+            lastOk = ok;
             reply(QJsonObject{{"finished", true},
                               {"success", ok},
                               {"error", ok ? QString() : QString("boom")},
@@ -1118,6 +1191,11 @@ private slots:
           }
           if (path == "core/transferred") {
             reply(QJsonObject{{"transferred", QJsonArray()}});
+            return;
+          }
+          // The try that succeeds has a group of its own with nothing in it.
+          if (lastOk) {
+            reply(QJsonObject{{"errors", 0}, {"elapsedTime", 30.0}});
             return;
           }
           reply(QJsonObject{{"errors", 1},
@@ -1190,6 +1268,31 @@ private slots:
     QCOMPARE(wait.waitMs, qint64(0));
     wait = RcJobResult::RetryAfterWait({"try again after soon (later)"});
     QCOMPARE(wait.waitMs, qint64(0));
+    // Only an error that carries a retry-after time makes cmd.Run wait, and
+    // its text always has one where this has a word.
+    wait = RcJobResult::RetryAfterWait({"server says: try again after noon (5m)"});
+    QCOMPARE(wait.waitMs, qint64(0));
+
+    // A wrapped text keeps the time left it had when it was made. cmd.Run
+    // waits from the end of the try, the job's endTime in the same clock.
+    const QString frozen = "failed to open source object: try again after "
+                           "2026-11-16T06:29:30.6725768-05:00 (1m1s)";
+    wait = RcJobResult::RetryAfterWait({frozen}, "2026-11-16T11:29:28.1Z");
+    QCOMPARE(wait.waitMs, qint64(2572));
+    QCOMPARE(wait.until, QString("2026-11-16T06:29:30.6725768-05:00"));
+    QCOMPARE(wait.left, QString("2.572s"));
+    wait = RcJobResult::RetryAfterWait({frozen},
+                                       "2026-11-16T06:28:00-05:00");
+    QCOMPARE(wait.left, QString("1m30.672s"));
+    // Past by the time the try ended, as the CLI saw it after a slow file.
+    wait = RcJobResult::RetryAfterWait({frozen},
+                                       "2026-11-16T11:30:36.64Z");
+    QCOMPARE(wait.waitMs, qint64(0));
+    QVERIFY(wait.until.isEmpty());
+    // An endTime that isn't a time leaves the text's own time left.
+    wait = RcJobResult::RetryAfterWait({frozen}, "later");
+    QCOMPARE(wait.waitMs, qint64(61000));
+    QCOMPARE(wait.left, QString("1m1s"));
   }
 
   // cmd.Run (cmd/cmd.go:275-281, v1.76.0) sleeps until the stats' retry-after
@@ -1202,15 +1305,24 @@ private slots:
     QTest::addColumn<int>("waitLines");
     QTest::addColumn<qint64>("minWallMs");
     QTest::addColumn<QString>("elapsed");
+    QTest::addColumn<QString>("endTime");
+    QTest::addColumn<QString>("shown");
     QTest::newRow("before a retry")
         << QList<double>{2.5, 1.6} << true << QString("1s") << qint64(1000)
-        << 1 << qint64(2000) << QString("6s");
+        << 1 << qint64(2000) << QString("6s") << QString() << QString("1s");
     QTest::newRow("not after the last try")
         << QList<double>{1.2, 1.2, 1.2} << false << QString("250ms")
-        << qint64(0) << 2 << qint64(500) << QString("4s");
+        << qint64(0) << 2 << qint64(500) << QString("4s") << QString()
+        << QString("250ms");
     QTest::newRow("already past")
         << QList<double>{2.5, 1.6} << true << QString("-2s") << qint64(0)
-        << 0 << qint64(0) << QString("4s");
+        << 0 << qint64(0) << QString("4s") << QString() << QString("-2s");
+    // A minute left in a text made long before the try ended at 11:59:59.
+    // The card waits the second that's left, and says so.
+    QTest::newRow("a frozen time left")
+        << QList<double>{2.5, 1.6} << true << QString("1m1s") << qint64(0)
+        << 1 << qint64(1500) << QString("5s")
+        << QString("2026-11-16T11:59:58.75Z") << QString("1.75s");
   }
 
   void aRetryAfterWaitComesBeforeTheNextAttempt() {
@@ -1221,26 +1333,39 @@ private slots:
     QFETCH(int, waitLines);
     QFETCH(qint64, minWallMs);
     QFETCH(QString, elapsed);
+    QFETCH(QString, endTime);
+    QFETCH(QString, shown);
     const QString until = "2026-11-16T12:00:00.5Z";
     const QString error = "Failed to copy: try again after " + until + " (" +
                           left + ")";
     QElapsedTimer wall;
     wall.start();
+    bool lastOk = false;
     const FakeRun run = runFakeCard(
         [&](const QString &path, const QJsonObject &body,
             const FakeRcServer::Reply &reply) {
           if (path == "job/status") {
             const qsizetype job = body.value("jobid").toInt();
             const bool ok = lastSucceeds && job == durations.size();
-            reply(QJsonObject{{"finished", true},
-                              {"success", ok},
-                              {"error", ok ? QString() : error},
-                              {"duration", durations.value(job - 1)},
-                              {"output", QJsonObject()}});
+            lastOk = ok;
+            QJsonObject status{{"finished", true},
+                               {"success", ok},
+                               {"error", ok ? QString() : error},
+                               {"duration", durations.value(job - 1)},
+                               {"output", QJsonObject()}};
+            if (!endTime.isEmpty()) {
+              status.insert("endTime", endTime);
+            }
+            reply(status);
             return;
           }
           if (path == "core/transferred") {
             reply(QJsonObject{{"transferred", QJsonArray()}});
+            return;
+          }
+          // The try that succeeds has a group of its own with nothing in it.
+          if (lastOk) {
+            reply(QJsonObject{{"errors", 0}});
             return;
           }
           reply(QJsonObject{{"errors", 1},
@@ -1253,7 +1378,7 @@ private slots:
     QCOMPARE(run.success, lastSucceeds);
     QCOMPARE(qsizetype(run.resubmits), durations.size() - 1);
     const QString waitLine =
-        "Received retry after error - sleeping until " + until + " (" + left +
+        "Received retry after error - sleeping until " + until + " (" + shown +
         ")";
     QCOMPARE(int(run.output.count(waitLine)), waitLines);
     if (waitLines > 0) {
@@ -1666,6 +1791,23 @@ private slots:
     const bool noRetryLine = mOutput.contains(
         "Can't retry any of the errors - not attempting retries");
     QVERIFY2(noRetryLine == !lockDest, qPrintable(mOutput));
+    if (lockDest) {
+      // The CLI names the stop on every attempt line, not the hash failure
+      // the group counted.
+      static const QRegularExpression attemptLine(
+          QStringLiteral("^Attempt \\d/3 failed with \\d+ errors and: (.*)$"),
+          QRegularExpression::MultilineOption);
+      QRegularExpressionMatchIterator lines = attemptLine.globalMatch(mOutput);
+      int count = 0;
+      while (lines.hasNext()) {
+        const QString named = lines.next().captured(1);
+        QVERIFY2(named == QLatin1String("max transfer limit reached as set "
+                                        "by --max-transfer"),
+                 qPrintable(mOutput));
+        count++;
+      }
+      QCOMPARE(count, 3);
+    }
     QVERIFY(QFile::exists(dest + "/b.bin"));
     QVERIFY(!QFile::exists(dest + "/c.bin"));
 #else
@@ -1755,6 +1897,47 @@ private slots:
              RcloneExitCode::DescribeProcess(run.entry.exitCode, false, true,
                                              false)
                  .name);
+  }
+
+  // The same click after a soft --max-transfer stop that was due a retry.
+  // The run ended at the limit, and the history records that as a success,
+  // so the card says so too rather than Cancelled.
+  void aCancelBeforeALimitStopsRetryKeepsTheStop() {
+    const QString stop = "max transfer limit reached as set by --max-transfer";
+    bool ended = false;
+    FakeRcServer::Reply lastStats;
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            ended = true;
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", stop},
+                              {"output", QJsonObject()}});
+          } else if (ended && !lastStats) {
+            lastStats = reply;
+          } else {
+            reply(QJsonObject{{"errors", 0}});
+          }
+        },
+        [&](RcJobWidget &card) {
+          if (!QTest::qWaitFor([&]() { return bool(lastStats); }, 20000)) {
+            qWarning() << "the last stats read never came";
+            return;
+          }
+          card.cancel();
+          lastStats(QJsonObject{{"errors", 1},
+                                {"retryError", true},
+                                {"lastError", "boom"}});
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QCOMPARE(run.resubmits, 0);
+    QVERIFY2(run.output.contains("Cancelled before the next attempt started."),
+             qPrintable(run.output));
+    QVERIFY(run.entry.success);
+    QCOMPARE(run.entry.exitCode, 8);
+    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(8).name);
   }
 
   // The daemon has one bandwidth limit for every job on it and ignores a

@@ -120,16 +120,22 @@ qint64 GoDurationMs(const QString &text);
 // Retry-After over a minute and Cloudinary's for its rate limit). core/stats
 // doesn't report a group's retry-after time, but the error's text carries it
 // as "try again after <RFC3339 time> (<time left>)", the time left worked out
-// when the text was made. The longest wait any of `texts` holds, with the
-// time and time left as rclone wrote them, or a zero wait when none of them
-// has one still to come. A retry-after error that isn't the last one counted
-// and isn't the one the job returned can't be seen here.
+// when the text was made. cmd.Run waits from the end of the try until that
+// time, and a text wrapped into another error (Swift's always is) keeps the
+// time left it had when it was made, long before the try ended. So with
+// `tryEnd`, the job's endTime in the same clock, the wait runs from there,
+// and `left` is that wait as Go writes it; without it, the time left in the
+// text is all there is. The longest wait any of `texts` holds, or a zero
+// wait when none of them has one still to come. A retry-after error that
+// isn't the last one counted and isn't the one the job returned can't be
+// seen here.
 struct RetryAfter {
   qint64 waitMs = 0;
   QString until;
   QString left;
 };
-RetryAfter RetryAfterWait(const QStringList &texts);
+RetryAfter RetryAfterWait(const QStringList &texts,
+                          const QString &tryEnd = QString());
 
 // The sync/* call for attempt `attempt` of a run the job card retries.
 // rclone checks --max-delete, --max-delete-size and --max-transfer against

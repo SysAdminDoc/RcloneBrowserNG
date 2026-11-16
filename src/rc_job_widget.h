@@ -119,6 +119,9 @@ private:
   qint64 mRetrySleepMs = 0;
   // A backend's retry-after wait ahead of the next attempt's --retries-sleep.
   qint64 mRetryAfterMs = 0;
+  // When the current job ended, in the daemon's clock (job/status endTime),
+  // which is where cmd.Run starts its retry-after wait. Empty until then.
+  QString mJobEndTime;
   bool mRetryPending = false;
   // Cancel came after the job ended, while its last stats were read.
   bool mCancelBeforeRetry = false;
@@ -180,8 +183,10 @@ private:
   void noteDeleteCap(const QString &text);
   // Called with the stats read after a failed attempt. True when another
   // attempt has been scheduled, using cmd.Run's rules and log lines.
+  // uncountedStop: jobError is a limit stop the group never counted, which
+  // cmd.Run counts as the try's last error.
   bool retryAfterFailure(const QJsonObject &stats, bool haveStats,
-                         const QString &jobError);
+                         const QString &jobError, bool uncountedStop = false);
   void startNextAttempt();
   // Posts the next attempt once the daemon's caps are read again.
   void submitNextAttempt();

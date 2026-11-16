@@ -5,9 +5,11 @@
 #include "rclone_exit_code.h"
 #include "rclone_number.h"
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QRegularExpression>
+#include <QTimeZone>
 
 namespace RcJobResult {
 
@@ -407,6 +409,70 @@ bool IsRetriableText(const QString &error) {
   return false;
 }
 
+// Milliseconds since the epoch in a time written in Go's time.RFC3339Nano
+// layout ("2026-11-16T06:29:30.6725768-05:00", "2026-11-16T11:00:00Z"),
+// which is how rclone writes a retry-after time and a job's endTime.
+bool Rfc3339Ms(const QString &text, qint64 *ms) {
+  static const QRegularExpression layout(QStringLiteral(
+      "^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,9}))?"
+      "(?:Z|([+-])(\\d{2}):(\\d{2}))$"));
+  const QRegularExpressionMatch m = layout.match(text);
+  if (!m.hasMatch()) {
+    return false;
+  }
+  const QDate date(m.captured(1).toInt(), m.captured(2).toInt(),
+                   m.captured(3).toInt());
+  const QTime time(m.captured(4).toInt(), m.captured(5).toInt(),
+                   m.captured(6).toInt());
+  if (!date.isValid() || !time.isValid()) {
+    return false;
+  }
+  qint64 value = QDateTime(date, time, QTimeZone::UTC).toMSecsSinceEpoch();
+  value += (m.captured(7) + QStringLiteral("00")).left(3).toInt();
+  if (!m.captured(8).isEmpty()) {
+    const qint64 offset =
+        (m.captured(9).toInt() * 60 + m.captured(10).toInt()) * 60000LL;
+    value += m.captured(8) == QLatin1String("-") ? offset : -offset;
+  }
+  *ms = value;
+  return true;
+}
+
+// A wait the way time.Duration.String() writes it, to the millisecond:
+// "750ms", "1.5s", "1m1s", "1h0m0s".
+QString GoDurationText(qint64 ms) {
+  if (ms == 0) {
+    return QStringLiteral("0s");
+  }
+  QString out;
+  if (ms < 0) {
+    out = QStringLiteral("-");
+    ms = -ms;
+  }
+  if (ms < 1000) {
+    return out + QString::number(ms) + QStringLiteral("ms");
+  }
+  const qint64 hours = ms / 3600000;
+  const qint64 minutes = ms / 60000 % 60;
+  const qint64 secondsMs = ms % 60000;
+  QString seconds = QString::number(secondsMs / 1000);
+  if (secondsMs % 1000 != 0) {
+    QString fraction =
+        QString("%1").arg(secondsMs % 1000, 3, 10, QLatin1Char('0'));
+    while (fraction.endsWith(QLatin1Char('0'))) {
+      fraction.chop(1);
+    }
+    seconds += QLatin1Char('.') + fraction;
+  }
+  if (hours > 0) {
+    out += QString::number(hours) + QLatin1Char('h');
+  }
+  if (hours > 0 || minutes > 0) {
+    out += QString::number(minutes) + QLatin1Char('m');
+  }
+  return out + seconds + QLatin1Char('s');
+}
+
 } // namespace
 
 bool IsNoLowLevelRetryError(const QString &error) {
@@ -514,20 +580,27 @@ qint64 GoDurationMs(const QString &text) {
   return static_cast<qint64>(sign * ms + (sign < 0 ? -0.5 : 0.5));
 }
 
-RetryAfter RetryAfterWait(const QStringList &texts) {
+RetryAfter RetryAfterWait(const QStringList &texts, const QString &tryEnd) {
   // fserrors.ErrorRetryAfter.Error() in v1.76.0.
   static const QRegularExpression said(
       QStringLiteral("try again after (\\S+) \\(([^()]*)\\)"));
+  qint64 endMs = 0;
+  const bool fromEnd = Rfc3339Ms(tryEnd, &endMs);
   RetryAfter longest;
   for (const QString &text : texts) {
     QRegularExpressionMatchIterator it = said.globalMatch(text);
     while (it.hasNext()) {
       const QRegularExpressionMatch m = it.next();
-      const qint64 waitMs = GoDurationMs(m.captured(2));
+      qint64 untilMs = 0;
+      if (!Rfc3339Ms(m.captured(1), &untilMs)) {
+        continue; // not a time, so not that error's text
+      }
+      const qint64 waitMs =
+          fromEnd ? untilMs - endMs : GoDurationMs(m.captured(2));
       if (waitMs > longest.waitMs) {
         longest.waitMs = waitMs;
         longest.until = m.captured(1);
-        longest.left = m.captured(2);
+        longest.left = fromEnd ? GoDurationText(waitMs) : m.captured(2);
       }
     }
   }
