@@ -3691,6 +3691,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
                 new RcJobWidget(mRcEngine, job.jobId, job.group, message,
                                 job.displayCommand, source, dest);
             widget->setHistoryArgs(args);
+            widget->setStartedJob(job);
             addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                            backupDirTemplate, backupRetainCount);
             if (!postCommand.isEmpty()) {
@@ -4037,6 +4038,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
                 new RcJobWidget(mRcEngine, job.jobId, job.group, message,
                                 job.displayCommand, source, dest);
             widget->setHistoryArgs(args);
+            widget->setStartedJob(job);
             addRcJobWidget(widget, QString(), QString(), QString(),
                            backupDirTemplate, backupRetainCount);
             return;
@@ -4186,6 +4188,7 @@ void MainWindow::startRemoteDaemonTransfer(
                                        message, job.displayCommand, source,
                                        dest);
         widget->setHistoryArgs(args);
+        widget->setStartedJob(job);
         addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                        backupDirTemplate, backupRetainCount);
         if (!postCommand.isEmpty()) {

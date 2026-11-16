@@ -122,6 +122,7 @@ void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
   // Whatever answers next is a different rclone with its own tables.
   mEndpoints.clear();
   mOptionIndex = RcSyncRequest::OptionIndex();
+  mCapabilityGeneration++;
   mUrl.clear();
   if (mProcess) {
     if (mProcess->state() != QProcess::NotRunning) {
@@ -193,6 +194,7 @@ void RcloneRcEngine::spawnDaemon() {
   // again rather than inherited from the one that died.
   mEndpoints.clear();
   mOptionIndex = RcSyncRequest::OptionIndex();
+  mCapabilityGeneration++;
 
   if (mProcess) {
     mProcess->deleteLater();
@@ -264,8 +266,22 @@ void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline) {
 }
 
 void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
+  // A daemon switch or respawn while these are in flight clears the tables
+  // for the new rclone. The old one's answers are dropped then, though done
+  // still runs, so nobody waiting on this start is left hanging.
+  const int generation = mCapabilityGeneration;
+  const auto finish = [done]() {
+    if (done) {
+      done();
+    }
+  };
   postAsync("rc/list", QJsonObject(), this,
-            [this, done](const QJsonObject &listed, const QString &listError) {
+            [this, generation, finish](const QJsonObject &listed,
+                                       const QString &listError) {
+              if (generation != mCapabilityGeneration) {
+                finish();
+                return;
+              }
               if (listError.isEmpty()) {
                 const QJsonArray commands =
                     listed.value("commands").toArray();
@@ -274,8 +290,12 @@ void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
                 }
               }
               postAsync("options/info", QJsonObject(), this,
-                        [this, done](const QJsonObject &info,
-                                     const QString &infoError) {
+                        [this, generation, finish](const QJsonObject &info,
+                                                   const QString &infoError) {
+                          if (generation != mCapabilityGeneration) {
+                            finish();
+                            return;
+                          }
                           if (infoError.isEmpty()) {
                             mOptionIndex = RcSyncRequest::IndexOptions(info);
                           }
@@ -283,22 +303,20 @@ void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
                           // an empty table means every transfer keeps the old
                           // core/command route.
                           if (mOptionIndex.isEmpty()) {
-                            if (done) {
-                              done();
-                            }
+                            finish();
                             return;
                           }
                           // The delete timings are only in options/get.
                           postAsync("options/get", QJsonObject(), this,
-                                    [this, done](const QJsonObject &values,
-                                                 const QString &getError) {
-                                      if (getError.isEmpty()) {
+                                    [this, generation,
+                                     finish](const QJsonObject &values,
+                                             const QString &getError) {
+                                      if (generation == mCapabilityGeneration &&
+                                          getError.isEmpty()) {
                                         RcSyncRequest::AddDeleteModes(
                                             &mOptionIndex, values);
                                       }
-                                      if (done) {
-                                        done();
-                                      }
+                                      finish();
                                     });
                         });
             });
@@ -364,15 +382,15 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
     // still works; it just has no stats group of its own.
     Diagnostics::appendLog("rc-engine",
                            QString("core/command route: %1").arg(request.reason));
-    startCommand(args, QString(), context, callback);
+    startCommand(args, request.reason, context, callback);
     return;
   }
   if (!mEndpoints.contains(request.endpoint)) {
-    Diagnostics::appendLog(
-        "rc-engine",
-        QString("core/command route: this rclone has no %1")
-            .arg(request.endpoint));
-    startCommand(args, QString(), context, callback);
+    const QString reason =
+        QString("this rclone has no %1").arg(request.endpoint);
+    Diagnostics::appendLog("rc-engine",
+                           QString("core/command route: %1").arg(reason));
+    startCommand(args, reason, context, callback);
     return;
   }
 
@@ -382,11 +400,11 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
       [this, args, request, contextGuard,
        callback = std::move(callback)](bool isDirectory) mutable {
         if (!isDirectory) {
+          const QString reason = QStringLiteral(
+              "the source is a single file, which sync/* cannot take");
           Diagnostics::appendLog(
-              "rc-engine",
-              QStringLiteral("core/command route: the source is a single "
-                             "file, which sync/* cannot take"));
-          startCommand(args, QString(), contextGuard, callback);
+              "rc-engine", QString("core/command route: %1").arg(reason));
+          startCommand(args, reason, contextGuard, callback);
           return;
         }
         startSync(args, request, contextGuard, callback);
@@ -477,19 +495,25 @@ void RcloneRcEngine::resolveSourceIsDirectory(
 void RcloneRcEngine::startSync(const QStringList &args,
                                const RcSyncRequest::Request &request,
                                QObject *context, const JobCallback &callback) {
-  const QStringList display = rcCommandForDisplay(args);
+  Q_UNUSED(args);
   const QString group = request.payload.value("_group").toString();
   const QString endpoint = request.endpoint;
+  // What's posted is the sync/* call, so that's what the card shows.
+  const QStringList display = rcCallForDisplay(endpoint, request.payload);
 
   postAsync(endpoint, request.payload, context,
-            [callback, group, endpoint, display](const QJsonObject &response,
-                                                 const QString &error) {
+            [callback, group, request, display](const QJsonObject &response,
+                                                const QString &error) {
               if (!callback) {
                 return;
               }
               StartedJob job;
               job.group = group;
               job.displayCommand = display;
+              job.endpoint = request.endpoint;
+              job.payload = request.payload;
+              job.attempts = request.retries;
+              job.retrySleepMs = request.retriesSleepMs;
               if (!error.isEmpty()) {
                 job.error = error;
                 callback(job);
@@ -506,9 +530,8 @@ void RcloneRcEngine::startSync(const QStringList &args,
 }
 
 void RcloneRcEngine::startCommand(const QStringList &args,
-                                  const QString &group, QObject *context,
+                                  const QString &routeNote, QObject *context,
                                   const JobCallback &callback) {
-  Q_UNUSED(group);
   QJsonObject payload;
   payload.insert("command", args.first());
   payload.insert("arg", coreCommandArguments(args, commandConfig()));
@@ -517,13 +540,14 @@ void RcloneRcEngine::startCommand(const QStringList &args,
 
   const QStringList display = rcCommandForDisplay(args);
   postAsync("core/command", payload, context,
-            [callback, display](const QJsonObject &response,
-                                const QString &error) {
+            [callback, display, routeNote](const QJsonObject &response,
+                                           const QString &error) {
               if (!callback) {
                 return;
               }
               StartedJob job;
               job.displayCommand = display;
+              job.routeNote = routeNote;
               if (!error.isEmpty()) {
                 job.error = error;
                 callback(job);
@@ -599,6 +623,26 @@ void RcloneRcEngine::runDeleteBatch(const RcDeleteBatch::Plan &plan,
                 callback(job);
               });
   });
+}
+
+void RcloneRcEngine::resubmit(const QString &endpoint,
+                              const QJsonObject &payload, QObject *context,
+                              const ResubmitCallback &callback) {
+  postAsync(endpoint, payload, context,
+            [callback](const QJsonObject &response, const QString &error) {
+              if (!callback) {
+                return;
+              }
+              if (!error.isEmpty()) {
+                callback(-1, error);
+                return;
+              }
+              if (!response.contains("jobid")) {
+                callback(-1, QStringLiteral("rclone rc did not return a job id"));
+                return;
+              }
+              callback(response.value("jobid").toInt(-1), QString());
+            });
 }
 
 void RcloneRcEngine::jobStatus(int jobId, QObject *context,

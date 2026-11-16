@@ -504,4 +504,120 @@ SizeError ParseSize(const QString &text, qint64 *bytes) {
   return SizeError::None;
 }
 
+// Go's time.ParseDuration (src/time/format.go), byte for byte: the units
+// are matched as UTF-8, and the integer and fraction parts overflow
+// exactly where Go's do.
+bool ParseGoDuration(const QString &text, qint64 *nanoseconds) {
+  constexpr quint64 kLimit = quint64(1) << 63;
+  const QByteArray bytes = text.toUtf8();
+  qsizetype i = 0;
+  bool negative = false;
+  if (i < bytes.size() && (bytes[i] == '-' || bytes[i] == '+')) {
+    negative = bytes[i] == '-';
+    i++;
+  }
+  const QByteArray rest = bytes.mid(i);
+  if (rest == "0") {
+    *nanoseconds = 0;
+    return true;
+  }
+  if (rest.isEmpty()) {
+    return false;
+  }
+  const auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+  quint64 total = 0;
+  while (i < bytes.size()) {
+    if (!(bytes[i] == '.' || isDigit(bytes[i]))) {
+      return false;
+    }
+    quint64 whole = 0;
+    const qsizetype wholeStart = i;
+    for (; i < bytes.size() && isDigit(bytes[i]); i++) {
+      if (whole > kLimit / 10) {
+        return false;
+      }
+      whole = whole * 10 + static_cast<quint64>(bytes[i] - '0');
+      if (whole > kLimit) {
+        return false;
+      }
+    }
+    const bool before = i != wholeStart;
+    quint64 fraction = 0;
+    double scale = 1;
+    bool after = false;
+    if (i < bytes.size() && bytes[i] == '.') {
+      i++;
+      const qsizetype fractionStart = i;
+      bool full = false;
+      for (; i < bytes.size() && isDigit(bytes[i]); i++) {
+        if (full) {
+          continue;
+        }
+        if (fraction > (kLimit - 1) / 10) {
+          full = true;
+          continue;
+        }
+        const quint64 next = fraction * 10 + static_cast<quint64>(bytes[i] - '0');
+        if (next > kLimit) {
+          full = true;
+          continue;
+        }
+        fraction = next;
+        scale *= 10;
+      }
+      after = i != fractionStart;
+    }
+    if (!before && !after) {
+      return false;
+    }
+    const qsizetype unitStart = i;
+    while (i < bytes.size() && bytes[i] != '.' && !isDigit(bytes[i])) {
+      i++;
+    }
+    const QByteArray unitName = bytes.mid(unitStart, i - unitStart);
+    quint64 unit = 0;
+    if (unitName == "ns") {
+      unit = 1;
+    } else if (unitName == "us" || unitName == "\xC2\xB5s" ||
+               unitName == "\xCE\xBCs") {
+      unit = 1000;
+    } else if (unitName == "ms") {
+      unit = 1000000;
+    } else if (unitName == "s") {
+      unit = 1000000000;
+    } else if (unitName == "m") {
+      unit = 60ULL * 1000000000;
+    } else if (unitName == "h") {
+      unit = 3600ULL * 1000000000;
+    } else {
+      return false; // missing or unknown unit
+    }
+    if (whole > kLimit / unit) {
+      return false;
+    }
+    whole *= unit;
+    if (fraction > 0) {
+      whole += static_cast<quint64>(static_cast<double>(fraction) *
+                                    (static_cast<double>(unit) / scale));
+      if (whole > kLimit) {
+        return false;
+      }
+    }
+    total += whole;
+    if (total > kLimit) {
+      return false;
+    }
+  }
+  if (negative) {
+    *nanoseconds = total == kLimit ? std::numeric_limits<qint64>::min()
+                                   : -static_cast<qint64>(total);
+    return true;
+  }
+  if (total > kLimit - 1) {
+    return false;
+  }
+  *nanoseconds = static_cast<qint64>(total);
+  return true;
+}
+
 } // namespace RcloneNumber

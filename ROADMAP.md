@@ -8,6 +8,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P2
 
+- [ ] P2 — Keep live progress for a job with its own speed limit
+  Why: the daemon has one bandwidth and TPS limit for every job and drops a job's own, so a task with `--bwlimit`, `--bwlimit-file`, `--tpslimit` or `--tpslimit-burst` (and every transfer while the status bar Limit is set) now runs on core/command, where its stats never reach the card until it ends.
+  Evidence: `src/rc_sync_request.cpp` `sharedLimitReason`; `src/rclone_rc_engine.cpp` startTransfer routes those to startCommand with a route note; `src/rc_job_widget.cpp` setStartedJob prints "Live progress isn't shown for this run".
+  Touches: `src/main_window.cpp` route choice, `src/rclone_rc_engine.{h,cpp}`, `src/job_widget.cpp`
+  Acceptance: a local Copy with `--bwlimit 1M` shows live bytes, speed and ETA on its card while it runs and still honors the limit; a remote-daemon job keeps core/command with the route note; a test drives the limited job and sees at least one progress update before the end.
+  Complexity: M
+
 - [ ] P2 — Offer "finish current files, then stop" alongside kill
   Why: the only stop today terminates the process mid-file, wasting partial transfers. Moved from Roadmap_Blocked.md for the same reason as the item above.
   Evidence: `src/job_widget.cpp` stop path terminates the process; rclone.org/rc `job/stop` and `job/stopgroup` stop scheduling new work rather than killing in-flight transfers; rclone#966.

@@ -19,6 +19,11 @@ const char kOptionsInfo[] = R"JSON({
     {"Name": "checkers", "FieldName": "Checkers", "Type": "int", "NoPrefix": true},
     {"Name": "max_delete", "FieldName": "MaxDelete", "Type": "int64", "NoPrefix": true},
     {"Name": "bwlimit", "FieldName": "BwLimit", "Type": "BwTimetable", "NoPrefix": true},
+    {"Name": "bwlimit_file", "FieldName": "BwLimitFile", "Type": "BwTimetable", "NoPrefix": true},
+    {"Name": "tpslimit", "FieldName": "TPSLimit", "Type": "float64", "NoPrefix": true},
+    {"Name": "tpslimit_burst", "FieldName": "TPSLimitBurst", "Type": "int", "NoPrefix": true},
+    {"Name": "retries", "FieldName": "Retries", "Type": "int", "NoPrefix": true},
+    {"Name": "retries_sleep", "FieldName": "RetriesInterval", "Type": "Duration", "NoPrefix": true},
     {"Name": "contimeout", "FieldName": "ConnectTimeout", "Type": "Duration", "NoPrefix": true},
     {"Name": "backup_dir", "FieldName": "BackupDir", "Type": "string", "NoPrefix": true},
     {"Name": "name_transform", "FieldName": "NameTransform", "Type": "stringArray", "NoPrefix": true},
@@ -359,6 +364,108 @@ private slots:
     QCOMPARE(dryRun("--dry-run=FaLsE"), -1);
     QCOMPARE(dryRun("--dry-run=yes"), -1);
     QCOMPARE(dryRun("--dry-run="), -1);
+  }
+
+  // rclone reads an int option with fmt.Sscanln: these are what options/get
+  // reported for --transfers=<text> on v1.76.0. The JSON number has to be
+  // the same, since rclone takes it as is.
+  void readsIntegersTheWayTheCliDoes() {
+    const QList<QPair<QString, int>> accepted{
+        {"5", 5}, {"010", 8}, {"0x10", 16}, {"0o10", 8},
+        {"0b11", 3}, {"1_0", 10}, {" 5", 5}, {"5 ", 5}, {"+5", 5}};
+    for (const auto &c : accepted) {
+      const QStringList args{"copy", "--transfers=" + c.first, "remote:src",
+                             "remote:dst"};
+      const Request request = Build(args, "g", realIndex());
+      QVERIFY2(request.usable, qPrintable(c.first + ": " + request.reason));
+      const QJsonValue transfers =
+          request.payload.value("_config").toObject().value("Transfers");
+      QVERIFY2(transfers.isDouble() && transfers.toInt() == c.second,
+               qPrintable(c.first + " gave " +
+                          QString::number(transfers.toInt())));
+    }
+    for (const QString &refused : {"08", "1e2", "5.0", ""}) {
+      const QStringList args{"copy", "--transfers=" + refused, "remote:src",
+                             "remote:dst"};
+      const Request request = Build(args, "g", realIndex());
+      QVERIFY2(!request.usable, qPrintable(refused + " was accepted"));
+    }
+  }
+
+  // The daemon has one token bucket, and a _config BwLimit is ignored
+  // (measured on v1.76.0), so a job with its own limit has to run as its
+  // own rclone to keep it.
+  void sendsAJobWithItsOwnLimitToItsOwnRclone() {
+    const QList<QStringList> limited{
+        {"--bwlimit", "1M"},       {"--bwlimit=1M"},
+        {"--bwlimit-file", "1M"},  {"--tpslimit", "10"},
+        {"--tpslimit-burst", "2"}, {"--bwlimit", "off"}};
+    for (const QStringList &flag : limited) {
+      QStringList args = baseCopy();
+      for (int i = flag.size() - 1; i >= 0; --i) {
+        args.insert(1, flag.at(i));
+      }
+      const Request request = Build(args, "g", realIndex());
+      QVERIFY2(!request.usable, qPrintable(flag.join(' ') + " was mapped"));
+      const QString name = flag.first().section(QChar('='), 0, 0);
+      QVERIFY2(request.reason.contains(name) &&
+                   request.reason.contains("shared"),
+               qPrintable(request.reason));
+    }
+  }
+
+  // sync/* calls don't retry, so the two retry flags come back to the
+  // caller instead of going into _config, where rclone ignores them.
+  void handsTheRetryFlagsToTheCaller() {
+    const Request plain = Build(baseCopy(), "g", realIndex());
+    QVERIFY2(plain.usable, qPrintable(plain.reason));
+    QCOMPARE(plain.retries, 3);
+    QCOMPARE(plain.retriesSleepMs, Q_INT64_C(0));
+
+    const QStringList args{"sync",          "--retries", "5",
+                           "--retries-sleep", "1.5s",   "remote:src",
+                           "remote:dst"};
+    const Request request = Build(args, "g", realIndex());
+    QVERIFY2(request.usable, qPrintable(request.reason));
+    QCOMPARE(request.retries, 5);
+    QCOMPARE(request.retriesSleepMs, Q_INT64_C(1500));
+    QVERIFY(!request.payload.contains("_config"));
+
+    // options/get on v1.76.0: --retries 0 and -1 both come out as 1, and
+    // 010 is 8. A negative sleep is no sleep.
+    const QList<QPair<QString, int>> counts{
+        {"0", 1}, {"-1", 1}, {"010", 8}, {" 2", 2}};
+    for (const auto &c : counts) {
+      const Request r = Build({"copy", "--retries=" + c.first, "remote:src",
+                               "remote:dst"},
+                              "g", realIndex());
+      QVERIFY2(r.usable, qPrintable(r.reason));
+      QVERIFY2(r.retries == c.second,
+               qPrintable(c.first + " gave " + QString::number(r.retries)));
+    }
+    const QList<QPair<QString, qint64>> sleeps{
+        {"300ms", 300}, {"1m30s", 90000}, {"-1s", 0}, {"0", 0}};
+    for (const auto &c : sleeps) {
+      const Request r = Build({"copy", "--retries-sleep=" + c.first,
+                               "remote:src", "remote:dst"},
+                              "g", realIndex());
+      QVERIFY2(r.usable, qPrintable(r.reason));
+      QVERIFY2(r.retriesSleepMs == c.second,
+               qPrintable(c.first + " gave " +
+                          QString::number(r.retriesSleepMs)));
+    }
+    // rclone refuses these, and so does the CLI route the job falls to.
+    for (const QString &bad : {"2d", "10", "off"}) {
+      const Request r = Build({"copy", "--retries-sleep", bad, "remote:src",
+                               "remote:dst"},
+                              "g", realIndex());
+      QVERIFY2(!r.usable, qPrintable(bad + " was accepted"));
+      QVERIFY2(r.reason.contains("--retries-sleep"), qPrintable(r.reason));
+    }
+    const Request noValue =
+        Build({"copy", "remote:src", "remote:dst", "--retries"}, "g",
+              realIndex());
+    QVERIFY(!noValue.usable);
   }
 
   void omitsEmptySections() {

@@ -7,6 +7,7 @@
 #include "rclone_exit_code.h"
 #include "utils.h"
 
+#include <limits>
 
 RcJobWidget::RcJobWidget(RcloneRcEngine *engine, int jobId,
                          const QString &group, const QString &info,
@@ -377,9 +378,20 @@ void RcJobWidget::poll() {
                      exitCode](const QJsonObject &finalStats,
                                const QString &finalError) {
                       mPollInFlight = false;
-                      if (finalError.isEmpty()) {
+                      const bool haveStats = finalError.isEmpty();
+                      if (haveStats) {
                         applyStats(finalStats);
                         mFinalStats = true;
+                      }
+                      if (!success &&
+                          retryAfterFailure(finalStats, haveStats, jobError)) {
+                        return;
+                      }
+                      if (success && mAttempt > 1) {
+                        ui.output->appendPlainText(
+                            QString("Attempt %1/%2 succeeded")
+                                .arg(mAttempt)
+                                .arg(mAttempts));
                       }
                       finish(success, jobError, exitCode);
                     });
@@ -400,7 +412,8 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
                        .arg(pct));
   ui.totalsize->setText(GetNiceSize(static_cast<quint64>(totalBytes)));
   ui.bandwidth->setText(GetNiceSize(static_cast<quint64>(speed)) + "/s");
-  mErrors = stats.value("errors").toInt();
+  mGroupErrors = stats.value("errors").toInt();
+  mErrors = qMax(0, mGroupErrors - mErrorBase);
   ui.errors->setText(QString::number(mErrors));
   ui.checks->setText(QString::number(stats.value("checks").toInt()));
   mFiles = stats.value("transfers").toInt();
@@ -423,6 +436,122 @@ void RcJobWidget::noteDeleteCap(const QString &text) {
     mDeleteCapHit = true;
     mDeleteCapLine = line;
   }
+}
+
+void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
+  mRetryEndpoint = job.endpoint;
+  mRetryPayload = job.payload;
+  mAttempts = qMax(1, job.attempts);
+  mRetrySleepMs = qMax<qint64>(0, job.retrySleepMs);
+  if (!job.routeNote.isEmpty()) {
+    ui.output->appendPlainText(
+        QString("Live progress isn't shown for this run because %1. It runs "
+                "as a separate rclone, and its results show here when it's "
+                "done.")
+            .arg(job.routeNote));
+  }
+}
+
+bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
+                                    const QString &jobError) {
+  // core/command's child rclone runs this loop itself, and a batch delete
+  // has nothing to post again.
+  if (mRetryEndpoint.isEmpty() || mUserCancelled || mStopping) {
+    return false;
+  }
+  // The lines below are cmd.Run's own, so the output reads like a CLI run.
+  // --max-delete is a fatal error there too.
+  if (mDeleteCapHit || RcloneExitCode::IsDeleteCapError(jobError) ||
+      (haveStats && stats.value("fatalError").toBool())) {
+    ui.output->appendPlainText(
+        QStringLiteral("Fatal error received - not attempting retries"));
+    return false;
+  }
+  if (!haveStats) {
+    // Without the stats there's no telling what kind of errors these were.
+    return false;
+  }
+  // retryError is never cleared within a group, where the CLI resets it
+  // between attempts, so a later attempt that only hits errors retrying
+  // can't fix gets one more try than the CLI would give it.
+  const int attemptErrors = qMax(0, mGroupErrors - mErrorBase);
+  if (attemptErrors > 0 && !stats.value("retryError").toBool()) {
+    ui.output->appendPlainText(QStringLiteral(
+        "Can't retry any of the errors - not attempting retries"));
+    return false;
+  }
+  // The group's lastError is from this attempt only if it counted errors.
+  QString lastError =
+      attemptErrors > 0 ? stats.value("lastError").toString() : QString();
+  if (lastError.isEmpty()) {
+    lastError = jobError;
+  }
+  const QString line =
+      lastError.isEmpty()
+          ? QString("Attempt %1/%2 failed with %3 errors")
+                .arg(mAttempt)
+                .arg(mAttempts)
+                .arg(attemptErrors)
+          : QString("Attempt %1/%2 failed with %3 errors and: %4")
+                .arg(mAttempt)
+                .arg(mAttempts)
+                .arg(attemptErrors)
+                .arg(lastError);
+  ui.output->appendPlainText(line);
+  Diagnostics::appendLog("rc-job", line);
+  if (mAttempt >= mAttempts) {
+    return false;
+  }
+  startNextAttempt();
+  return true;
+}
+
+void RcJobWidget::startNextAttempt() {
+  mRetryPending = true;
+  // Holds off the poll timer until the next job is up.
+  mPollInFlight = true;
+  UiPolish::SetStatus(ui.showDetails, "warning", "Retrying");
+  const int delay = static_cast<int>(
+      qBound(qint64(0), mRetrySleepMs,
+             qint64(std::numeric_limits<int>::max())));
+  QTimer::singleShot(delay, this, [this]() {
+    if (mFinished || !mRetryPending) {
+      return;
+    }
+    // The engine is the context, so a job started after this card went
+    // away is stopped rather than left running with nothing watching it.
+    const QPointer<RcJobWidget> self(this);
+    RcloneRcEngine *engine = mEngine;
+    engine->resubmit(
+        mRetryEndpoint, mRetryPayload, engine,
+        [self, engine](int jobId, const QString &error) {
+          if (!self || self->mFinished) {
+            if (jobId >= 0) {
+              engine->stopJob(jobId, engine, nullptr);
+            }
+            return;
+          }
+          self->mRetryPending = false;
+          if (jobId < 0) {
+            self->mPollInFlight = false;
+            self->finish(false, error);
+            return;
+          }
+          self->mAttempt++;
+          self->mJobId = jobId;
+          self->mErrorBase = self->mGroupErrors;
+          self->mJobEnded = false;
+          self->mFinalStats = false;
+          self->mPollInFlight = false;
+          self->ui.output->appendPlainText(
+              QString("Attempt %1/%2 started as rclone rc job %3.")
+                  .arg(self->mAttempt)
+                  .arg(self->mAttempts)
+                  .arg(jobId));
+          UiPolish::SetStatus(self->ui.showDetails, "running", "Running");
+          self->poll();
+        });
+  });
 }
 
 void RcJobWidget::finish(bool success, const QString &error, int exitCode) {
@@ -511,6 +640,16 @@ JobHistoryEntry RcJobWidget::historyEntry() const {
 }
 
 void RcJobWidget::cancel() {
+  if (mRunning && mRetryPending) {
+    // Between attempts there's no job to stop. A resubmit already posted
+    // sees mFinished and stops the job it started.
+    mUserCancelled = true;
+    mRetryPending = false;
+    ui.output->appendPlainText(
+        QStringLiteral("Cancelled before the next attempt started."));
+    finish(false, "Cancelled.");
+    return;
+  }
   if (!mRunning || mJobEnded) {
     return;
   }

@@ -25,6 +25,12 @@ bool ScanInt(const QString &text, qint64 *value);
 // too big for a double.
 bool ParseFloat(const QString &text, double *value);
 
+// time.ParseDuration, which rclone uses for plain duration flags such as
+// --retries-sleep: one or more <number><unit> ("1h30m", ".5s", "-1.5m")
+// with units ns, us, µs, μs, ms, s, m and h, or a bare "0". No spaces, no
+// bare numbers other than 0, and nothing past about 292 years.
+bool ParseGoDuration(const QString &text, qint64 *nanoseconds);
+
 enum class SizeError {
   None,
   Empty,

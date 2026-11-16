@@ -155,6 +155,7 @@ if(BUILD_TESTING)
   add_executable(rc_sync_request_test
     tests/rc_sync_request_test.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
   )
   target_include_directories(rc_sync_request_test PRIVATE src)
   target_link_libraries(rc_sync_request_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
@@ -164,6 +165,7 @@ if(BUILD_TESTING)
     tests/rc_delete_batch_test.cpp
     src/rc_delete_batch.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
   )
   target_include_directories(rc_delete_batch_test PRIVATE src)
   target_link_libraries(rc_delete_batch_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
@@ -319,6 +321,7 @@ if(BUILD_TESTING)
     src/rclone_rc_engine.cpp
     src/rc_certificate.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
     src/rc_delete_batch.cpp
     src/rc_job_result.cpp
     src/job_stats.cpp
@@ -348,6 +351,7 @@ if(BUILD_TESTING)
     src/rclone_rc_engine.cpp
     src/rc_certificate.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
     src/rc_delete_batch.cpp
     src/rc_job_result.cpp
     src/job_stats.cpp
@@ -370,6 +374,7 @@ if(BUILD_TESTING)
     src/rclone_rc_engine.cpp
     src/rc_certificate.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
     src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
     src/schedule_manager.cpp
@@ -416,6 +421,7 @@ if(BUILD_TESTING)
     src/rclone_rc_engine.cpp
     src/rc_certificate.cpp
     src/rc_sync_request.cpp
+    src/rclone_number.cpp
     src/rc_delete_batch.cpp
     src/rclone_capabilities.cpp
     src/utils.cpp

@@ -1,4 +1,7 @@
 #include "rc_sync_request.h"
+#include "rclone_number.h"
+
+#include <limits>
 
 namespace RcSyncRequest {
 
@@ -21,6 +24,11 @@ bool isNumericType(const QString &type) {
          type == "uint" || type == "int32";
 }
 
+// A number goes out the way the CLI reads the same token, which is
+// fmt.Sscanln (measured on v1.76.0 with options/get): `--transfers 010` is
+// 8, `0x10` is 16 and `1_0` is 10. A value the field can't hold is refused,
+// so the CLI route reports it instead of the daemon.
+//
 // Everything else, including Duration, SizeSuffix and BwTimetable, takes the
 // CLI token verbatim. That is not a shortcut: rclone parses the JSON string
 // with the same parser the command line uses, so `--min-size 50` and
@@ -29,15 +37,38 @@ bool isNumericType(const QString &type) {
 QJsonValue encode(const OptionSpec &spec, const QString &token, bool *ok) {
   *ok = true;
   if (isNumericType(spec.type)) {
-    bool parsed = false;
-    const qint64 value = token.toLongLong(&parsed);
-    if (!parsed) {
+    qint64 value = 0;
+    bool fits = RcloneNumber::ScanInt(token, &value);
+    if (spec.type == "int32") {
+      fits = fits && value >= std::numeric_limits<qint32>::min() &&
+             value <= std::numeric_limits<qint32>::max();
+    } else if (spec.type == "uint32") {
+      fits = fits && value >= 0 &&
+             value <= std::numeric_limits<quint32>::max();
+    } else if (spec.type == "uint") {
+      fits = fits && value >= 0;
+    }
+    if (!fits) {
       *ok = false;
       return QJsonValue();
     }
     return QJsonValue(value);
   }
   return QJsonValue(token);
+}
+
+// rclone has one token bucket per process, and core/bwlimit is the only
+// thing that moves it on a running daemon: a _config BwLimit is accepted
+// and ignored (measured on v1.76.0, a 1 KiB/s limit copied at full speed).
+// A job with its own limit runs as a separate rclone instead, which keeps
+// the limit.
+QString sharedLimitReason(const QString &flag) {
+  if (flag == "--bwlimit" || flag == "--bwlimit-file" ||
+      flag == "--tpslimit" || flag == "--tpslimit-burst") {
+    return QString("%1 is one limit shared by every job on the daemon")
+        .arg(flag);
+  }
+  return QString();
 }
 
 void insertValue(QJsonObject &section, const OptionSpec &spec,
@@ -153,6 +184,49 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
     if (token == "--stats") {
       if (!hasInlineValue) {
         i++;
+      }
+      continue;
+    }
+
+    const QString limitReason = sharedLimitReason(token);
+    if (!limitReason.isEmpty()) {
+      options.reason = limitReason;
+      return options;
+    }
+
+    // The retry loop belongs to the CLI (cmd.Run), not to the sync calls,
+    // so _config Retries does nothing over rc. The job card runs the loop
+    // instead, and these two say how.
+    if (token == "--retries" || token == "--retries-sleep") {
+      QString value;
+      if (hasInlineValue) {
+        value = inlineValue;
+      } else if (i + 1 < tokens.size()) {
+        value = tokens.at(++i);
+      } else {
+        options.reason = QString("%1 has no value").arg(token);
+        return options;
+      }
+      if (token == "--retries") {
+        qint64 retries = 0;
+        if (!RcloneNumber::ScanInt(value, &retries)) {
+          options.reason =
+              QString("%1 expects a number and got \"%2\"").arg(token, value);
+          return options;
+        }
+        // rclone runs a command at least once: --retries 0 and -1 both
+        // come out as 1 (options/get on v1.76.0).
+        options.retries = static_cast<int>(qBound(qint64(1), retries, qint64(1000000)));
+      } else {
+        qint64 nanoseconds = 0;
+        if (!RcloneNumber::ParseGoDuration(value, &nanoseconds)) {
+          options.reason =
+              QString("%1 expects a duration such as 10s and got \"%2\"")
+                  .arg(token, value);
+          return options;
+        }
+        // time.Sleep returns at once for a negative duration.
+        options.retriesSleepMs = nanoseconds <= 0 ? 0 : nanoseconds / 1000000;
       }
       continue;
     }
@@ -293,6 +367,8 @@ Request Build(const QStringList &args, const QString &group,
   }
 
   request.payload = payload;
+  request.retries = options.retries;
+  request.retriesSleepMs = options.retriesSleepMs;
   request.usable = true;
   return request;
 }

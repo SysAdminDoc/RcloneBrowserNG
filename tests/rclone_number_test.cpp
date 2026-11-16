@@ -167,6 +167,79 @@ const QList<Case> kSizes{
     {u"0x1.00000000000008000001p52b"_s, Q_INT64_C(4503599627370497)},
 };
 
+// --retries-sleep=<text> in nanoseconds, read back through "rclone rc
+// --loopback options/get" on rclone v1.76.0 (2026-11-15). The two ends of
+// int64 are written exactly; options/get prints them through a float.
+const QList<Case> kDurations{
+    {u"0"_s, 0},
+    {u"-0"_s, 0},
+    {u"+0"_s, 0},
+    {u"0s"_s, 0},
+    {u"1s"_s, Q_INT64_C(1000000000)},
+    {u"1.5s"_s, Q_INT64_C(1500000000)},
+    {u"300ms"_s, Q_INT64_C(300000000)},
+    {u"1.5ms"_s, Q_INT64_C(1500000)},
+    {u"1m30s"_s, Q_INT64_C(90000000000)},
+    {u"1h"_s, Q_INT64_C(3600000000000)},
+    {u".5s"_s, Q_INT64_C(500000000)},
+    {u"5.s"_s, Q_INT64_C(5000000000)},
+    {u"+2s"_s, Q_INT64_C(2000000000)},
+    {u"-1.5m"_s, Q_INT64_C(-90000000000)},
+    {u"1us"_s, 1000},
+    {u"1µs"_s, 1000},
+    {u"1μs"_s, 1000},
+    {u"1ns"_s, 1},
+    {u"1h2m3.5s"_s, Q_INT64_C(3723500000000)},
+    {u"1.5h30m"_s, Q_INT64_C(7200000000000)},
+    {u"1m1m"_s, Q_INT64_C(120000000000)},
+    {u"1h1h1h"_s, Q_INT64_C(10800000000000)},
+    {u"0.000000001s"_s, 1},
+    {u"1.0000000005s"_s, Q_INT64_C(1000000000)},
+    {u"1.99999999999999999999s"_s, Q_INT64_C(2000000000)},
+    {u"0.1234567891ns"_s, 0},
+    {u"9223372036s"_s, Q_INT64_C(9223372036000000000)},
+    {u"2562047h"_s, Q_INT64_C(9223369200000000000)},
+    {u"9223372036854775807ns"_s, std::numeric_limits<qint64>::max()},
+    {u"-9223372036854775808ns"_s, std::numeric_limits<qint64>::min()},
+    {u"9223372036854775808ns"_s, kRefused},
+    {u"-9223372036854775809ns"_s, kRefused},
+    {u"100000000000000000000ns"_s, kRefused},
+    {u"9223372037s"_s, kRefused},
+    {u"2562048h"_s, kRefused},
+    {u"300000y"_s, kRefused},
+    {u"10"_s, kRefused},
+    {u"1.5"_s, kRefused},
+    {u"-3"_s, kRefused},
+    {u"00"_s, kRefused},
+    {u"0."_s, kRefused},
+    {u"2d"_s, kRefused},
+    {u"1.5d"_s, kRefused},
+    {u"1d2h"_s, kRefused},
+    {u"1w"_s, kRefused},
+    {u"1M"_s, kRefused},
+    {u"1y"_s, kRefused},
+    {u"1S"_s, kRefused},
+    {u"1D"_s, kRefused},
+    {u"1x"_s, kRefused},
+    {u"1e2"_s, kRefused},
+    {u"1e400"_s, kRefused},
+    {u"0x1p3"_s, kRefused},
+    {u"1_0"_s, kRefused},
+    {u"off"_s, kRefused},
+    {u"inf"_s, kRefused},
+    {u""_s, kRefused},
+    {u"-"_s, kRefused},
+    {u"+"_s, kRefused},
+    {u" 1s"_s, kRefused},
+    {u"1s "_s, kRefused},
+    {u"s"_s, kRefused},
+    {u".s"_s, kRefused},
+    {u"1.2.3s"_s, kRefused},
+    {u"1ms2"_s, kRefused},
+    {u"5m-1s"_s, kRefused},
+    {u"2026-01-02"_s, kRefused},
+};
+
 struct FloatCase {
   QString text;
   std::optional<double> expected; // nullopt: rclone refuses it
@@ -260,6 +333,21 @@ private slots:
             SizeError::TooBig);
     QVERIFY(RcloneNumber::ParseSize(u"Infk"_s, nullptr) ==
             SizeError::TooBig);
+  }
+
+  void parsesDurationsAsGoDoes() {
+    for (const Case &c : kDurations) {
+      qint64 value = 12345;
+      const bool ok = RcloneNumber::ParseGoDuration(c.text, &value);
+      QVERIFY2(ok == c.expected.has_value(),
+               qPrintable(Show(c.text) + (ok ? u" accepted"_s
+                                             : u" refused"_s)));
+      if (ok) {
+        QVERIFY2(value == *c.expected,
+                 qPrintable(Show(c.text) + u" gave "_s +
+                            QString::number(value)));
+      }
+    }
   }
 
   void parseIntTakesNoSpaces() {
@@ -364,6 +452,7 @@ private slots:
     };
     check(kCounts, u"max-delete"_s, u"MaxDelete"_s);
     check(kSizes, u"max-delete-size"_s, u"MaxDeleteSize"_s);
+    check(kDurations, u"retries-sleep"_s, u"RetriesInterval"_s);
     for (const FloatCase &c : kFloats) {
       const std::optional<double> got = read(u"tpslimit"_s, c.text,
                                              u"TPSLimit"_s);

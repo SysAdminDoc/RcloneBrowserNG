@@ -48,9 +48,22 @@ public:
     // For a job/batch delete, one label per input in input order, so the
     // job card can name the items rclone couldn't delete.
     QStringList batchLabels;
+    // A sync/* call doesn't retry the way the CLI does, so the job card
+    // reposts endpoint and payload in the same stats group until attempts
+    // runs out, waiting retrySleepMs between runs. Empty on core/command,
+    // where the CLI does its own retrying.
+    QString endpoint;
+    QJsonObject payload;
+    int attempts = 1;
+    qint64 retrySleepMs = 0;
+    // Why a transfer went to core/command, where the card has no live
+    // progress to show. Empty when it took sync/*.
+    QString routeNote;
   };
 
   using JobCallback = std::function<void(const StartedJob &job)>;
+  using ResubmitCallback =
+      std::function<void(int jobId, const QString &error)>;
 
   void runCommand(const QStringList &args, QObject *context,
                   JobCallback callback);
@@ -60,6 +73,12 @@ public:
   // job per item.
   void runDeleteBatch(const RcDeleteBatch::Plan &plan, QObject *context,
                       JobCallback callback);
+  // Posts a StartedJob's endpoint and payload again, for the next attempt.
+  // The payload keeps its _group, so the attempt adds to the same stats,
+  // and its deletes keep counting toward --max-delete as they do between
+  // the CLI's attempts.
+  void resubmit(const QString &endpoint, const QJsonObject &payload,
+                QObject *context, const ResubmitCallback &callback);
   // A job that finished with an error comes back as a status with an empty
   // call error; the job's failure is in status["success"] and ["error"].
   void jobStatus(int jobId, QObject *context, const RcCallback &callback);
@@ -101,8 +120,11 @@ private:
   QSet<QString> mEndpoints;
   RcSyncRequest::OptionIndex mOptionIndex;
   int mGroupCounter = 0;
+  // Bumped whenever the tables are cleared for a different daemon, so the
+  // answers of one that's gone can't fill them.
+  int mCapabilityGeneration = 0;
 
-  void startCommand(const QStringList &args, const QString &group,
+  void startCommand(const QStringList &args, const QString &routeNote,
                     QObject *context, const JobCallback &callback);
   void startTransfer(const QStringList &args, QObject *context,
                      JobCallback callback);

@@ -133,9 +133,25 @@ int ExitCodeFromLog(const QString &log) {
 
 int WithNoTransferExit(int exitCode, qint64 transfers,
                        const QStringList &args) {
-  const bool flagOn =
-      args.contains(QLatin1String("--error-on-no-transfer")) ||
-      args.contains(QLatin1String("--error-on-no-transfer=true"));
+  // A bool flag takes its value only after =, read with Go's
+  // strconv.ParseBool, and the last one given wins: --error-on-no-transfer=1
+  // turns it on, and a later --error-on-no-transfer=False turns it off.
+  static const QStringList kTrue{"1", "t", "T", "TRUE", "true", "True"};
+  static const QStringList kFalse{"0", "f", "F", "FALSE", "false", "False"};
+  const QString flag = QStringLiteral("--error-on-no-transfer");
+  bool flagOn = false;
+  for (const QString &arg : args) {
+    if (arg == flag) {
+      flagOn = true;
+    } else if (arg.startsWith(flag + QChar('='))) {
+      const QString value = arg.mid(flag.size() + 1);
+      if (kTrue.contains(value)) {
+        flagOn = true;
+      } else if (kFalse.contains(value)) {
+        flagOn = false;
+      }
+    }
+  }
   return exitCode == 0 && transfers == 0 && flagOn ? 9 : exitCode;
 }
 

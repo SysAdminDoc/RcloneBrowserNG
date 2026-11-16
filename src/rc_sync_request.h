@@ -52,6 +52,11 @@ struct Options {
   QJsonObject config;
   QJsonObject filter;
   QStringList positional;
+  // --retries and --retries-sleep, which never reach _config: rclone's sync
+  // calls don't retry, so the caller has to. 3 attempts and no pause are
+  // rclone's defaults.
+  int retries = 3;
+  qint64 retriesSleepMs = 0;
 };
 
 Options MapOptions(const QStringList &tokens, const OptionIndex &index);
@@ -67,6 +72,10 @@ struct Request {
   QString dest;
   // Why the request cannot be built, for the log and the tests.
   QString reason;
+  // How many times to run the call before giving up, and the pause between
+  // runs, from --retries and --retries-sleep.
+  int retries = 3;
+  qint64 retriesSleepMs = 0;
 };
 
 Request Build(const QStringList &args, const QString &group,
