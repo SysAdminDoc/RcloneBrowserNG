@@ -524,6 +524,86 @@ private slots:
     QCOMPARE(filesUnder(dest), before);
   }
 
+  // A task that names its own --config runs with that rclone.conf, so the
+  // check reads that one, not the app's.
+  void aTasksOwnConfigIsTheOneChecked_data() {
+    QTest::addColumn<bool>("inlineValue");
+    QTest::addColumn<bool>("taskOff");
+    QTest::addColumn<bool>("appOff");
+    QTest::addColumn<bool>("starts");
+    QTest::newRow("its config turns it off") << false << true << false
+                                             << false;
+    QTest::newRow("its config= turns it off") << true << true << false
+                                              << false;
+    QTest::newRow("only the app's config turns it off")
+        << false << false << true << true;
+    QTest::newRow("neither turns it off") << true << false << false << true;
+  }
+
+  void aTasksOwnConfigIsTheOneChecked() {
+    QFETCH(bool, inlineValue);
+    QFETCH(bool, taskOff);
+    QFETCH(bool, appOff);
+    QFETCH(bool, starts);
+    const QString tag = QStringLiteral("own-conf-%1-%2-%3")
+                            .arg(int(inlineValue))
+                            .arg(int(taskOff))
+                            .arg(int(appOff));
+    const QString root = mDir.path();
+    const QString source = QDir(root).filePath(tag + "-src");
+    QVERIFY(QDir().mkpath(source));
+    QFile added(source + "/new.txt");
+    QVERIFY(added.open(QIODevice::WriteOnly));
+    added.write("new");
+    added.close();
+    const QString dest = makeTree(tag + "-dst");
+    const QStringList before = filesUnder(dest);
+
+    const auto writeConfig = [&](const QString &name, bool off) {
+      QByteArray text = "[bk]\ntype = alias\nremote = " + root.toUtf8() + "\n";
+      if (off) {
+        text += "global.dry_run = false\n";
+      }
+      const QString path = QDir(root).filePath(tag + "-" + name + ".conf");
+      QFile file(path);
+      if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return QString();
+      }
+      file.write(text);
+      return path;
+    };
+    const QString appConfig = writeConfig("app", appOff);
+    const QString taskConfig = writeConfig("task", taskOff);
+    QVERIFY(!appConfig.isEmpty());
+    QVERIFY(!taskConfig.isEmpty());
+    struct Restore {
+      QString fixture;
+      ~Restore() { SetRcloneConf(fixture); }
+    } restore{mConfigPath};
+    SetRcloneConf(appConfig);
+
+    RcloneRcEngine engine;
+    QStringList args{"sync", "--dry-run"};
+    if (inlineValue) {
+      args << ("--config=" + taskConfig);
+    } else {
+      args << "--config" << taskConfig;
+    }
+    args << source << ("bk:" + tag + "-dst");
+
+    bool started = false;
+    RcloneRcEngine::StartedJob job;
+    const QString group = runAndWait(engine, args, &started, &job);
+    QCOMPARE(started, starts);
+    if (starts) {
+      QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+    } else {
+      QVERIFY(job.refused);
+      QVERIFY2(job.error.contains("global.dry_run"), qPrintable(job.error));
+    }
+    QCOMPARE(filesUnder(dest), before);
+  }
+
   // A download of several selected items puts its filter rules ahead of the
   // command, and the fixture's own --config reaches core/command as a pair.
   // Right after args[0] that pair split the first --filter from its rule, and

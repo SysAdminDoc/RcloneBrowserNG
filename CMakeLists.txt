@@ -500,6 +500,7 @@ if(BUILD_TESTING)
   add_executable(remote_daemon_test
     tests/remote_daemon_test.cpp
     src/remote_daemon.cpp
+    src/dry_run_check.cpp
     src/rc_certificate.cpp
     src/remote_list_parser.cpp
     src/job_options_store.cpp
@@ -620,6 +621,7 @@ if(BUILD_TESTING)
     src/remote_path.cpp
     src/selection_arguments.cpp
     src/sync_preview.cpp
+    src/dry_run_check.cpp
     src/vfs_upload_state.cpp
     src/progress_dialog.cpp
     src/job_widget.cpp

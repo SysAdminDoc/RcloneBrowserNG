@@ -17,19 +17,15 @@ QString makeRcUrl(quint16 port) {
 // remote that only exists in the config chosen in Preferences fails with
 // "didn't find section in config file". conf is flag/value pairs, the way
 // GetRcloneConf() returns them. They go ahead of everything, as the process
-// route runs `rclone --config <conf> <args>`: a --config=<file> later in the
-// arguments still wins, since pflag keeps a flag's last value, and a pair
-// after the arguments landed behind a "--", where rclone took it for two
-// more paths. A download of several selected items opens with --filter
-// rules, and a pair right after the first one split it from its rule.
+// route runs `rclone --config <conf> <args>`: the task's own --config or
+// --password-command later in the arguments still wins, since pflag keeps a
+// flag's last value, and a pair after the arguments landed behind a "--",
+// where rclone took it for two more paths. A download of several selected
+// items opens with --filter rules, and a pair right after the first one
+// split it from its rule.
 QJsonObject coreCommandPayload(const QStringList &args,
                                const QStringList &conf) {
-  QStringList all;
-  for (int i = 0; i + 1 < conf.size(); i += 2) {
-    if (!args.contains(conf.at(i))) {
-      all << conf.at(i) << conf.at(i + 1);
-    }
-  }
+  QStringList all = conf;
   all << args;
   QJsonObject payload;
   if (!all.isEmpty()) {
@@ -722,16 +718,34 @@ void RcloneRcEngine::startCommandRoute(const QStringList &args,
   // the path opens, after --dry-run was read (addConfigToContext in
   // fs/newfs.go, v1.76.0), so with global.dry_run = false a dry run here
   // deleted the destination. Nothing on the command line outranks it, so
-  // such a dry run doesn't start. Only this PC's environment is known.
+  // such a dry run doesn't start. `rclone config dump` run through
+  // core/command the way the task runs reads the rclone.conf the task reads,
+  // its own --config included, which config/dump can't. Only this PC's
+  // environment is known.
   const QStringList environment =
       isRemote() ? QStringList()
                  : QProcessEnvironment::systemEnvironment().toStringList();
   const QPointer<QObject> contextGuard(context);
   QObject *owner = context ? context : static_cast<QObject *>(this);
+  QJsonObject payload = coreCommandPayload(
+      RcSyncRequest::ConfigDumpArguments(args), commandConfig());
+  payload.insert("returnType", "COMBINED_OUTPUT");
   postAsync(
-      "config/dump", QJsonObject(), owner,
+      "core/command", payload, owner,
       [this, args, routeNote, contextGuard, environment,
-       callback](const QJsonObject &dump, const QString &error) {
+       callback](const QJsonObject &response, const QString &rcError) {
+        const QByteArray output =
+            response.value("result").toString().toUtf8();
+        QJsonObject dump;
+        QString error = rcError;
+        if (error.isEmpty() &&
+            (response.value("error").toBool() ||
+             !RcSyncRequest::ParseConfigDump(output, &dump))) {
+          error = QString::fromUtf8(output).trimmed().section(QChar('\n'), -1);
+          if (error.isEmpty()) {
+            error = QStringLiteral("rclone config dump printed nothing");
+          }
+        }
         QString refusal;
         if (!error.isEmpty()) {
           refusal = QString("This dry run has to run as a separate rclone "
@@ -1038,9 +1052,12 @@ void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
           return;
         }
 
+        // rclone's own failures carry "error" as a string. A synchronous
+        // core/command answers 200 with "error" as a bool that only says
+        // how the command exited, false included.
         const QJsonObject object = doc.object();
         if (networkError != QNetworkReply::NoError ||
-            object.contains("error")) {
+            object.value("error").isString()) {
           if (callback) {
             callback(object,
                      object.value("error").toString(networkErrorText));
@@ -1110,7 +1127,8 @@ QJsonObject RcloneRcEngine::postSync(const QString &path,
   }
 
   const QJsonObject object = doc.object();
-  if (networkError != QNetworkReply::NoError || object.contains("error")) {
+  if (networkError != QNetworkReply::NoError ||
+      object.value("error").isString()) {
     if (error) {
       *error = object.value("error").toString(networkErrorText);
     }

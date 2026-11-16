@@ -1,3 +1,4 @@
+#include "dry_run_check.h"
 #include "fake_rc_server.h"
 #include "rc_sync_request.h"
 #include "rclone_rc_engine.h"
@@ -9,6 +10,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTemporaryDir>
@@ -790,6 +792,101 @@ private slots:
     QCOMPARE(exitCode, 1);
     QVERIFY(!output.isEmpty());
     RemoteDaemon::Save(RemoteDaemon::Settings());
+  }
+
+  // What DryRunCheck answered for args, or "no answer" when it didn't.
+  QString dryRunRefusal(const QStringList &args) {
+    struct Answer {
+      bool done = false;
+      QString refusal;
+    };
+    const auto answer = std::make_shared<Answer>();
+    DryRunCheck::Run(args, QProcessEnvironment(), this,
+                     [answer](const QString &refusal) {
+                       answer->refusal = refusal;
+                       answer->done = true;
+                     });
+    if (!QTest::qWaitFor([answer]() { return answer->done; }, 60000)) {
+      return QStringLiteral("no answer");
+    }
+    return answer->refusal;
+  }
+
+  // A dry run the Transfer dialog or the process fallback starts is checked
+  // against the rclone.conf that rclone reads: its own --config first, then
+  // the app's on this PC, or the daemon's when it runs there.
+  void aDryRunIsCheckedAgainstTheConfigItReads() {
+    if (mDaemon == nullptr) {
+      QSKIP("no daemon");
+    }
+    const auto writeConfig = [this](const QString &name, bool off) {
+      QByteArray text =
+          "[bk]\ntype = alias\nremote = " + mServed.toUtf8() + "\n";
+      if (off) {
+        text += "global.dry_run = false\n";
+      }
+      const QString path = QDir(mDir.path()).filePath(name);
+      QFile file(path);
+      if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return QString();
+      }
+      file.write(text);
+      return path;
+    };
+    const QString off = writeConfig("dry-off.conf", true);
+    const QString clean = writeConfig("dry-clean.conf", false);
+    QVERIFY(!off.isEmpty());
+    QVERIFY(!clean.isEmpty());
+    const QString appConfig =
+        QDir(mDir.path()).filePath("not-this-one/rclone.conf");
+    struct Restore {
+      QString config;
+      ~Restore() {
+        SetRcloneConf(config);
+        RemoteDaemon::Save(RemoteDaemon::Settings());
+      }
+    } restore{appConfig};
+
+    bool answered = false;
+    DryRunCheck::Run({"sync", "bk:a", "bk:b"}, QProcessEnvironment(), this,
+                     [&answered](const QString &refusal) {
+                       answered = refusal.isEmpty();
+                     });
+    QVERIFY2(answered, "a run that isn't dry is let through at once");
+
+    for (const bool remote : {false, true}) {
+      RemoteDaemon::Save(remote ? mRemote : RemoteDaemon::Settings());
+      const QString where = remote ? "remote daemon" : "this PC";
+
+      SetRcloneConf(appConfig);
+      QString refusal = dryRunRefusal(
+          {"sync", "--dry-run", "--config", off, "bk:a", "bk:b"});
+      QVERIFY2(refusal.contains("global.dry_run") && refusal.contains("bk"),
+               qPrintable(where + ": " + refusal));
+      refusal = dryRunRefusal(
+          {"sync", "--dry-run", "--config=" + off, "bk:a", "bk:b"});
+      QVERIFY2(refusal.contains("global.dry_run"),
+               qPrintable(where + ": " + refusal));
+      refusal = dryRunRefusal(
+          {"sync", "--dry-run", "--config=" + clean, "bk:a", "bk:b"});
+      QVERIFY2(refusal.isEmpty(), qPrintable(where + ": " + refusal));
+
+      // The app's rclone.conf is the one read here. The daemon reads its own.
+      SetRcloneConf(off);
+      refusal = dryRunRefusal({"sync", "--dry-run", "bk:a", "bk:b"});
+      QVERIFY2(remote ? refusal.isEmpty() : refusal.contains("global.dry_run"),
+               qPrintable(where + ": " + refusal));
+    }
+  }
+
+  void aDumpThatFailsStopsTheDryRun() {
+    const QString refusal =
+        DryRunCheck::RefusalFor(1, "Failed to load config file", {});
+    QVERIFY2(refusal.contains("couldn't be read (Failed to load config file)"),
+             qPrintable(refusal));
+    QVERIFY2(!DryRunCheck::RefusalFor(0, "not json", {}).isEmpty(),
+             "output that isn't a dump stops it too");
+    QVERIFY(DryRunCheck::RefusalFor(0, "{}", {}).isEmpty());
   }
 
   // The engine is what starts transfers. --one-file-system can't be mapped

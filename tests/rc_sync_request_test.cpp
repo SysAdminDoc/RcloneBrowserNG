@@ -4,7 +4,9 @@
 
 using RcSyncRequest::Build;
 using RcSyncRequest::ConfigGlobalsReason;
+using RcSyncRequest::ConfigDumpArguments;
 using RcSyncRequest::DryRunGlobalReason;
+using RcSyncRequest::ParseConfigDump;
 using RcSyncRequest::IndexOptions;
 using RcSyncRequest::IsDryRun;
 using RcSyncRequest::OptionIndex;
@@ -876,6 +878,82 @@ private slots:
     } else {
       QVERIFY2(reason.contains(found), qPrintable(reason));
     }
+  }
+
+  // `rclone config dump` puts keys above the first section in DEFAULT, and
+  // no remote reads them: a dry run with one there stayed dry (v1.76.0).
+  void aKeyAboveTheFirstSectionIsNotRead() {
+    QJsonObject above;
+    above.insert("global.dry_run", "false");
+    QJsonObject section;
+    section.insert("type", "alias");
+    QJsonObject dump;
+    dump.insert("DEFAULT", above);
+    dump.insert("bk", section);
+    const QString reason = DryRunGlobalReason(dump, QStringList());
+    QVERIFY2(reason.isEmpty(), qPrintable(reason));
+  }
+
+  void dumpsTheConfigTheCommandReads_data() {
+    QTest::addColumn<QStringList>("args");
+    QTest::addColumn<QStringList>("added");
+    QTest::newRow("no config of its own")
+        << QStringList{"sync", "--dry-run", "a", "b"} << QStringList();
+    QTest::newRow("a config and its value")
+        << QStringList{"sync", "--dry-run", "--config", "t.conf", "a", "b"}
+        << QStringList{"--config", "t.conf"};
+    QTest::newRow("a config with =")
+        << QStringList{"sync", "--config=t.conf", "-n", "a", "b"}
+        << QStringList{"--config=t.conf"};
+    QTest::newRow("a password command")
+        << QStringList{"sync", "--password-command", "get pass", "-n", "a",
+                       "b"}
+        << QStringList{"--password-command", "get pass"};
+    QTest::newRow("two configs, both kept in order")
+        << QStringList{"sync", "--config", "a.conf", "--config=b.conf", "-n",
+                       "a", "b"}
+        << QStringList{"--config", "a.conf", "--config=b.conf"};
+    QTest::newRow("a path after the end of flags")
+        << QStringList{"sync", "-n", "--", "--config", "b"} << QStringList();
+    QTest::newRow("a config with no value")
+        << QStringList{"sync", "-n", "--config"} << QStringList{"--config"};
+  }
+
+  void dumpsTheConfigTheCommandReads() {
+    QFETCH(QStringList, args);
+    QFETCH(QStringList, added);
+    const QStringList expected =
+        QStringList{"config", "dump", "--ask-password=false"} + added;
+    QCOMPARE(ConfigDumpArguments(args), expected);
+  }
+
+  void readsTheObjectConfigDumpPrinted_data() {
+    QTest::addColumn<QByteArray>("output");
+    QTest::addColumn<bool>("parsed");
+    QTest::addColumn<QStringList>("sections");
+    QTest::newRow("the object alone")
+        << QByteArray("{\n\t\"bk\": {\n\t\t\"type\": \"alias\"\n\t}\n}\n")
+        << true << QStringList{"bk"};
+    QTest::newRow("a notice before it")
+        << QByteArray("2026/11/16 11:32:45 NOTICE: Config file "
+                      "\"C:\\\\x\\\\rclone.conf\" not found - using "
+                      "defaults\n{}\n")
+        << true << QStringList();
+    QTest::newRow("a failure") << QByteArray("CRITICAL: Failed to load "
+                                             "config file: wrong password\n")
+                               << false << QStringList();
+    QTest::newRow("nothing") << QByteArray() << false << QStringList();
+    QTest::newRow("not an object")
+        << QByteArray("[\"bk\"]\n") << false << QStringList();
+  }
+
+  void readsTheObjectConfigDumpPrinted() {
+    QFETCH(QByteArray, output);
+    QFETCH(bool, parsed);
+    QFETCH(QStringList, sections);
+    QJsonObject dump;
+    QCOMPARE(ParseConfigDump(output, &dump), parsed);
+    QCOMPARE(dump.keys(), sections);
   }
 };
 

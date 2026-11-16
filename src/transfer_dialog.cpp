@@ -1,5 +1,6 @@
 #include "transfer_dialog.h"
 #include "bwlimit_timetable.h"
+#include "dry_run_check.h"
 #include "sync_preview.h"
 #include "remote_list_parser.h"
 #include "filter_pattern.h"
@@ -781,23 +782,34 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
             }
           };
 
-      if (RemoteDaemon::IsEnabled()) {
-        RemoteDaemon::RunCommand(command, this, showOutput);
-        return;
-      }
+      // The preview is a separate rclone, where a section's global.dry_run
+      // would turn it into a real run.
+      DryRunCheck::Run(
+          command, QProcessEnvironment(), this,
+          [this, command, args, showOutput](const QString &refusal) {
+            if (!refusal.isEmpty()) {
+              mPreviewButton->setEnabled(true);
+              mPreview->setPlainText(refusal);
+              return;
+            }
+            if (RemoteDaemon::IsEnabled()) {
+              RemoteDaemon::RunCommand(command, this, showOutput);
+              return;
+            }
 
-      auto *proc = new QProcess(this);
-      proc->setProcessChannelMode(QProcess::MergedChannels);
-      UseRclonePassword(proc);
-      proc->start(GetRclone(), args, QIODevice::ReadOnly);
+            auto *proc = new QProcess(this);
+            proc->setProcessChannelMode(QProcess::MergedChannels);
+            UseRclonePassword(proc);
+            proc->start(GetRclone(), args, QIODevice::ReadOnly);
 
-      QObject::connect(
-          proc,
-          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-              &QProcess::finished),
-          this, [proc, showOutput](int code, QProcess::ExitStatus) {
-            proc->deleteLater();
-            showOutput(code, proc->readAll());
+            QObject::connect(
+                proc,
+                static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+                    &QProcess::finished),
+                this, [proc, showOutput](int code, QProcess::ExitStatus) {
+                  proc->deleteLater();
+                  showOutput(code, proc->readAll());
+                });
           });
     });
   }
@@ -1160,46 +1172,66 @@ void TransferDialog::acceptWithDeletionPreview() {
     }
   };
 
-  if (remoteDaemon) {
-    // The paths are on the remote rclone's machine, so it runs the dry run.
-    RemoteDaemon::RunCommand(command, this, finish);
-    return;
-  }
+  const auto runPreview = [this, remoteDaemon, previewed, command, args,
+                           finish, unlock]() {
+    if (remoteDaemon) {
+      // The paths are on the remote rclone's machine, so it runs the dry
+      // run.
+      RemoteDaemon::RunCommand(command, this, finish);
+      return;
+    }
 
-  auto *proc = new QProcess(this);
-  proc->setProcessChannelMode(QProcess::MergedChannels);
-  UseRclonePassword(proc);
-  QProcessEnvironment environment = proc->processEnvironment();
-  if (environment.isEmpty()) {
-    environment = QProcessEnvironment::systemEnvironment();
-  }
-  proc->setProcessEnvironment(
-      SyncPreview::DryRunEnvironment(environment, previewed));
+    auto *proc = new QProcess(this);
+    proc->setProcessChannelMode(QProcess::MergedChannels);
+    UseRclonePassword(proc);
+    QProcessEnvironment environment = proc->processEnvironment();
+    if (environment.isEmpty()) {
+      environment = QProcessEnvironment::systemEnvironment();
+    }
+    proc->setProcessEnvironment(
+        SyncPreview::DryRunEnvironment(environment, previewed));
 
-  QObject::connect(proc, &QProcess::errorOccurred, this,
-                   [this, proc, unlock](QProcess::ProcessError error) {
-                     if (error != QProcess::FailedToStart) {
-                       return;
-                     }
-                     proc->deleteLater();
-                     unlock();
-                     // Do not run a deleting sync we could not preview.
-                     showValidation(ui.textSource,
-                                    "Could not start rclone to check what "
-                                    "would be deleted.");
-                   });
+    QObject::connect(proc, &QProcess::errorOccurred, this,
+                     [this, proc, unlock](QProcess::ProcessError error) {
+                       if (error != QProcess::FailedToStart) {
+                         return;
+                       }
+                       proc->deleteLater();
+                       unlock();
+                       // Do not run a deleting sync we could not preview.
+                       showValidation(ui.textSource,
+                                      "Could not start rclone to check what "
+                                      "would be deleted.");
+                     });
 
-  QObject::connect(
-      proc,
-      static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-          &QProcess::finished),
-      this, [proc, finish](int code, QProcess::ExitStatus) {
-        const QByteArray raw = proc->readAll();
-        proc->deleteLater();
-        finish(code, raw);
+    QObject::connect(
+        proc,
+        static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
+            &QProcess::finished),
+        this, [proc, finish](int code, QProcess::ExitStatus) {
+          const QByteArray raw = proc->readAll();
+          proc->deleteLater();
+          finish(code, raw);
+        });
+
+    proc->start(GetRclone(), args, QIODevice::ReadOnly);
+  };
+
+  // The check is a separate rclone too, where a section's global.dry_run
+  // would turn it into the real run with its delete caps taken off.
+  DryRunCheck::Run(
+      command,
+      remoteDaemon ? QProcessEnvironment()
+                   : SyncPreview::DryRunEnvironment(
+                         QProcessEnvironment::systemEnvironment(), previewed),
+      this, [this, unlock, runPreview](const QString &refusal) {
+        if (refusal.isEmpty()) {
+          runPreview();
+          return;
+        }
+        unlock();
+        showValidation(ui.textSource, refusal);
       });
-
-  proc->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
 bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,

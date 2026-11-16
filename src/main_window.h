@@ -175,6 +175,16 @@ private:
                              int backupRetainCount = 0,
                              bool verifyAfterTransfer = false,
                              bool vssSnapshot = false);
+  // addTransferViaProcess once DryRunCheck has passed a dry run.
+  void launchTransferViaProcess(const QString &message, const QString &source,
+                                const QString &dest, const QStringList &args,
+                                const QString &heartbeatUrl,
+                                const QString &postCommand,
+                                const QString &webhookUrl,
+                                const QString &taskName,
+                                const QString &backupDirTemplate,
+                                int backupRetainCount,
+                                bool verifyAfterTransfer, bool vssSnapshot);
   // The part of addTransferViaProcess after the concurrency check. With a
   // snapshot, args already read through it and the job's card owns it.
   void startTransferProcess(const QString &message, const QString &source,

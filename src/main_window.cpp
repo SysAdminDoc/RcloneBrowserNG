@@ -1,5 +1,6 @@
 #include "main_window.h"
 #include "bwlimit_timetable.h"
+#include "dry_run_check.h"
 #include "job_options.h"
 #include "job_widget.h"
 #include "mount_backend.h"
@@ -4234,6 +4235,37 @@ void MainWindow::addTransferViaProcess(
                                        int backupRetainCount,
                                        bool verifyAfterTransfer,
                                        bool vssSnapshot) {
+  // A separate rclone applies a section's global.dry_run over --dry-run,
+  // so a dry run it would turn into a real run doesn't start. Anything
+  // else goes straight through.
+  DryRunCheck::Run(
+      args, QProcessEnvironment(), this, [=](const QString &refusal) {
+        if (refusal.isEmpty()) {
+          launchTransferViaProcess(message, source, dest, args, heartbeatUrl,
+                                   postCommand, webhookUrl, taskName,
+                                   backupDirTemplate, backupRetainCount,
+                                   verifyAfterTransfer, vssSnapshot);
+          return;
+        }
+        AppLog::Write(AppLog::Level::Warning, "job",
+                      QString("%1: %2").arg(message, refusal));
+        appendBackgroundError(message, refusal);
+        setStatusMessage(QString("%1 didn't start.").arg(message));
+        if (!heartbeatUrl.isEmpty()) {
+          sendHeartbeat(heartbeatUrl, false);
+        }
+        if (!webhookUrl.isEmpty()) {
+          sendWebhook(webhookUrl, taskName, false);
+        }
+      });
+}
+
+void MainWindow::launchTransferViaProcess(
+    const QString &message, const QString &source, const QString &dest,
+    const QStringList &args, const QString &heartbeatUrl,
+    const QString &postCommand, const QString &webhookUrl,
+    const QString &taskName, const QString &backupDirTemplate,
+    int backupRetainCount, bool verifyAfterTransfer, bool vssSnapshot) {
   if (RemoteDaemon::IsEnabled()) {
     startRemoteDaemonTransfer(message, source, dest, args, heartbeatUrl,
                               postCommand, webhookUrl, taskName,

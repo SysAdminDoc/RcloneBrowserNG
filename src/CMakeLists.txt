@@ -96,6 +96,7 @@ set(SOURCE
   winfsp_floor.cpp
   selection_arguments.cpp
   sync_preview.cpp
+  dry_run_check.cpp
   schedule_dialog.cpp
   vfs_upload_state.cpp
   vss_snapshot.cpp

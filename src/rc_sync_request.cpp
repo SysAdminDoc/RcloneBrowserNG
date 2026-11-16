@@ -595,6 +595,10 @@ QString DryRunGlobalReason(const QJsonObject &dump,
     return false;
   };
   for (auto it = dump.constBegin(); it != dump.constEnd(); ++it) {
+    // Keys above the first section land in DEFAULT, which no remote reads.
+    if (it.key() == QLatin1String("DEFAULT")) {
+      continue;
+    }
     const QJsonObject section = it.value().toObject();
     for (auto key = section.constBegin(); key != section.constEnd(); ++key) {
       const QString value = key.value().toString();
@@ -628,6 +632,59 @@ QString DryRunGlobalReason(const QJsonObject &dump,
     }
   }
   return QString();
+}
+
+QStringList ConfigDumpArguments(const QStringList &args) {
+  // A check never waits on a password prompt.
+  QStringList dump{QStringLiteral("config"), QStringLiteral("dump"),
+                   QStringLiteral("--ask-password=false")};
+  for (qsizetype i = 0; i < args.size(); i++) {
+    const QString &arg = args.at(i);
+    if (arg == QLatin1String("--")) {
+      break;
+    }
+    if (arg == QLatin1String("--config") ||
+        arg == QLatin1String("--password-command")) {
+      dump << arg;
+      if (i + 1 < args.size()) {
+        dump << args.at(i + 1);
+        i++;
+      }
+      continue;
+    }
+    if (arg.startsWith(QLatin1String("--config=")) ||
+        arg.startsWith(QLatin1String("--password-command="))) {
+      dump << arg;
+    }
+  }
+  return dump;
+}
+
+bool ParseConfigDump(const QByteArray &output, QJsonObject *dump) {
+  QJsonParseError error;
+  QJsonDocument document = QJsonDocument::fromJson(output, &error);
+  if (error.error != QJsonParseError::NoError) {
+    // A notice like "Config file not found" comes before the object, which
+    // rclone prints starting at the beginning of a line.
+    const qsizetype open =
+        output.startsWith('{') ? 0 : output.indexOf("\n{");
+    const qsizetype close = output.lastIndexOf('}');
+    if (open < 0 || close < open) {
+      return false;
+    }
+    document = QJsonDocument::fromJson(
+        output.mid(open, close - open + 1).trimmed(), &error);
+    if (error.error != QJsonParseError::NoError) {
+      return false;
+    }
+  }
+  if (!document.isObject()) {
+    return false;
+  }
+  if (dump) {
+    *dump = document.object();
+  }
+  return true;
 }
 
 } // namespace RcSyncRequest

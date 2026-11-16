@@ -107,4 +107,14 @@ bool IsDryRun(const QStringList &args);
 QString DryRunGlobalReason(const QJsonObject &dump,
                            const QStringList &environment);
 
+// "config", "dump", --ask-password=false and the command's own --config
+// and --password-command, in either form and before a "--", so `rclone
+// config dump` run the way the command runs reads the rclone.conf the
+// command reads.
+QStringList ConfigDumpArguments(const QStringList &args);
+
+// The object `rclone config dump` printed, from output that may carry log
+// lines too. False when there is none.
+bool ParseConfigDump(const QByteArray &output, QJsonObject *dump);
+
 } // namespace RcSyncRequest
