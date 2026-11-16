@@ -356,3 +356,17 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Touches: `src/remote_daemon.{h,cpp}`, `src/remote_widget.cpp`, `tests/remote_daemon_test.cpp`
   Acceptance: against a daemon at 1.76.0 or newer, preview fetches files of 2 MiB or less with `base64` and shows them in the existing preview; a larger file says it's over the limit; an older daemon keeps the local-only tooltip; tests cover the version gate and base64 decoding.
   Complexity: S
+
+- [ ] P3: Give the browser's buttons one icon set
+  Why: the 2026-11-16 polish pass found the remote browser's buttons using Qt's standard icons, which don't match each other in style. Size, Tree, Export and Filter use the file dialog's view-mode icons, which say nothing about the action, and Public Link and Path use the file and folder shortcut icons. The file icon was redrawn in the accent color (`UiPolish::FileIcon`) because it fell under 3:1 on a light button, and the rest look out of place next to it.
+  Evidence: `src/remote_widget.cpp:585-597`, `:695`, `:703` (`standardIcon` calls); the gallery's browse captures in both themes.
+  Touches: `src/interface_polish.{h,cpp}` (painted icons drawn from the theme tokens, like FileIcon), `src/remote_widget.cpp`, `tests/interface_polish_test.cpp`
+  Acceptance: every browser button icon is drawn from the theme tokens, reaches 3:1 against the button in both themes (the same check as `fileIconStandsOutOnButtons`), and each one shows its action rather than a view mode or a shortcut.
+  Complexity: M
+
+- [ ] P3: Make the Copy command icon on the Tasks bar readable
+  Why: `buttonCopyTaskCmd` uses `SP_FileLinkIcon`, the same pale page as the old file icon with a small arrow, so it nearly disappears on a light button. The label still reads, so it's cosmetic.
+  Evidence: `src/main_window.cpp:1470`.
+  Touches: `src/main_window.cpp`, `src/interface_polish.{h,cpp}`
+  Acceptance: the icon reaches 3:1 against the button in both themes, checked the way `fileIconStandsOutOnButtons` checks the file icon.
+  Complexity: S
