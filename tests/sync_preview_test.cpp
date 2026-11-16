@@ -848,6 +848,46 @@ private slots:
         << QStringList{"sync", "s",
                        ":combine,upstreams='d=:local,global.max_delete=1:b':d"}
         << none << QStringList{"--max-delete=1"};
+    // backend/combine splits an entry at its first '=' and refuses only a
+    // '/' in the dir (measured on v1.76.0: both caps stopped the sync).
+    QTest::newRow("a combine dir holding a comma or a colon")
+        << QStringList{"sync", "s",
+                       ":combine,upstreams='x,y=:local,global.max_delete=1:b "
+                       "a:b=:local,global.max_delete=2:c':"}
+        << none << QStringList{"--max-delete=1", "--max-delete=2"};
+    // backend/union NewFs reads remotes only when upstreams is empty
+    // (measured: rclone never opened the remotes entry).
+    QTest::newRow("a union's remotes beside its upstreams")
+        << QStringList{"sync", "s",
+                       ":union,upstreams=':local:a :local:b',"
+                       "remotes=':local,global.max_delete=1:c :local:d':"}
+        << none << none;
+    QTest::newRow("a union's remotes with no upstreams")
+        << QStringList{"sync", "s",
+                       ":union,remotes=':local,global.max_delete=1:c :local:d':"}
+        << none << QStringList{"--max-delete=1"};
+    QTest::newRow("a combine has no remotes")
+        << QStringList{"sync", "s",
+                       ":combine,upstreams='d=:local:a',"
+                       "remotes=':local,global.max_delete=1:c :local:d':"}
+        << none << none;
+    // Go's csv reader gives rclone the first record only (measured: rclone
+    // opened the first line's upstreams and no others).
+    QTest::newRow("a union's upstreams end at a line feed")
+        << QStringList{"sync", "s",
+                       ":union,upstreams=':local:a :local:b\n"
+                       ":local:c :local,global.max_delete=1:d':"}
+        << none << none;
+    QTest::newRow("blank lines before a union's upstreams")
+        << QStringList{"sync", "s",
+                       ":union,upstreams='\r\n\n:local:a "
+                       ":local,global.max_delete=1:b':"}
+        << none << QStringList{"--max-delete=1"};
+    QTest::newRow("RCLONE_COMPARE_DEST ends at a line feed")
+        << QStringList{"sync", "s", "d"}
+        << QStringList{"RCLONE_COMPARE_DEST=\"r,global.max_delete=6:c\"\n"
+                       "\"r,global.max_delete=7:c\""}
+        << QStringList{"--max-delete=6"};
   }
 
   void readsGlobalsInTheOrderRcloneOpensPaths() {

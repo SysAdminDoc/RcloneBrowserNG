@@ -84,47 +84,65 @@ const ReadOption kReadOptions[] = {
 };
 
 // The fields of a list rclone reads with Go's encoding/csv: a SpaceSepList
-// like a union's upstreams (fs/config_list.go), or a stringArray flag's
+// like a union's upstreams (fs/config_list.go), a []string option such as
+// global.compare_dest (fs/config/configstruct), or a stringArray flag's
 // environment variable, split on commas (fs/config/flags). A field can be
-// quoted, with a doubled quote for one. Empty when Go would refuse it.
+// quoted, with a doubled quote for one. Every one of those reads only the
+// first record, so an unquoted line feed ends the list, and Go skips blank
+// lines before it. Empty when Go would refuse it.
 QStringList ListFields(const QString &text, QChar separator) {
-  QStringList fields;
+  const auto at = [&text](qsizetype i, char c) {
+    return i < text.size() && text.at(i) == QLatin1Char(c);
+  };
+  // Go's csv ends a line at "\n" or "\r\n", and drops a "\r" at the end.
+  const auto lineEnd = [&](qsizetype i) {
+    return i >= text.size() || at(i, '\n') ||
+           (at(i, '\r') && (i + 1 == text.size() || at(i + 1, '\n')));
+  };
   qsizetype i = 0;
-  while (i < text.size()) {
+  while (i < text.size() && lineEnd(i)) {
+    i++; // a blank line
+  }
+  QStringList fields;
+  if (i >= text.size()) {
+    return fields;
+  }
+  for (;;) {
     QString field;
-    if (text.at(i) == QLatin1Char('"')) {
+    if (at(i, '"')) {
       for (i++;; i++) {
         if (i >= text.size()) {
           return QStringList(); // no closing quote
         }
-        if (text.at(i) == QLatin1Char('"')) {
-          if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('"')) {
+        if (at(i, '"')) {
+          if (at(i + 1, '"')) {
             i++;
           } else {
             break;
           }
+        } else if (at(i, '\r') && at(i + 1, '\n')) {
+          continue; // Go reads a quoted "\r\n" as "\n"
         }
         field += text.at(i);
       }
       i++; // the closing quote
-      if (i < text.size() && text.at(i) != separator) {
+      if (!lineEnd(i) && text.at(i) != separator) {
         return QStringList();
       }
     } else {
-      for (; i < text.size() && text.at(i) != separator; i++) {
-        if (text.at(i) == QLatin1Char('"')) {
+      for (; !lineEnd(i) && text.at(i) != separator; i++) {
+        if (at(i, '"')) {
           return QStringList(); // a bare quote
         }
         field += text.at(i);
       }
     }
     fields << field;
-    if (i < text.size() && i + 1 == text.size()) {
-      fields << QString(); // a separator at the end leaves an empty field
+    if (lineEnd(i)) {
+      return fields;
     }
-    i++; // the separator
+    i++; // the separator, which leaves an empty field when the line ends
   }
-  return fields;
 }
 
 bool IsConfigParam(QChar c) {
@@ -251,8 +269,23 @@ void AppendGlobals(const QString &path, QStringList &globals, int depth) {
       }
     }
   }
-  if (depth >= 16) {
+  if (depth >= 16 || options.isEmpty()) {
     return;
+  }
+  // The backend an on-the-fly path names (":combine,..."). A configured
+  // remote's type is in rclone.conf, so it stays empty for one.
+  const QString backend =
+      path.startsWith(QLatin1Char(':'))
+          ? path.mid(1, path.indexOf(QLatin1Char(',')) - 1)
+          : QString();
+  // A union reads its older remotes only when upstreams is empty
+  // (backend/union NewFs), and a combine has none. The last value given
+  // for an option is the one rclone keeps.
+  bool upstreamsSet = backend == QLatin1String("combine");
+  for (const QPair<QString, QString> &option : options) {
+    if (option.first == QLatin1String("upstreams")) {
+      upstreamsSet = !option.second.isEmpty();
+    }
   }
   for (const QPair<QString, QString> &option : options) {
     // A global. or override. value is a setting, so a path in one (a
@@ -262,22 +295,35 @@ void AppendGlobals(const QString &path, QStringList &globals, int depth) {
       continue;
     }
     // A union's or a combine's upstreams (and a union's older remotes) is a
-    // list, and rclone opens every entry. A combine's entries are
-    // dir=remote (backend/combine), while a union's start with the remote.
+    // list, and rclone opens every entry. A union's entries start with the
+    // remote.
     if (option.first != QLatin1String("upstreams") &&
         option.first != QLatin1String("remotes")) {
       AppendGlobals(option.second, globals, depth + 1);
       continue;
     }
+    if (option.first == QLatin1String("remotes") && upstreamsSet) {
+      continue;
+    }
     for (QString upstream : ListFields(option.second, QLatin1Char(' '))) {
       const qsizetype equals = upstream.indexOf(QLatin1Char('='));
-      qsizetype stop = 0;
-      while (stop < upstream.size() && upstream.at(stop) != QLatin1Char(':') &&
-             upstream.at(stop) != QLatin1Char(',')) {
-        stop++;
-      }
-      if (equals > 0 && equals < stop) {
+      if (backend == QLatin1String("combine")) {
+        // backend/combine splits an entry at its first '=', so the dir
+        // before it can hold a ',' or a ':'.
         upstream = upstream.mid(equals + 1);
+      } else if (backend.isEmpty() &&
+                 option.first == QLatin1String("upstreams")) {
+        // A configured remote may be a union or a combine. A dir= that
+        // comes before any ':' or ',' can only be a combine's.
+        qsizetype stop = 0;
+        while (stop < upstream.size() &&
+               upstream.at(stop) != QLatin1Char(':') &&
+               upstream.at(stop) != QLatin1Char(',')) {
+          stop++;
+        }
+        if (equals > 0 && equals < stop) {
+          upstream = upstream.mid(equals + 1);
+        }
       }
       AppendGlobals(upstream, globals, depth + 1);
     }
@@ -461,7 +507,9 @@ QStringList EffectiveArguments(const QStringList &arguments,
   // folders set counts only where rclone reads it later, which is those two
   // lists (from the backup folder), the caps and --fix-case. Measured on
   // v1.76.0: a backup folder's global.track_renames left the rename
-  // untracked, and its global.fix_case fixed the case.
+  // untracked, and its global.fix_case fixed the case. A --delete-before
+  // sync builds the run a second time after its delete pass and reads more
+  // of what those folders set then, which this doesn't follow yet.
   QStringList later;
   AppendGlobals(backup, later, 0);
   replacePaths(later);
