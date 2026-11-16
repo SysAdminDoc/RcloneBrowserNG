@@ -22,6 +22,10 @@ const QStringList kAccepted{
     "08:00,off:1M",    "08:00,10M:off",      "08:00,1e3",
     "08:00,.5M",       "08:00,5.M",          "08:00,1M ",
     "08:00,1KiB",      "08:00,1Ei",
+    // Semicolons separate entries too, and Go's ParseFloat takes _ and hex.
+    "08:00,1M;12:00,off", "08:00,1M; 12:00,off", "08:00,1M;;12:00,2M",
+    "08:00,1_000k",    "08:00,0x1p4k",       "08:00,7E",
+    "08:00,8191P",     "08:00,7.99Ei",
 };
 
 const QStringList kRefused{
@@ -34,6 +38,14 @@ const QStringList kRefused{
     "08:00,10MB",      "08:00,-1",           "08:00, 1M",
     "08:00,10 M",      "08:00,1Mb",          "08:00,1k:",
     "08:00,:1k",       "08:00,1X",           "Mon-08-00,1M",
+    // A tab doesn't separate entries, and a value with no space or comma
+    // is one rate even with a semicolon in it.
+    "08:00,1M\t12:00,off", "1M\t",           "1M;",
+    "08:00;1M",
+    // b isn't a multiplier for i or iB, and 8 EiB is past what rclone holds.
+    "08:00,10bi",      "08:00,1bib",         "08:00,8E",
+    "08:00,8192P",     "08:00,100000000000000000000",
+    "08:00,nank",      "08:00,infk",         "08:00,1e400k",
 };
 
 } // namespace
@@ -85,6 +97,27 @@ private slots:
     QCOMPARE(RateProblem("-1"), QString("A rate can't be negative."));
     QVERIFY(!RateProblem("10MB").isEmpty());
     QVERIFY(!RateProblem("1:2:3").isEmpty());
+    QCOMPARE(RateProblem("8E"),
+             QString("\"8E\" is more than rclone can hold. Keep it under 8E."));
+    QCOMPARE(RateProblem("10bi"),
+             QString("\"10bi\" ends in a unit rclone doesn't know. Use k, M or "
+                     "G, or off."));
+    QCOMPARE(RateProblem("NaNk"),
+             QString("\"NaNk\" isn't a size rclone can read. Use a size like "
+                     "512k or 10M, or off."));
+  }
+
+  // The editor builds its rows from the same split rclone makes.
+  void splitsEntriesTheWayRcloneDoes() {
+    QCOMPARE(BwlimitTimetable::Entries("08:00,1M;12:00,off  Mon-09:00,2M;"),
+             (QStringList{"08:00,1M", "12:00,off", "Mon-09:00,2M"}));
+    QCOMPARE(BwlimitTimetable::Entries("08:00,1M\t12:00,off"),
+             QStringList{"08:00,1M\t12:00,off"});
+    QVERIFY(BwlimitTimetable::Entries(" ; ").isEmpty());
+    QVERIFY(BwlimitTimetable::IsSingleRate("1M;"));
+    QVERIFY(BwlimitTimetable::IsSingleRate(QString()));
+    QVERIFY(!BwlimitTimetable::IsSingleRate("1M "));
+    QVERIFY(!BwlimitTimetable::IsSingleRate("08:00,1M"));
   }
 
   // The tables above, run against the rclone on this machine, so a change

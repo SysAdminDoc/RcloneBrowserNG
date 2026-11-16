@@ -1,6 +1,6 @@
 #include "bwlimit_timetable.h"
 
-#include <QRegularExpression>
+#include "rclone_number.h"
 
 namespace BwlimitTimetable {
 
@@ -19,56 +19,58 @@ bool IsAsciiDigit(QChar c) {
   return c >= QLatin1Char('0') && c <= QLatin1Char('9');
 }
 
-// One side of a rate, as rclone's SizeSuffix reads it: "off", or a
-// non-negative number with an optional b, k, M, G, T, P or E suffix (any
-// case), where k to E can carry "i" or "iB". A bare number is KiB.
+// One side of a rate, read by rclone's SizeSuffix.
 QString SizeProblem(const QString &size) {
-  if (size.isEmpty()) {
+  using RcloneNumber::SizeError;
+  switch (RcloneNumber::ParseSize(size, nullptr)) {
+  case SizeError::None:
+    return QString();
+  case SizeError::Empty:
     return QStringLiteral("A rate is missing. Use a size like 512k or 10M, "
                           "or off.");
-  }
-  if (size.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0) {
-    return QString();
-  }
-  static const QString kMultipliers = QStringLiteral("bkmgtpe");
-  QString number = size;
-  const QChar last = size.back().toLower();
-  if (IsAsciiDigit(last) || last == QLatin1Char('.')) {
-    // No suffix.
-  } else if (last == QLatin1Char('b') && size.size() > 2 &&
-             size.at(size.size() - 2) == QLatin1Char('i')) {
-    if (!kMultipliers.contains(size.at(size.size() - 3).toLower())) {
-      return QStringLiteral("\"%1\" isn't a size rclone knows.").arg(size);
-    }
-    number.chop(3);
-  } else if (last == QLatin1Char('b')) {
-    number.chop(1);
-  } else if (last == QLatin1Char('i') && size.size() > 1) {
-    if (!kMultipliers.contains(size.at(size.size() - 2).toLower())) {
-      return QStringLiteral("\"%1\" isn't a size rclone knows.").arg(size);
-    }
-    number.chop(2);
-  } else if (kMultipliers.contains(last)) {
-    number.chop(1);
-  } else {
+  case SizeError::BadSuffix:
     return QStringLiteral("\"%1\" ends in a unit rclone doesn't know. Use k, "
                           "M or G, or off.")
         .arg(size);
-  }
-  bool ok = false;
-  const double value = number.toDouble(&ok);
-  if (!ok || number.trimmed() != number) {
+  case SizeError::BadNumber:
+  case SizeError::NotANumber:
     return QStringLiteral("\"%1\" isn't a size rclone can read. Use a size "
                           "like 512k or 10M, or off.")
         .arg(size);
-  }
-  if (value < 0) {
+  case SizeError::Negative:
     return QStringLiteral("A rate can't be negative.");
+  case SizeError::TooBig:
+    return QStringLiteral("\"%1\" is more than rclone can hold. Keep it under "
+                          "8E.")
+        .arg(size);
   }
   return QString();
 }
 
 } // namespace
+
+QStringList Entries(const QString &value) {
+  QStringList entries;
+  QString entry;
+  for (const QChar c : value) {
+    if (c == QLatin1Char(' ') || c == QLatin1Char(';')) {
+      if (!entry.isEmpty()) {
+        entries << entry;
+        entry.clear();
+      }
+    } else {
+      entry += c;
+    }
+  }
+  if (!entry.isEmpty()) {
+    entries << entry;
+  }
+  return entries;
+}
+
+bool IsSingleRate(const QString &value) {
+  return !value.contains(QLatin1Char(' ')) && !value.contains(QLatin1Char(','));
+}
 
 QString TimeProblem(const QString &time) {
   static const QString kClockFormat =
@@ -121,12 +123,10 @@ QString Problem(const QString &value) {
   if (value.isEmpty()) {
     return QString();
   }
-  // A single value with no space or comma is just a rate, as in rclone.
-  if (!value.contains(QLatin1Char(' ')) && !value.contains(QLatin1Char(','))) {
+  if (IsSingleRate(value)) {
     return RateProblem(value);
   }
-  static const QRegularExpression kSpace(QStringLiteral("\\s+"));
-  for (const QString &entry : value.split(kSpace, Qt::SkipEmptyParts)) {
+  for (const QString &entry : Entries(value)) {
     const QStringList halves = entry.split(QLatin1Char(','));
     if (halves.size() != 2) {
       return QStringLiteral("\"%1\" should be a time and a rate, like "

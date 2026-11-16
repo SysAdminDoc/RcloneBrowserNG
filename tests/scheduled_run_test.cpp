@@ -124,10 +124,10 @@ private:
 
   // An ini value reads a backslash as an escape, so paths go in with
   // forward slashes, the way QSettings itself writes them.
-  void writeSettings(const QString &rclone) {
-    writeFile(mIni, QString("[Settings]\nrclone=%1\nrcloneConf=%2\n")
+  void writeSettings(const QString &rclone, const QString &extra = QString()) {
+    writeFile(mIni, QString("[Settings]\nrclone=%1\nrcloneConf=%2\n%3")
                         .arg(QDir::fromNativeSeparators(rclone),
-                             mDataDir + "/rclone.conf")
+                             mDataDir + "/rclone.conf", extra)
                         .toUtf8());
   }
 
@@ -198,9 +198,16 @@ private slots:
         {"webhookUrl", hookUrl("/hook")},
         {"heartbeatUrl", hookUrl("/ping")},
         {"uniqueId", "{6f1c2a3e-2222-4222-8333-944455556666}"}};
+    // A copy saved before rclone 1.76.0, with a time it now refuses.
+    QJsonObject oldLimit = task;
+    oldLimit["description"] = "Old Limit";
+    oldLimit["dest"] = mDir.filePath("old-limit-dst");
+    oldLimit["bandwidth"] = "0800,1M";
+    oldLimit["uniqueId"] = "{6f1c2a3e-3333-4222-8333-944455556666}";
     writeFile(mDataDir + "/tasks.json",
-              QJsonDocument(QJsonObject{{"version", 1},
-                                        {"tasks", QJsonArray{task, guarded}}})
+              QJsonDocument(
+                  QJsonObject{{"version", 1},
+                              {"tasks", QJsonArray{task, guarded, oldLimit}}})
                   .toJson());
   }
 
@@ -251,6 +258,27 @@ private slots:
 
   void reportsAMissingTask() {
     QCOMPARE(runTask("No Such Task"), 1);
+  }
+
+  // rclone stops at the start over a limit it refuses, so the run says
+  // which setting to fix instead of handing back rclone's error.
+  void reportsATaskLimitRcloneRefuses() {
+    QCOMPARE(runTask("Old Limit"), 1);
+    QVERIFY(!QFileInfo::exists(mDir.filePath("old-limit-dst/a.txt")));
+    QVERIFY2(logText().contains("The scheduled run of \"Old Limit\" didn't "
+                                "start: rclone won't accept its bandwidth "
+                                "limit. 0800,1M: Write the time as HH:MM"),
+             qPrintable(logText()));
+  }
+
+  // A refused global limit is left out, so the task still runs.
+  void runsWithoutAGlobalLimitRcloneRefuses() {
+    writeSettings(mRclone, "globalBandwidthLimit=\"0800,1M\"\n");
+    QVERIFY2(runTask("Nightly Copy") == 0, qPrintable(logText()));
+    QVERIFY(QFileInfo::exists(dst() + "/a.txt"));
+    QVERIFY2(logText().contains("\"Nightly Copy\" runs without the global "
+                                "bandwidth limit, which rclone won't accept."),
+             qPrintable(logText()));
   }
 
   // Nobody watches a scheduled run, so a sync stopped by its delete cap has

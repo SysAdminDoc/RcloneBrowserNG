@@ -17,8 +17,16 @@ QString TimeProblem(const QString &time);
 // 10M, 1.5Mi, 10MiB, a bare number in KiB, or upload:download (10M:1M).
 QString RateProblem(const QString &rate);
 
-// A whole --bwlimit value: one rate, or entries "time,rate" separated by
-// spaces. Empty text means no limit and is fine.
+// rclone reads a value with no space and no comma as one rate for the whole
+// day, and anything else as a timetable.
+bool IsSingleRate(const QString &value);
+
+// A timetable's "time,rate" entries. rclone splits them on spaces and
+// semicolons only, so a tab stays inside an entry (and makes it fail).
+QStringList Entries(const QString &value);
+
+// A whole --bwlimit value: one rate, or a timetable. Empty text means no
+// limit and is fine.
 QString Problem(const QString &value);
 
 } // namespace BwlimitTimetable

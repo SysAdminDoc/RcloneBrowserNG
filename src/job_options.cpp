@@ -1,4 +1,5 @@
 #include "job_options.h"
+#include "bwlimit_timetable.h"
 #include "rclone_number.h"
 #include "utils.h"
 #include <qexception.h>
@@ -228,7 +229,14 @@ QStringList JobOptions::getOptions() const {
   if (!bandwidth.isEmpty()) {
     list << "--bwlimit" << bandwidth;
   } else {
-    list << GetGlobalBandwidthLimit();
+    // A global limit saved before rclone 1.76.0 can hold a time it now
+    // refuses (0800), and rclone would stop every run at the start over
+    // it. The status bar marks that one, and runs go without it.
+    const QStringList global = GetGlobalBandwidthLimit();
+    if (global.size() == 2 &&
+        BwlimitTimetable::Problem(global.at(1)).isEmpty()) {
+      list << global;
+    }
   }
   if (!minSize.isEmpty()) {
     list << "--min-size" << minSize;

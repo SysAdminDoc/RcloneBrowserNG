@@ -198,6 +198,7 @@ if(BUILD_TESTING)
     src/job_options_store.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
     src/utils.cpp
   )
   target_include_directories(job_options_store_test PRIVATE src)
@@ -213,6 +214,7 @@ if(BUILD_TESTING)
     src/job_options_store.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
     src/utils.cpp
   )
   target_include_directories(identity_migration_test PRIVATE src)
@@ -442,6 +444,7 @@ if(BUILD_TESTING)
     src/job_options_store.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
     src/utils.cpp
   )
   target_include_directories(staged_transfer_test PRIVATE src)
@@ -496,6 +499,7 @@ if(BUILD_TESTING)
     src/job_options_store.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
     src/rclone_rc_engine.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
@@ -529,6 +533,7 @@ if(BUILD_TESTING)
     tests/dryrun_contract_test.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
     src/job_options_store.cpp
     src/utils.cpp
   )
@@ -561,6 +566,7 @@ if(BUILD_TESTING)
     src/job_options_store.cpp
     src/job_options.cpp
     src/rclone_number.cpp
+    src/bwlimit_timetable.cpp
   )
   # AUTOUIC is enabled directory-scoped in src/; this target compiles the
   # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.

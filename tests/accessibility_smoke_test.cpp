@@ -1,6 +1,7 @@
 #include "cross_remote_search.h"
 #include "folder_compare.h"
 #include "interface_polish.h"
+#include "list_of_job_options.h"
 #include "main_window.h"
 #include "preferences_dialog.h"
 #include "rclone_installer.h"
@@ -20,6 +21,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QStandardPaths>
@@ -295,8 +297,11 @@ private slots:
     tabs->setCurrentIndex(0);
     field->setText("+08:00,1M");
     QDialog &base = dialog;
+    // A result the dialog never sets, so a refused OK is told apart from
+    // one that closed the dialog either way.
+    base.setResult(-1);
     base.done(QDialog::Accepted);
-    QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    QCOMPARE(dialog.result(), -1);
     QCOMPARE(field->property("fieldState").toString(), QString("error"));
     QVERIFY(tabs->currentWidget()->isAncestorOf(field));
     field->setText("08:00,1M");
@@ -316,13 +321,21 @@ private slots:
     auto *limit = qobject_cast<QLineEdit *>(
         findAccessible(&window, "Global bandwidth limit"));
     QVERIFY(limit != nullptr);
-    // One saved by an older build is marked as soon as the window opens.
+    // One saved by an older build is marked as soon as the window opens,
+    // and runs leave it out instead of rclone refusing every one of them.
     QCOMPARE(limit->property("fieldState").toString(), QString("error"));
+    QVERIFY2(limit->toolTip().contains("Transfers run without a limit"),
+             qPrintable(limit->toolTip()));
+    JobOptions job;
+    QVERIFY2(!job.getOptions().contains("--bwlimit"),
+             qPrintable(job.getOptions().join(' ')));
 
     limit->setText("08:00,512k 0900,off");
     emit limit->editingFinished();
     QCOMPARE(limit->property("fieldState").toString(), QString("error"));
     QVERIFY(limit->toolTip().contains("HH:MM"));
+    QVERIFY2(limit->toolTip().contains("It isn't saved."),
+             qPrintable(limit->toolTip()));
     QCOMPARE(GetSettings()->value("Settings/globalBandwidthLimit").toString(),
              QString("0800,1M"));
 
@@ -331,6 +344,61 @@ private slots:
     QCOMPARE(limit->property("fieldState").toString(), QString());
     QCOMPARE(GetSettings()->value("Settings/globalBandwidthLimit").toString(),
              QString("08:00,512k 09:00,off"));
+    const QStringList options = job.getOptions();
+    const qsizetype bwlimit = options.indexOf("--bwlimit");
+    QVERIFY2(bwlimit >= 0 &&
+                 options.value(bwlimit + 1) == "08:00,512k 09:00,off",
+             qPrintable(options.join(' ')));
+    window.close();
+  }
+
+  // A saved task whose own limit rclone refuses says what to fix instead
+  // of starting a job rclone stops at once.
+  void taskWithARefusedLimitSaysSoInsteadOfStarting() {
+    auto *task = new JobOptions(false);
+    task->description = "Old Limit";
+    task->operation = JobOptions::Copy;
+    task->source = QDir::tempPath();
+    task->dest = QDir(QDir::tempPath()).filePath("old-limit-dst");
+    task->bandwidth = "0800,1M";
+    ListOfJobOptions::getInstance()->Persist(task);
+    const auto forget = qScopeGuard([task] {
+      ListOfJobOptions::getInstance()->Forget(task);
+      delete task;
+    });
+
+    auto said = std::make_shared<QString>();
+    QPointer<QTimer> poll = new QTimer(this);
+    poll->setInterval(20);
+    connect(poll, &QTimer::timeout, poll, [poll, said]() {
+      auto *box =
+          qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+      if (box == nullptr || box->windowTitle() != "Task didn't start") {
+        return;
+      }
+      *said = box->text();
+      poll->stop();
+      poll->deleteLater();
+      box->accept();
+    });
+    poll->start();
+
+    MainWindow window(false);
+    auto *list = window.findChild<QListWidget *>("tasksListWidget");
+    QVERIFY(list != nullptr);
+    for (int i = 0; i < list->count(); ++i) {
+      auto *item = static_cast<JobOptionsListWidgetItem *>(list->item(i));
+      item->setSelected(item->GetData() == task);
+    }
+    QCOMPARE(list->selectedItems().size(), 1);
+    window.findChild<QPushButton *>("buttonRunTask")->click();
+    if (poll) {
+      poll->deleteLater();
+    }
+    QVERIFY2(said->contains("\"Old Limit\" didn't start because rclone won't "
+                            "accept its bandwidth limit. 0800,1M: Write the "
+                            "time as HH:MM"),
+             qPrintable(*said));
     window.close();
   }
 

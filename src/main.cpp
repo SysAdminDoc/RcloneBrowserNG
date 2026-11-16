@@ -1,5 +1,6 @@
 #include "app_identity.h"
 #include "app_log.h"
+#include "bwlimit_timetable.h"
 #include "identity_migration.h"
 #include "job_history.h"
 #include "list_of_job_options.h"
@@ -392,6 +393,27 @@ int main(int argc, char *argv[]) {
     };
     if (rclone.isEmpty()) {
       return fail("Didn't start", "no rclone is set in Preferences.");
+    }
+    // A task or global limit saved before rclone 1.76.0 can hold a time
+    // rclone now refuses (0800). The task's own one would stop the run, so
+    // say what to fix. The options already leave out a refused global one.
+    const QString bandwidthProblem = BwlimitTimetable::Problem(found->bandwidth);
+    if (!bandwidthProblem.isEmpty()) {
+      return fail("Didn't start",
+                  "rclone won't accept its bandwidth limit. " +
+                      bandwidthProblem + " Edit the task to fix it.");
+    }
+    if (found->bandwidth.isEmpty()) {
+      const QStringList global = GetGlobalBandwidthLimit();
+      const QString globalProblem =
+          global.size() == 2 ? BwlimitTimetable::Problem(global.at(1))
+                             : QString();
+      if (!globalProblem.isEmpty()) {
+        AppLog::Write(AppLog::Level::Warning, "schedule",
+                      QString("\"%1\" runs without the global bandwidth "
+                              "limit, which rclone won't accept. %2")
+                          .arg(taskName, globalProblem));
+      }
     }
     // Deleting the session ends the snapshot, on every way out of here.
     std::unique_ptr<VssSession> snapshot;

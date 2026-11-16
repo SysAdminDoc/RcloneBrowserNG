@@ -74,16 +74,17 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       table->setItem(row, 0, new QTableWidgetItem(time));
       table->setItem(row, 1, new QTableWidgetItem(rate));
     };
-    static const QRegularExpression kSpace(QStringLiteral("\\s+"));
-    const QStringList entries =
-        ui.textBandwidth->text().split(kSpace, Qt::SkipEmptyParts);
-    if (entries.size() == 1 && !entries.first().contains(QLatin1Char(','))) {
-      // A plain rate holds all day, the same as one row at 00:00.
-      addRow(QStringLiteral("00:00"), entries.first());
+    const QString current = ui.textBandwidth->text().trimmed();
+    if (BwlimitTimetable::IsSingleRate(current)) {
+      // A plain rate holds all day, the same as one row at 00:00. No limit
+      // gets no rows.
+      if (!current.isEmpty()) {
+        addRow(QStringLiteral("00:00"), current);
+      }
     } else {
       // An entry rclone would refuse still gets a row, marked, so it can be
       // fixed here instead of disappearing.
-      for (const QString &entry : entries) {
+      for (const QString &entry : BwlimitTimetable::Entries(current)) {
         const qsizetype comma = entry.indexOf(QLatin1Char(','));
         addRow(comma < 0 ? entry : entry.left(comma),
                comma < 0 ? QString() : entry.mid(comma + 1));
@@ -1634,7 +1635,10 @@ JobOptions *TransferDialog::getJobOptions() {
  * to not save changes...
  */
 void TransferDialog::putJobOptions() {
-  ui.rbCopy->setChecked(mJobOptions->operation == JobOptions::Copy);
+  // A task with no operation saved falls back to Copy, since unchecking
+  // the others leaves the mode remembered from the last transfer selected.
+  ui.rbCopy->setChecked(mJobOptions->operation == JobOptions::Copy ||
+                        mJobOptions->operation == JobOptions::UnknownOp);
   ui.rbMove->setChecked(mJobOptions->operation == JobOptions::Move);
   ui.rbSync->setChecked(mJobOptions->operation == JobOptions::Sync);
   mRbBisync->setChecked(mJobOptions->operation == JobOptions::Bisync);

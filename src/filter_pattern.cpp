@@ -114,15 +114,19 @@ bool classHas(const QString &set, QChar c) {
 }
 
 // A character a negated class matches: one outside the set, and never "/".
+// Glob syntax is skipped too, or the rest of the example would read it as
+// a new class ("[!!-Z_a-z][ab].txt" came out as "[.txt"), and so is what
+// Windows refuses in a file name.
 QChar outsideOf(const QString &set) {
   for (const QChar c : QStringLiteral("xzq0_X")) {
     if (!classHas(set, c)) {
       return c;
     }
   }
+  static const QString kNotInExamples = QStringLiteral("/[]*?{}\\:<>\"|");
   for (char16_t code = u'!'; code <= u'~'; code++) {
     const QChar c(code);
-    if (c != QChar('/') && !classHas(set, c)) {
+    if (!kNotInExamples.contains(c) && !classHas(set, c)) {
       return c;
     }
   }

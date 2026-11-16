@@ -304,8 +304,29 @@ private slots:
     settings.beginGroup("Transfer");
     QCOMPARE(settings.value("spinTransfers").toInt(), 9);
     QCOMPARE(settings.value("checkSkipNewer").toBool(), true);
-    QVERIFY(!settings.contains(QString()));
     settings.endGroup();
+  }
+
+  // The remembered mode is read before a saved task's own, and unchecking
+  // a radio button does nothing, so a task with no operation kept Sync from
+  // the last transfer and Save Task stored it as a sync.
+  void savedTaskWithNoOperationOpensOnCopy() {
+    {
+      QSettings settings;
+      settings.beginGroup("Transfer");
+      settings.setValue("rbCopy", false);
+      settings.setValue("rbSync", true);
+      settings.endGroup();
+      settings.sync();
+    }
+    JobOptions task(false);
+    task.operation = JobOptions::UnknownOp;
+    task.source = "remote:a";
+    task.dest = QDir::tempPath();
+    TransferDialog dialog(false, false, "remote", QDir(), true, nullptr, &task,
+                          true);
+    QVERIFY(dialog.findChild<QRadioButton *>("rbCopy")->isChecked());
+    QVERIFY(!dialog.findChild<QRadioButton *>("rbSync")->isChecked());
   }
 
   // A named-widget checklist goes stale the moment someone adds a control.

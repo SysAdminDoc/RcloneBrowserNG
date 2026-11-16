@@ -1843,11 +1843,21 @@ MainWindow::MainWindow(bool initializeRuntime)
   // rclone 1.76.0 refuses a malformed limit when each job starts, so one is
   // marked here and never saved.
   const auto checkLimit = [this]() {
-    const QString problem =
-        BwlimitTimetable::Problem(mBandwidthLimit->text().trimmed());
+    const QString text = mBandwidthLimit->text().trimmed();
+    const QString problem = BwlimitTimetable::Problem(text);
     UiPolish::SetFieldState(mBandwidthLimit,
                             problem.isEmpty() ? QString() : "error");
-    mBandwidthLimit->setToolTip(problem.isEmpty() ? kLimitTip : problem);
+    QString tip = kLimitTip;
+    if (!problem.isEmpty()) {
+      // Runs leave out a saved limit rclone refuses (see JobOptions).
+      const bool saved =
+          GetSettings()->value("Settings/globalBandwidthLimit").toString()
+              .trimmed() == text;
+      tip = problem + (saved ? QStringLiteral(" Transfers run without a "
+                                              "limit until it's fixed.")
+                             : QStringLiteral(" It isn't saved."));
+    }
+    mBandwidthLimit->setToolTip(tip);
     return problem;
   };
   {
@@ -3615,6 +3625,20 @@ void MainWindow::runItem(JobOptionsListWidgetItem *item, bool dryrun) {
 
 void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
   if (jo == nullptr) {
+    return;
+  }
+
+  // A task saved before rclone 1.76.0 can hold a bandwidth time rclone now
+  // refuses (0800), and rclone would stop the run before it starts.
+  const QString bandwidthProblem = BwlimitTimetable::Problem(jo->bandwidth);
+  if (!bandwidthProblem.isEmpty()) {
+    const QString message =
+        QString("\"%1\" didn't start because rclone won't accept its "
+                "bandwidth limit. %2 Edit the task to fix it.")
+            .arg(jo->description, bandwidthProblem);
+    AppLog::Write(AppLog::Level::Error, "job", message);
+    setStatusMessage(message);
+    QMessageBox::warning(this, "Task didn't start", message);
     return;
   }
 

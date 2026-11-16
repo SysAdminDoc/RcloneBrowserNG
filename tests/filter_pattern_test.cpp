@@ -124,6 +124,13 @@ private slots:
     QCOMPARE(Describe("[!xa-c].txt").matchesExample, QStringLiteral("z.txt"));
     QCOMPARE(Describe("[!a-z0-9_X].txt").matchesExample,
              QStringLiteral("!.txt"));
+    // The first character outside this set is "[", which the next class
+    // then swallowed, giving "[.txt". Glob syntax and characters Windows
+    // refuses are passed over.
+    QCOMPARE(Describe("[!!-Z_a-z][ab].txt").matchesExample,
+             QStringLiteral("^a.txt"));
+    QCOMPARE(Describe("[!!-Z^-z]?.txt").matchesExample,
+             QStringLiteral("~x.txt"));
     QVERIFY(Describe("[abc].txt").negatedClass.isEmpty());
     QCOMPARE(Describe("sub[^x]a.txt").negatedClass, QStringLiteral("[^x]"));
     QCOMPARE(Describe("[ab][!c].txt").negatedClass, QStringLiteral("[!c]"));
