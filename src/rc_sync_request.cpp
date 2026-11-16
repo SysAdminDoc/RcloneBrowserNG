@@ -61,10 +61,12 @@ QJsonValue encode(const OptionSpec &spec, const QString &token, bool *ok) {
 // thing that moves it on a running daemon: a _config BwLimit is accepted
 // and ignored (measured on v1.76.0, a 1 KiB/s limit copied at full speed).
 // A job with its own limit runs as a separate rclone instead, which keeps
-// the limit.
+// the limit. --bwlimit-file isn't one of these: each transfer makes its own
+// bucket from the job's config, so a _config BwLimitFile holds (v1.76.0,
+// 3 MiB at 1M took 3.0 s, where BwLimit 1M took 0.1 s).
 QString sharedLimitReason(const QString &flag) {
-  if (flag == "--bwlimit" || flag == "--bwlimit-file" ||
-      flag == "--tpslimit" || flag == "--tpslimit-burst") {
+  if (flag == "--bwlimit" || flag == "--tpslimit" ||
+      flag == "--tpslimit-burst") {
     return QString("%1 is one limit shared by every job on the daemon")
         .arg(flag);
   }

@@ -1,3 +1,4 @@
+#include "fake_rc_server.h"
 #include "rclone_rc_engine.h"
 #include "remote_daemon.h"
 #include "test_rclone.h"
@@ -5,6 +6,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QProcess>
 #include <QSettings>
 #include <QTcpServer>
@@ -208,7 +210,96 @@ private:
              qPrintable(finished->value("error").toString()));
   }
 
+  // What a daemon whose config file is config answers during a start, and
+  // to the core/command a transfer posts. options/info is empty, so every
+  // transfer takes core/command.
+  static QJsonObject startAnswer(const QString &path, const QString &config) {
+    if (path == "config/paths") {
+      return QJsonObject{{"config", config}};
+    }
+    if (path == "rc/list") {
+      return QJsonObject{
+          {"commands", QJsonArray{QJsonObject{{"Path", "core/command"}}}}};
+    }
+    if (path == "core/command") {
+      return QJsonObject{{"jobid", 7}};
+    }
+    return QJsonObject();
+  }
+
 private slots:
+  // The daemon can be switched while a start still waits on the old one.
+  // Its late answer says nothing about the new daemon, so the start has to
+  // begin again there, and the waiters hear back once the new one answered.
+  // Taking the old answer told them a daemon nobody had reached was up, and
+  // an old config/paths answer sent core/command runs to the old config.
+  void aDaemonSwitchedMidStartIsTheOneReached_data() {
+    QTest::addColumn<QString>("held");
+    QTest::newRow("ping") << QString("rc/noopauth");
+    QTest::newRow("config path") << QString("config/paths");
+    QTest::newRow("command list") << QString("rc/list");
+    QTest::newRow("option list") << QString("options/info");
+  }
+
+  void aDaemonSwitchedMidStartIsTheOneReached() {
+    QFETCH(QString, held);
+    FakeRcServer::Reply release;
+    FakeRcServer before([&](const QString &path, const QJsonObject &,
+                            const FakeRcServer::Reply &reply) {
+      if (path == held && !release) {
+        release = reply;
+        return;
+      }
+      reply(startAnswer(path, "/before.conf"));
+    });
+    FakeRcServer after([](const QString &path, const QJsonObject &,
+                          const FakeRcServer::Reply &reply) {
+      reply(startAnswer(path, "/after.conf"));
+    });
+    QVERIFY(before.isListening());
+    QVERIFY(after.isListening());
+
+    RcloneRcEngine engine;
+    engine.useRemoteDaemon(before.url(), "user", "pass");
+    bool done = false;
+    bool ok = false;
+    QStringList reachedByThen;
+    engine.ensureStartedAsync(this, [&](bool startOk, const QString &) {
+      ok = startOk;
+      done = true;
+      reachedByThen = after.paths();
+    });
+    QVERIFY2(QTest::qWaitFor([&]() { return bool(release); }, 10000),
+             qPrintable(before.paths().join(", ")));
+
+    engine.useRemoteDaemon(after.url(), "user", "pass");
+    const int askedBefore = before.paths().size();
+    release(startAnswer(held, "/before.conf"));
+    QVERIFY(QTest::qWaitFor([&]() { return done; }, 10000));
+    QVERIFY(ok);
+    for (const QString &path :
+         {"rc/noopauth", "config/paths", "rc/list", "options/info"}) {
+      QVERIFY2(reachedByThen.contains(path),
+               qPrintable(path + " missing from: " + reachedByThen.join(", ")));
+    }
+    QCOMPARE(before.paths().size(), askedBefore);
+
+    // A transfer now carries the config of the daemon it runs on.
+    RcloneRcEngine::StartedJob job;
+    bool started = false;
+    engine.runCommand({"copy", "nas:a", "nas:b"}, this,
+                      [&](const RcloneRcEngine::StartedJob &result) {
+                        job = result;
+                        started = true;
+                      });
+    QVERIFY(QTest::qWaitFor([&]() { return started; }, 10000));
+    QVERIFY2(job.jobId == 7, qPrintable(job.error));
+    const QString command = QString::fromUtf8(
+        QJsonDocument(after.lastBody("core/command")).toJson());
+    QVERIFY2(command.contains("/after.conf"), qPrintable(command));
+    QVERIFY2(!command.contains("/before.conf"), qPrintable(command));
+  }
+
   void initTestCase() {
     QVERIFY(mDir.isValid());
     QSettings::setDefaultFormat(QSettings::IniFormat);

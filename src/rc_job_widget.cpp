@@ -350,7 +350,8 @@ void RcJobWidget::poll() {
               }
               if (status.value("finished").toBool()) {
                 // Cancel has nothing left to stop from here on, so a click
-                // during the final stats read can't relabel the result.
+                // during the final stats read can't relabel the result. It
+                // still keeps a failed attempt from being tried again.
                 mJobEnded = true;
                 const RcJobResult::Result result =
                     RcJobResult::Read(status, mBatchLabels);
@@ -387,7 +388,11 @@ void RcJobWidget::poll() {
                           retryAfterFailure(finalStats, haveStats, jobError)) {
                         return;
                       }
-                      if (success && mAttempt > 1) {
+                      // A success with an exit code is a limit stop (8 or
+                      // 10). The 9 of --error-on-no-transfer comes later.
+                      if (success && exitCode > 0) {
+                        noteLimitStop(finalStats, haveStats);
+                      } else if (success && mAttempt > 1) {
                         ui.output->appendPlainText(
                             QString("Attempt %1/%2 succeeded")
                                 .arg(mAttempt)
@@ -471,18 +476,23 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
     // Without the stats there's no telling what kind of errors these were.
     return false;
   }
+  const int attemptErrors = qMax(0, mGroupErrors - mErrorBase);
+  if (attemptErrors == 0) {
+    // The job failed without counting an error, which is how a remote that
+    // can't be opened fails (a missing section, a bad backend option). The
+    // CLI fails those before its retry loop starts, so it never retries
+    // them and prints no attempt line.
+    return false;
+  }
   // retryError is never cleared within a group, where the CLI resets it
   // between attempts, so a later attempt that only hits errors retrying
   // can't fix gets one more try than the CLI would give it.
-  const int attemptErrors = qMax(0, mGroupErrors - mErrorBase);
-  if (attemptErrors > 0 && !stats.value("retryError").toBool()) {
+  if (!stats.value("retryError").toBool()) {
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
     return false;
   }
-  // The group's lastError is from this attempt only if it counted errors.
-  QString lastError =
-      attemptErrors > 0 ? stats.value("lastError").toString() : QString();
+  QString lastError = stats.value("lastError").toString();
   if (lastError.isEmpty()) {
     lastError = jobError;
   }
@@ -502,8 +512,34 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   if (mAttempt >= mAttempts) {
     return false;
   }
+  if (mCancelBeforeRetry) {
+    // Cancel was clicked after the job ended and before its last stats
+    // came back. There was no job left to stop, but there's a retry not
+    // to start.
+    mUserCancelled = true;
+    ui.output->appendPlainText(
+        QStringLiteral("Cancelled before the next attempt started."));
+    return false;
+  }
   startNextAttempt();
   return true;
+}
+
+void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats) {
+  // A --max-transfer or --max-duration stop maps to a successful exit, but
+  // cmd.Run still counted it as an error and says why it didn't retry, on
+  // any attempt. core/command's child prints these lines itself.
+  if (mRetryEndpoint.isEmpty() || !haveStats) {
+    return;
+  }
+  if (stats.value("fatalError").toBool()) {
+    ui.output->appendPlainText(
+        QStringLiteral("Fatal error received - not attempting retries"));
+  } else if (!stats.value("retryError").toBool()) {
+    // --cutoff-mode soft and cautious stop without a fatal error.
+    ui.output->appendPlainText(QStringLiteral(
+        "Can't retry any of the errors - not attempting retries"));
+  }
 }
 
 void RcJobWidget::startNextAttempt() {
@@ -650,7 +686,13 @@ void RcJobWidget::cancel() {
     finish(false, "Cancelled.");
     return;
   }
-  if (!mRunning || mJobEnded) {
+  if (mRunning && mJobEnded) {
+    // The job ended and its last stats are being read. Nothing is left to
+    // stop, so the result stands, but a failed attempt isn't retried.
+    mCancelBeforeRetry = true;
+    return;
+  }
+  if (!mRunning) {
     return;
   }
   if (mStopping) {

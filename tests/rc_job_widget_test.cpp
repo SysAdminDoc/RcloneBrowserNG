@@ -1,3 +1,4 @@
+#include "fake_rc_server.h"
 #include "job_history.h"
 #include "rc_job_widget.h"
 #include "rclone_exit_code.h"
@@ -76,7 +77,118 @@ private slots:
       QCOMPARE(entry.statusLabel, RcloneExitCode::Describe(8).name);
       QCOMPARE(entry.args, args);
       QVERIFY(CanRerun(entry));
+      // The CLI ends a hard --max-transfer stop with this line, not with
+      // an attempt that succeeded.
+      QVERIFY2(!mOutput.contains("succeeded"), qPrintable(mOutput));
+      if (route.second == "rclonebrowser-") {
+        QVERIFY2(mOutput.contains(
+                     "Fatal error received - not attempting retries"),
+                 qPrintable(mOutput));
+      }
     }
+  }
+
+  // A job that failed without counting an error failed before it got to
+  // the files, as a remote that cannot be opened does. The CLI fails those
+  // before its retry loop and tries once.
+  void aJobThatFailedBeforeTheFilesIsNotRetried() {
+    const FakeRun run = runFakeCard(
+        [](const QString &path, const QJsonObject &,
+           const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", "didn't find section in config file"},
+                              {"output", QJsonObject()}});
+          } else {
+            reply(QJsonObject{{"errors", 0}});
+          }
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(!run.success);
+    QCOMPARE(run.resubmits, 0);
+    QVERIFY2(!run.output.contains("Attempt"), qPrintable(run.output));
+  }
+
+  // --cutoff-mode soft stops without a fatal error, and the CLI says it
+  // has nothing it can retry. A hard stop is the fatal line.
+  void aLimitStopSaysWhyItIsNotRetried_data() {
+    QTest::addColumn<bool>("fatal");
+    QTest::addColumn<QString>("line");
+    QTest::newRow("hard") << true
+                          << QString("Fatal error received - not "
+                                     "attempting retries");
+    QTest::newRow("soft") << false
+                          << QString("Can't retry any of the errors - not "
+                                     "attempting retries");
+  }
+
+  void aLimitStopSaysWhyItIsNotRetried() {
+    QFETCH(bool, fatal);
+    QFETCH(QString, line);
+    const FakeRun run = runFakeCard(
+        [fatal](const QString &path, const QJsonObject &,
+                const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            reply(QJsonObject{
+                {"finished", true},
+                {"success", false},
+                {"error",
+                 "max transfer duration reached as set by --max-duration"},
+                {"output", QJsonObject()}});
+          } else {
+            reply(QJsonObject{
+                {"errors", 1}, {"fatalError", fatal}, {"retryError", false}});
+          }
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(run.success);
+    QCOMPARE(run.entry.exitCode, 10);
+    QCOMPARE(run.resubmits, 0);
+    QVERIFY2(run.output.contains(line), qPrintable(run.output));
+    QVERIFY2(!run.output.contains("succeeded"), qPrintable(run.output));
+  }
+
+  // Cancel clicked after the job ended, while its last stats are still on
+  // the way, has no job to stop. It used to be dropped, and the failed
+  // attempt was posted again as if nobody had clicked.
+  void aCancelWhileTheLastStatsAreReadStopsTheRetry() {
+    bool ended = false;
+    FakeRcServer::Reply lastStats;
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            ended = true;
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", "directory not found"},
+                              {"output", QJsonObject()}});
+          } else if (ended && !lastStats) {
+            lastStats = reply;
+          } else {
+            reply(QJsonObject{{"errors", 0}});
+          }
+        },
+        [&](RcJobWidget &card) {
+          if (!QTest::qWaitFor([&]() { return bool(lastStats); }, 20000)) {
+            qWarning() << "the last stats read never came";
+            return;
+          }
+          card.cancel();
+          lastStats(QJsonObject{{"errors", 1},
+                                {"retryError", true},
+                                {"lastError", "directory not found"}});
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(!run.success);
+    QCOMPARE(run.resubmits, 0);
+    QVERIFY2(run.output.contains("Cancelled before the next attempt started."),
+             qPrintable(run.output));
+    QCOMPARE(run.entry.statusLabel,
+             RcloneExitCode::DescribeProcess(run.entry.exitCode, false, true,
+                                             false)
+                 .name);
   }
 
   // The daemon has one bandwidth limit for every job on it and ignores a
@@ -228,6 +340,82 @@ private:
       return;
     }
     file.write(data);
+  }
+
+  struct FakeRun {
+    bool finished = false;
+    bool success = false;
+    QString output;
+    JobHistoryEntry entry;
+    int resubmits = 0;
+  };
+
+  // Puts a card on a fake daemon, as attempt 1 of 3 of a sync/copy job, and
+  // waits for it to finish. answers takes job/status (given the job id here)
+  // and core/stats, and anything else gets an empty answer. A repost of the
+  // job counts as a resubmit and starts job 2.
+  FakeRun runFakeCard(
+      const FakeRcServer::Handler &answers,
+      const std::function<void(RcJobWidget &)> &whileRunning = {}) {
+    FakeRun run;
+    FakeRcServer daemon([&](const QString &path, const QJsonObject &body,
+                            const FakeRcServer::Reply &reply) {
+      if (path == "job/status") {
+        // rclone puts the job id in every status answer, and the engine
+        // takes an answer without it for a failed call.
+        const QJsonValue id = body.value("jobid");
+        answers(path, body, [reply, id](const QJsonObject &answer) {
+          QJsonObject status = answer;
+          status.insert("id", id);
+          reply(status);
+        });
+      } else if (path == "core/stats") {
+        answers(path, body, reply);
+      } else if (path == "sync/copy") {
+        run.resubmits++;
+        reply(QJsonObject{{"jobid", 2}});
+      } else {
+        reply(QJsonObject());
+      }
+    });
+    if (!daemon.isListening()) {
+      qWarning() << "the fake daemon isn't listening";
+      return run;
+    }
+    RcloneRcEngine engine;
+    engine.useRemoteDaemon(daemon.url(), "user", "pass");
+    bool up = false;
+    engine.ensureStartedAsync(this, [&](bool ok, const QString &) { up = ok; });
+    if (!QTest::qWaitFor([&]() { return up; }, 10000)) {
+      qWarning() << "the engine never reached the fake daemon";
+      return run;
+    }
+
+    RcloneRcEngine::StartedJob job;
+    job.jobId = 1;
+    job.group = "rclonebrowser-1";
+    job.endpoint = "sync/copy";
+    job.payload = QJsonObject{{"srcFs", "nas:a"},
+                              {"dstFs", "nas:b"},
+                              {"_async", true},
+                              {"_group", job.group}};
+    job.attempts = 3;
+    const QStringList args{"copy", "nas:a", "nas:b"};
+    RcJobWidget card(&engine, job.jobId, job.group, "test run", args,
+                     "nas:a", "nas:b");
+    card.setHistoryArgs(args);
+    card.setStartedJob(job);
+    QSignalSpy finished(&card, &RcJobWidget::finished);
+    if (whileRunning) {
+      whileRunning(card);
+    }
+    run.finished = !finished.isEmpty() || finished.wait(30000);
+    if (QPlainTextEdit *output = card.findChild<QPlainTextEdit *>("output")) {
+      run.output = output->toPlainText();
+    }
+    run.success = card.wasSuccessful();
+    run.entry = card.historyEntry();
+    return run;
   }
 
   // Starts args on a fresh daemon, puts the card on it the way MainWindow

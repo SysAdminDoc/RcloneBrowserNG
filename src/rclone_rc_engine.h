@@ -137,13 +137,20 @@ private:
   // on the core/command route.
   void resolveSourceIsDirectory(const QString &source, QObject *context,
                                 const std::function<void(bool)> &callback);
-  void loadCapabilities(const std::function<void()> &done);
+  // The start itself, for the local or remote daemon that's current.
+  void beginStart();
+  // True when a start answer is to be dropped: the start already ended, or
+  // the daemon changed since generation, in which case the start begins
+  // again against the current one.
+  bool restartIfStale(int generation);
+  // Reads rc/list and the options tables, then ends the start.
+  void loadCapabilities();
   void connectRemote();
   void finishRemoteConnect();
   // The --config pair a core/command run needs to see the daemon's remotes.
   QStringList commandConfig() const;
   void spawnDaemon();
-  void pollUntilReady(const QElapsedTimer &deadline);
+  void pollUntilReady(const QElapsedTimer &deadline, int generation);
   void finishStart(bool ok, const QString &error);
 
   // Only for destructor teardown, where there is no event loop left to

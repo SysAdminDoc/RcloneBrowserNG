@@ -92,6 +92,8 @@ private:
   int mAttempt = 1;
   qint64 mRetrySleepMs = 0;
   bool mRetryPending = false;
+  // Cancel came after the job ended, while its last stats were read.
+  bool mCancelBeforeRetry = false;
   int mErrorBase = 0;
   int mGroupErrors = 0;
   QTimer mPollTimer;
@@ -117,6 +119,8 @@ private:
   bool retryAfterFailure(const QJsonObject &stats, bool haveStats,
                          const QString &jobError);
   void startNextAttempt();
+  // The line cmd.Run prints when a limit stop ends the run.
+  void noteLimitStop(const QJsonObject &stats, bool haveStats);
   // exitCode: the child rclone's, read from a core/command log; -1 takes 0
   // or 1 from success.
   void finish(bool success, const QString &error, int exitCode = -1);

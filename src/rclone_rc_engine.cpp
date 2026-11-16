@@ -73,7 +73,10 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
 
   mPendingStarts.append(std::move(guarded));
   mStarting = true;
+  beginStart();
+}
 
+void RcloneRcEngine::beginStart() {
   if (isRemote()) {
     connectRemote();
     return;
@@ -82,11 +85,16 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
     // The daemon looks alive. Confirm it still answers before reusing it,
     // and only respawn if the ping fails.
+    const int generation = mCapabilityGeneration;
     postAsync("rc/noopauth", QJsonObject(), this,
-              [this](const QJsonObject &, const QString &pingError) {
+              [this, generation](const QJsonObject &,
+                                 const QString &pingError) {
+                if (restartIfStale(generation)) {
+                  return;
+                }
                 if (pingError.isEmpty()) {
                   if (mOptionIndex.isEmpty() || mEndpoints.isEmpty()) {
-                    loadCapabilities([this]() { finishStart(true, QString()); });
+                    loadCapabilities();
                     return;
                   }
                   finishStart(true, QString());
@@ -98,6 +106,20 @@ void RcloneRcEngine::ensureStartedAsync(QObject *context,
   }
 
   spawnDaemon();
+}
+
+bool RcloneRcEngine::restartIfStale(int generation) {
+  if (!mStarting) {
+    return true;
+  }
+  if (generation == mCapabilityGeneration) {
+    return false;
+  }
+  // The daemon was switched or respawned while this start was talking to
+  // the old one. Its answers say nothing about the rclone that's current
+  // now, so the start begins again there and the waiters get that answer.
+  beginStart();
+  return true;
 }
 
 void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
@@ -138,11 +160,12 @@ void RcloneRcEngine::connectRemote() {
   mUrl = mRemoteUrl;
   mUser = mRemoteUser;
   mPass = mRemotePass;
+  const int generation = mCapabilityGeneration;
   // rc/noopauth needs a login, as core/command does, so this fails for the
   // same reasons a transfer would rather than after it's been posted.
   postAsync("rc/noopauth", QJsonObject(), this,
-            [this](const QJsonObject &, const QString &pingError) {
-              if (!mStarting) {
+            [this, generation](const QJsonObject &, const QString &pingError) {
+              if (restartIfStale(generation)) {
                 return;
               }
               if (!pingError.isEmpty()) {
@@ -160,7 +183,13 @@ void RcloneRcEngine::connectRemote() {
               // reads the default config unless told which one the daemon
               // has. An rclone too old for config/paths gets the default.
               postAsync("config/paths", QJsonObject(), this,
-                        [this](const QJsonObject &paths, const QString &) {
+                        [this, generation](const QJsonObject &paths,
+                                           const QString &) {
+                          // The old daemon's config path would send the new
+                          // one's core/command runs to the wrong config.
+                          if (restartIfStale(generation)) {
+                            return;
+                          }
                           mRemoteConfigPath =
                               paths.value("config").toString();
                           finishRemoteConnect();
@@ -173,7 +202,7 @@ void RcloneRcEngine::finishRemoteConnect() {
     return;
   }
   if (mEndpoints.isEmpty() || mOptionIndex.isEmpty()) {
-    loadCapabilities([this]() { finishStart(true, QString()); });
+    loadCapabilities();
     return;
   }
   finishStart(true, QString());
@@ -231,11 +260,14 @@ void RcloneRcEngine::spawnDaemon() {
 
   QElapsedTimer deadline;
   deadline.start();
-  pollUntilReady(deadline);
+  pollUntilReady(deadline, mCapabilityGeneration);
 }
 
-void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline) {
-  if (!mStarting) {
+void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline,
+                                    int generation) {
+  // A switch to a remote daemon kills the one this waits for, and pinging
+  // it until the deadline would only end in a false "didn't start".
+  if (restartIfStale(generation)) {
     return;
   }
   if (deadline.elapsed() >= kRcStartTimeoutMs) {
@@ -250,36 +282,34 @@ void RcloneRcEngine::pollUntilReady(const QElapsedTimer &deadline) {
   }
 
   postAsync("rc/noopauth", QJsonObject(), this,
-            [this, deadline](const QJsonObject &, const QString &pingError) {
-              if (!mStarting) {
+            [this, deadline, generation](const QJsonObject &,
+                                         const QString &pingError) {
+              if (restartIfStale(generation)) {
                 return;
               }
               if (pingError.isEmpty()) {
-                loadCapabilities([this]() { finishStart(true, QString()); });
+                loadCapabilities();
                 return;
               }
               // Not up yet. Come back on the event loop rather than sleeping
               // on the thread that has to paint the window.
-              QTimer::singleShot(50, this,
-                                 [this, deadline]() { pollUntilReady(deadline); });
+              QTimer::singleShot(50, this, [this, deadline, generation]() {
+                pollUntilReady(deadline, generation);
+              });
             });
 }
 
-void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
-  // A daemon switch or respawn while these are in flight clears the tables
-  // for the new rclone. The old one's answers are dropped then, though done
-  // still runs, so nobody waiting on this start is left hanging.
+void RcloneRcEngine::loadCapabilities() {
+  // Reads the daemon's tables, then ends the start. A daemon switch or
+  // respawn while these are in flight clears the tables for the new rclone,
+  // so the old one's answers are dropped and the start begins again there.
+  // Ending it as a success would tell the waiters a daemon nobody has
+  // reached yet is up.
   const int generation = mCapabilityGeneration;
-  const auto finish = [done]() {
-    if (done) {
-      done();
-    }
-  };
   postAsync("rc/list", QJsonObject(), this,
-            [this, generation, finish](const QJsonObject &listed,
-                                       const QString &listError) {
-              if (generation != mCapabilityGeneration) {
-                finish();
+            [this, generation](const QJsonObject &listed,
+                               const QString &listError) {
+              if (restartIfStale(generation)) {
                 return;
               }
               if (listError.isEmpty()) {
@@ -290,10 +320,9 @@ void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
                 }
               }
               postAsync("options/info", QJsonObject(), this,
-                        [this, generation, finish](const QJsonObject &info,
-                                                   const QString &infoError) {
-                          if (generation != mCapabilityGeneration) {
-                            finish();
+                        [this, generation](const QJsonObject &info,
+                                           const QString &infoError) {
+                          if (restartIfStale(generation)) {
                             return;
                           }
                           if (infoError.isEmpty()) {
@@ -303,20 +332,22 @@ void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
                           // an empty table means every transfer keeps the old
                           // core/command route.
                           if (mOptionIndex.isEmpty()) {
-                            finish();
+                            finishStart(true, QString());
                             return;
                           }
                           // The delete timings are only in options/get.
                           postAsync("options/get", QJsonObject(), this,
-                                    [this, generation,
-                                     finish](const QJsonObject &values,
-                                             const QString &getError) {
-                                      if (generation == mCapabilityGeneration &&
-                                          getError.isEmpty()) {
+                                    [this, generation](
+                                        const QJsonObject &values,
+                                        const QString &getError) {
+                                      if (restartIfStale(generation)) {
+                                        return;
+                                      }
+                                      if (getError.isEmpty()) {
                                         RcSyncRequest::AddDeleteModes(
                                             &mOptionIndex, values);
                                       }
-                                      finish();
+                                      finishStart(true, QString());
                                     });
                         });
             });

@@ -397,8 +397,7 @@ private slots:
   // own rclone to keep it.
   void sendsAJobWithItsOwnLimitToItsOwnRclone() {
     const QList<QStringList> limited{
-        {"--bwlimit", "1M"},       {"--bwlimit=1M"},
-        {"--bwlimit-file", "1M"},  {"--tpslimit", "10"},
+        {"--bwlimit", "1M"},  {"--bwlimit=1M"},          {"--tpslimit", "10"},
         {"--tpslimit-burst", "2"}, {"--bwlimit", "off"}};
     for (const QStringList &flag : limited) {
       QStringList args = baseCopy();
@@ -411,6 +410,29 @@ private slots:
       QVERIFY2(request.reason.contains(name) &&
                    request.reason.contains("shared"),
                qPrintable(request.reason));
+    }
+  }
+
+  // --bwlimit-file is per transfer, and each transfer makes its bucket from
+  // the job config, so a _config BwLimitFile holds on the daemon (v1.76.0,
+  // 3 MiB at 1M took 3.0 s). It stays on sync/copy, with live progress.
+  void keepsAPerFileLimitOnTheDaemon() {
+    for (const QStringList &flag :
+         QList<QStringList>{{"--bwlimit-file", "1M"},
+                            {"--bwlimit-file=08:00,512k 18:00,off"}}) {
+      QStringList args = baseCopy();
+      for (int i = flag.size() - 1; i >= 0; --i) {
+        args.insert(1, flag.at(i));
+      }
+      const Request request = Build(args, "g", realIndex());
+      QVERIFY2(request.usable, qPrintable(request.reason));
+      const QString value =
+          flag.size() == 2 ? flag.at(1) : flag.first().section(QChar('='), 1);
+      QCOMPARE(request.payload.value("_config")
+                   .toObject()
+                   .value("BwLimitFile")
+                   .toString(),
+               value);
     }
   }
 
