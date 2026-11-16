@@ -407,6 +407,27 @@ private slots:
                                              << "sub/keep2.txt");
   }
 
+  // A download of several selected items puts its filter rules ahead of the
+  // command, and the fixture's own --config reaches core/command as a pair.
+  // Right after args[0] that pair split the first --filter from its rule, and
+  // rclone stopped on "unknown command" with nothing copied.
+  void leadingFilterRulesKeepTheirValuesOnCoreCommand() {
+    const QString source = makeTree(QStringLiteral("lead-src"));
+    const QString dest = QDir(mDir.path()).filePath(QStringLiteral("lead-dst"));
+
+    RcloneRcEngine engine;
+    QStringList args;
+    args << "--filter" << "+ /keep.txt" << "--filter" << "+ /sub/**"
+         << "--filter" << "- *" << "copy" << "--verbose" << source << dest;
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+    QCOMPARE(filesUnder(dest), QStringList() << "keep.txt" << "sub/drop2.tmp"
+                                             << "sub/keep2.txt");
+  }
+
   // core/bwlimit is the only live tuning rclone actually offers. Measured on
   // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
   // file in flight for eight seconds while a job started afterwards used all

@@ -16,17 +16,29 @@ QString makeRcUrl(quint16 port) {
 // --password-command don't reach it, and a remote that only exists in the
 // config chosen in Preferences fails with "didn't find section in config
 // file". conf is flag/value pairs, the way GetRcloneConf() returns them.
+// They go right after the command, or at the end when the arguments open
+// with a flag: a download of several selected items puts its --filter rules
+// ahead of the command, and a pair after args[0] split the first --filter
+// from its rule, so rclone took the config path for the command.
 QJsonArray coreCommandArguments(const QStringList &args,
                                 const QStringList &conf) {
-  QJsonArray commandArgs;
+  QJsonArray pairs;
   for (int i = 0; i + 1 < conf.size(); i += 2) {
     if (!args.contains(conf.at(i))) {
-      commandArgs.append(conf.at(i));
-      commandArgs.append(conf.at(i + 1));
+      pairs.append(conf.at(i));
+      pairs.append(conf.at(i + 1));
     }
   }
+  const bool leadingFlag =
+      !args.isEmpty() && args.first().startsWith(QLatin1Char('-'));
+  QJsonArray commandArgs = leadingFlag ? QJsonArray() : pairs;
   for (int i = 1; i < args.size(); i++) {
     commandArgs.append(args[i]);
+  }
+  if (leadingFlag) {
+    for (const QJsonValue &value : pairs) {
+      commandArgs.append(value);
+    }
   }
   return commandArgs;
 }
