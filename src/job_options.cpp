@@ -3,6 +3,7 @@
 #include "rclone_number.h"
 #include "utils.h"
 #include <QDebug>
+#include <QSet>
 #include <qexception.h>
 #include <qlogging.h>
 
@@ -270,10 +271,11 @@ QStringList JobOptions::getOptions() const {
       list << global;
     } else if (!problem.isEmpty()) {
       // Into the app log once per value, since the options are built for
-      // previews and command text too.
-      static QString warned;
-      if (warned != global.at(1)) {
-        warned = global.at(1);
+      // previews and command text too. Every value is remembered, so going
+      // back to an earlier one doesn't log it again.
+      static QSet<QString> warned;
+      if (!warned.contains(global.at(1))) {
+        warned.insert(global.at(1));
         qWarning().noquote()
             << QString("Runs leave out the global bandwidth limit \"%1\", "
                        "which rclone won't accept. %2")

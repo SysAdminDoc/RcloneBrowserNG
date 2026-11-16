@@ -1,9 +1,13 @@
 #include "job_options_store.h"
+#include "utils.h"
 
 #include <QBuffer>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QScopeGuard>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTest>
 
 namespace {
@@ -376,6 +380,39 @@ private slots:
              "notice must distinguish fallback storage from encryption");
     QVERIFY2(notice.contains("tasks.json"),
              "notice must identify the file users must protect");
+  }
+
+  // Options are built for previews and command text as well as runs, so a
+  // refused global limit is noted once per value. Going back to a value
+  // already noted used to note it again.
+  void aRefusedGlobalLimitIsNotedOncePerValue() {
+    static int notes = 0;
+    notes = 0;
+    const QtMessageHandler previous = qInstallMessageHandler(
+        [](QtMsgType, const QMessageLogContext &, const QString &message) {
+          if (message.startsWith("Runs leave out the global bandwidth")) {
+            notes++;
+          }
+        });
+    // QSettings needs a name to read or write, and the ini in a temporary
+    // folder keeps this off the real settings.
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, home.path());
+    QCoreApplication::setOrganizationName("rclone-browser-job-options-test");
+    QCoreApplication::setApplicationName("rclone-browser-job-options-test");
+    const auto restore = qScopeGuard([previous] {
+      qInstallMessageHandler(previous);
+      QSettings::setDefaultFormat(QSettings::NativeFormat);
+    });
+    const QString key = "Settings/globalBandwidthLimit";
+    JobOptions options(false);
+    for (const char *limit : {"8.5E", "8.5E", "9.5E", "8.5E", "9.5E"}) {
+      GetSettings()->setValue(key, QString(limit));
+      QVERIFY2(!options.getOptions().contains("--bwlimit"), limit);
+    }
+    QCOMPARE(notes, 2);
   }
 };
 

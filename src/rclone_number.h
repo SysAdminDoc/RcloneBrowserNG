@@ -6,7 +6,8 @@
 // Numbers read the way rclone 1.76.0 reads them from flags and options.
 // rclone is written in Go, so these follow Go's strconv and fmt rules
 // (src/strconv/atoi.go, atof.go and src/fmt/scan.go) and rclone's
-// fs/sizesuffix.go, and refuse exactly what those refuse.
+// fs/sizesuffix.go, and refuse exactly what those refuse, short of the one
+// gap ParseFloat describes.
 namespace RcloneNumber {
 
 // strconv.ParseInt(text, 0, 64): an optional sign, then decimal, 0b, 0o,
@@ -22,7 +23,16 @@ bool ScanInt(const QString &text, qint64 *value);
 // strconv.ParseFloat(text, 64): decimal ("1.5", ".5", "5.", "1e3") or hex,
 // which needs a p exponent ("0x1p4"), with _ between digits, plus Inf,
 // Infinity and NaN in any case. False for anything else, and for a value
-// too big for a double.
+// too big for a double. Rounded correctly, as strconv rounds.
+//
+// The gap: strconv settles a long number from its first 19 digits when it
+// can, and falls back to a slow path when those sit on a rounding tie. That
+// path keeps 800 digits and also stops counting the point's place at 800,
+// so a number with more than 800 digits before its point comes out far too
+// small there ("9222795576102472192" + 899 zeros + "1e-900b" is 0 to rclone
+// 1.76.0). Telling which numbers reach that path takes strconv's
+// Eisel-Lemire tables, so those few crafted values read here as their true
+// value. Nobody writes an 800-digit limit.
 bool ParseFloat(const QString &text, double *value);
 
 // time.ParseDuration, which rclone uses for plain duration flags such as
