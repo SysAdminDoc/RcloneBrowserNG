@@ -65,7 +65,9 @@ private:
   bool mPreviewInFlight = false;
 
   bool wouldDeleteAtDestination() const;
-  bool showDeletionSummary(const SyncPreview::Summary &summary);
+  // warnings are SyncPreview::CapWarnings for the caps this run uses.
+  bool showDeletionSummary(const SyncPreview::Summary &summary,
+                           const QStringList &warnings);
   void startRemoteTypesProbe();
   // Enables the snapshot option only for a source and operation it can
   // serve, and says why in the tooltip when it can't.

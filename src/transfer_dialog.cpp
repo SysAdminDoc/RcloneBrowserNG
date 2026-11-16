@@ -1090,13 +1090,25 @@ void TransferDialog::acceptWithDeletionPreview() {
       return;
     }
 
-    // Nothing is being removed, so there is nothing to warn about.
-    if (!summary.deletesAnything()) {
+    // The caps the run will use, from the cap field, the extra options or
+    // the default options. The count is files: rclone logs a directory it
+    // would remove as "remove directory", which the summary doesn't count.
+    const JobOptions::DeleteCaps caps =
+        JobOptions::DeleteCapsIn(getJobOptions()->getOptions());
+    const QStringList warnings = SyncPreview::CapWarnings(
+        summary, caps.count, caps.bytes, [](qint64 bytes) {
+          return GetNiceSize(static_cast<quint64>(bytes));
+        });
+
+    // Nothing is removed and no cap can stop the run, so there is nothing
+    // to warn about. A sync that only replaces files still moves their old
+    // copies into a backup, which a cap can stop.
+    if (!summary.deletesAnything() && warnings.isEmpty()) {
       accept();
       return;
     }
 
-    if (showDeletionSummary(summary)) {
+    if (showDeletionSummary(summary, warnings)) {
       accept();
     }
   };
@@ -1138,11 +1150,14 @@ void TransferDialog::acceptWithDeletionPreview() {
   proc->start(GetRclone(), args, QIODevice::ReadOnly);
 }
 
-bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
+bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
+                                         const QStringList &warnings) {
   // --backup-dir or --suffix moves removed files aside instead. Usually
-  // that's all of them, but a sync can do both.
+  // that's all of them, but a sync can do both. With neither, the summary
+  // is only here for a cap warning about replaced files.
   const bool moves = summary.toBackup > 0;
   const bool deletes = summary.toDelete > summary.toBackup;
+  const bool removes = summary.deletesAnything();
   QDialog dialog(this);
   dialog.setWindowTitle(SyncPreview::DeletionTitle(summary));
   UiPolish::SetWindowDefaults(&dialog, QSize(560, 380));
@@ -1159,7 +1174,12 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   detail->setTextFormat(Qt::PlainText);
   detail->setWordWrap(true);
   QString detailText;
-  if (!moves) {
+  if (!removes) {
+    detailText = "Nothing is removed from the destination, but each file "
+                 "this sync replaces has its old copy moved into the backup "
+                 "(--backup-dir or --suffix), and rclone can count that "
+                 "against the delete cap.";
+  } else if (!moves) {
     detailText = "These files exist at the destination and not at the "
                  "source, so Sync removes them. Recovering them depends on "
                  "whether the remote keeps a trash or versions. Freed: %1.";
@@ -1175,20 +1195,23 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
                  "rclone counts every one as a delete for the delete cap. "
                  "Size: %1.";
   }
-  detail->setText(detailText.arg(
-      GetNiceSize(static_cast<quint64>(summary.deleteBytes))));
+  detail->setText(removes ? detailText.arg(GetNiceSize(
+                                static_cast<quint64>(summary.deleteBytes)))
+                          : detailText);
   UiPolish::SetMuted(detail);
   layout->addWidget(detail);
 
-  auto *list = new QPlainTextEdit(&dialog);
-  list->setReadOnly(true);
-  list->setPlainText(summary.deletions.join('\n'));
-  UiPolish::SetOutputView(
-      list, !moves     ? "Files this sync will delete"
-            : !deletes ? "Files this sync will move into the backup"
-                       : "Files this sync will delete or move into the "
-                         "backup");
-  layout->addWidget(list, 1);
+  if (removes) {
+    auto *list = new QPlainTextEdit(&dialog);
+    list->setReadOnly(true);
+    list->setPlainText(summary.deletions.join('\n'));
+    UiPolish::SetOutputView(
+        list, !moves     ? "Files this sync will delete"
+              : !deletes ? "Files this sync will move into the backup"
+                         : "Files this sync will delete or move into the "
+                           "backup");
+    layout->addWidget(list, 1);
+  }
 
   if (summary.moreDeletions > 0) {
     auto *more = new QLabel(
@@ -1197,20 +1220,14 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
     layout->addWidget(more);
   }
 
-  // The caps the run will use, from the cap field, the extra options or the
-  // default options. The count is files: rclone logs a directory it would
-  // remove as "remove directory", which the summary doesn't count.
-  const JobOptions::DeleteCaps caps =
-      JobOptions::DeleteCapsIn(getJobOptions()->getOptions());
-  const QStringList warnings = SyncPreview::CapWarnings(
-      summary, caps.count, caps.bytes, [](qint64 bytes) {
-        return GetNiceSize(static_cast<quint64>(bytes));
-      });
   for (const QString &warning : warnings) {
     auto *label = new QLabel(&dialog);
     label->setTextFormat(Qt::PlainText);
     UiPolish::SetValidationMessage(label, "warning", warning);
     layout->addWidget(label);
+  }
+  if (!removes) {
+    layout->addStretch(1); // no list to take up the height
   }
 
   auto *buttons = new QDialogButtonBox(&dialog);
@@ -1220,7 +1237,8 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   UiPolish::SetDialogButtonBox(buttons);
   UiPolish::SetPrimaryButton(run);
   cancel->setToolTip("Go back to the transfer options without running.");
-  run->setToolTip(!moves     ? "Run the sync, deleting the files listed above."
+  run->setToolTip(!removes   ? "Run the sync."
+                  : !moves   ? "Run the sync, deleting the files listed above."
                   : !deletes ? "Run the sync, moving the files listed above "
                                "into the backup."
                              : "Run the sync, deleting or moving the files "

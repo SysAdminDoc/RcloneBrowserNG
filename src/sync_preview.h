@@ -27,8 +27,8 @@ struct Summary {
   // How many of toDelete are moved aside rather than deleted.
   int toBackup = 0;
   // Replaced files whose old copy goes into the backup ("move", or "move to
-  // a.txt.bak" with --suffix). Not a delete, unless the backup already
-  // holds a file of that name: rclone deletes that one first and counts it.
+  // a.txt.bak" with --suffix). Not a delete itself, but rclone can count one
+  // or two for it (see CapWarnings). A --track-renames rename isn't one.
   int replacedIntoBackup = 0;
   qint64 transferBytes = 0;
   qint64 deleteBytes = 0;
@@ -44,14 +44,18 @@ struct Summary {
 // each skipped action with a "skipped" field: "copy", "delete", "move into
 // backup dir" (a delete under --backup-dir or --suffix), or "update
 // modification time". A replaced file's old copy going to the backup is
-// "move" or "move to <name>", which isn't a delete.
+// "move" or "move to <name>" beside the copy that replaces it, which isn't
+// a delete; a move with no copy is a --track-renames rename, or under
+// `rclone move` the transfer itself.
 Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed = 20);
 
 // One line for the panel heading.
 QString Headline(const Summary &summary);
 
 // The deletion summary's title: what the sync deletes, what it moves into
-// the backup, or both.
+// the backup, or both. A run that deletes nothing gets the summary only to
+// warn about a cap, and its title names the old copies of replaced files
+// going into the backup.
 QString DeletionTitle(const Summary &summary);
 
 // Why the real run would stop at a delete cap, one line each, for the

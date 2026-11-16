@@ -7,14 +7,17 @@
 #include "rclone_installer.h"
 #include "schedule_dialog.h"
 #include "transfer_dialog.h"
+#include "test_rclone.h"
 #include "utils.h"
 
 #include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
@@ -23,10 +26,13 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScopeGuard>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
@@ -511,6 +517,107 @@ private slots:
     QTRY_VERIFY_WITH_TIMEOUT(statusSays("No rclone yet"), 10000);
     QVERIFY(*asked);
     QVERIFY(GetSettings()->value("Settings/rclone").toString().isEmpty());
+  }
+
+  // A sync that only replaces a file deletes nothing, but the old copy goes
+  // into --backup-dir and rclone can count that against --max-delete. Run
+  // used to go straight through. Now the real dry run opens the summary at
+  // a cap the move could trip, and Run goes straight through at one it
+  // clears.
+  void replaceOnlySyncWarnsAboutTheDeleteCap() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("Set RCLONE_BROWSER_TEST_RCLONE to run the preview.");
+    }
+    const QString previous = GetRclone();
+    SetRclone(rclone);
+    auto restore = qScopeGuard([previous] { SetRclone(previous); });
+
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QDir dir(root.path());
+    QVERIFY(dir.mkpath("src") && dir.mkpath("dst"));
+    const auto write = [&dir](const QString &name, const QByteArray &data) {
+      QFile file(dir.filePath(name));
+      return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+    };
+    QVERIFY(write("src/a.txt", "new contents"));
+    QVERIFY(write("dst/a.txt", "old"));
+
+    struct Outcome {
+      bool accepted = false;
+      QString title;
+      QStringList labels;
+    };
+    const auto runAtCap = [&](int cap, Outcome &outcome) {
+      TransferDialog dialog(false, false, "remote", QDir(), true);
+      dialog.findChild<QLineEdit *>("textSource")
+          ->setText(QDir::toNativeSeparators(dir.filePath("src")));
+      dialog.findChild<QLineEdit *>("textDest")
+          ->setText(QDir::toNativeSeparators(dir.filePath("dst")));
+      dialog.findChild<QRadioButton *>("rbSync")->setChecked(true);
+      qobject_cast<QLineEdit *>(
+          findAccessible(&dialog, "Backup directory pattern"))
+          ->setText(QDir::toNativeSeparators(dir.filePath("bk")));
+      qobject_cast<QCheckBox *>(
+          findAccessible(&dialog, "Cap how many files Sync deletes"))
+          ->setChecked(true);
+      qobject_cast<QSpinBox *>(
+          findAccessible(&dialog, "Most files Sync may delete"))
+          ->setValue(cap);
+
+      QTimer poll;
+      poll.setInterval(20);
+      connect(&poll, &QTimer::timeout, &poll, [&]() {
+        auto *summary = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (summary == nullptr || summary == &dialog) {
+          return;
+        }
+        poll.stop();
+        outcome.title = summary->windowTitle();
+        for (QLabel *label : summary->findChildren<QLabel *>()) {
+          outcome.labels << label->text();
+        }
+        for (QAbstractButton *button :
+             summary->findChild<QDialogButtonBox *>()->buttons()) {
+          if (button->text() == "Cancel") {
+            button->click();
+          }
+        }
+      });
+      poll.start();
+      connect(&dialog, &QDialog::accepted, &dialog,
+              [&outcome]() { outcome.accepted = true; });
+      QVERIFY(QMetaObject::invokeMethod(&dialog, "acceptWithDeletionPreview"));
+      QTRY_VERIFY_WITH_TIMEOUT(outcome.accepted || !outcome.title.isEmpty(),
+                               30000);
+      // Cancel leaves the transfer dialog open, so nothing runs.
+      QTest::qWait(50);
+      if (!outcome.title.isEmpty()) {
+        QVERIFY(!outcome.accepted);
+      }
+    };
+
+    // One replaced file can count twice, so a cap of 0 or 1 could stop it.
+    Outcome tight;
+    runAtCap(0, tight);
+    if (QTest::currentTestFailed()) {
+      return;
+    }
+    QCOMPARE(tight.title,
+             QString("Sync will move old copies of 1 file into the backup"));
+    QVERIFY2(tight.labels.join('\n').contains(
+                 "could stop at the delete cap of 0"),
+             qPrintable(tight.labels.join('\n')));
+    QVERIFY(QFileInfo::exists(dir.filePath("dst/a.txt")));
+    QVERIFY(!QFileInfo::exists(dir.filePath("bk")));
+
+    Outcome clear;
+    runAtCap(2, clear);
+    if (QTest::currentTestFailed()) {
+      return;
+    }
+    QVERIFY2(clear.accepted && clear.title.isEmpty(), qPrintable(clear.title));
   }
 };
 

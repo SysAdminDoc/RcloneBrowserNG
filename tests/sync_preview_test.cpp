@@ -124,11 +124,53 @@ private slots:
              QStringLiteral("1 to transfer, 1 timestamp update, 2 to move into "
                             "the backup."));
 
+    // rclone logs the move of the old copy beside the copy that replaces it
+    // (measured), so a lone move is never one.
     const Summary renamed = Parse(
-        R"({"level":"notice","skipped":"move to a.txt.bak","size":4,"object":"a.txt"})");
+        R"({"level":"notice","skipped":"move to a.txt.bak","size":4,"object":"a.txt"})"
+        "\n"
+        R"({"level":"notice","skipped":"copy","size":12,"object":"a.txt"})");
     QCOMPARE(renamed.toDelete, 0);
     QCOMPARE(renamed.replacedIntoBackup, 1);
     QCOMPARE(summary.replacedIntoBackup, 1);
+  }
+
+  // --track-renames logs a rename as "move to <new name>" on the old name,
+  // with no copy, and it deletes nothing: a real run at --max-delete 0
+  // finishes (measured on v1.76.0, with and without a backup). A preview
+  // once took it for a replaced file and warned about the backup.
+  void aRenameIsNotABackupMove() {
+    const Summary renames = Parse(
+        R"JSON({"level":"notice","msg":"Skipped move to renamed.txt as --dry-run is set (size 17)","object":"old.txt","skipped":"move to renamed.txt","size":17})JSON"
+        "\n"
+        // moc reads raw strings as plain ones, so an escaped quote inside
+        // one hides the test class from it. This line is a plain literal.
+        "{\"level\":\"info\",\"msg\":\"Renamed from \\\"old.txt\\\"\","
+        "\"object\":\"renamed.txt\"}");
+    QCOMPARE(renames.replacedIntoBackup, 0);
+    QCOMPARE(renames.toDelete, 0);
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    QCOMPARE(SyncPreview::CapWarnings(renames, 0, 1, nice), QStringList());
+
+    // A rename and a replaced file in one sync with --backup-dir.
+    const Summary both = Parse(
+        R"({"level":"notice","object":"b.txt","skipped":"move","size":3})"
+        "\n"
+        R"({"level":"notice","object":"b.txt","skipped":"copy","size":5})"
+        "\n"
+        R"({"level":"notice","object":"old.txt","skipped":"move to renamed.txt","size":17})");
+    QCOMPARE(both.replacedIntoBackup, 1);
+    QCOMPARE(both.toTransfer, 1);
+
+    // Under `rclone move` the transfer is a move too, so when an object moves
+    // twice, one of the moves is its old copy going into the backup.
+    const Summary moved = Parse(
+        R"({"level":"notice","object":"a.txt","skipped":"move","size":3})"
+        "\n"
+        R"({"level":"notice","object":"a.txt","skipped":"move","size":12})"
+        "\n"
+        R"({"level":"notice","object":"c.txt","skipped":"move","size":2})");
+    QCOMPARE(moved.replacedIntoBackup, 1);
   }
 
   void titleSaysWhatHappensToTheFiles() {
@@ -171,10 +213,15 @@ private slots:
                  over[1].contains("before deleting"),
              qPrintable(over[1]));
 
+    // A move into the backup counts one to three times (see the next test),
+    // so the warning cannot promise how many get through before the stop.
+    // It used to say "after deleting or moving 4", true only when each move
+    // counts once.
     summary.toBackup = 2;
     const QStringList mixed = SyncPreview::CapWarnings(summary, 4, -1, nice);
     QCOMPARE(mixed.size(), 1);
-    QVERIFY2(mixed[0].contains("after deleting or moving 4"),
+    QVERIFY2(mixed[0].contains("partway through deleting or moving them") &&
+                 !mixed[0].contains("after"),
              qPrintable(mixed[0]));
   }
 
@@ -192,11 +239,17 @@ private slots:
 
     const QStringList count = SyncPreview::CapWarnings(summary, 2, -1, nice);
     QCOMPARE(count.size(), 1);
-    QVERIFY2(count[0].contains("older copies") &&
+    QVERIFY2(count[0].contains("older copy") &&
+                 count[0].contains("can't move files") &&
                  count[0].contains("could stop at the delete cap of 2"),
              qPrintable(count[0]));
-    // Every move doubled is the most it can count.
-    QCOMPARE(SyncPreview::CapWarnings(summary, 4, -1, nice), QStringList());
+    // Three counts a move is the most: an older copy deleted, then a copy
+    // and delete when the rename fails onto another drive. On the memory
+    // backend, which copies but cannot move, two extras into an empty
+    // backup failed at --max-delete 3 and finished at 4 (measured).
+    QCOMPARE(SyncPreview::CapWarnings(summary, 4, -1, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(summary, 5, -1, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(summary, 6, -1, nice), QStringList());
 
     // The size of an older copy isn't in the dry run, so any size cap could
     // be the one that stops it.
@@ -208,15 +261,49 @@ private slots:
                  "the delete cap of 3 or --max-delete-size (1000 B)"),
              "both caps named");
 
+    // The old copy of a replaced file adds up to two.
     summary.replacedIntoBackup = 1;
-    QCOMPARE(SyncPreview::CapWarnings(summary, 4, -1, nice).size(), 1);
-    QCOMPARE(SyncPreview::CapWarnings(summary, 5, -1, nice), QStringList());
+    QCOMPARE(SyncPreview::CapWarnings(summary, 7, -1, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(summary, 8, -1, nice), QStringList());
 
     // No backup, no older copies to count.
     Summary plain;
     plain.toDelete = 2;
     plain.deleteBytes = 4;
     QCOMPARE(SyncPreview::CapWarnings(plain, 2, 1000, nice), QStringList());
+  }
+
+  // A sync that only replaces files deletes nothing, yet on the memory
+  // backend one replaced file into an empty backup failed at --max-delete
+  // 0 (measured). The summary opens for it with its own title.
+  void warnsWhenOnlyReplacedFilesCanTripTheCap() {
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    const Summary replaced = Parse(
+        R"({"level":"notice","object":"a.txt","skipped":"move","size":3})"
+        "\n"
+        R"({"level":"notice","object":"a.txt","skipped":"copy","size":12})"
+        "\n"
+        R"({"level":"notice","object":"b.txt","skipped":"move to b.txt.bak","size":3})"
+        "\n"
+        R"({"level":"notice","object":"b.txt","skipped":"copy","size":9})");
+    QVERIFY(!replaced.deletesAnything());
+    QCOMPARE(replaced.replacedIntoBackup, 2);
+    QCOMPARE(SyncPreview::DeletionTitle(replaced),
+             QStringLiteral("Sync will move old copies of 2 files into the "
+                            "backup"));
+    const QStringList atZero = SyncPreview::CapWarnings(replaced, 0, -1, nice);
+    QCOMPARE(atZero.size(), 1);
+    QVERIFY2(atZero[0].contains("could stop at the delete cap of 0"),
+             qPrintable(atZero[0]));
+    QCOMPARE(SyncPreview::CapWarnings(replaced, 3, -1, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(replaced, 4, -1, nice), QStringList());
+    QCOMPARE(SyncPreview::CapWarnings(replaced, -1, 100, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(replaced, -1, -1, nice), QStringList());
+
+    // Plain copies into a destination without a backup warn about nothing.
+    const Summary copies = Parse(
+        R"({"level":"notice","object":"a.txt","skipped":"copy","size":12})");
+    QCOMPARE(SyncPreview::CapWarnings(copies, 0, 0, nice), QStringList());
   }
 };
 
