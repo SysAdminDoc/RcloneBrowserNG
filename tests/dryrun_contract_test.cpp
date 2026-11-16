@@ -1,9 +1,14 @@
 #include "job_options.h"
 #include "job_options_store.h"
+#include "test_rclone.h"
 #include "utils.h"
 
 #include <QBuffer>
+#include <QDir>
+#include <QFile>
+#include <QProcess>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 #include <QTest>
 
 namespace {
@@ -132,7 +137,7 @@ private slots:
     sync->extra = "--max-delete=5 --max-delete-size 1G --dry-run=false "
                   "--max-delete-size=2G -n=false --fast-list";
     const QStringList preview = sync->getPreviewOptions();
-    QCOMPARE(preview.count("--dry-run"), 1);
+    QCOMPARE(preview.value(1), QString("--dry-run"));
     QVERIFY2(preview.contains("--fast-list"), qPrintable(preview.join(' ')));
     for (const QString &arg : preview) {
       QVERIFY2(!arg.startsWith("--max-delete") && !arg.contains('=') &&
@@ -152,18 +157,25 @@ private slots:
 
   // pflag hands a short cluster's = value to its last letter, so -vn=false
   // is -v plus -n=false and turns the dry run off (measured on v1.76.0:
-  // `rclone sync --dry-run -vn=false` deleted the extra file). The other
-  // letters in the cluster stay.
+  // `rclone sync --dry-run -vn=false` deleted the extra file). The cluster
+  // keeps its letters and loses the false value.
   void previewsDropADryRunValueInsideAShortCluster() {
     QCOMPARE(JobOptions::DryRunArguments(
                  QStringList{"sync", "-vn=false", "a:", "b:"}),
-             (QStringList{"sync", "--dry-run", "-v", "a:", "b:"}));
+             (QStringList{"sync", "--dry-run", "-vn", "a:", "b:"}));
     QCOMPARE(JobOptions::DryRunArguments(
                  QStringList{"sync", "-Pvn=0", "a:", "b:"}),
-             (QStringList{"sync", "--dry-run", "-Pv", "a:", "b:"}));
+             (QStringList{"sync", "--dry-run", "-Pvn", "a:", "b:"}));
+    // Right after the command, the bare -n is surely a flag and does the job.
     QCOMPARE(JobOptions::DryRunArguments(
                  QStringList{"sync", "-n=false", "a:", "b:"}),
-             (QStringList{"sync", "--dry-run", "a:", "b:"}));
+             (QStringList{"sync", "-n", "a:", "b:"}));
+    // A true value keeps the dry run, and one rclone can't read stops the
+    // real run as well, so neither changes.
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "-n=true", "--dry-run=x", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "-n=true", "--dry-run=x", "a:",
+                          "b:"}));
     // A long flag whose name ends in n isn't a short cluster.
     QCOMPARE(JobOptions::DryRunArguments(
                  QStringList{"sync", "--max-duration=1h", "a:", "b:"}),
@@ -173,9 +185,82 @@ private slots:
     sync->extra = "-vn=false --fast-list";
     const QStringList preview = sync->getPreviewOptions();
     QCOMPARE(preview.count("--dry-run"), 1);
-    QVERIFY2(preview.contains("-v") && !preview.contains("-vn=false"),
+    QVERIFY2(preview.contains("-vn") && !preview.contains("-vn=false"),
              qPrintable(preview.join(' ')));
     delete sync;
+  }
+
+  // Any argument can be the value of the option before it, so the walk
+  // can't skip a pattern flag's "value" and trust what follows: with
+  // `--user-agent --exclude --dry-run=false`, --exclude is the user agent
+  // and the dry run went off (measured on v1.76.0 against aa0a236; real
+  // rclone deleted the extra file). A false value now loses its value
+  // wherever it stands, and every other argument stays put.
+  void previewsTurnOffNoMatterWhatComesBefore() {
+    const QList<QPair<QStringList, QStringList>> cases{
+        {{"--user-agent", "--exclude", "--dry-run=false"},
+         {"--user-agent", "--exclude", "--dry-run"}},
+        {{"--user-agent", "--exclude", "-n=false"},
+         {"--user-agent", "--exclude", "-n"}},
+        {{"--suffix", "--include", "-vn=false"},
+         {"--suffix", "--include", "-vn"}},
+        {{"--log-file", "--filter", "-n=0"}, {"--log-file", "--filter", "-n"}},
+        {{"--exclude", "--dry-run=False"}, {"--exclude", "--dry-run"}},
+    };
+    for (const auto &c : cases) {
+      QCOMPARE(JobOptions::DryRunArguments(QStringList{"sync"} << c.first
+                                                               << "a:" << "b:"),
+               QStringList{"sync"} << "--dry-run" << c.second << "a:" << "b:");
+    }
+    // A cap right after a pattern flag is that flag's pattern, so it stays.
+    QCOMPARE(JobOptions::DryRunArguments(QStringList{
+                 "sync", "--exclude", "--max-delete=5", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "--exclude", "--max-delete=5",
+                          "a:", "b:"}));
+  }
+
+  // The same inputs through the installed rclone: the destination's extra
+  // file is still there afterwards, under its own name.
+  void previewsDeleteNothingInRealRclone() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH and RCLONE_BROWSER_TEST_RCLONE is unset");
+    }
+    const QList<QStringList> extras{
+        {"--user-agent", "--exclude", "--dry-run=false"},
+        {"--user-agent", "--exclude", "-n=false"},
+        {"--suffix", "--include", "-vn=false"},
+        {"--log-file", "--filter", "-n=0"},
+        {"--exclude", "-n"},
+        {"--dry-run=false"},
+    };
+    for (const QStringList &extra : extras) {
+      QTemporaryDir dir;
+      QVERIFY(dir.isValid());
+      const QString src = dir.filePath("src");
+      const QString dst = dir.filePath("dst");
+      QVERIFY(QDir().mkpath(src) && QDir().mkpath(dst));
+      for (const QString &path : {src + "/keep.txt", dst + "/extra.txt",
+                                  dir.filePath("rclone.conf")}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(path.endsWith(".conf") ? "" : "x");
+      }
+      const QStringList args = JobOptions::DryRunArguments(
+          QStringList{"sync"} << extra << src << dst);
+      QProcess process;
+      process.setWorkingDirectory(dir.path());
+      process.start(rclone, QStringList{"--config", dir.filePath("rclone.conf")}
+                                << args);
+      QVERIFY(process.waitForFinished(60000));
+      // A run rclone refused would leave the file too, and prove nothing.
+      QVERIFY2(process.exitStatus() == QProcess::NormalExit &&
+                   process.exitCode() == 0,
+               qPrintable(args.join(' ') + "\n" +
+                          QString::fromUtf8(process.readAllStandardError())));
+      QVERIFY2(QFile::exists(dst + "/extra.txt"), qPrintable(args.join(' ')));
+      QCOMPARE(QDir(dst).entryList(QDir::Files), QStringList{"extra.txt"});
+    }
   }
 
   // pflag gives --exclude, --include and --filter the next argument whatever
@@ -218,7 +303,7 @@ private slots:
     auto bisync = makeTask(JobOptions::Bisync, false);
     bisync->extra = "--max-delete 90 --max-delete-size=3k --dry-run=false";
     const QStringList preview = bisync->getPreviewOptions();
-    QCOMPARE(preview.count("--dry-run"), 1);
+    QCOMPARE(preview.value(1), QString("--dry-run"));
     const qsizetype cap = preview.indexOf("--max-delete");
     QVERIFY2(cap > 0 && preview.value(cap + 1) == "90",
              qPrintable(preview.join(' ')));

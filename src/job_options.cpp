@@ -11,6 +11,13 @@
 #endif
 
 namespace {
+// The values Go's strconv.ParseBool reads as false, which pflag uses for a
+// bool flag's =value.
+bool IsGoFalse(QStringView value) {
+  return value == u"0" || value == u"f" || value == u"F" ||
+         value == u"false" || value == u"FALSE" || value == u"False";
+}
+
 QString backupDateToken() {
   static QAtomicInteger<quint64> sequence = 0;
   const quint64 seq = sequence.fetchAndAddRelaxed(1);
@@ -59,41 +66,42 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   static const QStringList kCaps{QStringLiteral("--max-delete"),
                                  QStringLiteral("--max-delete-size")};
   // These take the next argument as a pattern, and a pattern can look like
-  // a flag ("- run=*", "-vn=x") without being one.
+  // a flag without being one.
   static const QStringList kPatternFlags{QStringLiteral("--exclude"),
                                          QStringLiteral("--include"),
                                          QStringLiteral("--filter")};
   const bool dropCaps = args.value(0) != QLatin1String("bisync");
   for (qsizetype i = 0; i < args.size();) {
-    const QString &arg = args.at(i);
-    if (kPatternFlags.contains(arg)) {
-      i += 2;
-      continue;
-    }
-    const QString name = arg.section(QLatin1Char('='), 0, 0);
+    const QString arg = args.at(i);
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    const QString name = equals > 0 ? arg.left(equals) : arg;
     // A short flag cluster gives its = value to the letter just before it,
     // so -vn=false sets -v and turns the dry run off. pflag reads every
     // character as a flag letter; this only takes letters, so "- run=*"
     // isn't read as one.
-    bool shortDryRunValue = equals >= 2 && arg.startsWith(QLatin1Char('-')) &&
-                            !arg.startsWith(QLatin1String("--")) &&
-                            arg.at(equals - 1) == QLatin1Char('n');
-    for (qsizetype k = 1; shortDryRunValue && k < equals; k++) {
+    bool shortDryRun = equals >= 2 && arg.startsWith(QLatin1Char('-')) &&
+                       !arg.startsWith(QLatin1String("--")) &&
+                       arg.at(equals - 1) == QLatin1Char('n');
+    for (qsizetype k = 1; shortDryRun && k < equals; k++) {
       const char16_t c = arg.at(k).unicode();
-      shortDryRunValue = (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z');
+      shortDryRun = (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z');
     }
-    if (dropCaps && kCaps.contains(arg)) {
-      args.remove(i, qMin<qsizetype>(2, args.size() - i));
-    } else if (equals > 0 && ((dropCaps && kCaps.contains(name)) ||
-                              name == QLatin1String("--dry-run"))) {
-      // --dry-run=false would turn the flag added below back off.
-      args.removeAt(i);
-    } else if (shortDryRunValue && equals == 2) {
-      args.removeAt(i); // -n=<value>
-    } else if (shortDryRunValue) {
-      args[i] = arg.left(equals - 1); // keep -v from -vn=<value>
+    if ((shortDryRun || name == QLatin1String("--dry-run")) &&
+        IsGoFalse(QStringView(arg).mid(equals + 1))) {
+      // Any argument can be the value of the option before it
+      // (`--user-agent --exclude --dry-run=false` gives --exclude to
+      // --user-agent and turns the dry run off), so a false value is turned
+      // into the bare flag wherever it stands. Dropping it instead would
+      // hand that option the next argument. A true value keeps the dry run,
+      // and anything else is refused by rclone for the real run too.
+      args[i] = arg.left(equals);
       i++;
+    } else if (dropCaps && i > 0 && kPatternFlags.contains(args.at(i - 1))) {
+      i++; // a pattern; a cap left in only stops the preview early
+    } else if (dropCaps && kCaps.contains(arg)) {
+      args.remove(i, qMin<qsizetype>(2, args.size() - i));
+    } else if (dropCaps && equals > 0 && kCaps.contains(name)) {
+      args.removeAt(i);
     } else {
       i++;
     }
