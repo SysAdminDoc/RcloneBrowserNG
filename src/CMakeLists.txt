@@ -74,6 +74,7 @@ set(SOURCE
   rclone_rc_engine.cpp
   rclone_capabilities.cpp
   rc_delete_batch.cpp
+  rc_job_result.cpp
   rc_job_widget.cpp
   adaptive_bandwidth.cpp
   adaptive_bandwidth_driver.cpp
@@ -87,6 +88,7 @@ set(SOURCE
   lsjson_parser.cpp
   rclone_exit_code.cpp
   rclone_installer.cpp
+  task_notify.cpp
   rclone_security_floor.cpp
   winfsp_floor.cpp
   selection_arguments.cpp
@@ -137,6 +139,7 @@ set(OTHER
   rclone_rc_engine.h
   rclone_capabilities.h
   rc_delete_batch.h
+  rc_job_result.h
   rc_job_widget.h
   adaptive_bandwidth.h
   adaptive_bandwidth_driver.h

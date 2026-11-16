@@ -339,6 +339,7 @@ QJsonObject jobOptionsToJson(const JobOptions &jo) {
   obj["conflictResolve"] = jo.conflictResolve;
   obj["verifyAfterTransfer"] = jo.verifyAfterTransfer;
   obj["vssSnapshot"] = jo.vssSnapshot;
+  obj["maxDelete"] = jo.maxDelete;
   return obj;
 }
 
@@ -402,6 +403,10 @@ JobOptions *jobOptionsFromJson(const QJsonObject &obj) {
   jo->conflictResolve = obj["conflictResolve"].toString();
   jo->verifyAfterTransfer = obj["verifyAfterTransfer"].toBool(false);
   jo->vssSnapshot = obj["vssSnapshot"].toBool(false);
+  // Tasks saved before the cap existed have no key and keep running
+  // without one, as they always did. A value below -1 means nothing to
+  // rclone, so it reads as off too.
+  jo->maxDelete = qMax(-1, obj["maxDelete"].toInt(-1));
   return jo;
 }
 } // namespace

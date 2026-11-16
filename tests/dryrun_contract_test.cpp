@@ -49,6 +49,168 @@ private slots:
         QStringLiteral("--server-side-across-configs")));
   }
 
+  // Sync is the only operation that deletes at the destination. Bisync reads
+  // --max-delete as a percentage, so a count meant for Sync would mean
+  // something else there.
+  void deleteCapReachesSyncOnly() {
+    auto sync = makeTask(JobOptions::Sync, false);
+    QVERIFY(!argsContain(sync->getOptions(), "--max-delete"));
+    sync->maxDelete = 100;
+    QStringList args = sync->getOptions();
+    QCOMPARE(args.count("--max-delete"), 1);
+    QCOMPARE(argAfter(args, "--max-delete"), QString("100"));
+    sync->maxDelete = 0;
+    QCOMPARE(argAfter(sync->getOptions(), "--max-delete"), QString("0"));
+    delete sync;
+
+    for (JobOptions::Operation op :
+         {JobOptions::Copy, JobOptions::Move, JobOptions::Bisync}) {
+      auto other = makeTask(op, false);
+      other->maxDelete = 100;
+      QVERIFY2(!argsContain(other->getOptions(), "--max-delete"),
+               qPrintable(other->getOptions().join(' ')));
+      delete other;
+    }
+  }
+
+  // rclone counts a dry run's deletes against --max-delete, so both preview
+  // buttons drop the cap or the list stops partway. The task keeps it.
+  void previewsListEveryDeleteAndLeaveTheTaskAlone() {
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->maxDelete = 2;
+    const QStringList preview = sync->getPreviewOptions();
+    QVERIFY(argsContain(preview, "--dry-run"));
+    QVERIFY2(!argsContain(preview, "--max-delete"), qPrintable(preview.join(' ')));
+    QCOMPARE(sync->maxDelete, 2);
+    QVERIFY(!sync->dryRun);
+    QCOMPARE(argAfter(sync->getOptions(), "--max-delete"), QString("2"));
+    QVERIFY(!argsContain(sync->getOptions(), "--dry-run"));
+    delete sync;
+  }
+
+  // A history row's Dry Run starts from the arguments the run was saved
+  // with, cap and all, so it drops the cap the same way.
+  void historyDryRunsDropTheCapToo() {
+    const QStringList saved{"sync",   "--delete-during", "--max-delete",
+                            "100",    "--verbose",       "--max-delete=5",
+                            "src:a",  "dst:b"};
+    QCOMPARE(JobOptions::DryRunArguments(saved),
+             QStringList() << "sync" << "--dry-run" << "--delete-during"
+                           << "--verbose" << "src:a" << "dst:b");
+
+    // Already a dry run: the flag stays once, where it was.
+    const QStringList dry{"copy", "--verbose", "--dry-run", "src:a", "dst:b"};
+    QCOMPARE(JobOptions::DryRunArguments(dry), dry);
+
+    // A cap with its value missing at the end goes without taking the
+    // command or a path with it.
+    QCOMPARE(JobOptions::DryRunArguments(QStringList{"sync", "src:a", "--max-delete"}),
+             QStringList() << "sync" << "--dry-run" << "src:a");
+    QCOMPARE(JobOptions::DryRunArguments(QStringList()),
+             QStringList() << "--dry-run");
+
+    // A saved task's own arguments come out the same as its preview's,
+    // apart from the dated backup folder, which this task doesn't use.
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->maxDelete = 3;
+    QCOMPARE(JobOptions::DryRunArguments(sync->getOptions()),
+             sync->getPreviewOptions());
+    delete sync;
+  }
+
+  // The task's extra options are free text and can hold a cap of their own,
+  // or a --dry-run=false that would turn the preview into a real run.
+  void previewsDropCapsFromExtraOptionsToo() {
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->maxDelete = 3;
+    sync->extra = "--max-delete=5 --max-delete-size 1G --dry-run=false "
+                  "--max-delete-size=2G -n=false --fast-list";
+    const QStringList preview = sync->getPreviewOptions();
+    QCOMPARE(preview.count("--dry-run"), 1);
+    QVERIFY2(preview.contains("--fast-list"), qPrintable(preview.join(' ')));
+    for (const QString &arg : preview) {
+      QVERIFY2(!arg.startsWith("--max-delete") && !arg.contains('=') &&
+                   arg != "1G",
+               qPrintable(preview.join(' ')));
+    }
+    // The run itself keeps everything the user typed.
+    const QStringList run = sync->getOptions();
+    QVERIFY(run.contains("--max-delete-size"));
+    QVERIFY(run.contains("--dry-run=false"));
+    delete sync;
+
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"copy", "-n", "--max-delete-size", "5G", "a:", "b:"}),
+             QStringList() << "copy" << "-n" << "a:" << "b:");
+  }
+
+  // Bisync's --max-delete is a percentage that aborts before anything
+  // changes, and its dry run stops at --max-delete-size on the same file
+  // the real run does (both measured on v1.76.0). Dropping either made the
+  // preview pass a run that aborts, or abort one that passes.
+  void bisyncPreviewsKeepTheirCaps() {
+    auto bisync = makeTask(JobOptions::Bisync, false);
+    bisync->extra = "--max-delete 90 --max-delete-size=3k --dry-run=false";
+    const QStringList preview = bisync->getPreviewOptions();
+    QCOMPARE(preview.count("--dry-run"), 1);
+    const qsizetype cap = preview.indexOf("--max-delete");
+    QVERIFY2(cap > 0 && preview.value(cap + 1) == "90",
+             qPrintable(preview.join(' ')));
+    QVERIFY2(preview.contains("--max-delete-size=3k"),
+             qPrintable(preview.join(' ')));
+    QVERIFY2(!preview.contains("--dry-run=false"),
+             qPrintable(preview.join(' ')));
+    delete bisync;
+
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"bisync", "--max-delete", "90", "a:", "b:"}),
+             (QStringList{"bisync", "--dry-run", "--max-delete", "90", "a:",
+                          "b:"}));
+  }
+
+  // The deletion summary warns from the caps the run will use, wherever
+  // they came from, and rclone takes the last of a repeated flag.
+  void readsTheCapsARunWillUse() {
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->maxDelete = 100;
+    sync->extra = "--max-delete=5 --max-delete-size 2M";
+    JobOptions::DeleteCaps caps = JobOptions::DeleteCapsIn(sync->getOptions());
+    QCOMPARE(caps.count, 5);
+    QCOMPARE(caps.bytes, 2 * 1024 * 1024);
+    delete sync;
+
+    caps = JobOptions::DeleteCapsIn({"sync", "--max-delete", "3", "a:", "b:"});
+    QCOMPARE(caps.count, 3);
+    QCOMPARE(caps.bytes, -1);
+    caps = JobOptions::DeleteCapsIn(
+        {"sync", "--max-delete", "3", "--max-delete=-1", "a:", "b:"});
+    QCOMPARE(caps.count, -1);
+    caps = JobOptions::DeleteCapsIn({"sync", "--max-delete-size=off", "a:"});
+    QCOMPARE(caps.bytes, -1);
+    caps = JobOptions::DeleteCapsIn({"sync", "--exclude=*.tmp", "a:", "b:"});
+    QCOMPARE(caps.count, -1);
+    QCOMPARE(caps.bytes, -1);
+  }
+
+  // rclone's SizeSuffix, values checked on v1.76.0 through options/get.
+  void readsSizesTheWayRcloneDoes() {
+    QCOMPARE(JobOptions::SizeSuffixBytes("3k"), 3072);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10"), 10240);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10M"), 10485760);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10Mi"), 10485760);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10MiB"), 10485760);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10Ki"), 10240);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10KI"), 10240);
+    QCOMPARE(JobOptions::SizeSuffixBytes("1.5G"), Q_INT64_C(1610612736));
+    QCOMPARE(JobOptions::SizeSuffixBytes("2b"), 2);
+    QCOMPARE(JobOptions::SizeSuffixBytes("2B"), 2);
+    QCOMPARE(JobOptions::SizeSuffixBytes("off"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("10MB"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes(" 5k"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("-5k"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes(""), -1);
+  }
+
   void dryRunDefaultsFalse() {
     JobOptions jo;
     QVERIFY2(!jo.dryRun, "dryRun must default to false");

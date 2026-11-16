@@ -8,7 +8,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
+
+#include <functional>
+#include <memory>
 
 #ifndef RCLONE_BROWSER_APP
 #error "RCLONE_BROWSER_APP must point at the built app"
@@ -24,6 +29,83 @@ private:
   QString mDataDir;
   QString mIni;
   QProcessEnvironment mEnv = QProcessEnvironment::systemEnvironment();
+
+  // Stands in for a monitoring service: answers every request with 200 and
+  // keeps the request line and body.
+  struct HookRequest {
+    QByteArray method;
+    QByteArray path;
+    QByteArray body;
+  };
+  QTcpServer mHooks;
+  QList<HookRequest> mHookRequests;
+
+  void serveHooks() {
+    QVERIFY(mHooks.listen(QHostAddress::LocalHost));
+    connect(&mHooks, &QTcpServer::newConnection, this, [this]() {
+      while (QTcpSocket *socket = mHooks.nextPendingConnection()) {
+        auto buffer = std::make_shared<QByteArray>();
+        auto read = std::make_shared<std::function<void()>>();
+        *read = [this, socket, buffer]() {
+          *buffer += socket->readAll();
+          const qsizetype headerEnd = buffer->indexOf("\r\n\r\n");
+          if (headerEnd < 0) {
+            return;
+          }
+          const QByteArray head = buffer->left(headerEnd);
+          qsizetype length = 0;
+          for (const QByteArray &line : head.split('\n')) {
+            if (line.toLower().startsWith("content-length:")) {
+              length = line.mid(15).trimmed().toLongLong();
+            }
+          }
+          if (buffer->size() < headerEnd + 4 + length) {
+            return;
+          }
+          const QList<QByteArray> requestLine =
+              head.left(head.indexOf('\r')).split(' ');
+          mHookRequests.append({requestLine.value(0), requestLine.value(1),
+                                buffer->mid(headerEnd + 4, length)});
+          buffer->clear();
+          socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"
+                        "Connection: close\r\n\r\n");
+          socket->disconnectFromHost();
+        };
+        connect(socket, &QTcpSocket::readyRead, socket,
+                [read]() { (*read)(); });
+        connect(socket, &QTcpSocket::disconnected, socket,
+                &QObject::deleteLater);
+        (*read)();
+      }
+    });
+  }
+
+  QString hookUrl(const QString &path) const {
+    return QString("http://127.0.0.1:%1%2").arg(mHooks.serverPort()).arg(path);
+  }
+
+  QJsonArray historyEntries() const {
+    QFile file(mDataDir + "/job-history.json");
+    return file.open(QIODevice::ReadOnly)
+               ? QJsonDocument::fromJson(file.readAll()).array()
+               : QJsonArray();
+  }
+
+  // Keeps this test's event loop turning while the run waits on the hooks,
+  // which runTask() can't, since it blocks.
+  int runTaskServingHooks(const QString &name) {
+    QProcess proc;
+    proc.setProcessEnvironment(mEnv);
+    proc.start(mApp, {"--run-task", name});
+    if (!QTest::qWaitFor(
+            [&proc]() { return proc.state() == QProcess::NotRunning; },
+            120000)) {
+      proc.kill();
+      proc.waitForFinished();
+      return -1;
+    }
+    return proc.exitStatus() == QProcess::NormalExit ? proc.exitCode() : -2;
+  }
 
   static void writeFile(const QString &path, const QByteArray &content) {
     QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
@@ -94,6 +176,7 @@ private slots:
     writeFile(mDataDir + "/rclone.conf", QByteArray());
     writeFile(src() + "/a.txt", "first");
     writeFile(src() + "/sub/b.txt", "second");
+    serveHooks();
     const QJsonObject task{{"description", "Nightly Copy"},
                            {"jobType", 2},
                            {"operation", 1},
@@ -102,9 +185,22 @@ private slots:
                            {"isFolder", true},
                            {"uniqueId",
                             "{6f1c2a3e-1111-4222-8333-944455556666}"}};
+    // A Sync whose source came back empty, with a cap of 2 and both hooks.
+    QVERIFY(QDir().mkpath(mDir.filePath("guarded-src")));
+    const QJsonObject guarded{
+        {"description", "Guarded Sync"},
+        {"jobType", 1},
+        {"operation", 3},
+        {"source", mDir.filePath("guarded-src")},
+        {"dest", mDir.filePath("guarded-dst")},
+        {"isFolder", true},
+        {"maxDelete", 2},
+        {"webhookUrl", hookUrl("/hook")},
+        {"heartbeatUrl", hookUrl("/ping")},
+        {"uniqueId", "{6f1c2a3e-2222-4222-8333-944455556666}"}};
     writeFile(mDataDir + "/tasks.json",
               QJsonDocument(QJsonObject{{"version", 1},
-                                        {"tasks", QJsonArray{task}}})
+                                        {"tasks", QJsonArray{task, guarded}}})
                   .toJson());
   }
 
@@ -155,6 +251,91 @@ private slots:
 
   void reportsAMissingTask() {
     QCOMPARE(runTask("No Such Task"), 1);
+  }
+
+  // Nobody watches a scheduled run, so a sync stopped by its delete cap has
+  // to say so where someone will see it: the job history, the webhook and
+  // the heartbeat's /fail.
+  void aDeleteCapStopIsRecordedAndReported() {
+    const QString dest = mDir.filePath("guarded-dst");
+    for (int i = 1; i <= 5; ++i) {
+      writeFile(dest + QString("/f%1.txt").arg(i), "keep me");
+    }
+    mHookRequests.clear();
+
+    QCOMPARE(runTaskServingHooks("Guarded Sync"), 7);
+    QCOMPARE(QDir(dest).entryList(QDir::Files).size(), 3);
+    QVERIFY2(logText().contains("The scheduled run of \"Guarded Sync\" "
+                                "finished, rclone exit code 7. Stopped by "
+                                "delete cap."),
+             qPrintable(logText()));
+
+    QJsonObject entry;
+    for (const QJsonValue &value : historyEntries()) {
+      if (value.toObject().value("name").toString() == "Guarded Sync") {
+        entry = value.toObject();
+      }
+    }
+    QVERIFY2(!entry.isEmpty(), "no history entry for the scheduled run");
+    QCOMPARE(entry.value("statusLabel").toString(),
+             QString("Stopped by delete cap"));
+    QCOMPARE(entry.value("exitCode").toInt(), 7);
+    QVERIFY(!entry.value("success").toBool());
+
+    // The run waits for both answers before it exits.
+    QCOMPARE(mHookRequests.size(), 2);
+    HookRequest webhook;
+    HookRequest heartbeat;
+    for (const HookRequest &request : mHookRequests) {
+      (request.method == "POST" ? webhook : heartbeat) = request;
+    }
+    QCOMPARE(webhook.path, QByteArray("/hook"));
+    const QJsonObject body = QJsonDocument::fromJson(webhook.body).object();
+    QCOMPARE(body.value("task").toString(), QString("Guarded Sync"));
+    QCOMPARE(body.value("status").toString(), QString("failed"));
+    QCOMPARE(body.value("error").toString(), QString("Stopped by delete cap"));
+    QCOMPARE(heartbeat.method, QByteArray("GET"));
+    QCOMPARE(heartbeat.path, QByteArray("/ping/fail"));
+
+    // History shows the options that ran, as it does for a run in the app,
+    // without the config arguments put in front of them.
+    QStringList args;
+    for (const QJsonValue &arg : entry.value("args").toArray()) {
+      args << arg.toString();
+    }
+    QVERIFY2(args.contains("--max-delete"), qPrintable(args.join(' ')));
+    QVERIFY2(!args.contains("--config"), qPrintable(args.join(' ')));
+  }
+
+  // An rclone that moved away after an update is exactly when nobody is
+  // looking, so a run that never starts gets a history row and both hooks.
+  void aRunThatNeverStartsIsRecordedAndReported() {
+    writeSettings(mDir.filePath("missing/rclone.exe"));
+    mHookRequests.clear();
+    const qsizetype rowsBefore = historyEntries().size();
+
+    QCOMPARE(runTaskServingHooks("Guarded Sync"), 1);
+
+    const QJsonArray rows = historyEntries();
+    QCOMPARE(rows.size(), rowsBefore + 1);
+    const QJsonObject entry = rows.last().toObject();
+    QCOMPARE(entry.value("name").toString(), QString("Guarded Sync"));
+    QCOMPARE(entry.value("statusLabel").toString(), QString("Didn't start"));
+    QVERIFY(!entry.value("success").toBool());
+    QVERIFY2(entry.value("transferDetail").toArray().first().toString().contains(
+                 "didn't start"),
+             qPrintable(QJsonDocument(entry).toJson()));
+
+    QCOMPARE(mHookRequests.size(), 2);
+    HookRequest webhook;
+    HookRequest heartbeat;
+    for (const HookRequest &request : mHookRequests) {
+      (request.method == "POST" ? webhook : heartbeat) = request;
+    }
+    const QJsonObject body = QJsonDocument::fromJson(webhook.body).object();
+    QCOMPARE(body.value("status").toString(), QString("failed"));
+    QCOMPARE(body.value("error").toString(), QString("Didn't start"));
+    QCOMPARE(heartbeat.path, QByteArray("/ping/fail"));
   }
 };
 

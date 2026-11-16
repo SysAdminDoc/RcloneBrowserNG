@@ -12,6 +12,7 @@
 #include "rclone_exit_code.h"
 #include "rclone_installer.h"
 #include "rclone_security_floor.h"
+#include "task_notify.h"
 #include "remote_daemon.h"
 #include "remote_list_parser.h"
 #include "remote_path.h"
@@ -3601,9 +3602,9 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
       return;
   }
 
-  jo->dryRun = dryrun;
-  QStringList args = jo->getOptions();
-  jo->dryRun = false;
+  // A dry run leaves the delete cap off so it lists every delete, and so a
+  // capped preview can't report "Stopped by delete cap" for nothing deleted.
+  QStringList args = dryrun ? jo->getPreviewOptions() : jo->getOptions();
   QString heartbeatUrl = jo->heartbeatUrl;
   QString postCommand = jo->postCommand;
   QString webhookUrl = jo->webhookUrl;
@@ -3638,6 +3639,7 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             auto *widget =
                 new RcJobWidget(mRcEngine, job.jobId, job.group, message,
                                 job.displayCommand, source, dest);
+            widget->setHistoryArgs(args);
             addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                            backupDirTemplate, backupRetainCount);
             if (!postCommand.isEmpty()) {
@@ -3983,6 +3985,7 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
             auto *widget =
                 new RcJobWidget(mRcEngine, job.jobId, job.group, message,
                                 job.displayCommand, source, dest);
+            widget->setHistoryArgs(args);
             addRcJobWidget(widget, QString(), QString(), QString(),
                            backupDirTemplate, backupRetainCount);
             return;
@@ -4046,12 +4049,20 @@ void MainWindow::addRcJobWidget(RcJobWidget *widget,
                                      widget->wasSuccessful());
                      }
                      if (!webhookUrl.isEmpty()) {
+                       // The card's label says why it failed, a delete
+                       // cap stop included.
                        sendWebhook(webhookUrl, taskName,
-                                   widget->wasSuccessful());
+                                   widget->wasSuccessful(),
+                                   widget->wasSuccessful()
+                                       ? QString()
+                                       : widget->historyEntry().statusLabel);
                      }
 
                      persistJobHistory(widget->historyEntry());
-                     if (widget->wasSuccessful()) {
+                     // Stricter than wasSuccessful(), as on the process
+                     // route: pruning runs `rclone purge` and assumes the
+                     // copy finished, which a --max-transfer stop didn't.
+                     if (widget->completedFully()) {
                        pruneBackupRetention(backupDirTemplate,
                                             backupRetainCount);
                      }
@@ -4123,6 +4134,7 @@ void MainWindow::startRemoteDaemonTransfer(
         auto *widget = new RcJobWidget(mRcEngine, job.jobId, job.group,
                                        message, job.displayCommand, source,
                                        dest);
+        widget->setHistoryArgs(args);
         addRcJobWidget(widget, heartbeatUrl, webhookUrl, taskName,
                        backupDirTemplate, backupRetainCount);
         if (!postCommand.isEmpty()) {
@@ -4284,13 +4296,24 @@ void MainWindow::startTransferProcess(
           sendHeartbeat(heartbeatUrl, widget->wasSuccessful());
         }
         if (!webhookUrl.isEmpty()) {
-          sendWebhook(webhookUrl, taskName, widget->wasSuccessful());
+          // The card's label says why it failed, a delete cap stop
+          // included.
+          sendWebhook(webhookUrl, taskName, widget->wasSuccessful(),
+                      widget->wasSuccessful()
+                          ? QString()
+                          : widget->historyEntry().statusLabel);
         }
         if (!postCommand.isEmpty()) {
           runPostCommand(postCommand, taskName);
         }
 
-        persistJobHistory(widget->historyEntry());
+        JobHistoryEntry entry = widget->historyEntry();
+        if (readsSnapshot) {
+          // The shadow copy is gone once the run ends, so Restart and Dry
+          // Run get the real source, as Retry does.
+          entry.args = VssSnapshot::WithSource(entry.args, source);
+        }
+        persistJobHistory(entry);
         // Deliberately stricter than wasSuccessful(). Pruning old backup
         // directories runs `rclone purge`, and verification compares the two
         // ends: both assume the copy finished. A run cut short by
@@ -4420,9 +4443,8 @@ void MainWindow::showJobHistory() {
     // from the job card so the two always agree; entries written before the
     // label existed still fall back to the exit-code table.
     const RcloneExitCode::Meaning meaning =
-        RcloneExitCode::Describe(entry.exitCode);
-    const QString status =
-        entry.statusLabel.isEmpty() ? meaning.name : entry.statusLabel;
+        RcloneExitCode::DescribeHistory(entry.exitCode, entry.statusLabel);
+    const QString status = meaning.name;
     QString finished = entry.finishedAt.toLocalTime().toString("yyyy-MM-dd hh:mm:ss");
     const QStringList values = QStringList()
                                << finished
@@ -4491,7 +4513,7 @@ void MainWindow::showJobHistory() {
                      viewDetail->setEnabled(hasSel);
                      exportDetail->setEnabled(hasSel);
                      const JobHistoryEntry *e = hasSel ? getSelectedEntry() : nullptr;
-                     bool hasArgs = e && !e->args.isEmpty();
+                     bool hasArgs = e && CanRerun(*e);
                      restartBtn->setEnabled(hasArgs);
                      dryRunBtn->setEnabled(hasArgs);
                    });
@@ -4538,7 +4560,7 @@ void MainWindow::showJobHistory() {
 
   auto restartFromHistory = [&](bool dryRun) {
     const JobHistoryEntry *entry = getSelectedEntry();
-    if (!entry || entry->args.isEmpty())
+    if (!entry || !CanRerun(*entry))
       return;
     QStringList args = entry->args;
     bool isSyncOrMove = false;
@@ -4558,8 +4580,8 @@ void MainWindow::showJobHistory() {
       if (btn != QMessageBox::Yes)
         return;
     }
-    if (dryRun && !args.contains("--dry-run")) {
-      args.insert(1, "--dry-run");
+    if (dryRun) {
+      args = JobOptions::DryRunArguments(args);
     }
     dialog.accept();
     addTransfer(QString("%1%2")
@@ -4959,16 +4981,7 @@ void MainWindow::sendHeartbeat(const QString &url, bool success) {
     mNetworkManager = new QNetworkAccessManager(this);
   }
 
-  if (!success) {
-    QString path = endpoint.path();
-    if (!path.endsWith('/')) {
-      path += '/';
-    }
-    path += "fail";
-    endpoint.setPath(path);
-  }
-
-  QNetworkRequest req{endpoint};
+  QNetworkRequest req{TaskNotify::HeartbeatEndpoint(endpoint, success)};
   QNetworkReply *reply = mNetworkManager->get(req);
   QTimer::singleShot(15000, reply, [reply]() {
     if (reply->isRunning()) {
@@ -4996,24 +5009,10 @@ void MainWindow::sendWebhook(const QString &url, const QString &taskName,
     mNetworkManager = new QNetworkAccessManager(this);
   }
 
-  QJsonObject payload;
-  payload.insert("app", QStringLiteral("Rclone Browser NG"));
-  payload.insert("task", taskName);
-  payload.insert("status", success ? "success" : "failed");
-  if (!error.isEmpty()) {
-    payload.insert("error", error);
-  }
-
-  // Discord webhook compatibility: wrap in "content" for plain text
-  QString summary = success
-      ? QString("Task \"%1\" completed successfully.").arg(taskName)
-      : QString("Task \"%1\" failed: %2").arg(taskName, error);
-  payload.insert("content", summary);
-
   QNetworkRequest req{endpoint};
   req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
   QNetworkReply *reply = mNetworkManager->post(
-      req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+      req, TaskNotify::WebhookBody(taskName, success, error));
   QTimer::singleShot(15000, reply, [reply]() {
     if (reply->isRunning()) {
       reply->abort();

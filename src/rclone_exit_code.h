@@ -43,7 +43,23 @@ struct ProcessOutcome {
   bool completedFully = false;
 };
 
-ProcessOutcome DescribeProcess(int exitCode, bool crashed, bool userCancelled);
+// deleteCapHit: rclone said it stopped at --max-delete. That exit is 7, the
+// same code a bisync with lost state gets, so only its message can tell.
+ProcessOutcome DescribeProcess(int exitCode, bool crashed, bool userCancelled,
+                               bool deleteCapHit = false);
+
+// True for rclone's "--max-delete threshold reached" (and the
+// --max-delete-size form), from the CLI's log or rc core/stats lastError.
+bool IsDeleteCapError(const QString &text);
+
+// The job card and history label for a run the delete cap stopped.
+Meaning DeleteCap();
+
+// A history row: the label its job card recorded, with the explanation the
+// card gave for it. Exit 7 is a cap stop or a bisync needing --resync, and
+// a cancel or crash has no rclone exit code at all, so the label decides.
+// Rows saved before labels existed fall back to the exit-code table.
+Meaning DescribeHistory(int exitCode, const QString &statusLabel);
 
 // True when the job card should offer Retry rather than only Restart.
 bool IsRetryable(int exitCode);

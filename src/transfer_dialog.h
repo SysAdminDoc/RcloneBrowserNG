@@ -52,6 +52,9 @@ private:
   QCheckBox *mWatchFolder = nullptr;
   QCheckBox *mVerifyAfter = nullptr;
   QCheckBox *mVssSnapshot = nullptr;
+  // Sync's --max-delete. Both only mean something while Sync is picked.
+  QCheckBox *mDeleteCap = nullptr;
+  QSpinBox *mDeleteCapCount = nullptr;
   QPlainTextEdit *mPreview = nullptr;
   QPushButton *mPreviewButton = nullptr;
   QLabel *mExcludeExplanation = nullptr;
@@ -67,6 +70,9 @@ private:
   // Enables the snapshot option only for a source and operation it can
   // serve, and says why in the tooltip when it can't.
   void updateSnapshotOption();
+  void updateDeleteCapOption();
+  // The cap the dialog would run with, or -1 when there is none.
+  int deleteCapValue() const;
 
   bool mIsDownload;
   bool mDryRun = false;

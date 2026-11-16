@@ -1,9 +1,14 @@
+#include "rc_job_result.h"
+#include "rclone_exit_code.h"
 #include "rclone_rc_engine.h"
 #include "test_rclone.h"
 #include "utils.h"
 
+#include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -358,6 +363,14 @@ private slots:
     QCOMPARE(failures.size(), 1);
     QVERIFY2(failures.first().startsWith("missing.txt: "),
              qPrintable(failures.first()));
+    // The job card reads it through RcJobResult and must agree.
+    const RcJobResult::Result result =
+        RcJobResult::Read(status, started.batchLabels);
+    QVERIFY(!result.success);
+    QCOMPARE(result.output, failures);
+    QCOMPARE(result.problems, failures);
+    QCOMPARE(result.error, QString("1 of %1 items couldn't be deleted.")
+                               .arg(started.batchLabels.size()));
 
     QCOMPARE(filesUnder(root), QStringList() << "drop.tmp");
     QVERIFY(!QDir(root + "/sub").exists());
@@ -377,6 +390,511 @@ private slots:
     QVERIFY2(!status.isEmpty(), "the batch never finished");
 
     QCOMPARE(filesUnder(root).size(), 4);
+  }
+
+  // The source a scheduled sync finds empty: an unplugged drive, an expired
+  // login. The cap has to reach the daemon's _config and stop the deletes
+  // there, and the reason has to come back where the job card reads it.
+  // job/status only says "failed to delete N files"; core/stats lastError
+  // carries rclone's cap message.
+  void theDeleteCapStopsASyncOnTheDaemon() {
+    const QString source = QDir(mDir.path()).filePath("cap-empty-src");
+    QVERIFY(QDir().mkpath(source));
+    const QString dest = QDir(mDir.path()).filePath("cap-dst");
+    QVERIFY(QDir().mkpath(dest));
+    for (int i = 1; i <= 5; ++i) {
+      QFile file(dest + QString("/f%1.txt").arg(i));
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write("keep me");
+    }
+
+    RcloneRcEngine engine;
+    RcloneRcEngine::StartedJob job;
+    bool called = false;
+    engine.runCommand(QStringList() << "sync" << "--max-delete" << "2"
+                                    << source << dest,
+                      this, [&](const RcloneRcEngine::StartedJob &started) {
+                        job = started;
+                        called = true;
+                      });
+    QVERIFY2(QTest::qWaitFor([&]() { return called; }, 60000),
+             "the sync never started");
+    QVERIFY2(job.jobId >= 0, qPrintable(job.error));
+    QVERIFY2(job.group.startsWith("rclonebrowser-"),
+             qPrintable("group was " + job.group));
+
+    auto status = std::make_shared<QJsonObject>();
+    auto asking = std::make_shared<bool>(false);
+    QVERIFY2(QTest::qWaitFor(
+                 [&]() {
+                   if (!*asking) {
+                     *asking = true;
+                     engine.jobStatus(job.jobId, this,
+                                      [status, asking](const QJsonObject &s,
+                                                       const QString &error) {
+                                        *asking = false;
+                                        if (error.isEmpty() &&
+                                            s.value("finished").toBool()) {
+                                          *status = s;
+                                        }
+                                      });
+                   }
+                   return !status->isEmpty();
+                 },
+                 60000),
+             "the sync never finished");
+    QVERIFY2(!status->value("success").toBool(),
+             "a sync stopped by the cap reported success");
+    QCOMPARE(filesUnder(dest).size(), 3);
+
+    QJsonObject stats;
+    bool statsCalled = false;
+    engine.coreStats(job.group, this,
+                     [&](const QJsonObject &s, const QString &) {
+                       stats = s;
+                       statsCalled = true;
+                     });
+    QVERIFY(QTest::qWaitFor([&]() { return statsCalled; }, 30000));
+    const QString lastError = stats.value("lastError").toString();
+    QVERIFY2(RcloneExitCode::IsDeleteCapError(lastError),
+             qPrintable("lastError was: " + lastError + " / job error: " +
+                        status->value("error").toString()));
+  }
+
+  // A Sync the app builds always names a delete timing, and rclone's
+  // options/info has no entry for those flags, so the run goes through
+  // core/command. job/status calls that job a success whenever the daemon
+  // ran the command; the cap stop is only in the child rclone's output.
+  void theDeleteCapStopsTheSyncTheAppBuilds() {
+    const QString source = QDir(mDir.path()).filePath("cap-cmd-src");
+    QVERIFY(QDir().mkpath(source));
+    const QString dest = QDir(mDir.path()).filePath("cap-cmd-dst");
+    QVERIFY(QDir().mkpath(dest));
+    for (int i = 1; i <= 5; ++i) {
+      QFile file(dest + QString("/f%1.txt").arg(i));
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write("keep me");
+    }
+
+    RcloneRcEngine engine;
+    RcloneRcEngine::StartedJob job;
+    bool called = false;
+    engine.runCommand(QStringList() << "sync" << "--delete-during"
+                                    << "--max-delete" << "2" << source << dest,
+                      this, [&](const RcloneRcEngine::StartedJob &started) {
+                        job = started;
+                        called = true;
+                      });
+    QVERIFY2(QTest::qWaitFor([&]() { return called; }, 60000),
+             "the sync never started");
+    QVERIFY2(job.jobId >= 0, qPrintable(job.error));
+    QVERIFY2(job.group.startsWith("job/"),
+             qPrintable("expected the core/command route, group was " +
+                        job.group));
+
+    auto status = std::make_shared<QJsonObject>();
+    auto asking = std::make_shared<bool>(false);
+    QVERIFY2(QTest::qWaitFor(
+                 [&]() {
+                   if (!*asking) {
+                     *asking = true;
+                     engine.jobStatus(job.jobId, this,
+                                      [status, asking](const QJsonObject &s,
+                                                       const QString &error) {
+                                        *asking = false;
+                                        if (error.isEmpty() &&
+                                            s.value("finished").toBool()) {
+                                          *status = s;
+                                        }
+                                      });
+                   }
+                   return !status->isEmpty();
+                 },
+                 60000),
+             "the sync never finished");
+    QCOMPARE(filesUnder(dest).size(), 3);
+
+    const RcJobResult::Result result = RcJobResult::Read(*status, {});
+    QVERIFY2(!result.success,
+             qPrintable("a capped sync read as a success: " +
+                        QJsonDocument(*status).toJson()));
+    QVERIFY2(!result.deleteCapLine.isEmpty(),
+             qPrintable("no cap line in: " + result.output.join('\n')));
+    QVERIFY(!result.error.isEmpty());
+  }
+
+  // --max-transfer stops a run on purpose, and the CLI route calls exit 8 a
+  // success. Both daemon routes must read it the same way: core/command
+  // (a Sync with a delete timing) and sync/copy (a plain Copy).
+  void aTransferLimitStopReadsAsFinishedOnBothRoutes() {
+    const QString source = QDir(mDir.path()).filePath("limit-src");
+    QVERIFY(QDir().mkpath(source));
+    {
+      QFile big(source + "/big.bin");
+      QVERIFY(big.open(QIODevice::WriteOnly));
+      QByteArray block(64 * 1024, '\0');
+      for (int i = 0; i < 32; ++i) {
+        block.fill(char('a' + i % 26));
+        big.write(block);
+      }
+    }
+
+    const QList<QStringList> routes{
+        {"sync", "--delete-during"},
+        {"copy"},
+    };
+    QStringList groups;
+    for (const QStringList &command : routes) {
+      const QString dest =
+          QDir(mDir.path()).filePath("limit-dst-" + command.first());
+      QVERIFY(QDir().mkpath(dest));
+      RcloneRcEngine engine;
+      RcloneRcEngine::StartedJob job;
+      const QJsonObject status = RunToEnd(
+          engine,
+          QStringList(command) << "--max-transfer" << "1k" << "--transfers"
+                               << "1" << source << dest,
+          &job);
+      QVERIFY2(!status.isEmpty(), qPrintable(command.first() + " never finished"));
+      groups << job.group;
+      const RcJobResult::Result result = RcJobResult::Read(status, {});
+      QVERIFY2(result.exitCode == 8 && result.success,
+               qPrintable(QString("%1 via %2 read as exit %3: %4")
+                              .arg(command.first(), job.group)
+                              .arg(result.exitCode)
+                              .arg(QString::fromUtf8(
+                                  QJsonDocument(status).toJson()))));
+      QVERIFY(result.error.isEmpty());
+    }
+    // Each route really ran: the Sync's delete timing sends it through
+    // core/command, and the Copy goes to sync/copy.
+    QVERIFY2(groups.at(0).startsWith("job/"), qPrintable(groups.join(", ")));
+    QVERIFY2(groups.at(1).startsWith("rclonebrowser-"),
+             qPrintable(groups.join(", ")));
+  }
+
+  // sync/copy takes --error-on-no-transfer into its _config, then reports a
+  // run that copied nothing as plain success. The process route exits 9, so
+  // the card reads the transfer count to say the same.
+  void nothingToCopyOnTheNativeRouteReadsAsExit9() {
+    const QString source = QDir(mDir.path()).filePath("none-src");
+    const QString dest = QDir(mDir.path()).filePath("none-dst");
+    QVERIFY(QDir().mkpath(source));
+    QVERIFY(QDir().mkpath(dest));
+    for (const QString &dir : {source, dest}) {
+      QFile same(dir + "/same.txt");
+      QVERIFY(same.open(QIODevice::WriteOnly));
+      same.write("unchanged");
+    }
+    {
+      // setFileTime needs the file open.
+      QFile copy(dest + "/same.txt");
+      QVERIFY(copy.open(QIODevice::ReadWrite));
+      QVERIFY(copy.setFileTime(
+          QFileInfo(source + "/same.txt").lastModified(),
+          QFileDevice::FileModificationTime));
+    }
+
+    const QStringList args{"copy", "--error-on-no-transfer", source, dest};
+    RcloneRcEngine engine;
+    RcloneRcEngine::StartedJob job;
+    const QJsonObject status = RunToEnd(engine, args, &job);
+    QVERIFY2(!status.isEmpty(), "the copy never finished");
+    QVERIFY2(job.group.startsWith("rclonebrowser-"), qPrintable(job.group));
+    const RcJobResult::Result result = RcJobResult::Read(status, {});
+    QVERIFY(!result.fromCommand);
+    QVERIFY2(result.success && result.exitCode == 0,
+             qPrintable(QString::fromUtf8(QJsonDocument(status).toJson())));
+
+    QJsonObject stats;
+    bool statsCalled = false;
+    engine.coreStats(job.group, this,
+                     [&](const QJsonObject &s, const QString &) {
+                       stats = s;
+                       statsCalled = true;
+                     });
+    QVERIFY(QTest::qWaitFor([&]() { return statsCalled; }, 30000));
+    QCOMPARE(stats.value("transfers").toInt(), 0);
+    QCOMPARE(RcJobResult::WithNoTransferExit(
+                 result.exitCode, stats.value("transfers").toInt(), args),
+             9);
+  }
+
+  void noTransferExitNeedsTheFlagAndNothingCopied() {
+    const QStringList flag{"copy", "--error-on-no-transfer", "a:", "b:"};
+    QCOMPARE(RcJobResult::WithNoTransferExit(0, 0, flag), 9);
+    QCOMPARE(RcJobResult::WithNoTransferExit(
+                 0, 0, {"copy", "--error-on-no-transfer=true", "a:", "b:"}),
+             9);
+    QCOMPARE(RcJobResult::WithNoTransferExit(0, 1, flag), 0);
+    QCOMPARE(RcJobResult::WithNoTransferExit(8, 0, flag), 8);
+    QCOMPARE(RcJobResult::WithNoTransferExit(0, 0, {"copy", "a:", "b:"}), 0);
+    QCOMPARE(RcJobResult::WithNoTransferExit(0, 0, {}), 0);
+  }
+
+  // The shapes job/status comes back in, one per route, as rclone sends them.
+  void readsEachRoutesResult() {
+    const QJsonObject plain{{"finished", true},
+                            {"success", true},
+                            {"error", ""},
+                            {"output", QJsonObject()}};
+    RcJobResult::Result result = RcJobResult::Read(plain, {});
+    QVERIFY(result.success);
+    QVERIFY(result.error.isEmpty());
+    QVERIFY(result.output.isEmpty());
+
+    const QJsonObject failed{
+        {"finished", true},
+        {"success", false},
+        {"error", "failed to delete 3 files"},
+        {"output", QJsonObject()}};
+    result = RcJobResult::Read(failed, {});
+    QVERIFY(!result.success);
+    QCOMPARE(result.error, QString("failed to delete 3 files"));
+    QVERIFY(result.deleteCapLine.isEmpty());
+
+    const QJsonObject commandOk{
+        {"finished", true},
+        {"success", true},
+        {"error", ""},
+        {"output", QJsonObject{{"error", false},
+                               {"result", "Transferred: 2 / 2, 100%\n"}}}};
+    result = RcJobResult::Read(commandOk, {});
+    QVERIFY(result.success);
+    QCOMPARE(result.output, QStringList() << "Transferred: 2 / 2, 100%");
+
+    const QJsonObject commandFailed{
+        {"finished", true},
+        {"success", true},
+        {"error", ""},
+        {"output",
+         QJsonObject{{"error", true},
+                     {"result", "NOTICE: f1.txt: Deleted\n"
+                                "ERROR : Local file system: not deleting "
+                                "files as there were IO errors\n"}}}};
+    result = RcJobResult::Read(commandFailed, {});
+    QVERIFY(!result.success);
+    QVERIFY(!result.error.isEmpty());
+    QVERIFY(result.deleteCapLine.isEmpty());
+    QCOMPARE(result.exitCode, 1);
+    // The log now comes back a line at a time, so the card can leave out
+    // the lines nobody reads.
+    QCOMPARE(result.output,
+             QStringList() << "NOTICE: f1.txt: Deleted"
+                           << "ERROR : Local file system: not deleting files "
+                              "as there were IO errors");
+  }
+
+  // core/command never gives the child's exit code, so the result reads it
+  // from the log. Lines as rclone v1.76.0 logged them (2026-11-15).
+  void infersTheChildExitCodeFromItsLog() {
+    const QString transferLimit = Log({
+        Line("info", "Starting bandwidth limiter at 50Ki Byte/s"),
+        Line("notice",
+             "Removing partially written file on error: max transfer limit "
+             "reached as set by --max-transfer",
+             "big.bin.344ab8b0.partial"),
+        Line("error",
+             "Failed to copy: max transfer limit reached as set by "
+             "--max-transfer",
+             "big.bin"),
+        Line("error", "Cancelling sync due to fatal error: max transfer limit "
+                      "reached as set by --max-transfer"),
+        Line("error", "Fatal error received - not attempting retries"),
+        Line("notice", "Failed to copy: max transfer limit reached as set by "
+                       "--max-transfer"),
+    });
+    RcJobResult::Result result = RcJobResult::Read(Command(true, transferLimit), {});
+    QCOMPARE(result.exitCode, 8);
+    QVERIFY(result.success);
+    QVERIFY(result.error.isEmpty());
+    QVERIFY(result.deleteCapLine.isEmpty());
+
+    const QString duration = Log({
+        Line("error", "Failed to copy: context deadline exceeded", "big.bin"),
+        Line("error", "max transfer duration reached as set by --max-duration",
+             "Local file system at //?/C:/dest"),
+        Line("error", "Fatal error received - not attempting retries"),
+        Line("notice", "Failed to copy with 3 errors: last error was: max "
+                       "transfer duration reached as set by --max-duration"),
+    });
+    result = RcJobResult::Read(Command(true, duration), {});
+    QCOMPARE(result.exitCode, 10);
+    QVERIFY(result.success);
+
+    const QString nothing = Log({Line("info", "There was nothing to transfer")});
+    result = RcJobResult::Read(Command(true, nothing), {});
+    QCOMPARE(result.exitCode, 9);
+    QVERIFY(result.success);
+    QVERIFY(result.error.isEmpty());
+
+    // A run with nothing to transfer that also hit an error failed on the
+    // error, and without --error-on-no-transfer it isn't a stop at all.
+    const QString nothingButBroken =
+        Log({Line("error", "Failed to read directory: access denied", "docs"),
+             Line("info", "There was nothing to transfer")});
+    result = RcJobResult::Read(Command(true, nothingButBroken), {});
+    QCOMPARE(result.exitCode, 1);
+    QVERIFY(!result.success);
+    QVERIFY(!result.error.isEmpty());
+    result = RcJobResult::Read(Command(false, nothing), {});
+    QCOMPARE(result.exitCode, 0);
+    QVERIFY(result.success);
+
+    // rclone logs a retry that came good at error level, after the first
+    // attempt's errors (lines measured on rclone 1.76.0). Those errors were
+    // retried away, so only what follows the last good attempt counts.
+    const QString retried = Log({
+        Line("error", "Failed to copy: The process cannot access the file",
+             "locked.bin"),
+        Line("error", "Attempt 1/3 failed with 1 errors and: The process "
+                      "cannot access the file"),
+        Line("error", "Attempt 2/3 succeeded"),
+        Line("info", "There was nothing to transfer"),
+    });
+    result = RcJobResult::Read(Command(true, retried), {});
+    QCOMPARE(result.exitCode, 9);
+    QVERIFY(result.success);
+    const QString retriedThenBroken =
+        Log({Line("error", "Attempt 2/3 succeeded"),
+             Line("error", "Failed to read directory: access denied", "docs"),
+             Line("info", "There was nothing to transfer")});
+    QCOMPARE(RcJobResult::ExitCodeFromLog(retriedThenBroken), 1);
+    QVERIFY(RcJobResult::Read(Command(true, retried), {}).fromCommand);
+
+    const QString capped = Log({
+        Line("notice", "Deleted", "a.txt"),
+        Line("error", "Couldn't delete: --max-delete threshold reached",
+             "b.txt"),
+        Line("notice", "Failed to sync: --max-delete threshold reached"),
+    });
+    result = RcJobResult::Read(Command(true, capped), {});
+    QCOMPARE(result.exitCode, 7);
+    QVERIFY(!result.success);
+    QCOMPARE(result.deleteCapLine,
+             QString("b.txt: Couldn't delete: --max-delete threshold reached"));
+  }
+
+  // The log of a long run is mostly stats every second and a line per file.
+  // The card shows rclone's notices and errors, the log panel only the
+  // errors and warnings, and neither gets thousands of lines in one go.
+  void keepsTheCardToTheLinesThatMatter() {
+    QStringList lines;
+    lines << Stats(1) << Line("info", "Copied (new)", "a.txt")
+          << Line("notice", "Deleted", "old.txt")
+          << Line("warning", "Can't follow symlink", "link")
+          << Line("error", "Failed to copy: access denied", "b.txt") << Stats(2)
+          << "panic: plain text from a crash";
+    RcJobResult::Result result =
+        RcJobResult::Read(Command(false, Log(lines)), {});
+    QVERIFY(result.success);
+    QCOMPARE(result.output,
+             QStringList() << "old.txt: Deleted" << "link: Can't follow symlink"
+                           << "b.txt: Failed to copy: access denied"
+                           << "panic: plain text from a crash");
+    QCOMPARE(result.problems,
+             QStringList() << "link: Can't follow symlink"
+                           << "b.txt: Failed to copy: access denied"
+                           << "panic: plain text from a crash");
+
+    // Past the card's own line limit, the log is cut to its last lines with
+    // a note, rather than the pane dropping lines silently.
+    const qsizetype total = RcJobResult::kMaxShownLines + 50;
+    lines.clear();
+    for (qsizetype i = 0; i < total; i++) {
+      lines << Line("notice", "Deleted", QString("f%1.txt").arg(i)) << Stats(1);
+    }
+    result = RcJobResult::Read(Command(false, Log(lines)), {});
+    QCOMPARE(result.output.size(), RcJobResult::kMaxShownLines + 1);
+    QCOMPARE(result.output.first(), QString("(50 earlier lines left out)"));
+    QCOMPARE(result.output.at(1), QString("f50.txt: Deleted"));
+    QCOMPARE(result.output.last(), QString("f%1.txt: Deleted").arg(total - 1));
+    QVERIFY(result.problems.isEmpty());
+
+    // The log panel gets at most its own 500 lines of problems.
+    const qsizetype errors = RcJobResult::kMaxProblems + 20;
+    lines.clear();
+    for (qsizetype i = 0; i < errors; i++) {
+      lines << Line("error", "Failed to copy: denied", QString("e%1").arg(i));
+    }
+    result = RcJobResult::Read(Command(false, Log(lines)), {});
+    QCOMPARE(result.problems.size(), RcJobResult::kMaxProblems + 1);
+    QCOMPARE(result.problems.first(), QString("(20 earlier problems left out)"));
+    QCOMPARE(result.problems.last(),
+             QString("e%1: Failed to copy: denied").arg(errors - 1));
+    QCOMPARE(result.output.size(), errors);
+  }
+
+private:
+  // Starts args on the daemon and waits for job/status to say finished.
+  // Empty when it never started or never finished.
+  QJsonObject RunToEnd(RcloneRcEngine &engine, const QStringList &args,
+                       RcloneRcEngine::StartedJob *job) {
+    bool called = false;
+    engine.runCommand(args, this,
+                      [&](const RcloneRcEngine::StartedJob &started) {
+                        *job = started;
+                        called = true;
+                      });
+    if (!QTest::qWaitFor([&]() { return called; }, 60000) || job->jobId < 0) {
+      qWarning() << "never started:" << job->error;
+      return QJsonObject();
+    }
+    auto status = std::make_shared<QJsonObject>();
+    auto asking = std::make_shared<bool>(false);
+    const bool finished = QTest::qWaitFor(
+        [&]() {
+          if (!*asking) {
+            *asking = true;
+            engine.jobStatus(job->jobId, this,
+                             [status, asking](const QJsonObject &s,
+                                              const QString &error) {
+                               *asking = false;
+                               if (error.isEmpty() &&
+                                   s.value("finished").toBool()) {
+                                 *status = s;
+                               }
+                             });
+          }
+          return !status->isEmpty();
+        },
+        60000);
+    if (!finished) {
+      qWarning() << "job" << job->jobId << "never finished";
+    }
+    return *status;
+  }
+
+  static QString Line(const QString &level, const QString &msg,
+                      const QString &object = QString()) {
+    QJsonObject line{{"time", "2026-11-15T19:10:39.2225348-05:00"},
+                     {"level", level},
+                     {"msg", msg},
+                     {"source", "sync/sync.go:313"}};
+    if (!object.isEmpty()) {
+      line.insert("object", object);
+      line.insert("objectType", "*local.Object");
+    }
+    return QString::fromUtf8(QJsonDocument(line).toJson(QJsonDocument::Compact));
+  }
+
+  static QString Stats(int bytes) {
+    const QJsonObject line{
+        {"level", "info"},
+        {"msg", "\nTransferred:   \t  0 B / 0 B, -, 0 B/s, ETA -\n"},
+        {"stats", QJsonObject{{"bytes", bytes}, {"transfers", 0}}}};
+    return QString::fromUtf8(QJsonDocument(line).toJson(QJsonDocument::Compact));
+  }
+
+  static QString Log(const QStringList &lines) {
+    return lines.join('\n') + '\n';
+  }
+
+  static QJsonObject Command(bool error, const QString &log) {
+    return QJsonObject{{"finished", true},
+                       {"success", true},
+                       {"error", ""},
+                       {"output", QJsonObject{{"error", error}, {"result", log}}}};
   }
 };
 

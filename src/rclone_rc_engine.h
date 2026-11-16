@@ -60,6 +60,8 @@ public:
   // job per item.
   void runDeleteBatch(const RcDeleteBatch::Plan &plan, QObject *context,
                       JobCallback callback);
+  // A job that finished with an error comes back as a status with an empty
+  // call error; the job's failure is in status["success"] and ["error"].
   void jobStatus(int jobId, QObject *context, const RcCallback &callback);
   void coreStats(const QString &group, QObject *context,
                  const RcCallback &callback);

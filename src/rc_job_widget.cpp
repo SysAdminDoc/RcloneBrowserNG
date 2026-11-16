@@ -3,6 +3,8 @@
 #include "rclone_rc_engine.h"
 #include "interface_polish.h"
 #include "rclone_capabilities.h"
+#include "rc_job_result.h"
+#include "rclone_exit_code.h"
 #include "utils.h"
 
 
@@ -346,31 +348,41 @@ void RcJobWidget::poll() {
                 return;
               }
               if (status.value("finished").toBool()) {
-                bool success = status.value("success").toBool();
-                QString jobError = status.value("error").toString();
-                const QJsonValue output = status.value("output");
-                if (output.isString() && !output.toString().isEmpty()) {
-                  QString text = output.toString().trimmed();
-                  ui.output->appendPlainText(text);
-                  Diagnostics::appendLog("rc-job", text);
+                // Cancel has nothing left to stop from here on, so a click
+                // during the final stats read can't relabel the result.
+                mJobEnded = true;
+                const RcJobResult::Result result =
+                    RcJobResult::Read(status, mBatchLabels);
+                // One append: a long run's log line by line stalls the window.
+                if (!result.output.isEmpty()) {
+                  ui.output->appendPlainText(result.output.join(QChar('\n')));
                 }
-                if (!mBatchLabels.isEmpty()) {
-                  const QStringList failed =
-                      RcDeleteBatch::Failures(output, mBatchLabels);
-                  for (const QString &line : failed) {
-                    ui.output->appendPlainText(line);
-                    Diagnostics::appendLog("rc-job", line);
-                  }
-                  if (!failed.isEmpty()) {
-                    success = false;
-                    if (jobError.isEmpty()) {
-                      jobError = QString("%1 of %2 items couldn't be deleted.")
-                                     .arg(failed.size())
-                                     .arg(mBatchLabels.size());
-                    }
-                  }
+                for (const QString &line : result.problems) {
+                  Diagnostics::appendLog("rc-job", line);
                 }
-                finish(success, jobError);
+                noteDeleteCap(result.deleteCapLine);
+                mFromCommand = result.fromCommand;
+                const bool success = result.success;
+                const QString jobError = result.error;
+                const int exitCode = result.exitCode;
+                // rclone can record lastError, and count the last transfers,
+                // after the stats read at the top of this poll and before
+                // the job reports finished. Read them once more so a
+                // --max-delete stop is never missed and the transfer count
+                // is final. Polling stays held off until finish().
+                mPollInFlight = true;
+                mEngine->coreStats(
+                    mGroup, this,
+                    [this, success, jobError,
+                     exitCode](const QJsonObject &finalStats,
+                               const QString &finalError) {
+                      mPollInFlight = false;
+                      if (finalError.isEmpty()) {
+                        applyStats(finalStats);
+                        mFinalStats = true;
+                      }
+                      finish(success, jobError, exitCode);
+                    });
               }
             });
       });
@@ -393,6 +405,7 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
   ui.checks->setText(QString::number(stats.value("checks").toInt()));
   mFiles = stats.value("transfers").toInt();
   ui.transferred->setText(QString::number(mFiles));
+  noteDeleteCap(stats.value("lastError").toString());
 
   const double elapsed = stats.value("elapsedTime").toDouble();
   if (elapsed > 0) {
@@ -401,23 +414,77 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
   }
 }
 
-void RcJobWidget::finish(bool success, const QString &error) {
+void RcJobWidget::noteDeleteCap(const QString &text) {
+  if (mDeleteCapHit) {
+    return;
+  }
+  const QString line = RcJobResult::DeleteCapLine(text);
+  if (!line.isEmpty()) {
+    mDeleteCapHit = true;
+    mDeleteCapLine = line;
+  }
+}
+
+void RcJobWidget::finish(bool success, const QString &error, int exitCode) {
+  // The cancel timer and a poll still in flight can both get here.
+  if (mFinished) {
+    return;
+  }
+  mFinished = true;
   mPollTimer.stop();
   mRunning = false;
   mSuccess = success;
   mFinishedAt = QDateTime::currentDateTimeUtc();
-  mExitCode = success ? 0 : 1;
+  mExitCode = exitCode >= 0 ? exitCode : (success ? 0 : 1);
   ui.cancel->setEnabled(true);
   UiPolish::SetCompactToolButton(ui.cancel, "Close transfer card",
                                  "Remove this transfer from the jobs list.");
+  // The card keeps its own wording. History and notifications get the
+  // labels the CLI route records for the same outcome.
   if (mUserCancelled || (!success && error == "Cancelled.")) {
+    mStatusLabel =
+        RcloneExitCode::DescribeProcess(mExitCode, false, true, false).name;
     UiPolish::SetStatus(ui.showDetails, "warning", "Cancelled");
   } else if (success) {
-    UiPolish::SetStatus(ui.showDetails, "success", "Finished");
+    if (!mFromCommand && mFinalStats) {
+      // core/command's child is its own process, so the daemon's stats
+      // never count its transfers. Its log gave exit 9 already. Without
+      // the final stats, the count may miss the last files copied.
+      mExitCode =
+          RcJobResult::WithNoTransferExit(mExitCode, mFiles, mHistoryArgs);
+    }
+    const RcloneExitCode::Meaning meaning = RcloneExitCode::Describe(mExitCode);
+    mStatusLabel = meaning.name;
+    if (meaning.outcome == RcloneExitCode::Outcome::CompletedWithLimit) {
+      // A --max-transfer, --max-duration or --error-on-no-transfer stop:
+      // calm, as the CLI route's card shows it, and says which limit.
+      ui.output->appendPlainText(meaning.explanation);
+      UiPolish::SetStatus(ui.showDetails, "warning", meaning.name);
+      ui.showDetails->setToolTip(meaning.explanation);
+    } else {
+      UiPolish::SetStatus(ui.showDetails, "success", "Finished");
+    }
+  } else if (mDeleteCapHit || RcloneExitCode::IsDeleteCapError(error)) {
+    // The same exit the CLI route reports for this stop.
+    mExitCode = 7;
+    const RcloneExitCode::Meaning cap = RcloneExitCode::DeleteCap();
+    mStatusLabel = cap.name;
+    if (!error.isEmpty()) {
+      ui.output->appendPlainText(error);
+    }
+    if (!mDeleteCapLine.isEmpty() && mDeleteCapLine != error) {
+      ui.output->appendPlainText(mDeleteCapLine);
+    }
+    ui.output->appendPlainText(cap.explanation);
+    UiPolish::SetStatus(ui.showDetails, "error", mStatusLabel);
+    ui.showDetails->setToolTip(cap.explanation);
+    ui.showDetails->setChecked(true);
+    ui.showOutput->setChecked(true);
   } else {
     if (!error.isEmpty()) {
       ui.output->appendPlainText(error);
     }
+    mStatusLabel = RcloneExitCode::Describe(1).name;
     UiPolish::SetStatus(ui.showDetails, "error", "Needs attention");
     ui.showDetails->setChecked(true);
     ui.showOutput->setChecked(true);
@@ -438,12 +505,13 @@ JobHistoryEntry RcJobWidget::historyEntry() const {
   entry.files = mFiles;
   entry.errors = mErrors;
   entry.exitCode = mExitCode;
-  entry.args = mDisplayArgs;
+  entry.statusLabel = mStatusLabel;
+  entry.args = mHistoryArgs;
   return entry;
 }
 
 void RcJobWidget::cancel() {
-  if (!mRunning) {
+  if (!mRunning || mJobEnded) {
     return;
   }
   if (mStopping) {

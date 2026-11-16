@@ -294,10 +294,13 @@ if(BUILD_TESTING)
 
   add_executable(rc_route_test
     tests/rc_route_test.cpp
+    src/rclone_exit_code.cpp
     src/rclone_rc_engine.cpp
     src/rc_certificate.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
+    src/rc_job_result.cpp
+    src/job_stats.cpp
     src/rclone_capabilities.cpp
     src/utils.cpp
   )
@@ -309,6 +312,36 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME rc_route_test COMMAND rc_route_test)
   set_tests_properties(rc_route_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
+
+  add_executable(rc_job_widget_test
+    tests/rc_job_widget_test.cpp
+    src/rc_job_widget.cpp
+    src/job_widget.ui
+    src/adaptive_bandwidth.cpp
+    src/adaptive_bandwidth_driver.cpp
+    src/app_log.cpp
+    src/interface_polish.cpp
+    src/job_history.cpp
+    src/rclone_exit_code.cpp
+    src/rclone_rc_engine.cpp
+    src/rc_certificate.cpp
+    src/rc_sync_request.cpp
+    src/rc_delete_batch.cpp
+    src/rc_job_result.cpp
+    src/job_stats.cpp
+    src/rclone_capabilities.cpp
+    src/utils.cpp
+  )
+  set_target_properties(rc_job_widget_test PROPERTIES AUTOUIC ON)
+  target_include_directories(rc_job_widget_test PRIVATE src tests)
+  target_compile_definitions(rc_job_widget_test PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(rc_job_widget_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
+  if(WIN32)
+    target_link_libraries(rc_job_widget_test advapi32 iphlpapi)
+  endif()
+  add_test(NAME rc_job_widget_test COMMAND rc_job_widget_test)
+  set_tests_properties(rc_job_widget_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 300)
 
   add_executable(async_helpers_test
@@ -349,7 +382,7 @@ if(BUILD_TESTING)
     set(RCLONE_BROWSER_APP_TARGET rclone-browser)
   endif()
   add_executable(scheduled_run_test tests/scheduled_run_test.cpp)
-  target_link_libraries(scheduled_run_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Test)
+  target_link_libraries(scheduled_run_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   target_compile_definitions(scheduled_run_test PRIVATE RCLONE_BROWSER_APP="$<TARGET_FILE:${RCLONE_BROWSER_APP_TARGET}>")
   add_dependencies(scheduled_run_test ${RCLONE_BROWSER_APP_TARGET})
   add_test(NAME scheduled_run_test COMMAND scheduled_run_test)
@@ -524,8 +557,10 @@ if(BUILD_TESTING)
     src/lsjson_parser.cpp
     src/rclone_capabilities.cpp
     src/rclone_exit_code.cpp
+    src/task_notify.cpp
     src/rclone_security_floor.cpp
     src/winfsp_floor.cpp
+    src/rc_job_result.cpp
     src/rc_job_widget.cpp
     src/adaptive_bandwidth.cpp
     src/adaptive_bandwidth_driver.cpp

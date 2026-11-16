@@ -76,6 +76,11 @@ public:
   // Windows: read a local source through a Volume Shadow Copy, so files
   // another program holds open still copy.
   bool vssSnapshot = false;
+  // Sync only: --max-delete. rclone deletes this many files, then stops
+  // the run with exit 7, so a source that comes back empty can't wipe the
+  // destination. -1 is off. Bisync reads --max-delete as a percentage, so
+  // it never gets this.
+  int maxDelete = -1;
 
   // Copy and Sync only read the source. Move deletes from it and Bisync
   // writes to it, and a snapshot can't be changed.
@@ -91,6 +96,27 @@ public:
     return "JobOptions"; // this->staticQtMetaObject.myName();
   }
   QStringList getOptions() const;
+  // getOptions() for a preview: a dry run with no --max-delete. rclone counts
+  // a dry run's deletes against the cap, so a capped preview stops partway
+  // and lists only some of what the sync would do.
+  QStringList getPreviewOptions() const;
+  // The same for arguments already built, such as a history row's: adds
+  // --dry-run after the command and drops every --dry-run=<value>, and
+  // every --max-delete and --max-delete-size unless the command is bisync
+  // (whose dry run stops at a cap exactly where the real run would).
+  static QStringList DryRunArguments(QStringList args);
+
+  // The delete caps built arguments carry, read the way rclone reads them:
+  // the last --max-delete and --max-delete-size win, and -1 means none.
+  struct DeleteCaps {
+    qint64 count = -1;
+    qint64 bytes = -1;
+  };
+  static DeleteCaps DeleteCapsIn(const QStringList &args);
+
+  // A size as rclone's SizeSuffix reads it, in bytes (a bare number is
+  // KiB); -1 for "off" or text rclone refuses.
+  static qint64 SizeSuffixBytes(const QString &text);
 
   bool operator==(const JobOptions &other) const {
     return uniqueId == other.uniqueId;

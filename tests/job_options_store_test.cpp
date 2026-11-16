@@ -1,6 +1,9 @@
 #include "job_options_store.h"
 
 #include <QBuffer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTest>
 
 namespace {
@@ -124,6 +127,69 @@ private slots:
     QVERIFY2(task->verifyAfterTransfer, "verify option lost");
     ClearJobOptionsList(&loaded.tasks);
     ClearJobOptionsList(&tasks);
+  }
+
+  void jsonRoundTripKeepsTheDeleteCap() {
+    QList<JobOptions *> tasks;
+    tasks.append(makeTask());
+    tasks.first()->maxDelete = 250;
+    tasks.append(makeTask());
+    tasks.last()->maxDelete = 0;
+
+    QByteArray bytes;
+    QBuffer out(&bytes);
+    QVERIFY(out.open(QIODevice::WriteOnly));
+    QString error;
+    QVERIFY2(WriteJobOptionsStoreJson(&out, tasks, &error), qPrintable(error));
+    out.close();
+
+    QBuffer in(&bytes);
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&in);
+    QVERIFY2(loaded.error.isEmpty(), qPrintable(loaded.error));
+    QCOMPARE(loaded.tasks.size(), 2);
+    QCOMPARE(loaded.tasks.at(0)->maxDelete, 250);
+    // Zero is a real cap (delete nothing), not "off".
+    QCOMPARE(loaded.tasks.at(1)->maxDelete, 0);
+    ClearJobOptionsList(&loaded.tasks);
+    ClearJobOptionsList(&tasks);
+  }
+
+  // A tasks.json from before the cap has no key. Those tasks keep running
+  // the way they always did, and the store stays at version 1 so an older
+  // build still opens it.
+  void aTaskSavedBeforeTheCapRunsWithoutOne() {
+    QJsonObject old{{"description", "Old Sync"},
+                    {"jobType", static_cast<int>(JobOptions::Upload)},
+                    {"operation", static_cast<int>(JobOptions::Sync)},
+                    {"source", "C:/data"},
+                    {"dest", "remote:data"}};
+    QJsonObject garbled = old;
+    garbled["description"] = "Garbled Sync";
+    garbled["maxDelete"] = -40;
+    QByteArray bytes =
+        QJsonDocument(QJsonObject{{"version", 1},
+                                  {"tasks", QJsonArray{old, garbled}}})
+            .toJson();
+    QBuffer in(&bytes);
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    JobOptionsStoreLoadResult loaded = ReadJobOptionsStoreJson(&in);
+    QVERIFY2(loaded.error.isEmpty(), qPrintable(loaded.error));
+    QCOMPARE(loaded.tasks.size(), 2);
+    QCOMPARE(loaded.tasks.at(0)->maxDelete, -1);
+    QVERIFY(!loaded.tasks.at(0)->getOptions().contains("--max-delete"));
+    QCOMPARE(loaded.tasks.at(1)->maxDelete, -1);
+    QVERIFY(!loaded.tasks.at(1)->getOptions().contains("--max-delete"));
+
+    QList<JobOptions *> tasks{loaded.tasks.at(0)};
+    QByteArray saved;
+    QBuffer out(&saved);
+    QVERIFY(out.open(QIODevice::WriteOnly));
+    QString error;
+    QVERIFY2(WriteJobOptionsStoreJson(&out, tasks, &error), qPrintable(error));
+    QCOMPARE(QJsonDocument::fromJson(saved).object().value("version").toInt(),
+             1);
+    ClearJobOptionsList(&loaded.tasks);
   }
 
   void snapshotOnlyForReadOnlySources() {

@@ -22,6 +22,11 @@ struct JobHistoryEntry {
 
 QString RedactedJobDetail(const JobHistoryEntry &entry);
 
+// Whether Restart and Dry Run can run this row again. Daemon runs used to
+// record the card's "rclone rc --url ..." display line instead of their
+// arguments, and those rows have nothing to rerun.
+bool CanRerun(const JobHistoryEntry &entry);
+
 QVector<JobHistoryEntry> ReadJobHistory(QIODevice *device, QString *error);
 bool WriteJobHistory(QIODevice *device, const QVector<JobHistoryEntry> &entries,
                      QString *error);

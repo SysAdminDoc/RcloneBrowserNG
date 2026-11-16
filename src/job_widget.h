@@ -61,6 +61,8 @@ private:
   bool mPaused = false;
   bool mSuccess = false;
   bool mCompletedFully = false;
+  // rclone logged that --max-delete stopped it.
+  bool mDeleteCapHit = false;
   QString mStatusLabel;
   QProcess *mProcess;
   QDateTime mStartedAt;

@@ -397,6 +397,32 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   }
   updateSnapshotOption();
 
+  // The delete cap sits under the delete timing, the other Sync-only row.
+  mDeleteCap = new QCheckBox("Delete at most", this);
+  mDeleteCap->setAccessibleName("Cap how many files Sync deletes");
+  mDeleteCapCount = new QSpinBox(this);
+  mDeleteCapCount->setRange(0, 9999999);
+  mDeleteCapCount->setAccessibleName("Most files Sync may delete");
+  auto *capUnit = new QLabel("files, then stop", this);
+  capUnit->setBuddy(mDeleteCapCount);
+  auto *capRow = new QHBoxLayout();
+  capRow->setContentsMargins(0, 0, 0, 0);
+  capRow->addWidget(mDeleteCap);
+  capRow->addWidget(mDeleteCapCount);
+  capRow->addWidget(capUnit);
+  capRow->addStretch();
+  ui.gridLayout_5->removeWidget(ui.cbSyncDelete);
+  auto *syncColumn = new QVBoxLayout();
+  syncColumn->setContentsMargins(0, 0, 0, 0);
+  syncColumn->addWidget(ui.cbSyncDelete);
+  syncColumn->addLayout(capRow);
+  ui.gridLayout_5->addLayout(syncColumn, 2, 1);
+  QObject::connect(ui.rbSync, &QRadioButton::toggled, this,
+                   &TransferDialog::updateDeleteCapOption);
+  QObject::connect(mDeleteCap, &QCheckBox::toggled, this,
+                   &TransferDialog::updateDeleteCapOption);
+  updateDeleteCapOption();
+
   auto *profileLabel = new QLabel("Profile:", this);
   profileLabel->setToolTip(
       "Load saved rclone option defaults for this remote.");
@@ -575,6 +601,10 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
         ui.spinRetries->setValue(3);
         ui.spinLowLevelRetries->setValue(10);
         ui.checkDeleteExcluded->setChecked(false);
+        // On for new syncs: a scheduled sync whose source comes back empty
+        // would otherwise delete the whole destination with nobody there.
+        mDeleteCap->setChecked(true);
+        mDeleteCapCount->setValue(100);
         ui.textExclude->clear();
         auto settings = GetSettings();
         if (isDownload) {
@@ -646,11 +676,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       mPreview->setPlainText("Running dry-run preview...");
       mPreviewButton->setEnabled(false);
 
-      JobOptions *opts = getJobOptions();
-      opts->dryRun = true;
-      const QStringList command = opts->getOptions();
+      const QStringList command = getJobOptions()->getPreviewOptions();
       QStringList args = GetRcloneConf() + command;
-      opts->dryRun = false;
 
       auto showOutput = [=](int code, const QByteArray &raw) {
             mPreviewButton->setEnabled(true);
@@ -947,11 +974,9 @@ void TransferDialog::acceptWithDeletionPreview() {
     return;
   }
 
-  JobOptions *opts = getJobOptions();
-  const bool wasDryRun = opts->dryRun;
-  opts->dryRun = true;
-  QStringList command = opts->getOptions();
-  opts->dryRun = wasDryRun;
+  // The preview lists every delete, cap or not, and the summary says when
+  // the cap will stop the real run.
+  QStringList command = getJobOptions()->getPreviewOptions();
   if (!command.contains("--use-json-log")) {
     command << "--use-json-log";
   }
@@ -1065,6 +1090,34 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
         QString("...and %1 more.").arg(summary.moreDeletions), &dialog);
     UiPolish::SetMuted(more);
     layout->addWidget(more);
+  }
+
+  // The caps the run will use, from the cap field, the extra options or the
+  // default options. The count is files: rclone logs a directory it would
+  // remove as "remove directory", which the summary doesn't count.
+  const JobOptions::DeleteCaps caps =
+      JobOptions::DeleteCapsIn(getJobOptions()->getOptions());
+  if (caps.count >= 0 && summary.toDelete > caps.count) {
+    auto *capped = new QLabel(&dialog);
+    capped->setTextFormat(Qt::PlainText);
+    UiPolish::SetValidationMessage(
+        capped, "warning",
+        QString("The delete cap is %1, so this sync stops with an error "
+                "after deleting %1 of them. Raise the cap if all of these "
+                "should go.")
+            .arg(caps.count));
+    layout->addWidget(capped);
+  }
+  if (caps.bytes >= 0 && summary.deleteBytes > caps.bytes) {
+    auto *sized = new QLabel(&dialog);
+    sized->setTextFormat(Qt::PlainText);
+    UiPolish::SetValidationMessage(
+        sized, "warning",
+        QString("--max-delete-size is %1, and these files come to %2, so "
+                "this sync stops with an error before deleting them all.")
+            .arg(GetNiceSize(static_cast<quint64>(caps.bytes)),
+                 GetNiceSize(static_cast<quint64>(summary.deleteBytes))));
+    layout->addWidget(sized);
   }
 
   auto *buttons = new QDialogButtonBox(&dialog);
@@ -1269,6 +1322,32 @@ void TransferDialog::updateSnapshotOption() {
                                             : reason + "\n\n" + about);
 }
 
+void TransferDialog::updateDeleteCapOption() {
+  if (!mDeleteCap) {
+    return;
+  }
+  const bool sync = ui.rbSync->isChecked();
+  mDeleteCap->setEnabled(sync);
+  mDeleteCapCount->setEnabled(sync && mDeleteCap->isChecked());
+  const QString about = QStringLiteral(
+      "--max-delete: rclone deletes up to this many files at the "
+      "destination, then stops the sync with an error. It keeps a source "
+      "that comes back empty, like an unplugged drive or an expired login, "
+      "from wiping the destination while nobody is watching.");
+  mDeleteCap->setToolTip(
+      sync ? about
+           : QStringLiteral("Only Sync deletes at the destination.\n\n") +
+                 about);
+  mDeleteCapCount->setToolTip(about);
+}
+
+int TransferDialog::deleteCapValue() const {
+  if (!mDeleteCap || !ui.rbSync->isChecked() || !mDeleteCap->isChecked()) {
+    return -1;
+  }
+  return mDeleteCapCount->value();
+}
+
 QString TransferDialog::getDest() const { return ui.textDest->text(); }
 
 void TransferDialog::clearValidation() {
@@ -1420,6 +1499,7 @@ JobOptions *TransferDialog::getJobOptions() {
   mJobOptions->verifyAfterTransfer = mVerifyAfter->isChecked();
   mJobOptions->vssSnapshot =
       mVssSnapshot->isChecked() && mVssSnapshot->isEnabled();
+  mJobOptions->maxDelete = deleteCapValue();
 
   return mJobOptions;
 }
@@ -1496,6 +1576,13 @@ void TransferDialog::putJobOptions() {
   mVerifyAfter->setChecked(mJobOptions->verifyAfterTransfer);
   mVssSnapshot->setChecked(mJobOptions->vssSnapshot);
   updateSnapshotOption();
+  // A task saved without a cap opens without one. The count keeps its
+  // default so ticking the box offers a sensible number.
+  mDeleteCap->setChecked(mJobOptions->maxDelete >= 0);
+  if (mJobOptions->maxDelete >= 0) {
+    mDeleteCapCount->setValue(mJobOptions->maxDelete);
+  }
+  updateDeleteCapOption();
   mBackupDir->setText(mJobOptions->backupDir);
   mBackupRetain->setValue(mJobOptions->backupRetainCount);
   int conflictIdx =

@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P1
 
-- [ ] P1 — Cap deletions on saved and scheduled syncs
-  Why: a scheduled sync whose source comes back empty (an unmounted drive, an expired token) deletes the destination, and the dry-run deletion preview only helps someone who is at the screen.
-  Evidence (Verified): no `--max-delete` anywhere in `src/` or `tests/`; rclone docs: past `--max-delete` "a fatal error will be generated and rclone will stop the operation in progress", and exit code 7 is a fatal error; rclone 1.76.0 fixed "rc ignoring global `--dry-run` and `--max-delete` settings"; Airclone README: "A repeating Sync always carries a delete cap, and tripping it pauses every schedule until you look"; Alto v0.9.0 mass-deletion protection; Bisync Hub's `TOO_MANY_DELETES` (forum 54406). The P2 transfer-efficiency item covers speed flags only.
-  Touches: `src/job_options.{h,cpp}`, `src/job_options_store.cpp`, `src/transfer_dialog.{ui,cpp}`, `src/rclone_exit_code.cpp`, `src/job_history.cpp`, `src/main.cpp` (`--run-task`), `tests/job_options_store_test.cpp`, `tests/dryrun_contract_test.cpp`, `tests/rc_sync_request_test.cpp`, `tests/exit_code_test.cpp`
-  Acceptance: Sync offers "Stop if more than N files would be deleted", which adds `--max-delete N` and reaches `_config` on the rc route through `options/info`; the saved-task store round-trips it with a schema bump; a run stopped by the cap (exit 7 with rclone's cap error in its output) shows as "Stopped by delete cap" in job history, and a scheduled run sends its failure webhook; the copy-command output includes the flag; against an rclone older than 1.76.0 the rc route is tested with a real daemon and falls back to the CLI route if the cap isn't honored (needs live validation). The default is Open Question 2 in RESEARCH.md.
-  Complexity: M
-
 - [ ] P1 — Check rclone's signature on the checksum list before installing a download
   Why: the first-start downloader trusts the SHA256SUMS that comes from the same server as the zip, so it catches a corrupt download but not a tampered one. `rclone selfupdate` also checks that list's PGP signature against rclone's built-in key, and the update prompt now uses our downloader instead of selfupdate when rclone's folder isn't writable, so that path checks less than the one it replaced.
   Evidence (Verified): `src/rclone_installer.cpp:144` (`ChecksumFor`) reads the hash lines and skips the signature; `downloads.rclone.org/v1.76.0/SHA256SUMS` is clearsigned (`Hash: SHA1`, a v4 DSA signature from key ID `93935E02FF3B54FA`); rclone's `cmd/selfupdate/verify.go` embeds `ncwPublicKeyPGP` and runs `clearsign.Decode` then `openpgp.CheckDetachedSignature`.
@@ -143,6 +136,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Touches: `src/main_window.cpp`, `src/winfsp_floor.{h,cpp}`, `src/rclone_installer.{h,cpp}` (shared download and progress code), `tests/winfsp_floor_test.cpp`
   Acceptance: the dialog offers "Install WinFsp", downloads the current stable MSI from WinFsp's GitHub release, checks its Authenticode signature and publisher, runs it elevated with basic UI and carries on with the mount when it finishes; Cancel keeps today's behavior.
   Complexity: M
+
+- [ ] P2 — Run the app's own Syncs through `sync/sync` so their cards show live progress
+  Why: every Sync the dialog builds names a delete timing, and rclone's `options/info` has no entry for `--delete-during`, `--delete-after` or `--delete-before`, so `MapOptions` refuses the call and the job falls back to `core/command`. That child rclone reports to its own stats, so the card's bytes, speed and file counts stay at zero for the whole run, and the bandwidth control can't reach it.
+  Evidence (Verified): `src/transfer_dialog.cpp:1395-1410` always sets `sync=true` with a timing; `src/job_options.cpp:79` turns it into one of the three flags; a 1.76.0 rcd answers `core/stats` for group `job/N` with zeros during a `core/command` sync (verification run, 2026-11-15).
+  Touches: `src/rc_sync_request.cpp` (map the timing to `_config`, if rclone takes `DeleteMode` there, or leave the flag off when it matches rclone's default `--delete-after`), `tests/rc_sync_request_test.cpp`, `tests/rc_route_test.cpp`
+  Acceptance: a Sync with each of the three timings either reaches `sync/sync` with the timing applied (a live test shows a delete-before run deleting before it copies) or keeps falling back with the reason in the details pane; the card shows non-zero progress for a `sync/sync` run.
+  Complexity: S
 
 ### P3
 

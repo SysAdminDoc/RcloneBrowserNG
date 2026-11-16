@@ -24,7 +24,14 @@ public:
   // success even when items in it failed, so the card reads the per-item
   // results instead and names each failure.
   void setBatchLabels(const QStringList &labels) { mBatchLabels = labels; }
+  // The rclone arguments history keeps for Restart and Dry Run, the same
+  // list the process route records. Without them the row has no command to
+  // rerun: the card's own rc call is for display only.
+  void setHistoryArgs(const QStringList &args) { mHistoryArgs = args; }
   bool wasSuccessful() const { return mSuccess; }
+  // Stricter than wasSuccessful(): false for a run that stopped at
+  // --max-transfer, --max-duration or --error-on-no-transfer.
+  bool completedFully() const { return mSuccess && mExitCode == 0; }
   JobHistoryEntry historyEntry() const;
 
 public slots:
@@ -48,6 +55,7 @@ private:
   QDateTime mFinishedAt;
   QString mGroup;
   QStringList mDisplayArgs;
+  QStringList mHistoryArgs;
   QStringList mBatchLabels;
   QString mInfo;
   QString mSource;
@@ -56,6 +64,20 @@ private:
   int mFiles = 0;
   int mErrors = 0;
   int mExitCode = 0;
+  // A --max-delete stop, seen in core/stats lastError (sync/sync) or in
+  // core/command's output. job/status alone only says "failed to delete N
+  // files". Sticky, since a later lastError can replace the cap's.
+  bool mDeleteCapHit = false;
+  QString mDeleteCapLine;
+  // The label history and notifications use, matching the CLI route's.
+  QString mStatusLabel;
+  bool mFinished = false;
+  // job/status said finished. finish() can still be a stats read away.
+  bool mJobEnded = false;
+  // The job ran through core/command, as a child rclone process.
+  bool mFromCommand = false;
+  // The stats read after the job ended worked, so mFiles is final.
+  bool mFinalStats = false;
   QTimer mPollTimer;
   QLineEdit *mBandwidth = nullptr;
   QPushButton *mBandwidthApply = nullptr;
@@ -72,5 +94,9 @@ private:
   void setAdaptive(bool on);
   void showAdaptiveState();
   void applyStats(const QJsonObject &stats);
-  void finish(bool success, const QString &error);
+  // Remembers the first --max-delete stop found in text.
+  void noteDeleteCap(const QString &text);
+  // exitCode: the child rclone's, read from a core/command log; -1 takes 0
+  // or 1 from success.
+  void finish(bool success, const QString &error, int exitCode = -1);
 };

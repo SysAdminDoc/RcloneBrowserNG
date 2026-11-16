@@ -70,8 +70,20 @@ Meaning Describe(int exitCode) {
           "not recognise. The job output says more."};
 }
 
-ProcessOutcome DescribeProcess(int exitCode, bool crashed,
-                              bool userCancelled) {
+bool IsDeleteCapError(const QString &text) {
+  return text.contains(QLatin1String("--max-delete")) &&
+         text.contains(QLatin1String("threshold reached"));
+}
+
+Meaning DeleteCap() {
+  return {Outcome::Failed, "Stopped by delete cap",
+          "rclone stopped after deleting as many files as this sync allows. "
+          "Check the source is all there before you run it again, or raise "
+          "the cap if the deletions are expected."};
+}
+
+ProcessOutcome DescribeProcess(int exitCode, bool crashed, bool userCancelled,
+                               bool deleteCapHit) {
   ProcessOutcome outcome;
 
   if (userCancelled) {
@@ -94,13 +106,32 @@ ProcessOutcome DescribeProcess(int exitCode, bool crashed,
     return outcome;
   }
 
-  const Meaning meaning = Describe(exitCode);
+  const Meaning meaning =
+      (exitCode == 7 && deleteCapHit) ? DeleteCap() : Describe(exitCode);
   outcome.outcome = meaning.outcome;
   outcome.name = meaning.name;
   outcome.explanation = meaning.explanation;
   outcome.success = IsSuccessful(exitCode);
   outcome.completedFully = (exitCode == 0);
   return outcome;
+}
+
+Meaning DescribeHistory(int exitCode, const QString &statusLabel) {
+  if (statusLabel == DeleteCap().name) {
+    return DeleteCap();
+  }
+  const ProcessOutcome noExitCode[] = {DescribeProcess(exitCode, false, true),
+                                       DescribeProcess(exitCode, true, false)};
+  for (const ProcessOutcome &special : noExitCode) {
+    if (statusLabel == special.name) {
+      return {special.outcome, special.name, special.explanation};
+    }
+  }
+  Meaning meaning = Describe(exitCode);
+  if (!statusLabel.isEmpty()) {
+    meaning.name = statusLabel;
+  }
+  return meaning;
 }
 
 bool IsRetryable(int exitCode) {

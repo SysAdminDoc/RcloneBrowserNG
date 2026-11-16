@@ -590,7 +590,23 @@ void RcloneRcEngine::jobStatus(int jobId, QObject *context,
                                const RcCallback &callback) {
   QJsonObject payload;
   payload.insert("jobid", jobId);
-  postAsync("job/status", payload, context, callback);
+  // A failed job's status is still a good answer: rclone sends it with
+  // HTTP 200 and the job's own "error" text, which postAsync would report
+  // as a failed call. The caller then never saw "finished" and polled the
+  // job forever. Only an answer without the job's fields (an unknown job id,
+  // a dead daemon) is a failed call.
+  postAsync("job/status", payload, context,
+            [callback](const QJsonObject &status, const QString &error) {
+              if (!callback) {
+                return;
+              }
+              if (!error.isEmpty() && status.contains("finished") &&
+                  status.contains("id")) {
+                callback(status, QString());
+                return;
+              }
+              callback(status, error);
+            });
 }
 
 void RcloneRcEngine::coreStats(const QString &group, QObject *context,

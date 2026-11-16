@@ -2,6 +2,8 @@
 #include "rclone_capabilities.h"
 #include "utils.h"
 
+#include <QLockFile>
+
 namespace {
 const QString kHistoryFileName = "job-history.json";
 
@@ -173,6 +175,17 @@ QVector<JobHistoryEntry> JobHistoryStore::Load(QString *error) {
 
 bool JobHistoryStore::Append(const JobHistoryEntry &entry, QString *error,
                              int maxEntries) {
+  // The app and a scheduled --run-task can finish at the same moment, and
+  // each loads, appends and saves the whole file, so without the lock one
+  // of the two rows is lost. A holder that died leaves a stale lock, which
+  // QLockFile takes over.
+  QLockFile lock(GetPersistenceFilePath() + QStringLiteral(".lock"));
+  if (!lock.tryLock(10000)) {
+    if (error) {
+      *error = "Job history is busy in another Rclone Browser.";
+    }
+    return false;
+  }
   QVector<JobHistoryEntry> entries = Load(error);
   if (error && !error->isEmpty()) {
     return false;
@@ -200,6 +213,17 @@ bool JobHistoryStore::Append(const JobHistoryEntry &entry, QString *error,
     return false;
   }
   return true;
+}
+
+bool CanRerun(const JobHistoryEntry &entry) {
+  const QStringList &args = entry.args;
+  if (args.isEmpty()) {
+    return false;
+  }
+  // A real row starts with the rclone command ("sync"), never a program
+  // path followed by "rc --url".
+  return !(args.size() > 2 && args.at(1) == QLatin1String("rc") &&
+           args.at(2) == QLatin1String("--url"));
 }
 
 QString RedactedJobDetail(const JobHistoryEntry &entry) {

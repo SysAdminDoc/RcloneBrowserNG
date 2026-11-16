@@ -17,6 +17,7 @@ const char kOptionsInfo[] = R"JSON({
     {"Name": "dry_run", "FieldName": "DryRun", "Type": "bool", "NoPrefix": true},
     {"Name": "transfers", "FieldName": "Transfers", "Type": "int", "NoPrefix": true},
     {"Name": "checkers", "FieldName": "Checkers", "Type": "int", "NoPrefix": true},
+    {"Name": "max_delete", "FieldName": "MaxDelete", "Type": "int64", "NoPrefix": true},
     {"Name": "bwlimit", "FieldName": "BwLimit", "Type": "BwTimetable", "NoPrefix": true},
     {"Name": "contimeout", "FieldName": "ConnectTimeout", "Type": "Duration", "NoPrefix": true},
     {"Name": "backup_dir", "FieldName": "BackupDir", "Type": "string", "NoPrefix": true},
@@ -98,6 +99,21 @@ private slots:
     // A string here is rejected by rclone with a 400, so the type matters.
     QVERIFY2(transfers.isDouble(), "Transfers must be a JSON number");
     QCOMPARE(transfers.toInt(), 4);
+  }
+
+  // The delete cap reaches the daemon as the same number the CLI gets, so
+  // a sync run through the daemon stops at the same count.
+  void sendsTheDeleteCapAsANumber() {
+    const QStringList args{"sync", "--max-delete", "100", "remote:src",
+                           "remote:dst"};
+    const Request request = Build(args, "g", realIndex());
+    QVERIFY2(request.usable, qPrintable(request.reason));
+    QCOMPARE(request.endpoint, QStringLiteral("sync/sync"));
+
+    const QJsonValue cap =
+        request.payload.value("_config").toObject().value("MaxDelete");
+    QVERIFY2(cap.isDouble(), "MaxDelete must be a JSON number");
+    QCOMPARE(cap.toInt(), 100);
   }
 
   void keepsSizeAndDurationAsTheStringTheCliWasGiven() {

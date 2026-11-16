@@ -131,6 +131,77 @@ private slots:
     }
   }
 
+  // The CLI's last line and the rc route's core/stats lastError, for both
+  // the count and the size cap. rclone 1.75 and 1.76 word them this way.
+  void recognisesRclonesDeleteCapMessages() {
+    using RcloneExitCode::IsDeleteCapError;
+    QVERIFY(IsDeleteCapError("--max-delete threshold reached"));
+    QVERIFY(IsDeleteCapError(
+        "2026/11/15 10:00:00 ERROR : Attempt 1/3 failed with 1 errors and: "
+        "--max-delete threshold reached"));
+    QVERIFY(IsDeleteCapError("--max-delete-size threshold reached"));
+    QVERIFY(IsDeleteCapError(
+        "{\"level\":\"error\",\"msg\":\"b.txt: Couldn't delete: "
+        "--max-delete threshold reached\"}"));
+
+    QVERIFY(!IsDeleteCapError(""));
+    QVERIFY(!IsDeleteCapError("failed to delete 3 files"));
+    QVERIFY(!IsDeleteCapError("bisync aborted: --max-delete percentage"));
+    QVERIFY(!IsDeleteCapError("Bisync critical error: cannot find prior "
+                              "Path1 or Path2 listings"));
+  }
+
+  // Exit 7 means both a lost bisync state and a delete cap stop. Only the
+  // message says which, and the advice for each is different.
+  void aDeleteCapStopIsNamedAndStillAFailure() {
+    const auto capped = RcloneExitCode::DescribeProcess(7, false, false, true);
+    QCOMPARE(capped.name, RcloneExitCode::DeleteCap().name);
+    QCOMPARE(capped.name, QString("Stopped by delete cap"));
+    QVERIFY(!capped.explanation.contains("resync"));
+    QVERIFY(!capped.success);
+    QVERIFY(!capped.completedFully);
+
+    const auto lostState = RcloneExitCode::DescribeProcess(7, false, false);
+    QCOMPARE(lostState.name, Describe(7).name);
+    QVERIFY(lostState.name != capped.name);
+
+    // The flag only reads exit 7. A cancel or another code keeps its own
+    // meaning even if the log mentioned the cap.
+    QCOMPARE(RcloneExitCode::DescribeProcess(6, false, false, true).name,
+             Describe(6).name);
+    QVERIFY(RcloneExitCode::DescribeProcess(7, false, true, true).name !=
+            capped.name);
+    QVERIFY(RcloneExitCode::DescribeProcess(7, true, false, true).name !=
+            capped.name);
+  }
+
+  // A history row explains the label its card recorded. Exit 7 alone would
+  // tell a cap stop to run --resync.
+  void historyRowsExplainTheirOwnLabel() {
+    using RcloneExitCode::DescribeHistory;
+    const auto cap = DescribeHistory(7, "Stopped by delete cap");
+    QCOMPARE(cap.name, RcloneExitCode::DeleteCap().name);
+    QCOMPARE(cap.explanation, RcloneExitCode::DeleteCap().explanation);
+    QVERIFY(!cap.explanation.contains("resync"));
+
+    const auto lostState = DescribeHistory(7, Describe(7).name);
+    QCOMPARE(lostState.explanation, Describe(7).explanation);
+
+    const auto cancelled = DescribeHistory(62097, "Cancelled");
+    QCOMPARE(cancelled.explanation,
+             RcloneExitCode::DescribeProcess(62097, false, true).explanation);
+    const auto crashed = DescribeHistory(1, "Stopped unexpectedly");
+    QCOMPARE(crashed.explanation,
+             RcloneExitCode::DescribeProcess(1, true, false).explanation);
+
+    // Rows saved before labels existed, and labels the table doesn't know.
+    QCOMPARE(DescribeHistory(0, QString()).name, Describe(0).name);
+    QCOMPARE(DescribeHistory(1, "Snapshot failed").name,
+             QString("Snapshot failed"));
+    QCOMPARE(DescribeHistory(1, "Snapshot failed").explanation,
+             Describe(1).explanation);
+  }
+
   void unknownCodesSaySoRatherThanGuessing() {
     const auto meaning = Describe(42);
     QCOMPARE(meaning.outcome, Outcome::Failed);

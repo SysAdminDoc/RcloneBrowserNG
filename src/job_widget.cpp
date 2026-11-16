@@ -188,6 +188,8 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       const JobStats::LogLine parsed = JobStats::ParseLogLine(raw);
       if (!parsed.isJson) {
         QString line = QString::fromUtf8(raw);
+        mDeleteCapHit =
+            mDeleteCapHit || RcloneExitCode::IsDeleteCapError(line);
         ui.output->appendPlainText(line);
         Diagnostics::appendLog("job", line);
         continue;
@@ -197,6 +199,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
       const QString level = parsed.level;
 
       if (!msg.isEmpty()) {
+        mDeleteCapHit = mDeleteCapHit || RcloneExitCode::IsDeleteCapError(msg);
         ui.output->appendPlainText(msg);
         if (level == "error" || level == "warning") {
           Diagnostics::appendLog("job", msg);
@@ -339,7 +342,7 @@ JobWidget::JobWidget(QProcess *process, const QString &info,
                      const RcloneExitCode::ProcessOutcome processOutcome =
                          RcloneExitCode::DescribeProcess(
                              status, exitStatus == QProcess::CrashExit,
-                             mUserCancelled);
+                             mUserCancelled, mDeleteCapHit);
                      mSuccess = processOutcome.success;
                      mCompletedFully = processOutcome.completedFully;
                      mStatusLabel = processOutcome.name;

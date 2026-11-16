@@ -1,13 +1,17 @@
 #include "app_identity.h"
 #include "app_log.h"
 #include "identity_migration.h"
+#include "job_history.h"
 #include "list_of_job_options.h"
 #include "main_window.h"
 #include "rclone_installer.h"
+#include "rclone_exit_code.h"
 #include "run_conditions.h"
+#include "task_notify.h"
 #include "utils.h"
 #include "vss_snapshot.h"
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
 
@@ -342,19 +346,53 @@ int main(int argc, char *argv[]) {
     // an empty program path and reported success without running rclone.
     LoadRcloneSettings();
     const QString rclone = GetRclone();
-    const auto fail = [&taskName](const QString &why) {
+    // The task's own options, as history shows them for a run in the app.
+    // The snapshot path replaces the source in the run's copy only: the
+    // shadow copy is gone afterwards, and Restart needs the real source.
+    const QStringList taskOptions = found->getOptions();
+    QStringList options = taskOptions;
+    const QDateTime startedAt = QDateTime::currentDateTimeUtc();
+    // The same history entry and notifications a run inside the app gets,
+    // so a scheduled run that failed, or never started, doesn't go
+    // unnoticed.
+    const auto record = [&](bool success, int exitCode, const QString &label,
+                            const QString &detail) {
+      JobHistoryEntry entry;
+      entry.startedAt = startedAt;
+      entry.finishedAt = QDateTime::currentDateTimeUtc();
+      entry.name = taskName;
+      entry.source = found->source;
+      entry.dest = found->dest;
+      entry.success = success;
+      entry.exitCode = exitCode;
+      entry.statusLabel = label;
+      entry.args = taskOptions;
+      if (!detail.isEmpty()) {
+        entry.transferDetail << detail;
+      }
+      QString historyError;
+      if (!JobHistoryStore::Append(entry, &historyError)) {
+        AppLog::Write(AppLog::Level::Warning, "schedule",
+                      "Job history could not be saved: " + historyError);
+      }
+      TaskNotify::SendAndWait(found->heartbeatUrl, found->webhookUrl,
+                              taskName, success,
+                              success ? QString() : label);
+      AppLog::Flush();
+    };
+    const auto fail = [&](const QString &label, const QString &why) {
       const QString message =
           QString("The scheduled run of \"%1\" didn't start: %2")
               .arg(taskName, why);
       AppLog::Write(AppLog::Level::Error, "schedule", message);
       AppLog::Flush();
       QTextStream(stderr) << message << "\n";
+      record(false, 1, label, message);
       return 1;
     };
     if (rclone.isEmpty()) {
-      return fail("no rclone is set in Preferences.");
+      return fail("Didn't start", "no rclone is set in Preferences.");
     }
-    QStringList args = GetRcloneConf() + found->getOptions();
     // Deleting the session ends the snapshot, on every way out of here.
     std::unique_ptr<VssSession> snapshot;
     if (found->snapshotApplies()) {
@@ -373,28 +411,58 @@ int main(int argc, char *argv[]) {
         wait.exec();
       }
       if (!snapshot) {
-        return fail("the snapshot failed. " + snapshotError);
+        return fail("Snapshot failed", "the snapshot failed. " + snapshotError);
       }
-      args = VssSnapshot::WithSource(args,
-                                     snapshot->pathFor(found->source));
+      options = VssSnapshot::WithSource(options,
+                                        snapshot->pathFor(found->source));
     }
+    const QStringList args = GetRcloneConf() + options;
     QProcess proc;
-    proc.setProcessChannelMode(QProcess::ForwardedChannels);
+    // rclone logs to stderr. It still reaches the scheduler's console, and
+    // passing through here lets the run tell a --max-delete stop from any
+    // other exit 7.
+    proc.setProcessChannelMode(QProcess::ForwardedOutputChannel);
+    bool deleteCapHit = false;
+    QByteArray partialLine;
+    QObject::connect(&proc, &QProcess::readyReadStandardError, &proc, [&]() {
+      const QByteArray chunk = proc.readAllStandardError();
+      std::fwrite(chunk.constData(), 1, static_cast<size_t>(chunk.size()),
+                  stderr);
+      std::fflush(stderr);
+      partialLine += chunk;
+      qsizetype newline;
+      while ((newline = partialLine.indexOf('\n')) >= 0) {
+        deleteCapHit = deleteCapHit ||
+                       RcloneExitCode::IsDeleteCapError(
+                           QString::fromUtf8(partialLine.left(newline)));
+        partialLine.remove(0, newline + 1);
+      }
+    });
     UseRclonePassword(&proc);
     proc.start(rclone, args);
     if (!proc.waitForStarted(-1)) {
-      return fail(QString("%1 (%2)").arg(proc.errorString(), rclone));
+      return fail("Didn't start",
+                  QString("%1 (%2)").arg(proc.errorString(), rclone));
     }
     proc.waitForFinished(-1);
-    const int exitCode =
-        proc.exitStatus() == QProcess::NormalExit ? proc.exitCode() : 1;
+    deleteCapHit = deleteCapHit ||
+                   RcloneExitCode::IsDeleteCapError(
+                       QString::fromUtf8(partialLine + proc.readAllStandardError()));
+    const bool crashed = proc.exitStatus() != QProcess::NormalExit;
+    const int exitCode = crashed ? 1 : proc.exitCode();
+    const RcloneExitCode::ProcessOutcome outcome =
+        RcloneExitCode::DescribeProcess(exitCode, crashed, false,
+                                        deleteCapHit);
+    QString finishedMessage =
+        QString("The scheduled run of \"%1\" finished, rclone exit code %2.")
+            .arg(taskName)
+            .arg(exitCode);
+    if (!outcome.success) {
+      finishedMessage += QString(" %1.").arg(outcome.name);
+    }
     AppLog::Write(exitCode == 0 ? AppLog::Level::Info : AppLog::Level::Error,
-                  "schedule",
-                  QString("The scheduled run of \"%1\" finished, rclone "
-                          "exit code %2.")
-                      .arg(taskName)
-                      .arg(exitCode));
-    AppLog::Flush();
+                  "schedule", finishedMessage);
+    record(outcome.success, exitCode, outcome.name, QString());
     return exitCode;
   }
 
