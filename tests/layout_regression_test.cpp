@@ -8,6 +8,7 @@
 #include "rc_job_widget.h"
 #include "rclone_rc_engine.h"
 #include "transfer_dialog.h"
+#include "progress_dialog.h"
 #include "utils.h"
 
 #include <QCheckBox>
@@ -17,6 +18,8 @@
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QSignalSpy>
+#include <QPlainTextEdit>
+#include <QProcess>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QRegularExpression>
@@ -185,14 +188,49 @@ private slots:
     QVERIFY2(preset->count() >= 5, "performance presets are populated");
   }
 
+  // A failed command opens the output, and the dialog kept the height it had
+  // with the output closed, so about one line of the error showed.
+  void progressDialogGrowsWhenOutputOpens() {
+    auto *process = new QProcess(this);
+    process->setProgram(mSettingsDir.filePath("no-such-program.exe"));
+    ProgressDialog dialog("Size", "Calculating size...", "remote:", process);
+    dialog.show();
+    auto *output = dialog.findChild<QPlainTextEdit *>("output");
+    QVERIFY(output != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(output->isVisible(), 5000);
+    QTRY_VERIFY2_WITH_TIMEOUT(output->height() >= output->minimumHeight(),
+                              qPrintable(QString("output %1 px, needs %2 px")
+                                             .arg(output->height())
+                                             .arg(output->minimumHeight())),
+                              2000);
+    dialog.close();
+  }
+
+  // Trash shared a grid cell with Filter and Path, so on a Google Drive remote
+  // the buttons were drawn on top of each other.
   void remoteWidgetTrashButtonLivesInManagedLayout() {
     IconCache icons(nullptr);
     RemoteWidget widget(&icons, "remote", false, true, false);
     auto *trash = widget.findChild<QPushButton *>("buttonTrash");
     verifyManaged(trash, "buttonTrash");
-    auto *shared = widget.findChild<QWidget *>("checkBoxShared");
-    QVERIFY(shared != nullptr);
-    QCOMPARE(trash->parentWidget(), shared->parentWidget());
+    widget.resize(900, 600);
+    widget.show();
+    QCoreApplication::processEvents();
+    QVERIFY2(trash->isVisible(), "Trash shows on a Google Drive remote");
+
+    const QRect trashRect(trash->mapTo(&widget, QPoint(0, 0)), trash->size());
+    int checked = 0;
+    for (auto *button : widget.findChildren<QToolButton *>()) {
+      const QString name = button->accessibleName();
+      if (name != QLatin1String("Show file filter") &&
+          name != QLatin1String("Edit current path")) {
+        continue;
+      }
+      const QRect rect(button->mapTo(&widget, QPoint(0, 0)), button->size());
+      QVERIFY2(!trashRect.intersects(rect), qPrintable(name));
+      ++checked;
+    }
+    QCOMPARE(checked, 2);
   }
 
   // Back, forward and the breadcrumb were inserted into the column that holds

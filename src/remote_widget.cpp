@@ -584,7 +584,7 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   QStyle *style = QApplication::style();
   ui.refresh->setIcon(style->standardIcon(QStyle::SP_BrowserReload));
   ui.mkdir->setIcon(style->standardIcon(QStyle::SP_FileDialogNewFolder));
-  ui.rename->setIcon(style->standardIcon(QStyle::SP_FileIcon));
+  ui.rename->setIcon(UiPolish::FileIcon());
   ui.move->setIcon(style->standardIcon(QStyle::SP_DirOpenIcon));
   ui.purge->setIcon(style->standardIcon(QStyle::SP_TrashIcon));
   ui.mount->setIcon(style->standardIcon(QStyle::SP_DriveNetIcon));
@@ -623,6 +623,9 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   for (QToolButton *button : browserButtons) {
     button->setMinimumHeight(34);
     button->setIconSize(QSize(18, 18));
+    // Tool buttons default to a fixed width, so a column of two different
+    // labels showed two different widths. Filling the column lines them up.
+    button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   }
   UiPolish::SetPrimaryButton(ui.buttonUpload);
   UiPolish::SetPrimaryButton(ui.buttonDownload);
@@ -703,8 +706,20 @@ RemoteWidget::RemoteWidget(IconCache *iconCache, const QString &remote,
   UiPolish::SetCompactToolButton(
       editPathButton, "Edit current path",
       "Type a loaded remote path directly.");
+  // Trash used to share this grid cell with Filter and Path, so on a Google
+  // Drive remote the buttons sat on top of each other.
+  ui.buttonsGrid->removeWidget(ui.buttonTrash);
+  ui.buttonTrash->setMaximumHeight(QWIDGETSIZE_MAX);
+  pathToolsLayout->addWidget(ui.buttonTrash);
   pathToolsLayout->addWidget(filterFilesButton);
   pathToolsLayout->addWidget(editPathButton);
+  for (QAbstractButton *button :
+       {static_cast<QAbstractButton *>(ui.buttonTrash),
+        static_cast<QAbstractButton *>(filterFilesButton),
+        static_cast<QAbstractButton *>(editPathButton)}) {
+    button->setMinimumHeight(34);
+    button->setIconSize(QSize(18, 18));
+  }
   ui.buttonsGrid->addWidget(pathTools, 1, 6);
 
   ui.tree->sortByColumn(0, Qt::AscendingOrder);

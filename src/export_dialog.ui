@@ -126,7 +126,7 @@
           <item row="2" column="0">
            <widget class="QLabel" name="label_18">
             <property name="text">
-             <string>Maximum age (s or ms|s|m|h|d|w|M|y suffix)</string>
+             <string>Maximum age</string>
             </property>
             <property name="buddy">
              <cstring>textMaxAge</cstring>
@@ -152,7 +152,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_16">
             <property name="text">
-             <string>Minimum age (s or ms|s|m|h|d|w|M|y suffix)</string>
+             <string>Minimum age</string>
             </property>
             <property name="buddy">
              <cstring>textMinAge</cstring>
@@ -182,7 +182,7 @@
           <item row="0" column="0">
            <widget class="QLabel" name="label_15">
             <property name="text">
-             <string>Minimum size (KiB or b|k|M|G suffix)</string>
+             <string>Minimum size</string>
             </property>
             <property name="buddy">
              <cstring>textMinSize</cstring>

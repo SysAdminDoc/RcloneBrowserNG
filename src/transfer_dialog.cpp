@@ -35,19 +35,30 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   auto *securityNotice = new QLabel(this);
   UiPolish::SetNotice(securityNotice, JobOptionsStoreSecurityNotice());
   securityNotice->setAccessibleName("Saved task security notice");
-  ui.gridLayout->addWidget(securityNotice, 2, 0, 1, 2);
   ui.textSource->setPlaceholderText(isDownload ? "remote:path" : "Local file or folder");
   ui.textDest->setPlaceholderText(isDownload ? "Local destination folder"
                                              : "remote:path");
   ui.textExtra->setPlaceholderText("Additional rclone flags for this transfer");
   ui.textDescription->setPlaceholderText("Name this task if you want to save it");
-  ui.textBandwidth->setPlaceholderText("off, 10M, or timetable syntax");
+  ui.textBandwidth->setPlaceholderText("off or 10M");
   auto *bwEditBtn = ui.buttonBandwidthEdit;
   bwEditBtn->setIcon(
       qApp->style()->standardIcon(QStyle::SP_FileDialogDetailedView));
   bwEditBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  bwEditBtn->setToolTip("Open the bandwidth timetable editor.");
-  bwEditBtn->setAccessibleName("Edit bandwidth timetable");
+  // Compact padding, or the 34 px button leaves the icon a 4 px dot. It also
+  // sat in the stretch column, far from the field it edits, so the two now
+  // share one row.
+  UiPolish::SetCompactToolButton(bwEditBtn, "Edit bandwidth timetable",
+                                 "Open the bandwidth timetable editor.");
+  ui.gridLayout_6->removeWidget(ui.textBandwidth);
+  ui.gridLayout_6->removeWidget(bwEditBtn);
+  auto *bandwidthRow = new QHBoxLayout();
+  bandwidthRow->setContentsMargins(0, 0, 0, 0);
+  bandwidthRow->setSpacing(6);
+  bandwidthRow->addWidget(ui.textBandwidth);
+  bandwidthRow->addWidget(bwEditBtn);
+  bandwidthRow->addStretch(1);
+  ui.gridLayout_6->addLayout(bandwidthRow, 2, 2, 1, 2);
   QObject::connect(bwEditBtn, &QToolButton::clicked, this, [this]() {
     QDialog dlg(this);
     dlg.setWindowTitle("Bandwidth Timetable");
@@ -268,9 +279,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     presetCombo->setCurrentIndex(0);
   });
 
-  ui.textMinSize->setPlaceholderText("100M");
-  ui.textMinAge->setPlaceholderText("1d");
-  ui.textMaxAge->setPlaceholderText("30d");
+  // The labels used to carry the unit grammar ("KiB or b|k|M|G suffix"). It
+  // lives in the tooltip and the accessible description now.
+  const QString sizeUnits =
+      " A plain number is KiB. Add b, k, M or G for other units.";
+  const QString ageUnits =
+      " A plain number is seconds. Add ms, s, m, h, d, w, M or y.";
+  const auto describe = [](QLineEdit *edit, const QString &text) {
+    edit->setToolTip(text);
+    edit->setAccessibleDescription(text);
+  };
+  describe(ui.textBandwidth,
+           "rclone --bwlimit. A plain number is KiB/s. Add b, k, M or G for "
+           "other units, or use the timetable button for limits by time.");
+  describe(ui.textMinSize, "rclone --min-size." + sizeUnits);
+  describe(ui.textMinAge, "rclone --min-age." + ageUnits);
+  describe(ui.textMaxAge, "rclone --max-age." + ageUnits);
+  ui.textMinSize->setPlaceholderText("100M or 512k");
+  ui.textMinAge->setPlaceholderText("1d or 12h");
+  ui.textMaxAge->setPlaceholderText("30d or 1y");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
 
   auto *excludeQuickBar = new QWidget(this);
@@ -325,6 +352,27 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                    &TransferDialog::refreshExcludeExplanation);
   refreshExcludeExplanation();
 
+  // Everything past the basics lives on two more tabs. These rows used to be
+  // added to the dialog's own grid, from row 8 down, where the Webhook row
+  // shared row 9 with the button box and the rest piled up underneath it.
+  auto makeFormPage = [this](const QString &objectName,
+                             const QString &title) {
+    auto *page = new QWidget;
+    page->setObjectName(objectName);
+    auto *form = new QFormLayout(page);
+    form->setContentsMargins(12, 12, 12, 12);
+    form->setHorizontalSpacing(12);
+    form->setVerticalSpacing(8);
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    form->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    ui.tabWidget->addTab(page, title);
+    return form;
+  };
+  QFormLayout *advancedForm = makeFormPage("tabAdvanced", "Advanced");
+  QFormLayout *automationForm = makeFormPage("tabAutomation", "Automation");
+  automationForm->addRow(securityNotice);
+
   auto *heartbeatLabel = new QLabel("Heartbeat URL:", this);
   heartbeatLabel->setToolTip(
       "Healthchecks.io, ntfy.sh, or any URL to ping on job completion.\n"
@@ -333,8 +381,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mHeartbeatUrl = new QLineEdit(this);
   mHeartbeatUrl->setPlaceholderText("https://hc-ping.com/your-uuid or https://ntfy.sh/your-topic");
   mHeartbeatUrl->setAccessibleName("Heartbeat URL for monitoring");
-  ui.gridLayout->addWidget(heartbeatLabel, 8, 0);
-  ui.gridLayout->addWidget(mHeartbeatUrl, 8, 1);
+  automationForm->addRow(heartbeatLabel, mHeartbeatUrl);
   auto *webhookLabel = new QLabel("Webhook URL:", this);
   webhookLabel->setToolTip(
       "Discord, Gotify, Shoutrrr, or any URL to POST a JSON status on "
@@ -343,8 +390,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mWebhookUrl = new QLineEdit(this);
   mWebhookUrl->setPlaceholderText("https://discord.com/api/webhooks/... or https://gotify.example.com/message");
   mWebhookUrl->setAccessibleName("Webhook URL for notifications");
-  ui.gridLayout->addWidget(webhookLabel, 9, 0);
-  ui.gridLayout->addWidget(mWebhookUrl, 9, 1);
+  automationForm->addRow(webhookLabel, mWebhookUrl);
   auto *nameTransformLabel = new QLabel("Name transform:", this);
   nameTransformLabel->setToolTip(
       "rclone --name-transform pattern (requires rclone >= 1.74).\n"
@@ -360,23 +406,20 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       nameTransformLabel->setEnabled(false);
     }
   }
-  ui.gridLayout->addWidget(nameTransformLabel, 10, 0);
-  ui.gridLayout->addWidget(mNameTransform, 10, 1);
-  auto *preCommandLabel = new QLabel("Pre-job command:", this);
+  advancedForm->addRow(nameTransformLabel, mNameTransform);
+  auto *preCommandLabel = new QLabel("Run before:", this);
   preCommandLabel->setToolTip("Shell command to run before the transfer starts.");
   mPreCommand = new QLineEdit(this);
   mPreCommand->setPlaceholderText("Command to run before the transfer");
   mPreCommand->setAccessibleName("Pre-job command");
-  ui.gridLayout->addWidget(preCommandLabel, 11, 0);
-  ui.gridLayout->addWidget(mPreCommand, 11, 1);
+  automationForm->addRow(preCommandLabel, mPreCommand);
 
-  auto *postCommandLabel = new QLabel("Post-job command:", this);
+  auto *postCommandLabel = new QLabel("Run after:", this);
   postCommandLabel->setToolTip("Shell command to run after the transfer finishes.");
   mPostCommand = new QLineEdit(this);
   mPostCommand->setPlaceholderText("Command to run after the transfer");
   mPostCommand->setAccessibleName("Post-job command");
-  ui.gridLayout->addWidget(postCommandLabel, 12, 0);
-  ui.gridLayout->addWidget(mPostCommand, 12, 1);
+  automationForm->addRow(postCommandLabel, mPostCommand);
 
   mRbBisync = ui.rbBisync;
   mRbBisync->setToolTip("Bidirectional sync between source and destination.");
@@ -388,7 +431,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       mRbBisync->setToolTip("Requires rclone >= 1.58 with bisync support.");
     }
   }
-  auto *conflictLabel = new QLabel("Conflict resolution:", this);
+  auto *conflictLabel = new QLabel("On conflict:", this);
   conflictLabel->setToolTip(
       "How bisync should resolve conflicts when the same file changed "
       "on both sides.");
@@ -403,25 +446,29 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mConflictResolve->setAccessibleName("Bisync conflict resolution strategy");
   conflictLabel->setVisible(false);
   mConflictResolve->setVisible(false);
-  ui.gridLayout->addWidget(conflictLabel, 14, 0);
-  ui.gridLayout->addWidget(mConflictResolve, 14, 1);
+  // Bisync's one extra choice sits beside the Bisync radio.
+  auto *conflictRow = new QHBoxLayout();
+  conflictRow->setContentsMargins(0, 0, 0, 0);
+  conflictRow->addWidget(conflictLabel);
+  conflictRow->addWidget(mConflictResolve, 1);
+  conflictLabel->setBuddy(mConflictResolve);
+  ui.gridLayout_5->addLayout(conflictRow, 3, 1);
   QObject::connect(mRbBisync, &QRadioButton::toggled, this,
                    [conflictLabel, this](bool checked) {
                      conflictLabel->setVisible(checked);
                      mConflictResolve->setVisible(checked);
                    });
 
-  auto *backupDirLabel = new QLabel("Backup dir:", this);
+  auto *backupDirLabel = new QLabel("Backup folder:", this);
   backupDirLabel->setToolTip(
       "rclone --backup-dir path. Use {date} for auto-dated folders.\n"
       "Example: remote:backups/{date}");
   mBackupDir = new QLineEdit(this);
   mBackupDir->setPlaceholderText("remote:backups/{date} or blank to skip");
   mBackupDir->setAccessibleName("Backup directory pattern");
-  ui.gridLayout->addWidget(backupDirLabel, 15, 0);
-  ui.gridLayout->addWidget(mBackupDir, 15, 1);
+  advancedForm->addRow(backupDirLabel, mBackupDir);
 
-  auto *retainLabel = new QLabel("Retain backups:", this);
+  auto *retainLabel = new QLabel("Keep backups:", this);
   retainLabel->setToolTip(
       "Maximum number of {date} backup-dir snapshots to keep after a "
       "successful transfer. 0 = keep all.");
@@ -430,8 +477,10 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   mBackupRetain->setMaximum(9999);
   mBackupRetain->setSpecialValueText("Keep all");
   mBackupRetain->setAccessibleName("Backup retention count");
-  ui.gridLayout->addWidget(retainLabel, 16, 0);
-  ui.gridLayout->addWidget(mBackupRetain, 16, 1);
+  // A count doesn't need the full width of the path fields above it.
+  mBackupRetain->setMinimumWidth(160);
+  mBackupRetain->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+  advancedForm->addRow(retainLabel, mBackupRetain);
 
   mWatchFolder = new QCheckBox("Watch local source and rerun on changes", this);
   mWatchFolder->setToolTip(
@@ -443,7 +492,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     mWatchFolder->setToolTip(
         "Watch-folder mode is available for upload tasks with a local source.");
   }
-  ui.gridLayout->addWidget(mWatchFolder, 17, 1);
+  automationForm->addRow(QString(), mWatchFolder);
 
   mVerifyAfter = new QCheckBox("Verify integrity after transfer", this);
   mVerifyAfter->setToolTip(
@@ -455,12 +504,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 #if !defined(Q_OS_WIN32)
   mVssSnapshot->hide();
 #endif
-  auto *afterRow = new QHBoxLayout();
-  afterRow->setContentsMargins(0, 0, 0, 0);
-  afterRow->addWidget(mVerifyAfter);
-  afterRow->addWidget(mVssSnapshot);
-  afterRow->addStretch();
-  ui.gridLayout->addLayout(afterRow, 18, 1);
+  // One per row. Side by side, the second box touched the first one's label.
+  advancedForm->addRow(QString(), mVerifyAfter);
+  advancedForm->addRow(QString(), mVssSnapshot);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::updateSnapshotOption);
   for (QRadioButton *mode : {ui.rbCopy, ui.rbMove, ui.rbSync, ui.rbBisync}) {
@@ -525,7 +571,11 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
   profileRow->addWidget(profileCombo, 1);
   profileRow->addWidget(profileSaveBtn);
   profileRow->addWidget(profileDeleteBtn);
-  ui.gridLayout->addLayout(profileRow, 19, 0, 1, 2);
+  // A profile fills Extra options, so it sits right under that field.
+  profileRow->setContentsMargins(0, 0, 0, 0);
+  profileLabel->setBuddy(profileCombo);
+  ui.verticalLayout->insertLayout(ui.verticalLayout->indexOf(ui.textExtra) + 1,
+                                  profileRow);
 
   QObject::connect(profileCombo, &QComboBox::currentTextChanged, this,
                    [this, profileCombo, profileDeleteBtn](const QString &name) {
@@ -572,7 +622,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
 
   mValidation = new QLabel(this);
   UiPolish::SetValidationMessage(mValidation, QString(), QString());
-  ui.gridLayout->addWidget(mValidation, 20, 0, 1, 2);
+  ui.gridLayout->addWidget(mValidation, 4, 0, 1, 2);
   QObject::connect(ui.textSource, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDest, &QLineEdit::textChanged, this,
@@ -583,7 +633,7 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                    &TransferDialog::clearValidation);
 
   QStyle *style = qApp->style();
-  ui.buttonSourceFile->setIcon(style->standardIcon(QStyle::SP_FileIcon));
+  ui.buttonSourceFile->setIcon(UiPolish::FileIcon());
   ui.buttonSourceFolder->setIcon(style->standardIcon(QStyle::SP_DirIcon));
   ui.buttonDest->setIcon(style->standardIcon(QStyle::SP_DirIcon));
 
@@ -732,8 +782,12 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     mPreviewButton->setToolTip(
         "Run with --dry-run to see what would change, without modifying "
         "any files.");
-    ui.gridLayout->addWidget(mPreviewButton, 19, 0);
-    ui.gridLayout->addWidget(mPreview, 19, 1);
+    auto *previewRow = new QHBoxLayout();
+    previewRow->setContentsMargins(0, 0, 0, 0);
+    previewRow->addWidget(mPreviewButton);
+    previewRow->addStretch();
+    ui.gridLayout->addLayout(previewRow, 5, 0, 1, 2);
+    ui.gridLayout->addWidget(mPreview, 6, 0, 1, 2);
     QObject::connect(mPreviewButton, &QPushButton::clicked, this, [=]() {
       if (mIsDownload) {
         if (ui.textDest->text().trimmed().isEmpty()) {
@@ -1027,6 +1081,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       };
     };
   }
+
+  // Tall tabs scroll instead of stretching the dialog past the screen.
+  UiPolish::MakeTabPagesScrollable(ui.tabWidget);
 }
 
 TransferDialog::~TransferDialog() {
@@ -1546,7 +1603,6 @@ bool TransferDialog::checkBandwidth(bool focus) {
       QStringLiteral("rclone won't accept this bandwidth limit. %1")
           .arg(problem);
   if (focus) {
-    ui.tabWidget->setCurrentWidget(ui.tab3);
     showValidation(ui.textBandwidth, message);
   } else {
     clearValidation();
@@ -1561,6 +1617,8 @@ void TransferDialog::showValidation(QWidget *field, const QString &message) {
   UiPolish::SetFieldState(field, "error");
   UiPolish::SetValidationMessage(mValidation, "error", message);
   if (field) {
+    // A field on a tab the user isn't looking at gets its tab shown first.
+    UiPolish::ShowTabContaining(ui.tabWidget, field);
     field->setFocus(Qt::OtherFocusReason);
   }
 }

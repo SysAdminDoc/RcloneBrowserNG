@@ -31,9 +31,23 @@ ExportDialog::ExportDialog(const QString &remote, const QDir &path,
 
   setWindowTitle("Export File List");
   ui.textFile->setPlaceholderText("Choose a .txt or .csv destination");
-  ui.textMinSize->setPlaceholderText("100M");
-  ui.textMinAge->setPlaceholderText("1d");
-  ui.textMaxAge->setPlaceholderText("30d");
+  // Same wording as the transfer dialog: the unit grammar is in the tooltip
+  // and accessible description, not the label.
+  const QString sizeUnits =
+      "rclone --min-size. A plain number is KiB. Add b, k, M or G for other "
+      "units.";
+  const QString ageUnits =
+      " A plain number is seconds. Add ms, s, m, h, d, w, M or y.";
+  const auto describe = [](QLineEdit *edit, const QString &text) {
+    edit->setToolTip(text);
+    edit->setAccessibleDescription(text);
+  };
+  describe(ui.textMinSize, sizeUnits);
+  describe(ui.textMinAge, "rclone --min-age." + ageUnits);
+  describe(ui.textMaxAge, "rclone --max-age." + ageUnits);
+  ui.textMinSize->setPlaceholderText("100M or 512k");
+  ui.textMinAge->setPlaceholderText("1d or 12h");
+  ui.textMaxAge->setPlaceholderText("30d or 1y");
   ui.textExtra->setPlaceholderText("Additional rclone flags");
   ui.textExclude->setPlaceholderText("One --exclude pattern per line");
   mValidation = new QLabel(this);
