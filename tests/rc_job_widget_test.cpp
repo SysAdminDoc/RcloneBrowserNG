@@ -584,8 +584,9 @@ private slots:
   // other error bisync returns is read as resolveExitCode reads it. rc's
   // answer has the run's session only when bisync ran, and a path that
   // couldn't be opened, which has none, fails before cmd.Run on the CLI and
-  // exits 1. A path that's a file is refused there too, with exit 2
-  // (measured on v1.76.0).
+  // exits 1. A second path that's a file is one of those: the CLI exits 1 on
+  // "Source doesn't exist or is a directory and destination is a file". A
+  // first path that's a file runs on core/command (measured on v1.76.0).
   void bisyncExitsOnWhatItReturned_data() {
     QTest::addColumn<QString>("error");
     QTest::addColumn<bool>("ran");
@@ -599,8 +600,8 @@ private slots:
         << QString("read: connection reset by peer") << true << 5;
     QTest::newRow("returned, plain") << QString("boom") << true << 1;
     QTest::newRow("path refused") << refused << false << 1;
-    QTest::newRow("path is a file")
-        << QString("is a file not a directory") << false << 2;
+    QTest::newRow("second path is a file")
+        << QString("is a file not a directory") << false << 1;
     QTest::newRow("returned, is a file")
         << QString("is a file not a directory") << true << 1;
   }

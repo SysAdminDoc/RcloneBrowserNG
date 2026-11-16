@@ -107,6 +107,32 @@ bool HasLine(const QString &log, const char *text) {
   return false;
 }
 
+// The lines of a command rclone exits 2 on before it runs (cmd/cmd.go).
+// Main logs an error cobra or the command's RunE returned at notice level,
+// as a JSON line ("Fatal error: paths must be existing directories" from
+// bisync given a file as its first path) or, for a flag rclone doesn't
+// know, before --use-json-log took effect, as a text line. CheckArgs writes
+// a count of paths it can't take. Measured on v1.76.0 (2026-11-16). mount's
+// own "Fatal error: " is critical and exits 1.
+bool IsUsageError(const QString &log) {
+  static const QRegularExpression kTextLine(QStringLiteral(
+      "^(?:[0-9/]+ )?(?:[0-9:.]+ )?NOTICE: Fatal error: "));
+  static const QRegularExpression kPathCount(QStringLiteral(
+      "^Command \\S+ needs \\d+ arguments (?:minimum|maximum): you provided "
+      "\\d+ non flag arguments: "));
+  for (const QString &line : log.split(QChar('\n'))) {
+    const LogText entry = Parse(line);
+    if (entry.level == QLatin1String("notice")
+            ? entry.text.startsWith(QLatin1String("Fatal error: "))
+            : entry.level.isEmpty() &&
+                  (kTextLine.match(entry.text).hasMatch() ||
+                   kPathCount.match(entry.text).hasMatch())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // True when text is cause, or ends with ": " and cause.
 bool EndsWithCause(const QString &text, const QString &cause) {
   return text == cause || (text.endsWith(cause) &&
@@ -162,7 +188,11 @@ int ExitCodeFromLog(const QString &log) {
   // resolveExitCode reads only the error cmd.Run's last line names: a
   // missing directory or file first, then a --max-transfer or
   // --max-duration stop, then the rest. A --max-delete stop ends a sync on
-  // a fatal "failed to delete N files", whose text doesn't say why.
+  // a fatal "failed to delete N files", whose text doesn't say why. A
+  // command rclone refused never got that far.
+  if (IsUsageError(log)) {
+    return 2;
+  }
   const FinalError last = LastFailedLine(log);
   const int cause = last.found ? CauseExitCode(last.error) : -1;
   if (cause == 3 || cause == 4) {
@@ -476,11 +506,14 @@ QString GoDurationText(qint64 ms) {
 } // namespace
 
 bool IsNoLowLevelRetryError(const QString &error) {
-  // rclone v1.76.0's own fserrors.NoLowLevelRetryError texts:
-  // backend/local/local.go for a file that changed while it was read, and
-  // backend/sftp/sftp.go's host key checks. The sftp mark survives the
-  // "failed to make fs for --compare-dest" wrapping, so that run exits 6
-  // (measured 2026-11-16).
+  // The fserrors.NoLowLevelRetryError texts of rclone v1.76.0 that can be
+  // told by their text: backend/local/local.go for a file that changed
+  // while it was read, and backend/sftp/sftp.go's host key checks. The sftp
+  // mark survives the "failed to make fs for --compare-dest" wrapping, so
+  // that run exits 6 (measured 2026-11-16). backend/onedrive/onedrive.go
+  // marks a chunk the server answers 404 ("upload session not found") as
+  // well, but that error is Graph's own text, which any other 404 in a copy
+  // gives too, so a run that ends on it records 1 where the CLI exits 6.
   static const QStringList kMarked{
       QStringLiteral("can't copy - source file is being updated ("),
       QStringLiteral("sftp: server presented an SSH certificate ("),
@@ -495,10 +528,22 @@ bool IsNoLowLevelRetryError(const QString &error) {
     }
   }
   // backend/webdav/chunking.go marks a chunk's error once its low-level
-  // retries run out, and only an error worth a retry gets that far.
+  // retries run out, and only an error worth a retry gets that far: one
+  // fserrors.ShouldRetry takes, or a status webdav's shouldRetry retries
+  // (retryErrorCodes), which webdav's api.Error puts last ("System in
+  // maintenance mode.: Sabre\DAV\Exception\ServiceUnavailable: 503 Service
+  // Unavailable"). Measured on v1.76.0 (2026-11-16): a chunk that got 500
+  // or 503 until its retries ran out exits 6. A 401 retries as well when
+  // bearer_token_command is set, which the text doesn't show.
+  static const QRegularExpression kRetriedStatus(QStringLiteral(
+      "(?:^|: )(?:423|425|429|500|502|503|504|509)(?: [^:]*)?$"));
   const QString chunk = QStringLiteral("uploading chunk failed: ");
   const qsizetype at = error.indexOf(chunk);
-  return at >= 0 && IsRetriableText(error.mid(at + chunk.size()));
+  if (at < 0) {
+    return false;
+  }
+  const QString cause = error.mid(at + chunk.size());
+  return IsRetriableText(cause) || kRetriedStatus.match(cause).hasMatch();
 }
 
 int CauseExitCode(const QString &error) {

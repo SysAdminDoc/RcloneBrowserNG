@@ -559,15 +559,14 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   if (mRetryEndpoint == QLatin1String("sync/bisync")) {
     // The CLI exits on what bisync returned, and its command wraps "bisync
     // aborted" in a fatal error, which rc hands back bare. A path that
-    // couldn't be opened stays 1, but the command refuses a path that's a
-    // file before cmd.Run ("paths must be existing directories") and exits
-    // 2, where rc fails opening it with fs.ErrorIsFile (measured on
-    // v1.76.0).
+    // couldn't be opened stays 1. That includes a second path that's a
+    // file, which the CLI fails opening with fs.Fatalf, and rc with
+    // fs.ErrorIsFile. A first path that's a file never gets here, since the
+    // engine runs it on core/command, where the CLI's "paths must be
+    // existing directories" exits 2 (measured on v1.76.0).
     if (mBisyncRan) {
       mStopExit = RcJobResult::ExitCodeForError(
           jobError, jobError == QLatin1String("bisync aborted"), false);
-    } else if (jobError == QLatin1String("is a file not a directory")) {
-      mStopExit = 2;
     }
     return false;
   }

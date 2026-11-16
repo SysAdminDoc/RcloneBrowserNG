@@ -11,36 +11,36 @@ QString makeRcUrl(quint16 port) {
   return QString("http://localhost:%1/").arg(port);
 }
 
-// The arg array for core/command. The daemon runs that command as a second
-// rclone process with only these arguments, so the daemon's own --config and
-// --password-command don't reach it, and a remote that only exists in the
-// config chosen in Preferences fails with "didn't find section in config
-// file". conf is flag/value pairs, the way GetRcloneConf() returns them.
-// They go right after the command, or at the end when the arguments open
-// with a flag: a download of several selected items puts its --filter rules
-// ahead of the command, and a pair after args[0] split the first --filter
-// from its rule, so rclone took the config path for the command.
-QJsonArray coreCommandArguments(const QStringList &args,
-                                const QStringList &conf) {
-  QJsonArray pairs;
+// The command and arg array for core/command, which runs them as a second
+// rclone process with only these arguments ("command" first, then "arg").
+// The daemon's own --config and --password-command don't reach it, so a
+// remote that only exists in the config chosen in Preferences fails with
+// "didn't find section in config file". conf is flag/value pairs, the way
+// GetRcloneConf() returns them. They go ahead of everything, as the process
+// route runs `rclone --config <conf> <args>`: a --config=<file> later in the
+// arguments still wins, since pflag keeps a flag's last value, and a pair
+// after the arguments landed behind a "--", where rclone took it for two
+// more paths. A download of several selected items opens with --filter
+// rules, and a pair right after the first one split it from its rule.
+QJsonObject coreCommandPayload(const QStringList &args,
+                               const QStringList &conf) {
+  QStringList all;
   for (int i = 0; i + 1 < conf.size(); i += 2) {
     if (!args.contains(conf.at(i))) {
-      pairs.append(conf.at(i));
-      pairs.append(conf.at(i + 1));
+      all << conf.at(i) << conf.at(i + 1);
     }
   }
-  const bool leadingFlag =
-      !args.isEmpty() && args.first().startsWith(QLatin1Char('-'));
-  QJsonArray commandArgs = leadingFlag ? QJsonArray() : pairs;
-  for (int i = 1; i < args.size(); i++) {
-    commandArgs.append(args[i]);
+  all << args;
+  QJsonObject payload;
+  if (!all.isEmpty()) {
+    payload.insert("command", all.first());
   }
-  if (leadingFlag) {
-    for (const QJsonValue &value : pairs) {
-      commandArgs.append(value);
-    }
+  QJsonArray arg;
+  for (qsizetype i = 1; i < all.size(); i++) {
+    arg.append(all.at(i));
   }
-  return commandArgs;
+  payload.insert("arg", arg);
+  return payload;
 }
 
 // The index of the ':' that ends a path's remote part, found the way rclone's
@@ -769,9 +769,7 @@ void RcloneRcEngine::startCommandRoute(const QStringList &args,
 void RcloneRcEngine::startCommand(const QStringList &args,
                                   const QString &routeNote, QObject *context,
                                   const JobCallback &callback) {
-  QJsonObject payload;
-  payload.insert("command", args.first());
-  payload.insert("arg", coreCommandArguments(args, commandConfig()));
+  QJsonObject payload = coreCommandPayload(args, commandConfig());
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 
@@ -951,11 +949,7 @@ void RcloneRcEngine::stopJob(
 }
 
 QStringList RcloneRcEngine::rcCommandForDisplay(const QStringList &args) const {
-  QJsonObject payload;
-  if (!args.isEmpty()) {
-    payload.insert("command", args.first());
-  }
-  payload.insert("arg", coreCommandArguments(args, commandConfig()));
+  QJsonObject payload = coreCommandPayload(args, commandConfig());
   payload.insert("returnType", "COMBINED_OUTPUT");
   payload.insert("_async", true);
 

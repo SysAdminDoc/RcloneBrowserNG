@@ -545,6 +545,61 @@ private slots:
                                              << "sub/keep2.txt");
   }
 
+  // The app adds its --config to what core/command runs. A --config=<file>
+  // in the task's own options has to win, as it does when a local rclone
+  // runs the same arguments, and a "--" can't turn the pair into two more
+  // paths.
+  void coreCommandKeepsTheTasksConfigAndEndOfFlags_data() {
+    QTest::addColumn<bool>("leadingFilter");
+    QTest::addColumn<bool>("inlineConfig");
+    QTest::newRow("inline config, leading filter") << true << true;
+    QTest::newRow("inline config, command first") << false << true;
+    QTest::newRow("end of flags, leading filter") << true << false;
+    QTest::newRow("end of flags, command first") << false << false;
+  }
+
+  void coreCommandKeepsTheTasksConfigAndEndOfFlags() {
+    QFETCH(bool, leadingFilter);
+    QFETCH(bool, inlineConfig);
+    const QString tag = QStringLiteral("cfg-%1-%2")
+                            .arg(inlineConfig ? 1 : 0)
+                            .arg(leadingFilter ? 1 : 0);
+    const QString source = makeTree(tag + "-src");
+    const QString dest = QDir(mDir.path()).filePath(tag + "-dst");
+
+    QStringList args;
+    if (leadingFilter) {
+      args << "--filter" << "+ /keep.txt" << "--filter" << "- *";
+    }
+    args << "copy";
+    if (inlineConfig) {
+      // Only this config has the remote, so the copy fails when the app's
+      // config wins.
+      const QString userConf = QDir(mDir.path()).filePath(tag + ".conf");
+      QFile file(userConf);
+      QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+      file.write("[uc]\ntype = alias\nremote = " + mDir.path().toUtf8() +
+                 "\n");
+      file.close();
+      args << "--config=" + userConf << "uc:" + tag + "-src" << dest;
+    } else {
+      args << "--verbose" << "--" << source << dest;
+    }
+
+    RcloneRcEngine engine;
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+    QStringList expected;
+    expected << "keep.txt";
+    if (!leadingFilter) {
+      expected << "drop.tmp" << "sub/drop2.tmp" << "sub/keep2.txt";
+      expected.sort();
+    }
+    QCOMPARE(filesUnder(dest), expected);
+  }
+
   // core/bwlimit is the only live tuning rclone actually offers. Measured on
   // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
   // file in flight for eight seconds while a job started afterwards used all
@@ -1224,6 +1279,40 @@ private slots:
                                  "destination \":ftp:x\": NewFs: failed to "
                                  "make FTP connection: connection refused")})
         << 1;
+    // What rclone refuses before the command runs exits 2: an error the
+    // command returned to Main, a flag it doesn't know, which Main logs
+    // before --use-json-log took effect, and a count of paths CheckArgs
+    // can't take. A destination that's a file is fs.Fatalf, which exits 1.
+    QTest::newRow("bisync, first path a file")
+        << Log({Line("notice", "Config file \"x.conf\" not found - using "
+                               "defaults"),
+                Line("notice", "Fatal error: paths must be existing "
+                               "directories"),
+                "Error: paths must be existing directories",
+                "Usage:", "  rclone bisync remote1:path1 remote2:path2 [flags]"})
+        << 2;
+    QTest::newRow("a flag rclone doesn't know")
+        << Log({"Error: unknown flag: --nope", "Usage:",
+                "2026/11/16 11:05:43 NOTICE: Fatal error: unknown flag: --nope"})
+        << 2;
+    QTest::newRow("too many paths")
+        << Log({"Usage:", "  rclone copy source:path dest:path [flags]",
+                "Command copy needs 2 arguments maximum: you provided 4 non "
+                "flag arguments: [\"a\" \"b\" \"x\" \"y\"]"})
+        << 2;
+    QTest::newRow("bisync, second path a file")
+        << Log({Line("critical", "Source doesn't exist or is a directory and "
+                                 "destination is a file")})
+        << 1;
+    QTest::newRow("a critical fatal error")
+        << Log({Line("critical", "Fatal error: mount failed")}) << 1;
+    QTest::newRow("webdav chunk, 500 until its retries ran out")
+        << Log({Line("error", "Failed to copy: uploading chunk failed: 500 "
+                              "Internal Server Error",
+                     "big.bin"),
+                Line("notice", "Failed to copy: uploading chunk failed: 500 "
+                               "Internal Server Error")})
+        << 6;
   }
 
   void readsTheChildsExitCodeFromTheErrorItEndedOn() {
@@ -1334,6 +1423,23 @@ private slots:
     QTest::newRow("webdav chunk, plain")
         << QString("uploading chunk failed: 403 Forbidden") << false << false
         << 1;
+    // webdav retries a chunk on these statuses, which its error puts last.
+    QTest::newRow("webdav chunk, 500")
+        << QString("uploading chunk failed: 500 Internal Server Error")
+        << false << false << 6;
+    QTest::newRow("webdav chunk, 503 with a Sabre body")
+        << QString("uploading chunk failed: System in maintenance mode.: "
+                   "Sabre\\DAV\\Exception\\ServiceUnavailable: 503 Service "
+                   "Unavailable")
+        << false << false << 6;
+    QTest::newRow("webdav chunk, 429 with no reason")
+        << QString("uploading chunk failed: 429") << false << false << 6;
+    QTest::newRow("webdav chunk, 500 in the message, 400 last")
+        << QString("uploading chunk failed: upstream said 500 Busy: 400 Bad "
+                   "Request")
+        << false << false << 1;
+    QTest::newRow("webdav chunk, 5000 is no status")
+        << QString("uploading chunk failed: 5000") << false << false << 1;
   }
 
   void ordersTheExitCodesLikeTheCli() {
