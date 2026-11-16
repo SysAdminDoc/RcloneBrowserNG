@@ -2,6 +2,7 @@
 #include "test_rclone.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QProcess>
 #include <QTemporaryDir>
@@ -46,6 +47,21 @@ QList<Example> GoSyntaxExamples() {
       // A ] right after [ is a member, so this class runs on through the
       // [^/] the ? became.
       {"[]?", "^"},
+      // Go 1.27 looks Unicode names up in any case, and takes the long
+      // category names. Measured on v1.76.0 on 2026-11-16.
+      {"\\pl.txt", "x.txt"},
+      {"[\\p{l}]", "x"},
+      {"*.\\pn", "name.0"},
+      {"[!\\p{^s}]", "$"},
+      {"[\\p{Lu}]", "X"},
+      {"[\\p{Letter}]", "x"},
+      // The * and + repeat the class [[a], and ]x follows it. rclone
+      // excluded ]x and a]x for the first and a]x for the second.
+      {"[[a]*]x", "]x"},
+      {"[[a]+]x", "a]x"},
+      // a/ can't end a file's path, and this isn't a directory rule since
+      // the glob doesn't end in "/". rclone excluded b and nothing else.
+      {"{a/,b}", "b"},
   };
 }
 
@@ -77,19 +93,39 @@ QList<Example> RefusedPatterns() {
       {"[\\x{}]", "invalid escape sequence \\x{}"},
       {"[\\p^L]", "invalid character class range \\p^"},
       {"[\\p{}]", "invalid character class range \\p{}"},
+      {"[\\p{Bogus}]", "invalid character class range \\p{Bogus}"},
+      // Go stops at the first error, so these name the unknown \p{foo}
+      // and not what follows it.
+      {"[\\p{foo}\\Q]", "invalid character class range \\p{foo}"},
+      {"[\\p{foo}][]", "invalid character class range \\p{foo}"},
+      {"[\\p{foo}z-a]", "invalid character class range \\p{foo}"},
+      // \pl is fine, so the error is the one after it.
+      {"\\pl[]", "missing closing ]"},
+      {"\\pl\\x", "invalid escape sequence \\x$"},
+      {"[\\p{l}][a-\\S]", "invalid escape sequence \\S"},
+      // A | or ( or ) that Go reads outside the class [[].
+      {"[[]|*]", "missing argument to repetition operator *"},
+      {"[[a](]", "missing closing )"},
+      {"[[a])]", "unexpected )"},
+      {"[[a]**]", "invalid nested repetition operator **"},
+      {"[[a]*?*]", "invalid nested repetition operator *?*"},
   };
 }
 
 // rclone takes these, and the explainer leaves them alone rather than
 // guess: a {{regexp}} section, \Q...\E, an assertion, a trailing backslash
 // that turns rclone's closing $ into a literal, a match on a control
-// character (\12 is a newline), Unicode marks, and a long Unicode name. Go
-// carries a table of script names the explainer doesn't, so it can't tell
-// [\p{Greek}] from [\p{Bogus}], which rclone refuses.
+// character (\12 is a newline), Unicode marks, a Unicode script name (Go
+// carries script tables the explainer doesn't) and a {n,m} repeat. The
+// rest only match a path no listing holds. Measured on v1.76.0 on
+// 2026-11-16, x{/}, x[/], [/], // and \/ excluded nothing from a tree of
+// file, x/file and sub/file, since a file's path never ends in "/" or has
+// an empty part, and none of these globs ends in "/".
 QStringList UndescribedPatterns() {
-  return {"{{.*}}.txt",   "a{\\{{b}}c", "\\Qa*\\E", "\\b",
-          "a\\",          "\\12.txt",   "\\pM",     "\\pC",
-          "[\\p{Greek}]", "[\\p{Bogus}]"};
+  return {"{{.*}}.txt", "a{\\{{b}}c", "\\Qa*\\E", "\\b",   "a\\",
+          "\\12.txt",   "\\pM",       "\\pC",     "[\\p{Greek}]",
+          "x{/}",       "x[/]",       "[/]",      "//",    "\\/",
+          "[[a]{2}]x"};
 }
 
 // Every pattern the tests in this file describe, for the run against rclone.
@@ -118,7 +154,11 @@ QStringList DescribedPatterns() {
                        "*.[!t]mp",
                        "{a,{b,c}}",
                        "a\\{b",
-                       "[!a[b]c]"};
+                       "[!a[b]c]",
+                       "/",
+                       "/*/",
+                       "/sub/**",
+                       "[!-a]"};
   for (const Example &example : GoSyntaxExamples()) {
     patterns << example.first;
   }
@@ -409,10 +449,7 @@ private slots:
     }
     for (const QString &pattern : UndescribedPatterns()) {
       const Listing listing = ListWithExclude(rclone, config, pattern, empty);
-      QVERIFY2(listing.ran, qPrintable(pattern));
-      // Only [\p{Bogus}] is refused, and the explainer makes no claim
-      // either way about these.
-      QVERIFY2((listing.exitCode == 0) == (pattern != "[\\p{Bogus}]"),
+      QVERIFY2(listing.ran && listing.exitCode == 0,
                qPrintable(pattern + " exit " +
                           QString::number(listing.exitCode)));
     }
@@ -428,7 +465,9 @@ private slots:
 
       const QString matches = description.matchesExample;
       const QString misses = description.missesExample;
-      if (!Creatable(matches) || (!misses.isEmpty() && !Creatable(misses))) {
+      const QString also = description.alsoMatchesExample;
+      if (!Creatable(matches) || (!misses.isEmpty() && !Creatable(misses)) ||
+          (!also.isEmpty() && !Creatable(also))) {
         continue;
       }
       const QString root = scratch.filePath(QString::number(++tree));
@@ -438,13 +477,23 @@ private slots:
       if (!misses.isEmpty()) {
         QVERIFY2(Create(root, misses), qPrintable(misses));
       }
+      if (!also.isEmpty()) {
+        QVERIFY2(Create(root, also), qPrintable(also));
+      }
       const Listing listing = ListWithExclude(rclone, config, pattern, root);
       QVERIFY2(listing.ran && listing.exitCode == 0, qPrintable(pattern));
-      // Proves the listing ran over the tree. "/**" excludes all of it.
-      QVERIFY2(listing.files.contains("keep/kept") == (pattern != "/**"),
+      // Proves the listing ran over the tree. "/**" and "/" exclude all of
+      // it, and "/*/" everything in a subdirectory.
+      const QStringList excludesAll{"/**", "/", "/*/"};
+      QVERIFY2(listing.files.contains("keep/kept") ==
+                   !excludesAll.contains(pattern),
                qPrintable(pattern));
       QVERIFY2(!listing.files.contains(matches),
                qPrintable(pattern + " kept " + matches));
+      if (!also.isEmpty()) {
+        QVERIFY2(!listing.files.contains(also),
+                 qPrintable(pattern + " kept " + also));
+      }
       if (!misses.isEmpty()) {
         QVERIFY2(listing.files.contains(misses),
                  qPrintable(pattern + " excluded " + misses));
@@ -478,7 +527,74 @@ private slots:
   void blankAndWhitespaceOnlyPatternsDescribeNothing() {
     QVERIFY(!Describe("").valid);
     QVERIFY(!Describe("   ").valid);
-    QVERIFY(!Describe("/").valid);
+  }
+
+  // Measured on v1.76.0 on 2026-11-16 with `rclone lsf -R --exclude
+  // <pattern>` over file, x/file, sub/file, sub/name/file, other/sub/file
+  // and sub/sub/file. rclone adds "**" to a pattern ending in "/":
+  //   "/"        excluded every file
+  //   "/*/"      excluded every file in a subdirectory, sub/name/file too
+  //   "/sub/**"  excluded sub/file, sub/name/file and sub/sub/file only
+  void aPatternEndingInASlashCoversEverythingInside() {
+    const auto everything = Describe("/");
+    QVERIFY(everything.valid);
+    QVERIFY(everything.wellFormed);
+    QVERIFY(everything.directoryOnly);
+    QVERIFY(everything.crossesDirectories);
+    QCOMPARE(everything.matchesExample, QStringLiteral("file"));
+    QCOMPARE(everything.alsoMatchesExample, QStringLiteral("sub/file"));
+    QCOMPARE(everything.scope,
+             QStringLiteral("everywhere below the transfer root"));
+    QVERIFY(everything.missesExample.isEmpty());
+
+    const auto inside = Describe("/*/");
+    QVERIFY(inside.crossesDirectories);
+    QCOMPARE(inside.matchesExample, QStringLiteral("name/file"));
+    QCOMPARE(inside.alsoMatchesExample, QStringLiteral("sub/name/file"));
+    QVERIFY2(inside.missesExample.isEmpty(), qPrintable(inside.missesExample));
+    const QStringList lines = DescribeAll("/*/");
+    QCOMPARE(lines.size(), 1);
+    QVERIFY2(lines[0].contains("and sub/name/file"), qPrintable(lines[0]));
+
+    const auto rooted = Describe("/sub/**");
+    QVERIFY(!rooted.crossesDirectories);
+    QCOMPARE(rooted.matchesExample, QStringLiteral("sub/sub/file"));
+    QCOMPARE(rooted.missesExample, QStringLiteral("other/sub/sub/file"));
+  }
+
+  // Go reads [^/-a] as the range / to a, so "[!-a] matches one character
+  // that isn't listed" would be wrong. rclone excluded -, b, x and ~ and
+  // kept 0, A and _.
+  void aNegatedClassGoReadsAsARangeIsNotNamed() {
+    const auto range = Describe("[!-a]");
+    QVERIFY(range.valid);
+    QVERIFY(range.wellFormed);
+    QCOMPARE(range.matchesExample, QStringLiteral("x"));
+    QVERIFY2(range.negatedClass.isEmpty(), qPrintable(range.negatedClass));
+  }
+
+  // DescribeAll runs on every change in the exclude editor, on the UI
+  // thread. A pasted pattern like these used to overflow the stack ({a
+  // nested 2921 deep) or take seconds (\pM 1666 times). They get no line,
+  // and quickly. rclone refuses {a nested 500 deep ("expression nests too
+  // deeply"), so no line is the honest answer for that one too.
+  void longPatternsGetNoLineAndComeBackQuickly() {
+    const QStringList patterns{
+        QString("{a").repeated(2921) + QString("}").repeated(2921),
+        QString("{a").repeated(500) + QString("}").repeated(500),
+        QString("\\pM").repeated(1666),
+        QString("[\\pM]").repeated(6000),
+        QString("[\\pM]").repeated(199),
+        QString("{a").repeated(333) + QString("}").repeated(333),
+        QString("\\pM").repeated(333),
+    };
+    QElapsedTimer timer;
+    timer.start();
+    for (const QString &pattern : patterns) {
+      QVERIFY2(!Describe(pattern).valid, qPrintable(pattern.left(24)));
+    }
+    QVERIFY2(timer.elapsed() < 1500,
+             qPrintable(QString::number(timer.elapsed()) + " ms"));
   }
 
   void describesOneLinePerPattern() {
