@@ -98,9 +98,15 @@ private slots:
              QStringList() << "sync" << "--dry-run" << "--delete-during"
                            << "--verbose" << "src:a" << "dst:b");
 
-    // Already a dry run: the flag stays once, where it was.
-    const QStringList dry{"copy", "--verbose", "--dry-run", "src:a", "dst:b"};
+    // Already a dry run: the flag right after the command stays once.
+    const QStringList dry{"copy", "--dry-run", "--verbose", "src:a", "dst:b"};
     QCOMPARE(JobOptions::DryRunArguments(dry), dry);
+    // Further along it could be the value of the option before it, so the
+    // preview adds its own; the second one is harmless.
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"copy", "--verbose", "--dry-run", "src:a", "dst:b"}),
+             (QStringList{"copy", "--dry-run", "--verbose", "--dry-run",
+                          "src:a", "dst:b"}));
 
     // A cap with its value missing at the end goes without taking the
     // command or a path with it.
@@ -170,6 +176,38 @@ private slots:
     QVERIFY2(preview.contains("-v") && !preview.contains("-vn=false"),
              qPrintable(preview.join(' ')));
     delete sync;
+  }
+
+  // pflag gives --exclude, --include and --filter the next argument whatever
+  // it looks like (measured on v1.76.0: `rclone sync --exclude -n` is a real
+  // run that deletes, and `--filter "- run=*"` skips run=1.txt). A preview
+  // once read that -n as its dry run and ran for real.
+  void previewsReadPatternsAsValues() {
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "--exclude", "-n", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "--exclude", "-n", "a:", "b:"}));
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "--filter", "- run=*", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "--filter", "- run=*", "a:",
+                          "b:"}));
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "--include", "-vn=x", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "--include", "-vn=x", "a:",
+                          "b:"}));
+    // Only letters make a short cluster.
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "-1n=x", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "-1n=x", "a:", "b:"}));
+
+    // A bisync's conflict option comes after the app's own --dry-run.
+    auto bisync = makeTask(JobOptions::Bisync, false);
+    bisync->conflictResolve = "newer";
+    const QStringList preview = bisync->getPreviewOptions();
+    QCOMPARE(preview.count("--dry-run"), 1);
+    QCOMPARE(preview.value(1), QString("--dry-run"));
+    QVERIFY2(preview.indexOf("--conflict-resolve") > 1,
+             qPrintable(preview.join(' ')));
+    delete bisync;
   }
 
   // Bisync's --max-delete is a percentage that aborts before anything

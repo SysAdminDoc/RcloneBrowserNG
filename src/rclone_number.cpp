@@ -1,5 +1,6 @@
 #include "rclone_number.h"
 
+#include <QtAlgorithms>
 #include <cmath>
 #include <limits>
 
@@ -140,26 +141,35 @@ bool Special(QStringView s, double *value) {
   return false;
 }
 
-double ScaleByPowerOfTen(double value, int exponent) {
-  static const double kExact[] = {1e0,  1e1,  1e2,  1e3,  1e4,  1e5,
-                                  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
-                                  1e12, 1e13, 1e14, 1e15, 1e16, 1e17,
-                                  1e18, 1e19, 1e20, 1e21, 1e22};
-  while (exponent > 22 && std::isfinite(value) && value != 0) {
-    value *= 1e22;
-    exponent -= 22;
+// mantissa * 2^exponent rounded to the nearest double, ties to even, the
+// way strconv's atofHex does it. truncated says hex digits past the 16 kept
+// in mantissa weren't all zero, so a value that looks like a tie rounds up.
+// The rounding is done here rather than by ldexp, which rounds a second
+// time when the result is subnormal.
+double HexToDouble(quint64 mantissa, bool truncated, int exponent) {
+  if (mantissa == 0) {
+    return 0;
   }
-  while (exponent < -22 && value != 0) {
-    value /= 1e22;
-    exponent += 22;
+  const int shift = qCountLeadingZeroBits(mantissa);
+  mantissa <<= shift;
+  exponent -= shift;
+  const int topExponent = exponent + 63;
+  // 53 bits for a normal double, fewer as the value sinks below 2^-1022.
+  const int keep = topExponent >= -1022 ? 53 : 53 - (-1022 - topExponent);
+  if (keep < 0) {
+    return 0; // under half the smallest subnormal
   }
-  if (exponent >= 0 && exponent <= 22) {
-    return value * kExact[exponent];
+  const int drop = 64 - keep;
+  quint64 kept = drop == 64 ? 0 : mantissa >> drop;
+  const bool roundBit = ((mantissa >> (drop - 1)) & 1) != 0;
+  const quint64 restMask = drop - 1 == 0 ? 0 : (quint64(1) << (drop - 1)) - 1;
+  const bool rest = (mantissa & restMask) != 0 || truncated;
+  if (roundBit && (rest || (kept & 1) != 0)) {
+    kept++;
   }
-  if (exponent < 0 && exponent >= -22) {
-    return value / kExact[-exponent];
-  }
-  return value;
+  // kept fits in 54 bits and the scale lands on a whole bit, so this is
+  // exact; past the top it gives infinity, which is the range error.
+  return std::ldexp(static_cast<double>(kept), exponent + drop);
 }
 
 } // namespace
@@ -303,6 +313,9 @@ bool ParseFloat(const QString &text, double *value) {
   int ndMant = 0;
   int dp = 0;
   quint64 mantissa = 0;
+  bool truncated = false;
+  // Every significant decimal digit, for the correctly rounded conversion.
+  QByteArray significant;
   for (; i < n; i++) {
     const char16_t c = s[i].unicode();
     if (c == u'_') {
@@ -324,9 +337,14 @@ bool ParseFloat(const QString &text, double *value) {
         continue;
       }
       nd++;
+      if (!hex) {
+        significant.append(static_cast<char>(c));
+      }
       if (ndMant < maxMantDigits) {
         mantissa = mantissa * base + static_cast<quint64>(c - u'0');
         ndMant++;
+      } else if (c != u'0') {
+        truncated = true;
       }
       continue;
     }
@@ -336,6 +354,8 @@ bool ParseFloat(const QString &text, double *value) {
       if (ndMant < maxMantDigits) {
         mantissa = mantissa * 16 + static_cast<quint64>(Lower(c) - u'a' + 10);
         ndMant++;
+      } else {
+        truncated = true;
       }
       continue;
     }
@@ -386,10 +406,28 @@ bool ParseFloat(const QString &text, double *value) {
   if (i != n) {
     return false; // ParseFloat refuses anything left over
   }
-  const int exponent = mantissa != 0 ? dp - ndMant : 0;
-  double result = hex ? std::ldexp(static_cast<double>(mantissa), exponent)
-                      : ScaleByPowerOfTen(static_cast<double>(mantissa),
-                                          exponent);
+  // strconv rounds correctly, so the value can't be built from the 19
+  // digits kept above: 0.9999999999999999444 would come out as 1.
+  double result = 0;
+  if (hex) {
+    result = HexToDouble(mantissa, truncated,
+                         mantissa != 0 ? dp - ndMant : 0);
+  } else if (mantissa != 0) {
+    // The value is 0.<significant> * 10^dp, with dp holding strconv's own
+    // exponent (it stops reading the exponent's digits at 10000). Qt's
+    // double-conversion rounds that correctly.
+    significant.append('e').append(QByteArray::number(dp - nd));
+    bool ok = false;
+    result = significant.toDouble(&ok);
+    if (!ok) {
+      // Qt gives 0 both ways; the exponent says which. strconv calls
+      // overflow a range error and reads underflow as zero.
+      if (dp > 0) {
+        return false;
+      }
+      result = 0;
+    }
+  }
   if (!std::isfinite(result)) {
     return false; // ErrRange
   }

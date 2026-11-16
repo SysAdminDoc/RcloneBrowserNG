@@ -100,6 +100,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: each sync, copy or move keeps a report in the app data folder (CLI `--combined`, rc `combined` on rclone 1.76.0 and later); the job card's "Changes" view lists added, replaced, deleted and failed files with a filter; reports are pruned with job history; with an older rc daemon the view says the report needs rclone 1.76.0.
   Complexity: M
 
+- [ ] P2 — Warn when replacing files into a backup can trip the delete cap
+  Why: a sync with `--backup-dir` (or `--suffix`) that only replaces files never opens the deletion summary, yet each replaced file whose name the backup already holds makes rclone delete that older copy first and count it against `--max-delete`, so a daily sync into the same backup folder can stop at the cap of 100 with no warning.
+  Evidence (Verified): on rclone v1.76.0 a dry run logs a replaced file's old copy as `"skipped":"move"` (`"move to a.txt.bak"` with `--suffix`) and logs nothing for the older backup copy; with two extra destination files and the backup already holding an older `old1.txt`, the dry run lists two moves but the real run fails at `--max-delete 2` and finishes at 3, and a replaced file whose older copy sits in the backup adds one the same way, with `--backup-dir` and with `--suffix`; `TransferDialog::accept` opens the summary only when `SyncPreview::Summary::deletesAnything()`, and `SyncPreview::CapWarnings` already counts `replacedIntoBackup`.
+  Touches: `src/transfer_dialog.cpp`, `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: when the preview finds no deletes but `CapWarnings` returns a warning (replaced files into a backup plus a count cap below their number, or any size cap), Run shows a short dialog with the headline and that warning and Run Sync / Cancel; with no cap, or fewer replaced files than the cap, Run goes straight through as now.
+  Complexity: S
+
 - [ ] P2 — Add "Download rclone" to Preferences
   Why: after "Not now" the only way back to the download is restarting the app, and a deleted or broken rclone can't be replaced without finding a binary by hand.
   Evidence (Verified): the "Not now" status in `src/main_window.cpp` (`offerRcloneDownload`) says "restart the app to download it"; `src/preferences_dialog.cpp` has no download entry; `RcloneInstaller::RunDownload` already takes any parent and folder.

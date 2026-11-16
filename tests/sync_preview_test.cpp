@@ -127,6 +127,96 @@ private slots:
     const Summary renamed = Parse(
         R"({"level":"notice","skipped":"move to a.txt.bak","size":4,"object":"a.txt"})");
     QCOMPARE(renamed.toDelete, 0);
+    QCOMPARE(renamed.replacedIntoBackup, 1);
+    QCOMPARE(summary.replacedIntoBackup, 1);
+  }
+
+  void titleSaysWhatHappensToTheFiles() {
+    Summary deleted;
+    deleted.toDelete = 1;
+    QCOMPARE(SyncPreview::DeletionTitle(deleted),
+             QStringLiteral("Sync will delete 1 file"));
+
+    Summary moved;
+    moved.toDelete = 3;
+    moved.toBackup = 3;
+    QCOMPARE(SyncPreview::DeletionTitle(moved),
+             QStringLiteral("Sync will move 3 files into the backup"));
+
+    // The old title called all five moves.
+    Summary both;
+    both.toDelete = 5;
+    both.toBackup = 2;
+    QCOMPARE(SyncPreview::DeletionTitle(both),
+             QStringLiteral("Sync will delete 3 files and move 2 into the "
+                            "backup"));
+  }
+
+  void warnsWhenACapStopsTheRun() {
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    Summary summary;
+    summary.toDelete = 5;
+    summary.deleteBytes = 50;
+
+    QCOMPARE(SyncPreview::CapWarnings(summary, -1, -1, nice), QStringList());
+    QCOMPARE(SyncPreview::CapWarnings(summary, 5, 50, nice), QStringList());
+
+    const QStringList over = SyncPreview::CapWarnings(summary, 4, 49, nice);
+    QCOMPARE(over.size(), 2);
+    QVERIFY2(over[0].contains("delete cap is 4") &&
+                 over[0].contains("after deleting 4"),
+             qPrintable(over[0]));
+    QVERIFY2(over[1].contains("--max-delete-size is 49 B") &&
+                 over[1].contains("come to 50 B") &&
+                 over[1].contains("before deleting"),
+             qPrintable(over[1]));
+
+    summary.toBackup = 2;
+    const QStringList mixed = SyncPreview::CapWarnings(summary, 4, -1, nice);
+    QCOMPARE(mixed.size(), 1);
+    QVERIFY2(mixed[0].contains("after deleting or moving 4"),
+             qPrintable(mixed[0]));
+  }
+
+  // Measured on rclone v1.76.0: two extra files with --backup-dir, and the
+  // backup already holding an older old1.txt. The dry run lists two moves,
+  // yet --max-delete 2 stops the real run (deleting the older old1.txt
+  // counts too) and 3 lets it finish. A replaced file's old copy landing on
+  // an older backup copy counts the same way, and so does --suffix.
+  void warnsThatOlderBackupCopiesCountAsDeletes() {
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    Summary summary;
+    summary.toDelete = 2;
+    summary.toBackup = 2;
+    summary.deleteBytes = 4;
+
+    const QStringList count = SyncPreview::CapWarnings(summary, 2, -1, nice);
+    QCOMPARE(count.size(), 1);
+    QVERIFY2(count[0].contains("older copies") &&
+                 count[0].contains("could stop at the delete cap of 2"),
+             qPrintable(count[0]));
+    // Every move doubled is the most it can count.
+    QCOMPARE(SyncPreview::CapWarnings(summary, 4, -1, nice), QStringList());
+
+    // The size of an older copy isn't in the dry run, so any size cap could
+    // be the one that stops it.
+    const QStringList size = SyncPreview::CapWarnings(summary, -1, 1000, nice);
+    QCOMPARE(size.size(), 1);
+    QVERIFY2(size[0].contains("could stop at --max-delete-size (1000 B)"),
+             qPrintable(size[0]));
+    QVERIFY2(SyncPreview::CapWarnings(summary, 3, 1000, nice)[0].contains(
+                 "the delete cap of 3 or --max-delete-size (1000 B)"),
+             "both caps named");
+
+    summary.replacedIntoBackup = 1;
+    QCOMPARE(SyncPreview::CapWarnings(summary, 4, -1, nice).size(), 1);
+    QCOMPARE(SyncPreview::CapWarnings(summary, 5, -1, nice), QStringList());
+
+    // No backup, no older copies to count.
+    Summary plain;
+    plain.toDelete = 2;
+    plain.deleteBytes = 4;
+    QCOMPARE(SyncPreview::CapWarnings(plain, 2, 1000, nice), QStringList());
   }
 };
 

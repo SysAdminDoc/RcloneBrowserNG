@@ -2,6 +2,8 @@
 
 #include "pch.h"
 
+#include <functional>
+
 // `rclone sync` removes destination files the source no longer has, and
 // `--delete-excluded` removes anything a filter skipped. Neither said how
 // much it was about to delete. An upstream reporter lost already-uploaded
@@ -24,6 +26,10 @@ struct Summary {
   int toDelete = 0;
   // How many of toDelete are moved aside rather than deleted.
   int toBackup = 0;
+  // Replaced files whose old copy goes into the backup ("move", or "move to
+  // a.txt.bak" with --suffix). Not a delete, unless the backup already
+  // holds a file of that name: rclone deletes that one first and counts it.
+  int replacedIntoBackup = 0;
   qint64 transferBytes = 0;
   qint64 deleteBytes = 0;
   // Capped; `moreDeletions` counts the ones not listed.
@@ -43,5 +49,16 @@ Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed = 20);
 
 // One line for the panel heading.
 QString Headline(const Summary &summary);
+
+// The deletion summary's title: what the sync deletes, what it moves into
+// the backup, or both.
+QString DeletionTitle(const Summary &summary);
+
+// Why the real run would stop at a delete cap, one line each, for the
+// deletion summary. countCap and bytesCap are -1 when there's no cap;
+// niceSize formats a byte count.
+QStringList CapWarnings(const Summary &summary, qint64 countCap,
+                        qint64 bytesCap,
+                        const std::function<QString(qint64)> &niceSize);
 
 } // namespace SyncPreview

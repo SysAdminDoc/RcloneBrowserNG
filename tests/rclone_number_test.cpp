@@ -154,6 +154,43 @@ const QList<Case> kSizes{
     {u"1miB"_s, 1048576},
     {u"1Mib"_s, 1048576},
     {u"\uff11k"_s, kRefused},
+    // More digits than a double holds: rclone rounds the number to the
+    // nearest double before it truncates to bytes.
+    {u"0.9999999999999999444b"_s, 0},
+    {u"241.99999999999997894b"_s, 241},
+    {u"467.99999999999995590b"_s, 467},
+    {u"861.99999999999994378b"_s, 862},
+    {u"1023.99999999999988631b"_s, 1023},
+    // A tie in the 16 hex digits kept, broken by a digit past them. Above
+    // 2^34 options/get prints sizes through "%.3f<suffix>", so the exact
+    // value here is ParseFloat's, measured through --tpslimit below.
+    {u"0x1.00000000000008000001p52b"_s, Q_INT64_C(4503599627370497)},
+};
+
+struct FloatCase {
+  QString text;
+  std::optional<double> expected; // nullopt: rclone refuses it
+};
+
+// --tpslimit=<text>, a plain float64 flag, read back exactly through
+// options/get on rclone v1.76.0 (2026-11-15).
+const QList<FloatCase> kFloats{
+    {u"0.9999999999999999444"_s, std::nextafter(1.0, 0.0)},
+    {u"861.99999999999994378"_s, 862.0},
+    {u"1.797693134862315807937289714053e308"_s,
+     std::numeric_limits<double>::max()},
+    {u"1.7976931348623159e308"_s, std::nullopt},
+    {u"2.4703282292062328e-324"_s, std::numeric_limits<double>::denorm_min()},
+    {u"2.4703282292062327e-324"_s, 0.0},
+    {u"1e-111111"_s, 0.0},
+    {u"0x1p-1075"_s, 0.0},
+    {u"0x1.0000000000001p-1075"_s, std::numeric_limits<double>::denorm_min()},
+    {u"0x1.00000000000008p0"_s, 1.0},
+    {u"0x1.00000000000008000001p0"_s,
+     1.0 + std::numeric_limits<double>::epsilon()},
+    {u"0x1.00000000000008000001p52"_s, 4503599627370497.0},
+    {u"0x1.fffffffffffff8p1023"_s, std::nullopt},
+    {u"0x1.fffffffffffff7ffffp1023"_s, std::numeric_limits<double>::max()},
 };
 
 QString Show(const QString &text) {
@@ -262,6 +299,21 @@ private slots:
     }
   }
 
+  void roundsFloatsAsGoDoes() {
+    for (const FloatCase &c : kFloats) {
+      double value = 12345;
+      const bool ok = RcloneNumber::ParseFloat(c.text, &value);
+      QVERIFY2(ok == c.expected.has_value(),
+               qPrintable(Show(c.text) + (ok ? u" accepted"_s
+                                             : u" refused"_s)));
+      if (ok) {
+        QVERIFY2(value == *c.expected,
+                 qPrintable(Show(c.text) + u" gave "_s +
+                            QString::number(value, 'g', 17)));
+      }
+    }
+  }
+
   void agreesWithTheInstalledRclone() {
     const QString rclone = FindRcloneForTests();
     if (rclone.isEmpty()) {
@@ -312,6 +364,20 @@ private slots:
     };
     check(kCounts, u"max-delete"_s, u"MaxDelete"_s);
     check(kSizes, u"max-delete-size"_s, u"MaxDeleteSize"_s);
+    for (const FloatCase &c : kFloats) {
+      const std::optional<double> got = read(u"tpslimit"_s, c.text,
+                                             u"TPSLimit"_s);
+      QVERIFY2(got.has_value() == c.expected.has_value(),
+               qPrintable(u"tpslimit "_s + Show(c.text) +
+                          (got ? u" accepted by rclone"_s
+                               : u" refused by rclone"_s)));
+      if (got) {
+        QVERIFY2(*got == *c.expected,
+                 qPrintable(u"tpslimit "_s + Show(c.text) + u" is "_s +
+                            QString::number(*got, 'g', 17) +
+                            u" in rclone"_s));
+      }
+    }
   }
 };
 

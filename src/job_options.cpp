@@ -58,17 +58,31 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   // does, so a bisync preview keeps both to show what the run will do.
   static const QStringList kCaps{QStringLiteral("--max-delete"),
                                  QStringLiteral("--max-delete-size")};
+  // These take the next argument as a pattern, and a pattern can look like
+  // a flag ("- run=*", "-vn=x") without being one.
+  static const QStringList kPatternFlags{QStringLiteral("--exclude"),
+                                         QStringLiteral("--include"),
+                                         QStringLiteral("--filter")};
   const bool dropCaps = args.value(0) != QLatin1String("bisync");
   for (qsizetype i = 0; i < args.size();) {
     const QString &arg = args.at(i);
+    if (kPatternFlags.contains(arg)) {
+      i += 2;
+      continue;
+    }
     const QString name = arg.section(QLatin1Char('='), 0, 0);
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
     // A short flag cluster gives its = value to the letter just before it,
-    // so -vn=false sets -v and turns the dry run off.
-    const bool shortDryRunValue =
-        equals >= 2 && arg.startsWith(QLatin1Char('-')) &&
-        !arg.startsWith(QLatin1String("--")) &&
-        arg.at(equals - 1) == QLatin1Char('n');
+    // so -vn=false sets -v and turns the dry run off. pflag reads every
+    // character as a flag letter; this only takes letters, so "- run=*"
+    // isn't read as one.
+    bool shortDryRunValue = equals >= 2 && arg.startsWith(QLatin1Char('-')) &&
+                            !arg.startsWith(QLatin1String("--")) &&
+                            arg.at(equals - 1) == QLatin1Char('n');
+    for (qsizetype k = 1; shortDryRunValue && k < equals; k++) {
+      const char16_t c = arg.at(k).unicode();
+      shortDryRunValue = (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z');
+    }
     if (dropCaps && kCaps.contains(arg)) {
       args.remove(i, qMin<qsizetype>(2, args.size() - i));
     } else if (equals > 0 && ((dropCaps && kCaps.contains(name)) ||
@@ -84,8 +98,12 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
       i++;
     }
   }
-  if (!args.contains(QLatin1String("--dry-run")) &&
-      !args.contains(QLatin1String("-n"))) {
+  // Only the argument right after the command is surely a flag. Anywhere
+  // else a --dry-run or -n can be the value of the option before it
+  // (`--exclude -n` excludes a file named -n and changes everything), so
+  // the preview adds its own. A second --dry-run is harmless.
+  if (args.value(1) != QLatin1String("--dry-run") &&
+      args.value(1) != QLatin1String("-n")) {
     args.insert(args.isEmpty() ? 0 : 1, QStringLiteral("--dry-run"));
   }
   return args;
@@ -150,13 +168,16 @@ QStringList JobOptions::getOptions() const {
     list << "sync";
   } else if (operation == Bisync) {
     list << "bisync";
-    if (!conflictResolve.isEmpty() && conflictResolve != "none") {
-      list << "--conflict-resolve" << conflictResolve;
-    }
   }
 
+  // Right after the command, where DryRunArguments looks for it.
   if (dryRun) {
     list << "--dry-run";
+  }
+
+  if (operation == Bisync && !conflictResolve.isEmpty() &&
+      conflictResolve != "none") {
+    list << "--conflict-resolve" << conflictResolve;
   }
 
   if (sync) {
