@@ -33,6 +33,11 @@
   </screenshots>
   <releases>
     <!-- Release entries are maintained with the local release process. -->
+    <release version="2.2.0" date="2026-11-16">
+      <description>
+        <p>When rclone is missing, the app offers to download it and checks rclone's signature before using it. It also fills in where your rclone.conf lives. Sync can cap how many files it deletes, and new syncs start with a cap of 100. Tasks the system scheduler starts now show up in job history and call their webhooks. A Sync run through the rclone daemon shows live progress, failed daemon runs are tried again the way rclone does, and job history gets rclone's exit codes. A task's extra options can no longer turn a preview or dry run into a real one. The transfer dialog is split into tabs and remembers your last choices again.</p>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-11-15">
       <description>
         <p>Browse and transfer through an rclone running on another computer, with its TLS certificate pinned. Combine several remotes into one, copy files other programs hold open on Windows, and let schedules wait for AC power or an unmetered network. Scheduled tasks run rclone again, and NG keeps its own settings apart from classic Rclone Browser. The app warns about rclone older than 1.76.0 and WinFsp older than 2026 Beta5, and Windows builds use a Qt 6.12.0 carrying Qt's latest security fixes.</p>

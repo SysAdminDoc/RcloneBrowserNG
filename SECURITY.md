@@ -4,8 +4,9 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 2.1.x   | Yes                |
-| 2.0.x   | No (update to 2.1) |
+| 2.2.x   | Yes                |
+| 2.1.x   | No (update to 2.2) |
+| 2.0.x   | No (update to 2.2) |
 | < 2.0   | No (upstream abandoned) |
 
 ## Reporting a Vulnerability

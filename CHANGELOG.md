@@ -1,5 +1,7 @@
 # Change Log
 ## [Unreleased]
+
+## [2.2.0] - 2026-11-16
 ### Features
 -   NEW: When the app starts and can't find rclone, it offers to download it. It fetches the current release from rclone.org, checks the zip against rclone's published SHA-256 list and saves `rclone.exe` next to the app, then starts using it right away. If the app is installed under Program Files, Windows asks for permission once and a small administrator step copies the file in after checking it again. If that's declined, rclone goes to your own app data folder and the app tells you where. On macOS, Linux and BSD it always goes in the app data folder. "Choose rclone..." opens Preferences instead, and "Not now" leaves a hint in the status bar. The Windows uninstaller removes a downloaded `rclone.exe` along with the app
 -   CHANGED: When rclone sits in a folder you can't write to, such as one it downloaded under Program Files, the rclone update prompt offers "Update rclone" in place of "Run selfupdate". `rclone selfupdate` can't replace a file there, so the app downloads and checks the new version itself and asks Windows for permission to swap it in. It's safe on any rclone version, because the old selfupdate weakness isn't involved
