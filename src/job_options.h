@@ -61,7 +61,7 @@ public:
   QString dest;
   bool isFolder;
   QUuid uniqueId;
-  bool DriveSharedWithMe;
+  bool DriveSharedWithMe = false;
   QString heartbeatUrl;
   QString nameTransform;
   QString preCommand;

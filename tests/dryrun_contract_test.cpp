@@ -11,6 +11,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <cstring>
+#include <new>
+
 namespace {
 bool argsContain(const QStringList &args, const QString &flag) {
   return args.contains(flag);
@@ -52,6 +55,22 @@ private slots:
     options.serverSideAcrossConfigs = true;
     QVERIFY(options.getOptions().contains(
         QStringLiteral("--server-side-across-configs")));
+  }
+
+  // DriveSharedWithMe had no initializer, so a default-built task could add
+  // --drive-shared-with-me from whatever was in memory. Filling the storage
+  // first makes that show on every run instead of now and then.
+  void sharedWithMeIsOffByDefault() {
+    alignas(JobOptions) unsigned char storage[sizeof(JobOptions)];
+    std::memset(storage, 0xFF, sizeof(storage));
+    auto *options = new (storage) JobOptions();
+    options->operation = JobOptions::Copy;
+    options->source = "a:src";
+    options->dest = "b:dst";
+    const bool added = options->getOptions().contains(
+        QStringLiteral("--drive-shared-with-me"));
+    options->~JobOptions();
+    QVERIFY(!added);
   }
 
   // Sync is the only operation that deletes at the destination. Bisync reads
