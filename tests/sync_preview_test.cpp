@@ -566,6 +566,21 @@ private slots:
                  .startsWith("rclone's dry run lists these files, and this "
                              "bisync keeps some of them in the backup"),
              qPrintable(SyncPreview::RemovalDetail(both, "1 B")));
+    // Bisync takes a folder for each side as well as --backup-dir.
+    const QString bisyncFlags =
+        "(--backup-dir, --backup-dir1, --backup-dir2 or --suffix)";
+    QVERIFY2(SyncPreview::RemovalDetail(both, "1 B").contains(bisyncFlags),
+             qPrintable(SyncPreview::RemovalDetail(both, "1 B")));
+    Summary moved;
+    moved.toDelete = 1;
+    moved.toBackup = 1;
+    QVERIFY2(SyncPreview::RemovalDetail(moved, "1 B")
+                 .contains("into the backup (--backup-dir or --suffix) "
+                           "instead"),
+             qPrintable(SyncPreview::RemovalDetail(moved, "1 B")));
+    moved.command = SyncPreview::Command::Bisync;
+    QVERIFY2(SyncPreview::RemovalDetail(moved, "1 B").contains(bisyncFlags),
+             qPrintable(SyncPreview::RemovalDetail(moved, "1 B")));
   }
 
   void readsBisyncBackupsAndDeleteExcluded_data() {
@@ -701,6 +716,76 @@ private slots:
     // A bisync's dry run keeps its caps.
     QVERIFY(SyncPreview::DryRunEnvironment(env, SyncPreview::Command::Bisync)
                 .contains("RCLONE_MAX_DELETE"));
+  }
+
+  // rclone sets a path's global. options when it opens the path: the
+  // source, the destination, the backup folder, then each --compare-dest or
+  // else each --copy-dest, and a remote nested in an option after the one
+  // holding it. The last one wins. A pattern and the value of any other
+  // flag are never opened.
+  void readsGlobalsInTheOrderRcloneOpensPaths_data() {
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QStringList>("environment");
+    QTest::addColumn<QStringList>("globals");
+    const QStringList none;
+    QTest::newRow("open order, not argument order")
+        << QStringList{"sync",
+                       "--compare-dest",
+                       "r,global.max_delete=1:cmp",
+                       "--backup-dir=r,global.max_delete=2:bak",
+                       "r,global.max_delete=3:src",
+                       "r,global.max_delete=4:dst"}
+        << none
+        << QStringList{"--max-delete=3", "--max-delete=4", "--max-delete=2",
+                       "--max-delete=1"};
+    QTest::newRow("--copy-dest only without --compare-dest")
+        << QStringList{"sync", "--copy-dest", "r,global.max_delete=9:cp",
+                       "--compare-dest=r,global.max_delete=1:cmp", "s", "d"}
+        << none << QStringList{"--max-delete=1"};
+    QTest::newRow("--copy-dest alone")
+        << QStringList{"sync", "--copy-dest=r,global.max_delete=9:cp", "s",
+                       "d"}
+        << none << QStringList{"--max-delete=9"};
+    QTest::newRow("the last --backup-dir")
+        << QStringList{"sync", "--backup-dir", "r,global.max_delete=1:a",
+                       "--backup-dir", "r,global.max_delete=2:b", "s", "d"}
+        << none << QStringList{"--max-delete=2"};
+    QTest::newRow("a pattern or another flag's value")
+        << QStringList{"sync",
+                       "--exclude",
+                       "r,global.max_delete=1:x",
+                       "--filter=r,global.max_delete=2:y",
+                       "--user-agent=r,global.max_delete=3:z",
+                       "s",
+                       "d"}
+        << none << none;
+    QTest::newRow("a nested remote after its holder")
+        << QStringList{"sync", "s",
+                       ":alias,remote=':local,global.max_delete=2:d',"
+                       "global.max_delete=1:"}
+        << none << QStringList{"--max-delete=1", "--max-delete=2"};
+    QTest::newRow("bisync's backup folder for each side")
+        << QStringList{"bisync", "--backup-dir2", "r,global.max_delete=2:b2",
+                       "--backup-dir", "r,global.max_delete=0:b", "p1", "p2"}
+        << none << QStringList{"--max-delete=0", "--max-delete=2"};
+    QTest::newRow("a backup folder from the environment")
+        << QStringList{"sync", "s", "d"}
+        << QStringList{"RCLONE_BACKUP_DIR=r,global.max_delete=7:eb"}
+        << QStringList{"--max-delete=7"};
+  }
+
+  void readsGlobalsInTheOrderRcloneOpensPaths() {
+    QFETCH(QStringList, arguments);
+    QFETCH(QStringList, environment);
+    QFETCH(QStringList, globals);
+    QProcessEnvironment env;
+    for (const QString &variable : environment) {
+      env.insert(variable.section('=', 0, 0), variable.section('=', 1));
+    }
+    const QStringList effective =
+        SyncPreview::EffectiveArguments(arguments, env);
+    const qsizetype head = environment.size() + arguments.size();
+    QCOMPARE(effective.mid(head), globals);
   }
 
   // RCLONE_FIX_CASE=true with --backup-dir, an NFC name over the same name

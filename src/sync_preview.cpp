@@ -187,6 +187,41 @@ QList<QPair<QString, QString>> ConnectionOptions(const QString &path) {
   return Options(); // it ended before its path
 }
 
+// Appends a --flag=value for each global. option rclone reads from path,
+// then those of a remote written inside one of its options (an alias's
+// remote=, say), which rclone opens after it. A nested value is shorter
+// than the path that holds it, and the depth is capped too.
+void AppendGlobals(const QString &path, QStringList &globals, int depth) {
+  const QList<QPair<QString, QString>> options = ConnectionOptions(path);
+  for (const QPair<QString, QString> &option : options) {
+    if (!option.first.startsWith(QLatin1String("global."))) {
+      continue;
+    }
+    const QString name = option.first.mid(7);
+    for (const ReadOption &known : kReadOptions) {
+      if (known.global != nullptr && name == QLatin1String(known.global)) {
+        globals << "--" + QString::fromLatin1(known.flag) + "=" +
+                       option.second;
+      }
+    }
+  }
+  if (depth >= 16) {
+    return;
+  }
+  for (const QPair<QString, QString> &option : options) {
+    AppendGlobals(option.second, globals, depth + 1);
+  }
+}
+
+// The flags that make a removed file go into a backup instead, as the
+// summary names them.
+QString BackupFlagNames(Command command) {
+  return command == Command::Bisync
+             ? QStringLiteral("--backup-dir, --backup-dir1, --backup-dir2 or "
+                              "--suffix")
+             : QStringLiteral("--backup-dir or --suffix");
+}
+
 } // namespace
 
 QString CommandName(Command command) {
@@ -265,33 +300,70 @@ QStringList EffectiveArguments(const QStringList &arguments,
     defaults << "--" + flag + "=" + value;
   }
 
-  QStringList globals;
-  for (const QString &arg : arguments) {
-    // A path, or the value of a flag that names one (--backup-dir=remote,
-    // global.suffix=.old:bak).
-    QString path = arg;
-    if (arg.startsWith(QLatin1String("--"))) {
-      const qsizetype equals = arg.indexOf(QLatin1Char('='));
-      if (equals < 0) {
-        continue;
-      }
-      path = arg.mid(equals + 1);
-    } else if (arg.startsWith(QLatin1Char('-'))) {
+  // rclone sets a path's global. options when it opens the path, so one
+  // from a later path wins. It opens the source and the destination, then
+  // the backup folder, then each --compare-dest or else each --copy-dest
+  // (cmd.NewFsSrcDst, then newSyncCopyMove in fs/sync/sync.go, v1.76.0).
+  // Bisync opens Path1's backup folder before Path2's, where --backup-dir1
+  // and --backup-dir2 stand in for --backup-dir. Only those flags name a
+  // path, and a pattern is never opened, whatever it looks like.
+  static const QStringList kPatternFlags{QStringLiteral("--exclude"),
+                                         QStringLiteral("--include"),
+                                         QStringLiteral("--filter")};
+  enum PathFlag { BackupDir, BackupDir1, BackupDir2, CompareDest, CopyDest };
+  static const QStringList kPathFlags{
+      QStringLiteral("--backup-dir"), QStringLiteral("--backup-dir1"),
+      QStringLiteral("--backup-dir2"), QStringLiteral("--compare-dest"),
+      QStringLiteral("--copy-dest")};
+  QStringList positional;
+  QString backupDirs[3]; // the last value of each, as a string flag keeps
+  QStringList compareDests;
+  QStringList copyDests;
+  const QStringList all = defaults + arguments;
+  for (qsizetype i = 0; i < all.size(); i++) {
+    const QString &arg = all.at(i);
+    if (!arg.startsWith(QLatin1Char('-'))) {
+      positional << arg;
       continue;
     }
-    const QList<QPair<QString, QString>> options = ConnectionOptions(path);
-    for (const QPair<QString, QString> &option : options) {
-      if (!option.first.startsWith(QLatin1String("global."))) {
-        continue;
-      }
-      const QString name = option.first.mid(7);
-      for (const ReadOption &known : kReadOptions) {
-        if (known.global != nullptr && name == QLatin1String(known.global)) {
-          globals << "--" + QString::fromLatin1(known.flag) + "=" +
-                         option.second;
-        }
-      }
+    if (kPatternFlags.contains(arg)) {
+      i++; // its pattern
+      continue;
     }
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    const qsizetype flag = kPathFlags.indexOf(equals > 0 ? arg.left(equals)
+                                                         : arg);
+    if (flag < 0) {
+      continue;
+    }
+    QString value;
+    if (equals > 0) {
+      value = arg.mid(equals + 1);
+    } else if (i + 1 < all.size()) {
+      value = all.at(++i); // even one that starts with -
+    }
+    if (flag == CompareDest) {
+      compareDests << value;
+    } else if (flag == CopyDest) {
+      copyDests << value;
+    } else {
+      backupDirs[flag] = value;
+    }
+  }
+  QStringList opened = positional;
+  if (arguments.value(0) == QLatin1String("bisync")) {
+    opened << (backupDirs[BackupDir1].isEmpty() ? backupDirs[BackupDir]
+                                                : backupDirs[BackupDir1])
+           << (backupDirs[BackupDir2].isEmpty() ? backupDirs[BackupDir]
+                                                : backupDirs[BackupDir2]);
+  } else {
+    opened << backupDirs[BackupDir];
+  }
+  opened << (compareDests.isEmpty() ? copyDests : compareDests);
+
+  QStringList globals;
+  for (const QString &path : opened) {
+    AppendGlobals(path, globals, 0);
   }
   return defaults + arguments + globals;
 }
@@ -613,16 +685,16 @@ QString RemovalDetail(const Summary &summary, const QString &size) {
            size + ".";
   }
   if (!deletes) {
-    return why +
-           "moves them into the backup (--backup-dir or --suffix) instead "
-           "of deleting them. rclone still counts each one as a delete for "
-           "the delete cap. Size: " +
+    return why + "moves them into the backup (" +
+           BackupFlagNames(summary.command) +
+           ") instead of deleting them. rclone still counts each one as a "
+           "delete for the delete cap. Size: " +
            size + ".";
   }
-  return why +
-         "keeps some of them in the backup (--backup-dir or --suffix) and "
-         "removes the rest, and rclone counts every one as a delete for the "
-         "delete cap. Size: " +
+  return why + "keeps some of them in the backup (" +
+         BackupFlagNames(summary.command) +
+         ") and removes the rest, and rclone counts every one as a delete "
+         "for the delete cap. Size: " +
          size + ".";
 }
 

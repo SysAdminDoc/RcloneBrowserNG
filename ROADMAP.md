@@ -206,7 +206,35 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Why: FlagsIn skips the token after `--exclude`, `--include` or `--filter` even when that token is the value of an earlier string flag, and it doesn't skip the values of other string flags. With `--user-agent --exclude --fix-case`, rclone takes `--exclude` as the user agent and turns `--fix-case` on, while FlagsIn reads it off (measured on the CLI by the verifier of c8f916a). It needs a nonsense argument list, but it under-warns when it happens.
   Evidence: `src/sync_preview.cpp` FlagsIn kPatternFlags skip.
   Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
-  Acceptance: FlagsIn knows which rclone flags take a value (from `rclone help flags` on v1.76.0, or a list checked against it) and skips exactly those values; the measured case reads `--fix-case` on, as a data row.
+  Acceptance: FlagsIn knows which rclone flags take a value (from `rclone help flags` on v1.76.0, or a list checked against it) and skips exactly those values; the measured case reads `--fix-case` on, as a data row. EffectiveArguments makes the same guess about which tokens are paths and should use the same list.
+  Complexity: S
+
+- [ ] P3 — Keep the Move check's one-file-at-a-time rule when the user's filters hold `!`
+  Why: DryRunExtras adds `--filter "- /.rclone-browser-ng-dry-run-matches-nothing"` so a Move's dry run lists each file instead of one server-side folder move. A `!` rule clears every rule before it (fs/filter/rules.go:296), and `--filter` rules come before `--filter-from` ones, so a `!` in the user's filter file drops the added rule. The check then shows a folder move where the real run, into an existing folder, moves file by file. A `--max-size` near 4 EiB keeps the filter active without a rule (MaxSize ≥ 0 makes InActive false, and a file of unknown size stays in), but a command-line `--max-size` overrides an `RCLONE_MAX_SIZE` variable, so the check would list files the real run leaves alone.
+  Evidence: `src/sync_preview.cpp` DryRunExtras; read in fs/filter, not measured.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/dryrun_contract_test.cpp`
+  Acceptance: measured first on v1.76.0 with a filter file holding `!` and a Move into a missing and an existing folder; the check lists each file in both, and a `--max-size` from the task, the environment or a path still applies to it, as real-rclone rows.
+  Complexity: S
+
+- [ ] P3 — Drop the cap warning for a Move rclone does as one folder move
+  Why: a Move into a destination folder that doesn't exist yet, with no filters, is one server-side DirMove (fs/sync/sync.go:1282 when the filter is inactive), which counts no deletes. The check still lists it file by file and warns that a cap could stop the run.
+  Evidence: `src/sync_preview.cpp` DryRunExtras and CapWarnings; read in fs/sync, not measured against a capped run.
+  Touches: `src/sync_preview.{h,cpp}`, `src/transfer_dialog.cpp`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first with `move --max-delete 0` into a missing folder on a local and a memory remote; where the real run passes, the summary gives no cap warning, as a data row.
+  Complexity: S
+
+- [ ] P3 — Read a bisync's conflict renames in the check
+  Why: bisync renames a conflict's two copies (to `..path1` and `..path2` unless `--conflict-suffix` says otherwise), and its dry run logs those as renames that Parse skips, so the summary doesn't mention them.
+  Evidence: `src/sync_preview.cpp` Parse; not measured.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first with a bisync dry run over a file changed on both sides; the summary says how many files it renames, from a captured log as a fixture row.
+  Complexity: S
+
+- [ ] P3 — Read a `global.max_delete` from a bisync's backup folder
+  Why: bisync turns the count cap off for its own deletes, and the summary skips the count warning for a bisync. A backup folder path set with `--backup-dir1` or `--backup-dir2` can carry `global.max_delete`, which rclone applies when it opens that folder, so the cap can come back.
+  Evidence: `src/sync_preview.cpp` CapWarnings bisync branch; read in cmd/bisync, not measured.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first on v1.76.0 with `--backup-dir1 ':local,global.max_delete=0:bak'`; if the real bisync stops, the summary warns about it, as a data row.
   Complexity: S
 
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
