@@ -242,6 +242,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: measured first on v1.76.0 with `[bk] global.max_delete = 1` and a two-item delete; if the CLI stops where the batch doesn't, both calls take the core/command route on the same check RcSyncRequest::ConfigGlobalsReason makes, with a real-rcd row.
   Complexity: S
 
+- [ ] P3 — Cover a retry and a remote daemon's environment in the `global.` check
+  Why: a transfer reads the daemon's config/dump once, in startTransfer, and the card's retries post the same sync/* call again. A section that gains a `global.` option between tries (rclone.conf edited, or Preferences pointed at another config mid-run) is skipped on the next try. On a remote daemon, a `global.` option its host sets through `RCLONE_CONFIG_<REMOTE>_GLOBAL.<OPTION>` never shows in config/dump. Measured on v1.76.0 (2026-11-16) with an rcd started under `RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR=bk:bak`: config/dump listed only `remote` and `type` for `[bk]`, sync/sync deleted the four destination files, and the CLI and core/command moved them into `bak`.
+  Evidence: `src/rclone_rc_engine.cpp` startTransfer (the environment is empty when isRemote()) and resubmit; the retry case read in source, not run.
+  Touches: `src/rclone_rc_engine.cpp`, `src/rc_job_widget.cpp`, `tests/rc_route_test.cpp`
+  Acceptance: a retry reads config/dump again and runs on core/command when a section gained a `global.` option, with a real-rcd row that edits rclone.conf between tries. For a remote daemon, its settings offer a switch (off by default, with the reason beside it) that runs its transfers as separate rclone processes, unless a measured way to read the host's environment over rc turns up first.
+  Complexity: M
+
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
   Why: `remoteFingerprint()` spins a nested `QEventLoop` on the Open/Edit path. It is window-modal with a working Cancel and a 30-second timeout, so the window stays responsive and this is not a freeze, but a nested loop still re-enters the stack and is the last one left on a user-click path.
   Evidence: `src/remote_widget.cpp:211` (`QEventLoop loop; ... loop.exec()`), reached from `src/remote_widget.cpp:174`, `:297` and `:333`. Assessed and deliberately deferred on 2026-09-05 when the rest of the blocking work landed: the RC engine freeze it was grouped with is fixed, and converting this one changes three call sites into continuations for no user-visible gain. Everything else left in `src/` is destructor teardown (`folder_compare.cpp:271`, `rclone_rc_engine.cpp:19`) or the headless `--run-task` CLI (`main.cpp:324`).

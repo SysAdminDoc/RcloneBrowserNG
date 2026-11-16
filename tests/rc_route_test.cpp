@@ -370,6 +370,43 @@ private slots:
                                                << "sub/keep2.txt");
   }
 
+  // A section's global.dry_run = false wins over --dry-run on the command
+  // line, so a dry run that went to core/command over it deleted the whole
+  // destination. sync/sync skips the option and keeps the run dry.
+  void aDryRunStaysOnTheDaemonWhenTheConfigTurnsItOff() {
+    const QString tag = QStringLiteral("conf-dry");
+    const QString root = mDir.path();
+    const QString source = QDir(root).filePath(tag + "-src");
+    QVERIFY(QDir().mkpath(source));
+    const QString dest = makeTree(tag + "-dst");
+
+    const QString configPath = QDir(root).filePath(tag + ".conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    config.write("[bk]\ntype = alias\nremote = " + root.toUtf8() +
+                 "\nglobal.dry_run = false\n");
+    config.close();
+    struct Restore {
+      QString fixture;
+      ~Restore() { SetRcloneConf(fixture); }
+    } restore{mConfigPath};
+    SetRcloneConf(configPath);
+
+    RcloneRcEngine engine;
+    QStringList args;
+    args << "sync" << "--dry-run" << "--verbose" << source
+         << ("bk:" + tag + "-dst");
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("rclonebrowser-"),
+             qPrintable("group was " + group));
+    QCOMPARE(filesUnder(dest), QStringList() << "drop.tmp" << "keep.txt"
+                                             << "sub/drop2.tmp"
+                                             << "sub/keep2.txt");
+  }
+
   // core/bwlimit is the only live tuning rclone actually offers. Measured on
   // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
   // file in flight for eight seconds while a job started afterwards used all

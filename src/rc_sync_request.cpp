@@ -435,14 +435,20 @@ QString ConfigGlobalsReason(const QJsonObject &dump,
   // an alias's remote = :local,global.backup_dir=...: opens with that option.
   // Any section counts, because a run can open one through another remote's
   // options or a plain path ([local]). Matching is wider than rclone's, which
-  // only costs a job its live stats.
-  const QLatin1String inValue(",global.");
+  // only costs a job its live stats. A connection string ends its options
+  // with a ':' ahead of the path, so a value with no ':' after ",global." is
+  // a plain name (D:/photos,global.copy) and carries nothing.
+  const auto carriesGlobal = [](const QString &value) {
+    const qsizetype at =
+        value.indexOf(QLatin1String(",global."), 0, Qt::CaseInsensitive);
+    return at >= 0 && value.indexOf(QLatin1Char(':'), at) > at;
+  };
   QStringList sections;
   for (auto it = dump.constBegin(); it != dump.constEnd(); ++it) {
     const QJsonObject section = it.value().toObject();
     for (auto key = section.constBegin(); key != section.constEnd(); ++key) {
       if (key.key().startsWith(QLatin1String("global."), Qt::CaseInsensitive) ||
-          key.value().toString().contains(inValue, Qt::CaseInsensitive)) {
+          carriesGlobal(key.value().toString())) {
         sections << it.key();
         break;
       }
@@ -469,9 +475,7 @@ QString ConfigGlobalsReason(const QJsonObject &dump,
     }
     const bool sectionKey = upper.startsWith(QLatin1String("RCLONE_CONFIG_")) &&
                             upper.contains(QLatin1String("_GLOBAL."));
-    const bool pathValue =
-        equals > 0 && entry.mid(equals + 1).contains(inValue,
-                                                     Qt::CaseInsensitive);
+    const bool pathValue = equals > 0 && carriesGlobal(entry.mid(equals + 1));
     if (sectionKey || pathValue) {
       return QString("%1 sets a global. option, which rclone ignores for a "
                      "job started over rc")

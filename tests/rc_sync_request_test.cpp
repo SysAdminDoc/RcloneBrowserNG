@@ -645,6 +645,11 @@ private slots:
     QVERIFY(ConfigGlobalsReason(dumpOf("ok", "remote", "/d,global"),
                                 QStringList())
                 .isEmpty());
+    // A folder whose name only looks like the option: no ':' follows it, so
+    // it isn't a connection string's options.
+    QVERIFY(ConfigGlobalsReason(dumpOf("nm", "remote", "D:/photos,global.copy"),
+                                QStringList())
+                .isEmpty());
 
     const QStringList sectionVariable{
         "PATH=C:/x", "RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR=bk:bak"};
@@ -656,6 +661,8 @@ private slots:
     const QStringList pathVariable{
         "RCLONE_BACKUP_DIR=:local,global.max_delete=1:/b"};
     QVERIFY(!ConfigGlobalsReason(QJsonObject(), pathVariable).isEmpty());
+    const QStringList folderVariable{"RCLONE_BACKUP_DIR=D:/old,global.copy"};
+    QVERIFY(ConfigGlobalsReason(QJsonObject(), folderVariable).isEmpty());
 
     // Variables rclone never reads, and a section's ordinary key.
     const QStringList unrelated{"RCLONE_CONFIG_BK_TYPE=alias",

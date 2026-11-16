@@ -460,6 +460,19 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
           startCommand(args, reason, contextGuard, callback);
           return;
         }
+        // A dry run stays on sync/*, which skips every global. option,
+        // global.dry_run among them. The CLI in the daemon applies a
+        // section's global.dry_run = false over --dry-run (measured on
+        // v1.76.0: core/command deleted the files a sync/sync dry run kept),
+        // so the dry run shows the run without the config's other global.
+        // options rather than risk becoming a real one.
+        if (request.payload.value(QLatin1String("_config"))
+                .toObject()
+                .value(QLatin1String("DryRun"))
+                .toBool()) {
+          startSync(args, request, contextGuard, callback);
+          return;
+        }
         // A global. option in rclone.conf or the daemon's environment
         // applies to the CLI and not to sync/*, so read the config the daemon
         // has before committing. Only this PC's environment is known; a
@@ -475,10 +488,16 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
              callback = std::move(callback)](const QJsonObject &dump,
                                              const QString &error) {
               if (!error.isEmpty()) {
-                // A core/command run would fail the same way, so the
-                // environment alone decides.
+                // The config can't be read, so the run goes where a global.
+                // option in it still applies.
+                const QString reason =
+                    QString("config/dump failed (%1), so rclone.conf can't be "
+                            "checked for global. options")
+                        .arg(error);
                 Diagnostics::appendLog(
-                    "rc-engine", QString("config/dump failed: %1").arg(error));
+                    "rc-engine", QString("core/command route: %1").arg(reason));
+                startCommand(args, reason, contextGuard, callback);
+                return;
               }
               const QString reason =
                   RcSyncRequest::ConfigGlobalsReason(dump, environment);
