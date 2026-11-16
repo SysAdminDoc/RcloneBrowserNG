@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P2
 
-- [ ] P2 — Wait out a backend's retry-after time before the next try
-  Why: cmd.Run (cmd/cmd.go:275-281, v1.76.0) sleeps until the stats' RetryAfter time when a backend sent one (a rate limit's Retry-After, for one) before it logs "Attempt n/m failed" and sleeps `--retries-sleep`. The card waits only `--retries-sleep`, so against a rate-limited remote it tries again sooner than the CLI and can fail the same way again.
-  Evidence: `src/rc_job_widget.cpp` startNextAttempt waits mRetrySleepMs and nothing else. Whether core/stats reports a group's retry-after time hasn't been checked (fs/accounting/stats.go RemoteStats).
-  Touches: `src/rc_job_widget.cpp`, `tests/rc_job_widget_test.cpp`
-  Acceptance: v1.76.0's core/stats fields checked in the source; if it reports the time, the card waits until it, logs the CLI's "Received retry after error - sleeping until" line and counts the wait in its elapsed time, with a fake-daemon test; if it doesn't, the entry moves to Roadmap_Blocked.md with that reason.
-  Complexity: S
-
 - [ ] P2 — Record exit 3, 4 and 5 on the daemon route the way the CLI does
   Why: resolveExitCode (cmd/cmd.go, v1.76.0) gives 3 for a directory not found, 4 for a file not found and 5 for an error marked as worth retrying, ahead of 6 and 7. The card takes 6 and 7 from cmd.Run's own lines now, but every other failed sync/* run records 1, so history and notifications can call a missing folder a plain failure where the process route names it. The order also means a fatal or no-retry error whose cause is a not-found, a timeout or a retriable error exits 3, 4 or 5 on the CLI where the card records 7 or 6: "failed to make fs for --backup-dir" is a FatalError wrapping NewFs's error (fs/operations/operations.go:2010), and a NoRetry-wrapped context.DeadlineExceeded exits 5 since ShouldRetry walks the cause chain (fs/fserrors/error.go) and runs before IsNoRetryError.
   Evidence: `src/rc_job_widget.cpp` finish() keeps 1 unless mStopExit is set, and rc hands back the job's error as text only. The fatal branch sets 7 from ClassifyUncounted and the Can't retry branch sets 6, with `src/rc_job_result.cpp` IsNoRetryError matching "context deadline exceeded" as rclone's no-retry error. A copy with a locked source file exits 1 on the CLI (measured 2026-11-16), so that case stays 1.

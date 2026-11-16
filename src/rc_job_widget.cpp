@@ -601,6 +601,22 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   if (lastError.isEmpty()) {
     lastError = jobError;
   }
+  // cmd.Run sleeps out a backend's retry-after time before its attempt
+  // line, then sleeps --retries-sleep. It does both after the last try as
+  // well, where the card has no next try to wait for.
+  mRetryAfterMs = 0;
+  if (mAttempt < mAttempts && !mCancelBeforeRetry) {
+    const RcJobResult::RetryAfter wait =
+        RcJobResult::RetryAfterWait(QStringList{lastError, jobError});
+    if (wait.waitMs > 0) {
+      mRetryAfterMs = wait.waitMs;
+      const QString waitLine =
+          QString("Received retry after error - sleeping until %1 (%2)")
+              .arg(wait.until, wait.left);
+      ui.output->appendPlainText(waitLine);
+      Diagnostics::appendLog("rc-job", waitLine);
+    }
+  }
   const QString line =
       lastError.isEmpty()
           ? QString("Attempt %1/%2 failed with %3 errors")
@@ -671,7 +687,7 @@ void RcJobWidget::startNextAttempt() {
   mPollInFlight = true;
   UiPolish::SetStatus(ui.showDetails, "warning", "Retrying");
   const int delay = static_cast<int>(
-      qBound(qint64(0), mRetrySleepMs,
+      qBound(qint64(0), mRetryAfterMs + mRetrySleepMs,
              qint64(std::numeric_limits<int>::max())));
   QTimer::singleShot(delay, this, [this]() {
     if (mFinished || !mRetryPending) {
@@ -729,11 +745,12 @@ void RcJobWidget::submitNextAttempt() {
         self->mGroup =
             group.isEmpty() ? QString("job/%1").arg(jobId) : group;
         self->mAttemptPayload = payload;
-        // cmd.Run's elapsed time takes in its --retries-sleep before a
-        // retry. It also sleeps after its "Attempt n/n failed" line on the
-        // last attempt, when the card has nothing to wait for, so there the
-        // CLI's time comes out one wait longer.
-        self->mElapsedDone += self->mRetrySleepMs / 1000.0;
+        // cmd.Run's elapsed time takes in its retry-after and
+        // --retries-sleep waits before a retry. It also waits after the last
+        // attempt, when the card has nothing to wait for, so there the CLI's
+        // time comes out one wait longer.
+        self->mElapsedDone +=
+            (self->mRetryAfterMs + self->mRetrySleepMs) / 1000.0;
         self->mAttemptClock.start();
         if (sameGroup) {
           // The group goes on counting, so only its errors need a base.

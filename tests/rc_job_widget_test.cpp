@@ -8,6 +8,7 @@
 #include "utils.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QLineEdit>
@@ -894,6 +895,146 @@ private slots:
     QVERIFY2(run.finished, qPrintable(run.output));
     QCOMPARE(run.success, lastSucceeds);
     QCOMPARE(qsizetype(run.resubmits), durations.size() - 1);
+    QCOMPARE(run.elapsed, elapsed);
+  }
+
+  // Go's time.Duration.String() and time.ParseDuration (v1.76.0's toolchain).
+  void readingAGoDuration_data() {
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<qint64>("ms");
+    QTest::newRow("minutes") << QString("1m29.5s") << qint64(89500);
+    QTest::newRow("hours") << QString("2h0m0s") << qint64(7200000);
+    QTest::newRow("milliseconds") << QString("750ms") << qint64(750);
+    QTest::newRow("nanoseconds") << QString("59.999999123s") << qint64(60000);
+    QTest::newRow("micro sign")
+        << (QString("1500") + QChar(0x00B5) + "s") << qint64(2);
+    QTest::newRow("greek mu")
+        << (QString("2500") + QChar(0x03BC) + "s") << qint64(3);
+    QTest::newRow("us") << QString("400us") << qint64(0);
+    QTest::newRow("ns") << QString("900000ns") << qint64(1);
+    QTest::newRow("zero") << QString("0s") << qint64(0);
+    QTest::newRow("bare zero") << QString("0") << qint64(0);
+    QTest::newRow("negative") << QString("-2s") << qint64(-2000);
+    QTest::newRow("no unit") << QString("5") << qint64(-1);
+    QTest::newRow("trailing number") << QString("1m30") << qint64(-1);
+    QTest::newRow("empty") << QString() << qint64(-1);
+    QTest::newRow("sign only") << QString("-") << qint64(-1);
+    QTest::newRow("words") << QString("soon") << qint64(-1);
+  }
+
+  void readingAGoDuration() {
+    QFETCH(QString, text);
+    QFETCH(qint64, ms);
+    QCOMPARE(RcJobResult::GoDurationMs(text), ms);
+  }
+
+  // fserrors.ErrorRetryAfter.Error() in v1.76.0 is "try again after
+  // <RFC3339Nano> (<time.Until>)".
+  void readingARetryAfterWait() {
+    const QString until = "2026-11-16T12:00:00.123456789Z";
+    const QString wrapped =
+        "Failed to copy: try again after " + until + " (1m29.5s)";
+    RcJobResult::RetryAfter wait = RcJobResult::RetryAfterWait({wrapped});
+    QCOMPARE(wait.waitMs, qint64(89500));
+    QCOMPARE(wait.until, until);
+    QCOMPARE(wait.left, QString("1m29.5s"));
+
+    // The longest of them, as stats keeps the latest retry-after time.
+    const QString shorter = "try again after 2026-11-16T11:59:00Z (30s)";
+    wait = RcJobResult::RetryAfterWait({shorter, wrapped});
+    QCOMPARE(wait.waitMs, qint64(89500));
+    const QString both = shorter + ": " + wrapped;
+    wait = RcJobResult::RetryAfterWait({both});
+    QCOMPARE(wait.left, QString("1m29.5s"));
+
+    // A time already past, or no retry-after text, is no wait at all.
+    wait = RcJobResult::RetryAfterWait(
+        {"try again after 2026-11-16T11:00:00Z (-2s)"});
+    QCOMPARE(wait.waitMs, qint64(0));
+    QVERIFY(wait.until.isEmpty());
+    wait = RcJobResult::RetryAfterWait({"boom", QString()});
+    QCOMPARE(wait.waitMs, qint64(0));
+    wait = RcJobResult::RetryAfterWait({"try again after soon (later)"});
+    QCOMPARE(wait.waitMs, qint64(0));
+  }
+
+  // cmd.Run (cmd/cmd.go:275-281, v1.76.0) sleeps until the stats' retry-after
+  // time and logs it before its attempt line, then sleeps --retries-sleep.
+  void aRetryAfterWaitComesBeforeTheNextAttempt_data() {
+    QTest::addColumn<QList<double>>("durations");
+    QTest::addColumn<bool>("lastSucceeds");
+    QTest::addColumn<QString>("left");
+    QTest::addColumn<qint64>("sleepMs");
+    QTest::addColumn<int>("waitLines");
+    QTest::addColumn<qint64>("minWallMs");
+    QTest::addColumn<QString>("elapsed");
+    QTest::newRow("before a retry")
+        << QList<double>{2.5, 1.6} << true << QString("1s") << qint64(1000)
+        << 1 << qint64(2000) << QString("6s");
+    QTest::newRow("not after the last try")
+        << QList<double>{1.2, 1.2, 1.2} << false << QString("250ms")
+        << qint64(0) << 2 << qint64(500) << QString("4s");
+    QTest::newRow("already past")
+        << QList<double>{2.5, 1.6} << true << QString("-2s") << qint64(0)
+        << 0 << qint64(0) << QString("4s");
+  }
+
+  void aRetryAfterWaitComesBeforeTheNextAttempt() {
+    QFETCH(QList<double>, durations);
+    QFETCH(bool, lastSucceeds);
+    QFETCH(QString, left);
+    QFETCH(qint64, sleepMs);
+    QFETCH(int, waitLines);
+    QFETCH(qint64, minWallMs);
+    QFETCH(QString, elapsed);
+    const QString until = "2026-11-16T12:00:00.5Z";
+    const QString error = "Failed to copy: try again after " + until + " (" +
+                          left + ")";
+    QElapsedTimer wall;
+    wall.start();
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &body,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            const qsizetype job = body.value("jobid").toInt();
+            const bool ok = lastSucceeds && job == durations.size();
+            reply(QJsonObject{{"finished", true},
+                              {"success", ok},
+                              {"error", ok ? QString() : error},
+                              {"duration", durations.value(job - 1)},
+                              {"output", QJsonObject()}});
+            return;
+          }
+          if (path == "core/transferred") {
+            reply(QJsonObject{{"transferred", QJsonArray()}});
+            return;
+          }
+          reply(QJsonObject{{"errors", 1},
+                            {"retryError", true},
+                            {"lastError", error}});
+        },
+        {}, QJsonObject(), capsOff(), "sync/copy", 3, {}, sleepMs);
+    const qint64 wallMs = wall.elapsed();
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QCOMPARE(run.success, lastSucceeds);
+    QCOMPARE(qsizetype(run.resubmits), durations.size() - 1);
+    const QString waitLine =
+        "Received retry after error - sleeping until " + until + " (" + left +
+        ")";
+    QCOMPARE(int(run.output.count(waitLine)), waitLines);
+    if (waitLines > 0) {
+      const qsizetype waitAt = run.output.indexOf(waitLine);
+      const qsizetype attemptAt =
+          run.output.indexOf("Attempt 1/3 failed with 1 errors and: " + error);
+      QVERIFY2(waitAt >= 0 && attemptAt > waitAt, qPrintable(run.output));
+    }
+    if (!lastSucceeds) {
+      // No line before the last attempt's, where the card has no wait.
+      const qsizetype lastAt = run.output.indexOf("Attempt 3/3 failed with ");
+      QVERIFY2(lastAt > run.output.lastIndexOf(waitLine),
+               qPrintable(run.output));
+    }
+    QVERIFY2(wallMs >= minWallMs, qPrintable(QString::number(wallMs)));
     QCOMPARE(run.elapsed, elapsed);
   }
 

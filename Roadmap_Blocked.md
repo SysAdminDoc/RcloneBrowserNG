@@ -55,3 +55,13 @@ Only work that needs the maintainer's own accounts, identity, money or say-so, o
   Evidence: docs.weblate.org Qt format; kapitainsky#138, kapitainsky#47
   Acceptance: the Weblate project is live against `translations/rclonebrowser_en.ts`, at least one other language is usable, and the `.qm` files ship in the release artifacts.
   Folded in: the separate "i18n / multi-language support" entry.
+
+---
+
+## P3 Waiting on rclone
+
+- [ ] P3 Wait out every retry-after time a try's errors carry
+  Blocked on: rclone reporting a group's retry-after time in `core/stats`. v1.76.0's `RemoteStats` (fs/accounting/stats.go) leaves out the `retryAfter` it keeps, the latest time any error in the group asked for.
+  Tried 2026-11-16: the card reads the time from the text of the last error the group counted and of the error the job returned ("try again after <time> (<time left>)", fserrors.ErrorRetryAfter), and waits that long as cmd.Run does. A retry-after error that's neither of those, followed by a different error, can't be seen. In v1.76.0 only the Swift backend (a Retry-After over a minute) and Cloudinary (its rate limit) raise one.
+  Why: cmd.Run (cmd/cmd.go:275-281) sleeps until the stats' RetryAfter time before the next try, so the card can try again sooner than the CLI against a rate-limited remote.
+  Acceptance: once a release adds the field, the card waits until it whatever error came last, and the fake-daemon test gets a row where a plain error follows the retry-after one.

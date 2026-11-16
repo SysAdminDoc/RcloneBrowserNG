@@ -79,6 +79,26 @@ Uncounted ClassifyUncounted(const QString &error);
 // them. A backend's own no-retry errors aren't known here.
 bool IsNoRetryError(const QString &error);
 
+// Milliseconds in a Go duration as time.Duration.String() writes it
+// ("1m29.5s", "750ms", "-2s"), or -1 when the text isn't one.
+qint64 GoDurationMs(const QString &text);
+
+// The wait cmd.Run makes before its next try when a backend asked for one
+// (fserrors.ErrorRetryAfter, which v1.76.0's Swift backend raises for a
+// Retry-After over a minute and Cloudinary's for its rate limit). core/stats
+// doesn't report a group's retry-after time, but the error's text carries it
+// as "try again after <RFC3339 time> (<time left>)", the time left worked out
+// when the text was made. The longest wait any of `texts` holds, with the
+// time and time left as rclone wrote them, or a zero wait when none of them
+// has one still to come. A retry-after error that isn't the last one counted
+// and isn't the one the job returned can't be seen here.
+struct RetryAfter {
+  qint64 waitMs = 0;
+  QString until;
+  QString left;
+};
+RetryAfter RetryAfterWait(const QStringList &texts);
+
 // The sync/* call for attempt `attempt` of a run the job card retries.
 // rclone checks --max-delete, --max-delete-size and --max-transfer against
 // the stats group's own counts, and the CLI's one group carries them across

@@ -218,6 +218,75 @@ bool IsNoRetryError(const QString &error) {
          error == QLatin1String("context deadline exceeded");
 }
 
+qint64 GoDurationMs(const QString &text) {
+  // time.ParseDuration's grammar: an optional sign, then one or more
+  // decimal numbers, each with a unit.
+  static const QRegularExpression part(
+      QStringLiteral("(\\d+(?:\\.\\d*)?|\\.\\d+)(ns|us|\\x{00B5}s|\\x{03BC}s|"
+                     "ms|s|m|h)"));
+  QString rest = text.trimmed();
+  double sign = 1.0;
+  if (rest.startsWith(QLatin1Char('-')) || rest.startsWith(QLatin1Char('+'))) {
+    sign = rest.startsWith(QLatin1Char('-')) ? -1.0 : 1.0;
+    rest = rest.mid(1);
+  }
+  if (rest == QLatin1String("0")) {
+    return 0;
+  }
+  if (rest.isEmpty()) {
+    return -1;
+  }
+  double ms = 0.0;
+  qsizetype at = 0;
+  while (at < rest.size()) {
+    const QRegularExpressionMatch m = part.match(
+        rest, at, QRegularExpression::NormalMatch,
+        QRegularExpression::AnchorAtOffsetMatchOption);
+    if (!m.hasMatch()) {
+      return -1;
+    }
+    const double value = m.captured(1).toDouble();
+    const QString unit = m.captured(2);
+    double perUnit = 0.0;
+    if (unit == QLatin1String("h")) {
+      perUnit = 3600000.0;
+    } else if (unit == QLatin1String("m")) {
+      perUnit = 60000.0;
+    } else if (unit == QLatin1String("s")) {
+      perUnit = 1000.0;
+    } else if (unit == QLatin1String("ms")) {
+      perUnit = 1.0;
+    } else if (unit == QLatin1String("ns")) {
+      perUnit = 0.000001;
+    } else {
+      perUnit = 0.001;
+    }
+    ms += value * perUnit;
+    at = m.capturedEnd(0);
+  }
+  return static_cast<qint64>(sign * ms + (sign < 0 ? -0.5 : 0.5));
+}
+
+RetryAfter RetryAfterWait(const QStringList &texts) {
+  // fserrors.ErrorRetryAfter.Error() in v1.76.0.
+  static const QRegularExpression said(
+      QStringLiteral("try again after (\\S+) \\(([^()]*)\\)"));
+  RetryAfter longest;
+  for (const QString &text : texts) {
+    QRegularExpressionMatchIterator it = said.globalMatch(text);
+    while (it.hasNext()) {
+      const QRegularExpressionMatch m = it.next();
+      const qint64 waitMs = GoDurationMs(m.captured(2));
+      if (waitMs > longest.waitMs) {
+        longest.waitMs = waitMs;
+        longest.until = m.captured(1);
+        longest.left = m.captured(2);
+      }
+    }
+  }
+  return longest;
+}
+
 Result Read(const QJsonObject &status, const QStringList &batchLabels) {
   Result result;
   result.success = status.value("success").toBool();

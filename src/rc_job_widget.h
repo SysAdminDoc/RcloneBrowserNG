@@ -113,6 +113,8 @@ private:
   int mAttempts = 1;
   int mAttempt = 1;
   qint64 mRetrySleepMs = 0;
+  // A backend's retry-after wait ahead of the next attempt's --retries-sleep.
+  qint64 mRetryAfterMs = 0;
   bool mRetryPending = false;
   // Cancel came after the job ended, while its last stats were read.
   bool mCancelBeforeRetry = false;
