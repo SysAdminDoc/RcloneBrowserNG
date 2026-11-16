@@ -12,9 +12,13 @@ namespace {
 using Runes = std::u32string;
 constexpr size_t kNone = Runes::npos;
 
-// Longer patterns get no line. rclone takes them, but Go refuses deep
-// nesting somewhere past this, and nobody types a filter this long.
+// Longer patterns rclone takes get no line. Go refuses deep nesting
+// somewhere past this, and nobody types a filter this long. One rclone
+// refuses still gets its line, up to kMaxRefused: Go factors a|ab|abc into
+// groups inside groups, and past that many characters they could nest too
+// deeply for Go before the error the explainer found.
 constexpr size_t kMaxGlob = 1000;
+constexpr size_t kMaxRefused = 20000;
 // Nesting deeper than this gets no line either.
 constexpr int kMaxHeight = 150;
 // Candidate examples kept for each part of the pattern, and their length.
@@ -681,6 +685,15 @@ struct Parser {
 
   void Push(int id) { stack.push_back(id); }
 
+  // The deepest part built so far, finished or not.
+  int MaxHeight() const {
+    int height = 0;
+    for (const Node &node : nodes) {
+      height = (std::max)(height, node.height);
+    }
+    return height;
+  }
+
   bool IsMarker(int id) const {
     return nodes[id].op == Op::LeftParen || nodes[id].op == Op::VerticalBar;
   }
@@ -1300,6 +1313,98 @@ bool LeafAccepts(const Parser &parser, int id, char32_t c) {
   }
 }
 
+// A character a listed path can hold besides "/" and ".". ValidPath refuses
+// the control characters below 0x20 and 0x7F, and a Go string has no rune
+// for half of a surrogate pair.
+bool Ordinary(char32_t c) {
+  return c >= 0x20 && c != 0x7F && c != U'/' && c != U'.' &&
+         (c < 0xD800 || c > 0xDFFF) && c <= 0x10FFFF;
+}
+
+// Every code point where CategoryBit changes, starting with 0.
+const std::vector<char32_t> &CategoryEdges() {
+  static const std::vector<char32_t> edges = [] {
+    std::vector<char32_t> out;
+    quint32 last = 0;
+    for (char32_t c = 0; c <= 0x10FFFF; c++) {
+      const quint32 bit = CategoryBit(c);
+      if (c == 0 || bit != last) {
+        out.push_back(c);
+      }
+      last = bit;
+    }
+    return out;
+  }();
+  return edges;
+}
+
+// Whether the class holds an Ordinary character. Has gives one answer over
+// any stretch that no range end, category change or edge of Ordinary
+// splits, so the first character of each stretch settles it.
+bool HasOrdinary(const CharClass &cls) {
+  std::vector<char32_t> cuts = CategoryEdges();
+  const auto addEnds = [&cuts](const Ranges &ranges) {
+    for (const Range &range : ranges) {
+      cuts.push_back(range.lo);
+      cuts.push_back(static_cast<char32_t>(range.hi + 1));
+    }
+  };
+  addEnds(cls.ranges);
+  for (const Ranges &group : cls.outside) {
+    addEnds(group);
+  }
+  static const char32_t kOrdinaryEdges[] = {0x20,  0x7F,   0x80,  U'.',
+                                            U'/',  U'0',   0xD800, 0xE000};
+  cuts.insert(cuts.end(), std::begin(kOrdinaryEdges), std::end(kOrdinaryEdges));
+  std::sort(cuts.begin(), cuts.end());
+  cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+  for (const char32_t c : cuts) {
+    if (Ordinary(c) && Has(cls, c)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// What a path holds so far, read one character at a time: whether it has a
+// "/" yet, and whether its last part is empty, "." or "..", which no listed
+// path has.
+enum PathState {
+  kStart,
+  kDot,
+  kDotDot,
+  kName,
+  kAfterSlash,
+  kDotBelow,
+  kDotDotBelow,
+  kNameBelow,
+  kPathStates,
+  kDeadPath = -1
+};
+enum CharKind { kSlashChar, kDotChar, kOrdinaryChar, kCharKinds };
+
+int PathStep(int state, int kind) {
+  const bool below = state >= kAfterSlash;
+  if (kind == kSlashChar) {
+    return state == kName || state == kNameBelow ? kAfterSlash : kDeadPath;
+  }
+  if (kind == kDotChar) {
+    switch (state) {
+    case kStart:
+      return kDot;
+    case kDot:
+      return kDotDot;
+    case kAfterSlash:
+      return kDotBelow;
+    case kDotBelow:
+      return kDotDotBelow;
+    default:
+      break;
+    }
+  }
+  return below ? kNameBelow : kName;
+}
+
 // The parsed regexp as a Thompson NFA, run the way Go's MatchString runs
 // it: a match may start anywhere. Each run costs the pattern's size times
 // the path's length.
@@ -1377,6 +1482,126 @@ public:
       current.swap(following);
       following.clear();
     }
+  }
+
+  // Whether some listed path with a "/" in it is excluded: a file rule
+  // matching it, or a directory rule matching a directory above it with a
+  // "/" on the end. It walks every pairing of a step of the match with a
+  // PathState, before the match starts, inside it and after it, so it
+  // answers for every path and not only the examples.
+  bool ReachesBelowTop(bool fileRule, bool dirRule) const {
+    enum Mode { kBefore, kInside, kAfter };
+    const int count = static_cast<int>(insts.size());
+    // Mode, then the instruction (count for none), the PathState and
+    // whether $ has matched, after which no more characters can follow.
+    const auto key = [count](int mode, int pc, int state, bool ended) {
+      return ((static_cast<size_t>(mode) * static_cast<size_t>(count + 1) +
+               static_cast<size_t>(pc)) *
+                  kPathStates +
+              static_cast<size_t>(state)) *
+                 2 +
+             (ended ? 1 : 0);
+    };
+    struct Step {
+      int mode;
+      int pc;
+      int state;
+      bool ended;
+    };
+    std::vector<char> seen(key(kAfter + 1, 0, 0, false), 0);
+    std::vector<Step> queue;
+    const auto visit = [&](int mode, int pc, int state, bool ended) {
+      if (pc < 0 || state == kDeadPath) {
+        return;
+      }
+      const size_t at = key(mode, pc, state, ended);
+      if (seen[at] == 0) {
+        seen[at] = 1;
+        queue.push_back(Step{mode, pc, state, ended});
+      }
+    };
+    // For each class: -1 until HasOrdinary has been asked, then 0 or 1.
+    std::vector<int> ordinary(p.classes.size(), -1);
+    const auto leafTakes = [&](int node, int kind) {
+      static const char32_t kSample[] = {U'/', U'.'};
+      if (kind != kOrdinaryChar) {
+        return LeafAccepts(p, node, kSample[kind]);
+      }
+      const Node &leaf = p.nodes[node];
+      if (leaf.op == Op::Literal) {
+        return Ordinary(leaf.rune);
+      }
+      if (leaf.op != Op::Class) {
+        return leaf.op == Op::AnyNotNL;
+      }
+      int &known = ordinary[static_cast<size_t>(leaf.cls)];
+      if (known < 0) {
+        known = HasOrdinary(p.classes[leaf.cls]) ? 1 : 0;
+      }
+      return known == 1;
+    };
+    const auto accepts = [fileRule, dirRule](int state) {
+      return (fileRule && state == kNameBelow) ||
+             (dirRule && state == kAfterSlash);
+    };
+
+    visit(kBefore, count, kStart, false);
+    for (size_t next = 0; next < queue.size(); next++) {
+      const Step step = queue[next];
+      if (step.mode == kBefore) {
+        // A match may start after any number of characters.
+        visit(kInside, start, step.state, false);
+        for (int kind = 0; kind < kCharKinds; kind++) {
+          visit(kBefore, count, PathStep(step.state, kind), false);
+        }
+        continue;
+      }
+      if (step.mode == kAfter) {
+        if (accepts(step.state)) {
+          return true;
+        }
+        if (!step.ended) {
+          for (int kind = 0; kind < kCharKinds; kind++) {
+            visit(kAfter, count, PathStep(step.state, kind), false);
+          }
+        }
+        continue;
+      }
+      const Inst &inst = insts[static_cast<size_t>(step.pc)];
+      switch (inst.kind) {
+      case Kind::Leaf:
+        if (!step.ended) {
+          for (int kind = 0; kind < kCharKinds; kind++) {
+            if (leafTakes(inst.node, kind)) {
+              visit(kInside, inst.x, PathStep(step.state, kind), false);
+            }
+          }
+        }
+        break;
+      case Kind::Split:
+        visit(kInside, inst.x, step.state, step.ended);
+        visit(kInside, inst.y, step.state, step.ended);
+        break;
+      case Kind::Jump:
+        visit(kInside, inst.x, step.state, step.ended);
+        break;
+      case Kind::Begin:
+        // Only kStart has read nothing yet.
+        if (step.state == kStart) {
+          visit(kInside, inst.x, step.state, step.ended);
+        }
+        break;
+      case Kind::End:
+        visit(kInside, inst.x, step.state, true);
+        break;
+      case Kind::Match:
+        visit(kAfter, count, step.state, step.ended);
+        break;
+      case Kind::Fail:
+        break;
+      }
+    }
+    return false;
   }
 
 private:
@@ -1689,19 +1914,33 @@ Description Describe(const QString &pattern) {
     description.problem = translation.problem;
     return description;
   }
-  if (translation.opaque || effective.size() > kMaxGlob) {
+  if (translation.opaque || glob.size() > kMaxRefused) {
     description.valid = false;
     return description;
   }
+  // The parser runs from a stack in one pass, so a long pattern is parsed
+  // too, and one Go refuses gets its line.
   Parser parser(translation.regexp);
   parser.watchClass = translation.negatedOpen;
   parser.tailDot = translation.tailDot;
   parser.Parse();
+  const bool tooLong = glob.size() > kMaxGlob;
   if (!parser.problem.isEmpty()) {
+    // Go stops with "expression nests too deeply" once a finished part of
+    // the expression is 1000 deep, which a long pattern can reach before
+    // the error the parser found. Below kMaxHeight here it can't.
+    if (tooLong && parser.MaxHeight() > kMaxHeight) {
+      description.valid = false;
+      return description;
+    }
     // Measured on v1.76.0: `--exclude "[!z-a].txt"` exits 1 with "bad glob
     // pattern" and nothing runs.
     description.wellFormed = false;
     description.problem = parser.problem;
+    return description;
+  }
+  if (tooLong) {
+    description.valid = false;
     return description;
   }
   if (parser.uncertain || parser.root < 0 ||
@@ -1765,9 +2004,11 @@ Description Describe(const QString &pattern) {
                             ? QStringLiteral("everywhere below the transfer root")
                             : QStringLiteral("at any depth");
   } else {
-    // "/*/x" and "/build/**" reach below the top level, starting from it.
+    // "/*/x", "/build/**" and "/a**" reach files below the top level,
+    // starting from it. "/[^/]" and "/{a,b/}" have a "/" in them and still
+    // can't: [^/] never matches one, and no file is called "b/".
     description.scope =
-        trimmed.mid(1).contains(QChar('/'))
+        matcher.ReachesBelowTop(fileRule, dirRule)
             ? QStringLiteral("only from the top level of the transfer")
             : QStringLiteral("only at the top level of the transfer");
     description.missesExample = deeper;

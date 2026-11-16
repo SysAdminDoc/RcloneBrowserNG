@@ -318,6 +318,18 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
     options.config.insert("DeleteMode", chosen);
   }
 
+  // The CLI raises these to 1 when they're 0 or less (fs.ConfigInfo's
+  // Reload, fs/config.go on v1.76.0), and a _config sent over rc skips that
+  // step. On the daemon --low-level-retries 0 panics it, --checkers 0 hangs
+  // the run and --transfers 0 reports success with nothing copied.
+  for (const char *key : {"LowLevelRetries", "Transfers", "Checkers"}) {
+    const QString name = QString::fromLatin1(key);
+    if (options.config.contains(name) &&
+        options.config.value(name).toInteger() < 1) {
+      options.config.insert(name, 1);
+    }
+  }
+
   options.ok = true;
   return options;
 }
@@ -352,7 +364,8 @@ Request Build(const QStringList &args, const QString &group,
     // ci.RetriesInterval (cmd/bisync/queue.go, v1.76.0). Without them a
     // sync/bisync call takes the daemon's, measured 3 tries where the task
     // asked for 2. No bisync flag maps onto rc today (options/info lists
-    // none), so --resilient itself still sends the run to core/command.
+    // none), so --resilient itself still sends the run to core/command and
+    // this only matters once one does.
     for (auto it = options.retryConfig.constBegin();
          it != options.retryConfig.constEnd(); ++it) {
       config.insert(it.key(), it.value());

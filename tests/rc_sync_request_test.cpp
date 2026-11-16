@@ -17,6 +17,7 @@ const char kOptionsInfo[] = R"JSON({
     {"Name": "dry_run", "FieldName": "DryRun", "Type": "bool", "NoPrefix": true},
     {"Name": "transfers", "FieldName": "Transfers", "Type": "int", "NoPrefix": true},
     {"Name": "checkers", "FieldName": "Checkers", "Type": "int", "NoPrefix": true},
+    {"Name": "low_level_retries", "FieldName": "LowLevelRetries", "Type": "int", "NoPrefix": true},
     {"Name": "max_delete", "FieldName": "MaxDelete", "Type": "int64", "NoPrefix": true},
     {"Name": "bwlimit", "FieldName": "BwLimit", "Type": "BwTimetable", "NoPrefix": true},
     {"Name": "bwlimit_file", "FieldName": "BwLimitFile", "Type": "BwTimetable", "NoPrefix": true},
@@ -530,6 +531,57 @@ private slots:
         Build({"copy", "remote:src", "remote:dst", "--retries"}, "g",
               realIndex());
     QVERIFY(!noValue.usable);
+  }
+
+  // fs.ConfigInfo's Reload raises these to 1 on the CLI and an rc _config
+  // skips it. Sent as they are, LowLevelRetries 0 panicked a v1.76.0
+  // daemon, Checkers 0 hung the run and Transfers 0 copied nothing.
+  void raisesCountsBelowOneTheWayTheCliDoes_data() {
+    QTest::addColumn<QString>("flag");
+    QTest::addColumn<QString>("key");
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<int>("sent");
+    const QStringList flags{"--low-level-retries", "--transfers",
+                            "--checkers"};
+    const QStringList keys{"LowLevelRetries", "Transfers", "Checkers"};
+    for (qsizetype i = 0; i < flags.size(); ++i) {
+      const QByteArray name = flags.at(i).toLatin1();
+      const QList<QPair<QString, int>> cases{
+          {"0", 1}, {"-1", 1}, {"-0x10", 1}, {"1", 1}, {"7", 7}};
+      for (const auto &c : cases) {
+        QTest::addRow("%s %s", name.constData(),
+                      qPrintable(c.first))
+            << flags.at(i) << keys.at(i) << c.first << c.second;
+      }
+    }
+  }
+
+  void raisesCountsBelowOneTheWayTheCliDoes() {
+    QFETCH(QString, flag);
+    QFETCH(QString, key);
+    QFETCH(QString, value);
+    QFETCH(int, sent);
+    for (const QString &command : {"copy", "sync", "bisync"}) {
+      const QStringList args{command, flag + "=" + value, "remote:src",
+                             "remote:dst"};
+      const Request request = Build(args, "g", realIndex());
+      QVERIFY2(request.usable, qPrintable(command + ": " + request.reason));
+      const QJsonValue got =
+          request.payload.value("_config").toObject().value(key);
+      QVERIFY2(got.isDouble(), qPrintable(command + ": no number"));
+      QCOMPARE(got.toInt(), sent);
+    }
+  }
+
+  // An option the task didn't give stays off the request, so the daemon's
+  // own value applies.
+  void leavesAnUnsetCountToTheDaemon() {
+    const Request request = Build(baseCopy(), "g", realIndex());
+    QVERIFY2(request.usable, qPrintable(request.reason));
+    const QJsonObject config = request.payload.value("_config").toObject();
+    QVERIFY(!config.contains("LowLevelRetries"));
+    QVERIFY(!config.contains("Transfers"));
+    QVERIFY(!config.contains("Checkers"));
   }
 
   void omitsEmptySections() {

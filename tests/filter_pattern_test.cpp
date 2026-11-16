@@ -610,6 +610,128 @@ private slots:
              QStringLiteral("only at the top level of the transfer"));
   }
 
+  // The word used to come from a "/" in the text, which picked the wrong
+  // one for about 1 anchored line in 5. Measured on rclone v1.76.0 with
+  // trees holding x, a, b, xx, zz and namex at the top and x/x, a/b, b/x,
+  // x/a, sub/x, z/z and zz/x below: the first list excluded files at the
+  // top and nothing below, and the second excluded a/a, a/f, b/a, a/x,
+  // a/- or the like.
+  void theScopeWordComesFromWhatThePatternCanReach_data() {
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<bool>("below");
+    const QStringList at{"/[^/]",  "/x{/,}",  "/{/,}a",  "/{a,/b}",
+                         "/z[!/x]", "/[!/-a]", "/*[!/]",  "/[!\\/]",
+                         "/a[!/]b", "/a[^/]b", "/{a,b/}", "/[!/]*"};
+    for (const QString &pattern : at) {
+      QTest::newRow(qPrintable(pattern)) << pattern << false;
+    }
+    const QStringList from{"/a{a,**}",  "/{a,b}**",       "/b{**,a}",
+                           "/b[.-0]a",  "/?\\PLx",        "/\\S[\\D]a",
+                           "/a[\\S]\\W", "/a**",          "/build**",
+                           "/a\\x2fb",  "/a[+-0]b",       "/a\\Wb",
+                           "/a[[:punct:]]b", "/a\\pPb",   "/a\\Sb",
+                           QString("/") + QChar(0xE9) + "[+-0]x"};
+    for (const QString &pattern : from) {
+      QTest::newRow(qPrintable(pattern)) << pattern << true;
+    }
+  }
+
+  void theScopeWordComesFromWhatThePatternCanReach() {
+    QFETCH(QString, pattern);
+    QFETCH(bool, below);
+    const auto description = Describe(pattern);
+    QVERIFY2(description.valid && description.wellFormed,
+             qPrintable(description.problem));
+    QVERIFY2(!description.crossesDirectories,
+             qPrintable(description.alsoMatchesExample));
+    QCOMPARE(description.scope,
+             below ? QStringLiteral("only from the top level of the transfer")
+                   : QStringLiteral("only at the top level of the transfer"));
+  }
+
+  // A match below the top level has to be a path rclone could list: a
+  // "." or ".." folder, or an empty name, can't hold a file.
+  void aPathNoFolderCanHoldDoesNotReachBelow() {
+    const QStringList at{"/{x,.[/]x}",    "/{x,..[/]x}", "/{x,a[/][/]x}",
+                         "/{x,a[/]..}",   "/{x,a[/].}",  "/{x,a[/]}"};
+    for (const QString &pattern : at) {
+      const auto description = Describe(pattern);
+      QVERIFY2(description.valid && description.wellFormed,
+               qPrintable(pattern));
+      QCOMPARE(description.matchesExample, QStringLiteral("x"));
+      QVERIFY2(description.scope ==
+                   QStringLiteral("only at the top level of the transfer"),
+               qPrintable(pattern + ": " + description.scope));
+    }
+    QCOMPARE(Describe("/{x,...[/]x}").scope,
+             QStringLiteral("only from the top level of the transfer"));
+  }
+
+  // A pattern over 1000 characters gets no line when rclone takes it, but
+  // one rclone refuses for a reason Go gives still says so. Measured on
+  // rclone v1.76.0: each of these stopped with the reason named.
+  void aLongPatternRcloneRefusesStillSaysSo_data() {
+    QTest::addColumn<QString>("pattern");
+    QTest::addColumn<QString>("reason");
+    const QString z1000 = QString("z").repeated(1000);
+    const QString a995 = QString("a").repeated(995);
+    QTest::newRow("bad escape first")
+        << "\\x" + z1000 << "invalid escape sequence";
+    QTest::newRow("bad escape last")
+        << QString("a").repeated(1000) + "\\x" << "invalid escape sequence";
+    QTest::newRow("bad range, 1001")
+        << "[!z-a]" + a995 << "invalid character class range";
+    QTest::newRow("bad range, 1006")
+        << "[!z-a]" + QString("a").repeated(1000)
+        << "invalid character class range";
+    QTest::newRow("bad name")
+        << "[\\p{Bogus}]" + QString("a").repeated(1000)
+        << "invalid character class range";
+    QTest::newRow("in braces")
+        << "{a,[!z-a]" + QString("b").repeated(1000) + "}"
+        << "invalid character class range";
+    QTest::newRow("directory, 1000 typed")
+        << "[!z-a]" + QString("a").repeated(993) + "/"
+        << "invalid character class range";
+  }
+
+  void aLongPatternRcloneRefusesStillSaysSo() {
+    QFETCH(QString, pattern);
+    QFETCH(QString, reason);
+    const auto description = Describe(pattern);
+    QVERIFY(description.valid);
+    QVERIFY(!description.wellFormed);
+    QVERIFY2(description.problem.startsWith(reason),
+             qPrintable(description.problem.left(80)));
+    const QStringList lines = DescribeAll(pattern);
+    QCOMPARE(lines.size(), 1);
+    QVERIFY2(lines.first().contains("rclone will refuse this filter"),
+             qPrintable(lines.first().right(120)));
+  }
+
+  // Nested 600 deep, Go stops with "expression nests too deeply" before it
+  // reaches the \x, so naming the \x would be a wrong reason. These get no
+  // line, and so does a refused pattern too long to be sure of.
+  void aLongRefusedPatternItCantBeSureOfGetsNoLine() {
+    const QString nested = QString("{a").repeated(600) +
+                           QString("}").repeated(600) + "\\x";
+    QVERIFY(!Describe(nested).valid);
+    QVERIFY(!Describe(QString("a").repeated(20001) + "\\x").valid);
+    QVERIFY(Describe(QString("a").repeated(19998) + "\\x").valid);
+  }
+
+  // The 1000 counts what was typed, not the "**" rclone adds to a
+  // directory pattern, which made this 1000-character one 1002 long.
+  // rclone v1.76.0 takes it.
+  void theLengthCutCountsWhatWasTyped() {
+    const QString typed = "{a," + QString("b").repeated(995) + "}/";
+    QCOMPARE(typed.size(), 1000);
+    const auto description = Describe(typed);
+    QVERIFY(description.valid);
+    QVERIFY(description.wellFormed);
+    QVERIFY(description.directoryOnly);
+  }
+
   // DescribeAll runs on every change in the exclude editor, on the UI
   // thread. A pasted pattern like these used to overflow the stack ({a
   // nested 2921 deep) or take seconds (\pM 1666 times). They get no line,

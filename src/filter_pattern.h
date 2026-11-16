@@ -14,9 +14,11 @@ struct Description {
   // explainer can't model: a {{regexp}} section, \Q...\E, \b and the other
   // assertions, (?flags), a {n,m} repeat, \p{Greek} and other script names,
   // nesting too deep to follow, a pattern over 1000 characters that rclone
-  // would accept (one it refuses still gets wellFormed false), or one with
-  // no path the explainer can show it excluding ("x{/}" only matches a path
-  // ending in "/"). Those get no line rather than a guess.
+  // would accept, one whose every example would run past 160 characters, or
+  // one with no path the explainer can show it excluding ("x{/}" only
+  // matches a path ending in "/"). Those get no line rather than a guess. A
+  // long pattern rclone refuses gets wellFormed false, unless it nests too
+  // deeply before the error to be sure Go reaches that error first.
   bool valid = false;
   // False when rclone will refuse the glob outright. Measured against
   // v1.75.0: `--exclude "a{b"` exits 1 with "mismatched '{' and '}'" and

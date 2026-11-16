@@ -58,7 +58,9 @@ struct Options {
   int retries = 3;
   qint64 retriesSleepMs = 0;
   // The same two as _config would carry them, only those given. Build puts
-  // them into a bisync's _config, where --resilient's copy retry reads them.
+  // them into a bisync's _config for --resilient's copy retry, which reads
+  // them there. options/info lists no bisync flag, so Build refuses
+  // --resilient today and they change nothing until it can map it.
   QJsonObject retryConfig;
 };
 
