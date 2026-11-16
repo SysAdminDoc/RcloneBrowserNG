@@ -51,8 +51,12 @@ QString DeleteCapLine(const QString &text);
 
 // The exit code a child rclone that failed left, read from its combined
 // log: 7 for the delete cap, 8 for --max-transfer, 10 for --max-duration,
-// 9 when it only said there was nothing to transfer, else 1. Errors before
-// rclone's "Attempt N/M succeeded" were retried away and don't count.
+// 9 when it only said there was nothing to transfer. Otherwise cmd.Run's
+// last line ("Failed to copy: <error>") names the error it exits on, which
+// gets ExitCodeForError, fatal when the log has the fatal retry line or
+// it's bisync's "bisync aborted" and no-retry when it has the can't retry
+// one. 1 for the rest. Errors before rclone's "Attempt N/M succeeded" were
+// retried away and don't count.
 int ExitCodeFromLog(const QString &log);
 
 // A sync/* job run with --error-on-no-transfer that copied nothing reports
@@ -78,6 +82,22 @@ Uncounted ClassifyUncounted(const QString &error);
 // counts errors it never hands back, a failed hash or modtime update among
 // them. A backend's own no-retry errors aren't known here.
 bool IsNoRetryError(const QString &error);
+
+// The code resolveExitCode (cmd/cmd.go, v1.76.0) gives an error ahead of
+// the no-retry and fatal ones, as far as its text tells: 3 for a directory
+// not found, 4 for a file not found, 5 for an error fserrors.ShouldRetry
+// takes as worth retrying, -1 for anything else. rc hands back an error as
+// text only, so the cause is read from the end of it, where Go's "%s: %w"
+// wrapping leaves it. That makes `--backup-dir` on a server that refused
+// the connection a 5, as the CLI exits, though it's a fatal error that
+// isn't retried. A backend's own NoLowLevelRetryError mark, which makes
+// ShouldRetry say no, can't be seen.
+int CauseExitCode(const QString &error);
+
+// All of resolveExitCode for the error a run ended on: the cause's code,
+// then 6 for a no-retry error, then 7 for a fatal one, else 1. fatal and
+// noRetry are what the caller knows of the error beyond its text.
+int ExitCodeForError(const QString &error, bool fatal, bool noRetry);
 
 // Milliseconds in a Go duration as time.Duration.String() writes it
 // ("1m29.5s", "750ms", "-2s"), or -1 when the text isn't one.

@@ -371,6 +371,8 @@ void RcJobWidget::poll() {
                 }
                 noteDeleteCap(result.deleteCapLine);
                 mFromCommand = result.fromCommand;
+                mBisyncRan = status.value("output").toObject().contains(
+                    QLatin1String("session"));
                 const bool success = result.success;
                 const QString jobError = result.error;
                 const int exitCode = result.exitCode;
@@ -528,9 +530,17 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   // core/command's child rclone runs this loop itself, and a batch delete
   // has nothing to post again. bisync runs cmd.Run with Retry off
   // (cmd/bisync/cmd.go), which tries once and logs none of these lines.
-  if (mRetryEndpoint.isEmpty() ||
-      mRetryEndpoint == QLatin1String("sync/bisync") || mUserCancelled ||
-      mStopping) {
+  if (mRetryEndpoint.isEmpty() || mUserCancelled || mStopping) {
+    return false;
+  }
+  if (mRetryEndpoint == QLatin1String("sync/bisync")) {
+    // The CLI exits on what bisync returned, and its command wraps "bisync
+    // aborted" in a fatal error, which rc hands back bare. A path that
+    // couldn't be opened stays 1 (measured on v1.76.0).
+    if (mBisyncRan) {
+      mStopExit = RcJobResult::ExitCodeForError(
+          jobError, jobError == QLatin1String("bisync aborted"), false);
+    }
     return false;
   }
   // The current attempt's stats, as cmd.Run sees them. In a group an
@@ -575,8 +585,10 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
     ui.output->appendPlainText(
         QStringLiteral("Fatal error received - not attempting retries"));
     // A sync returns its fatal error ahead of any other, and the CLI exits
-    // 7 for it (resolveExitCode in cmd/cmd.go).
-    mStopExit = 7;
+    // on it (resolveExitCode in cmd/cmd.go): 7, unless its cause is a
+    // missing folder or file or one worth retrying, as a --backup-dir on a
+    // server that refused the connection is.
+    mStopExit = RcJobResult::ExitCodeForError(jobError, true, false);
     return false;
   }
   if (!haveStats) {
@@ -594,8 +606,9 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
     // The error the CLI exits on is then a no-retry one, its own count
-    // having taken any other as one to retry, and that's exit 6.
-    mStopExit = 6;
+    // having taken any other as one to retry, and that's exit 6 unless its
+    // cause comes first.
+    mStopExit = RcJobResult::ExitCodeForError(jobError, false, true);
     return false;
   }
   if (lastError.isEmpty()) {
@@ -632,10 +645,9 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   Diagnostics::appendLog("rc-job", line);
   if (mAttempt >= mAttempts) {
     // The tries ran out, and the CLI exits on the error the last one
-    // returned. Only a no-retry one can be told from its text here.
-    if (RcJobResult::IsNoRetryError(jobError)) {
-      mStopExit = 6;
-    }
+    // returned: 3 for a missing folder, 5 for a dropped connection, 6 for
+    // a no-retry one.
+    mStopExit = RcJobResult::ExitCodeForError(jobError, false, false);
     return false;
   }
   if (mCancelBeforeRetry) {

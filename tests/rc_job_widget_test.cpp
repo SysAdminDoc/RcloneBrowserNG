@@ -326,6 +326,217 @@ private slots:
     QCOMPARE(entry.exitCode, 7);
   }
 
+  // resolveExitCode (cmd/cmd.go) looks at what the error was before it
+  // looks at whether it was fatal or worth a retry. Measured with the CLI
+  // on v1.76.0 (2026-11-16): a source folder that isn't there exits 3 after
+  // three tries, on either route. A --backup-dir or --compare-dest on a
+  // server that refused the connection exits 5 after the fatal line, though
+  // it isn't retried, and a --backup-dir on a remote with no config section
+  // exits 7. A destination that can't be opened fails before cmd.Run and
+  // exits 1.
+  void theExitCodeIsWhatTheErrorWas_data() {
+    QTest::addColumn<QString>("command");
+    // "alias" for a missing folder on the [local] alias remote, which the
+    // daemon runs, "path" for a missing local path, which goes to
+    // core/command, "dir" for a folder that's there.
+    QTest::addColumn<QString>("source");
+    // Empty for a local folder.
+    QTest::addColumn<QString>("dest");
+    QTest::addColumn<QStringList>("extra");
+    QTest::addColumn<QString>("route");
+    QTest::addColumn<int>("exitCode");
+    QTest::addColumn<QString>("line");
+    QTest::addColumn<QStringList>("absent");
+    const QString refused =
+        ":ftp,host=127.0.0.1,port=1,user=x,pass=FCttksagUh8jS5IqsxpEKhs:x";
+    const QStringList quick{"--contimeout", "10s", "--low-level-retries", "1"};
+    const QString lastTry =
+        "Attempt 3/3 failed with 1 errors and: directory not found";
+    const QString fatalLine = "Fatal error received - not attempting retries";
+    const QStringList noTries{"Attempt"};
+    for (const char *command : {"copy", "sync", "move"}) {
+      QTest::addRow("%s, no source folder", command)
+          << QString(command) << "alias" << QString() << QStringList()
+          << "rclonebrowser-" << 3 << lastTry << QStringList();
+    }
+    // The child's exit code is read from its log, which is JSON since
+    // JobOptions::getOptions always adds --use-json-log.
+    QTest::newRow("copy, no source folder, own rclone")
+        << "copy" << "path" << QString() << QStringList{"--use-json-log"}
+        << "job/" << 3 << "Failed to copy: directory not found"
+        << QStringList();
+    QTest::newRow("sync, backup dir refused")
+        << "sync" << "dir" << QString()
+        << (QStringList{"--backup-dir", refused} + quick) << "rclonebrowser-"
+        << 5 << fatalLine << noTries;
+    QTest::newRow("copy, compare dest refused")
+        << "copy" << "dir" << QString()
+        << (QStringList{"--compare-dest", refused} + quick)
+        << "rclonebrowser-" << 5 << fatalLine << noTries;
+    QTest::newRow("sync, backup dir with no section")
+        << "sync" << "dir" << QString()
+        << QStringList{"--backup-dir", "nosuch:bk"} << "rclonebrowser-" << 7
+        << fatalLine << noTries;
+    QTest::newRow("copy, destination refused")
+        << "copy" << "dir" << refused << quick << "rclonebrowser-" << 1
+        << "failed to make FTP connection"
+        << QStringList{"Attempt", "not attempting retries"};
+  }
+
+  void theExitCodeIsWhatTheErrorWas() {
+    QFETCH(QString, command);
+    QFETCH(QString, source);
+    QFETCH(QString, dest);
+    QFETCH(QStringList, extra);
+    QFETCH(QString, route);
+    QFETCH(int, exitCode);
+    QFETCH(QString, line);
+    QFETCH(QStringList, absent);
+    QString name = QString::fromLatin1(QTest::currentDataTag());
+    name.replace(QChar(' '), QChar('-')).replace(QChar(','), QChar('-'));
+    QString from = makeDir("exit-src-" + name);
+    writeFile(from + "/a.txt", "a");
+    if (source == "alias") {
+      from = "local:nosuch-" + name;
+    } else if (source == "path") {
+      from = QDir(mDir.path()).filePath("nosuch-" + name);
+    }
+    const QString to = dest.isEmpty() ? makeDir("exit-dst-" + name) : dest;
+    const QStringList args = QStringList{command} + extra + QStringList{from, to};
+    const JobHistoryEntry entry = runCard(args, route);
+    QVERIFY(!mSuccess);
+    QVERIFY2(mOutput.contains(line), qPrintable(mOutput));
+    for (const QString &text : absent) {
+      QVERIFY2(!mOutput.contains(text), qPrintable(mOutput));
+    }
+    QCOMPARE(entry.exitCode, exitCode);
+    QCOMPARE(entry.statusLabel, RcloneExitCode::Describe(exitCode).name);
+  }
+
+  // The fake daemon's side of the same: the code comes from the error the
+  // run stopped on, after the tries ran out, a fatal error or one that
+  // can't be retried. A no-retry error comes ahead of a fatal one, and a
+  // cause ahead of both, as in resolveExitCode.
+  void theErrorItStoppedOnGivesTheExitCode_data() {
+    QTest::addColumn<QString>("error");
+    QTest::addColumn<bool>("fatal");
+    QTest::addColumn<bool>("retryable");
+    QTest::addColumn<int>("exitCode");
+    const QString refused =
+        "dial tcp 127.0.0.1:1: connectex: No connection could be made "
+        "because the target machine actively refused it.";
+    QTest::newRow("tries out, missing folder")
+        << QString("directory not found") << false << true << 3;
+    QTest::newRow("tries out, missing file")
+        << QString("failed to open source object: object not found") << false
+        << true << 4;
+    QTest::newRow("tries out, connection reset")
+        << QString("read tcp 10.0.0.2:50122->10.0.0.9:22: read: connection "
+                   "reset by peer")
+        << false << true << 5;
+    QTest::newRow("tries out, client timeout")
+        << QString("Get \"https://example.com/x\": context deadline exceeded "
+                   "(Client.Timeout exceeded while awaiting headers)")
+        << false << true << 5;
+    QTest::newRow("tries out, plain")
+        << QString("failed to open source object: Access is denied.") << false
+        << true << 1;
+    QTest::newRow("fatal, refused")
+        << QString("failed to make fs for --backup-dir \":ftp:bk\": NewFs: "
+                   "failed to make FTP connection to \"127.0.0.1:1\": ") +
+               refused
+        << true << false << 5;
+    QTest::newRow("fatal, plain") << QString("boom") << true << false << 7;
+    QTest::newRow("can't retry, plain") << QString("boom") << false << false
+                                        << 6;
+    QTest::newRow("can't retry, missing folder")
+        << QString("directory not found") << false << false << 3;
+  }
+
+  void theErrorItStoppedOnGivesTheExitCode() {
+    QFETCH(QString, error);
+    QFETCH(bool, fatal);
+    QFETCH(bool, retryable);
+    QFETCH(int, exitCode);
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", error},
+                              {"output", QJsonObject()}});
+          } else {
+            reply(QJsonObject{{"errors", 1},
+                              {"fatalError", fatal},
+                              {"retryError", retryable},
+                              {"lastError", error}});
+          }
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(!run.success);
+    const bool triesOut = retryable && !fatal;
+    QCOMPARE(run.resubmits, triesOut ? 2 : 0);
+    if (triesOut) {
+      QVERIFY2(run.output.contains("Attempt 3/3 failed with 1 errors and: " +
+                                   error),
+               qPrintable(run.output));
+    } else {
+      QVERIFY2(run.output.contains(fatal ? "Fatal error received"
+                                         : "Can't retry any of the errors"),
+               qPrintable(run.output));
+    }
+    QCOMPARE(run.entry.exitCode, exitCode);
+    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(exitCode).name);
+  }
+
+  // The bisync command wraps "bisync aborted" in a fatal error, and the CLI
+  // exits 7 on it, where rc's sync/bisync hands the error back bare. Any
+  // other error bisync returns is read as resolveExitCode reads it. rc's
+  // answer has the run's session only when bisync ran, and a path that
+  // couldn't be opened, which has none, fails before cmd.Run on the CLI and
+  // exits 1 (measured on v1.76.0).
+  void bisyncExitsOnWhatItReturned_data() {
+    QTest::addColumn<QString>("error");
+    QTest::addColumn<bool>("ran");
+    QTest::addColumn<int>("exitCode");
+    const QString refused =
+        "NewFs: failed to make FTP connection to \"127.0.0.1:1\": dial tcp "
+        "127.0.0.1:1: connectex: No connection could be made because the "
+        "target machine actively refused it.";
+    QTest::newRow("aborted") << QString("bisync aborted") << true << 7;
+    QTest::newRow("returned, connection reset")
+        << QString("read: connection reset by peer") << true << 5;
+    QTest::newRow("returned, plain") << QString("boom") << true << 1;
+    QTest::newRow("path refused") << refused << false << 1;
+  }
+
+  void bisyncExitsOnWhatItReturned() {
+    QFETCH(QString, error);
+    QFETCH(bool, ran);
+    QFETCH(int, exitCode);
+    const QJsonObject output =
+        ran ? QJsonObject{{"session", "a..b"}, {"output", ""}} : QJsonObject();
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", error},
+                              {"output", output}});
+          } else {
+            reply(QJsonObject{{"errors", 0}});
+          }
+        },
+        {}, QJsonObject(), capsOff(), "sync/bisync", 1);
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(!run.success);
+    QCOMPARE(run.resubmits, 0);
+    QCOMPARE(run.entry.exitCode, exitCode);
+    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(exitCode).name);
+  }
+
   // bisync runs cmd.Run with Retry off (cmd/bisync/cmd.go), which tries once
   // and prints none of the retry loop's lines, whatever the group counted.
   void bisyncPrintsNoAttemptLines_data() {

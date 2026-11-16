@@ -81,6 +81,10 @@ private:
   bool mJobEnded = false;
   // The job ran through core/command, as a child rclone process.
   bool mFromCommand = false;
+  // A sync/bisync job's answer has its session, so bisync itself ran. One
+  // that failed opening a path has none, and the CLI fails that before
+  // cmd.Run, exiting 1.
+  bool mBisyncRan = false;
   // The stats read after the job ended worked, so mFiles is final.
   bool mFinalStats = false;
   // The retry loop cmd.Run gives the CLI. cmd.Run clears the error count
@@ -144,9 +148,10 @@ private:
   // while it runs.
   double mElapsedDone = 0;
   QElapsedTimer mAttemptClock;
-  // The exit code the CLI gives a run that ended on one of cmd.Run's own
-  // lines: 7 after a fatal error, 6 when no error could be retried. -1
-  // leaves the code to the job's result.
+  // The exit code the CLI gives the error a failed run ended on, as
+  // resolveExitCode in cmd/cmd.go reads it: 3, 4 or 5 for its cause, 6 when
+  // no error could be retried, 7 after a fatal one. -1 leaves the code to
+  // the job's result.
   int mStopExit = -1;
   QTimer mPollTimer;
   QLineEdit *mBandwidth = nullptr;

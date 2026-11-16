@@ -859,6 +859,163 @@ private slots:
              QString("b.txt: Couldn't delete: --max-delete threshold reached"));
   }
 
+  // resolveExitCode (cmd/cmd.go) takes a missing folder or file, then an
+  // error worth a retry, ahead of a no-retry or a fatal one, and cmd.Run's
+  // last line names the error the child exits on. Lines as rclone v1.76.0
+  // logged them (2026-11-16).
+  void readsTheChildsExitCodeFromTheErrorItEndedOn_data() {
+    QTest::addColumn<QString>("log");
+    QTest::addColumn<int>("exitCode");
+    const QString refused =
+        "failed to make fs for --backup-dir \":ftp,host=127.0.0.1,port=1:bk\": "
+        "NewFs: failed to make FTP connection to \"127.0.0.1:1\": dial tcp "
+        "127.0.0.1:1: connectex: No connection could be made because the "
+        "target machine actively refused it.";
+    const QString noSection =
+        "failed to make fs for --backup-dir \"nosuch:bk\": didn't find "
+        "section in config file (\"nosuch\")";
+    const QString fatalLine = Line(
+        "error", "Fatal error received - not attempting retries");
+    const QString cantRetryLine = Line(
+        "error", "Can't retry any of the errors - not attempting retries");
+    QTest::newRow("missing folder")
+        << Log({Line("error",
+                     "error reading source root directory: directory not found",
+                     "Local file system at //?/C:/src"),
+                Line("error", "Attempt 1/3 failed with 1 errors and: "
+                              "directory not found"),
+                Line("error", "Attempt 3/3 failed with 1 errors and: "
+                              "directory not found"),
+                Line("notice", "Failed to copy: directory not found")})
+        << 3;
+    QTest::newRow("missing folder, several errors")
+        << Log({Line("notice", "Failed to sync with 2 errors: last error "
+                               "was: directory not found")})
+        << 3;
+    QTest::newRow("missing file")
+        << Log({Line("notice", "Failed to copyto: object not found")}) << 4;
+    QTest::newRow("fatal, refused")
+        << Log({fatalLine, Line("notice", "Failed to sync: " + refused)}) << 5;
+    QTest::newRow("fatal, no section")
+        << Log({fatalLine, Line("notice", "Failed to sync: " + noSection)})
+        << 7;
+    QTest::newRow("no section, not fatal")
+        << Log({Line("notice", "Failed to sync: " + noSection)}) << 1;
+    QTest::newRow("can't retry")
+        << Log({cantRetryLine, Line("notice", "Failed to copy: boom")}) << 6;
+    QTest::newRow("immutable")
+        << Log({Line("notice", "Failed to copy: immutable file modified")})
+        << 6;
+    QTest::newRow("bisync aborted")
+        << Log({Line("notice", "Failed to bisync: bisync aborted")}) << 7;
+    QTest::newRow("bisync aborted, several errors")
+        << Log({Line("notice", "Failed to bisync with 2 errors: last error "
+                               "was: bisync aborted")})
+        << 7;
+    // A file's own line starts with its name, and the error it names isn't
+    // the one the run ended on.
+    QTest::newRow("a file's line")
+        << Log({Line("error", "Failed to copy: directory not found", "a.txt")})
+        << 1;
+    // A remote that can't be opened fails before cmd.Run, with its own line.
+    QTest::newRow("can't open the destination")
+        << Log({Line("critical", "Failed to create file system for "
+                                 "destination \":ftp:x\": NewFs: failed to "
+                                 "make FTP connection: connection refused")})
+        << 1;
+  }
+
+  void readsTheChildsExitCodeFromTheErrorItEndedOn() {
+    QFETCH(QString, log);
+    QFETCH(int, exitCode);
+    QCOMPARE(RcJobResult::ExitCodeFromLog(log), exitCode);
+    const RcJobResult::Result result = RcJobResult::Read(Command(true, log), {});
+    QCOMPARE(result.exitCode, exitCode);
+    QVERIFY(!result.success);
+  }
+
+  // What resolveExitCode makes of an error from its text: the end of the
+  // chain, where Go's "%s: %w" leaves the cause, for an error fs.ErrorDirNotFound,
+  // fs.ErrorObjectNotFound or a root fserrors.ShouldRetry retries, and a
+  // retriableErrorStrings phrase anywhere.
+  void readsTheCauseOfAnError_data() {
+    QTest::addColumn<QString>("error");
+    QTest::addColumn<int>("cause");
+    QTest::newRow("folder") << QString("directory not found") << 3;
+    QTest::newRow("folder, wrapped")
+        << QString("error reading source root directory: directory not found")
+        << 3;
+    QTest::newRow("file")
+        << QString("failed to open source object: object not found") << 4;
+    QTest::newRow("EOF") << QString("read: EOF") << 5;
+    QTest::newRow("unexpected EOF") << QString("unexpected EOF") << 5;
+    QTest::newRow("reset")
+        << QString("read tcp 10.0.0.2:50122->10.0.0.9:22: read: connection "
+                   "reset by peer")
+        << 5;
+    QTest::newRow("refused, Windows")
+        << QString("dial tcp 127.0.0.1:1: connectex: No connection could be "
+                   "made because the target machine actively refused it.")
+        << 5;
+    QTest::newRow("timeout")
+        << QString("dial tcp 10.255.255.1:21: i/o timeout") << 5;
+    QTest::newRow("deadline") << QString("context deadline exceeded") << 5;
+    QTest::newRow("TLS handshake")
+        << QString("Get \"https://example.com/\": net/http: TLS handshake "
+                   "timeout")
+        << 5;
+    QTest::newRow("client timeout")
+        << QString("Get \"https://example.com/\": context deadline exceeded "
+                   "(Client.Timeout exceeded while awaiting headers)")
+        << 5;
+    QTest::newRow("GOAWAY")
+        << QString("http2: server sent GOAWAY and closed the connection; "
+                   "LastStreamID=1, ErrCode=NO_ERROR")
+        << 5;
+    // Only the end of the chain is its cause.
+    QTest::newRow("folder, not the cause")
+        << QString("directory not found: retrying with the parent") << -1;
+    QTest::newRow("EOF, part of a word") << QString("read past XEOF") << -1;
+    QTest::newRow("immutable") << QString("immutable file modified") << -1;
+    QTest::newRow("plain") << QString("boom") << -1;
+    QTest::newRow("empty") << QString() << -1;
+  }
+
+  void readsTheCauseOfAnError() {
+    QFETCH(QString, error);
+    QFETCH(int, cause);
+    QCOMPARE(RcJobResult::CauseExitCode(error), cause);
+  }
+
+  // resolveExitCode's order once the cause has its say: no-retry, 6, ahead
+  // of fatal, 7, else 1.
+  void ordersTheExitCodesLikeTheCli_data() {
+    QTest::addColumn<QString>("error");
+    QTest::addColumn<bool>("fatal");
+    QTest::addColumn<bool>("noRetry");
+    QTest::addColumn<int>("exitCode");
+    QTest::newRow("cause first")
+        << QString("directory not found") << true << true << 3;
+    QTest::newRow("worth a retry, though fatal")
+        << QString("connection refused") << true << false << 5;
+    QTest::newRow("no-retry deadline")
+        << QString("context deadline exceeded") << false << true << 5;
+    QTest::newRow("no-retry before fatal")
+        << QString("boom") << true << true << 6;
+    QTest::newRow("immutable")
+        << QString("immutable file modified") << false << false << 6;
+    QTest::newRow("fatal") << QString("boom") << true << false << 7;
+    QTest::newRow("plain") << QString("boom") << false << false << 1;
+  }
+
+  void ordersTheExitCodesLikeTheCli() {
+    QFETCH(QString, error);
+    QFETCH(bool, fatal);
+    QFETCH(bool, noRetry);
+    QFETCH(int, exitCode);
+    QCOMPARE(RcJobResult::ExitCodeForError(error, fatal, noRetry), exitCode);
+  }
+
   // The log of a long run is mostly stats every second and a line per file.
   // The card shows rclone's notices and errors, the log panel only the
   // errors and warnings, and neither gets thousands of lines in one go.

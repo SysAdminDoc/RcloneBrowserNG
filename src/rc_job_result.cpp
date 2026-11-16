@@ -60,6 +60,58 @@ bool IsRetrySuccess(const QString &text) {
   return kAttempt.match(text).hasMatch();
 }
 
+// cmd.Run's lines for a try it won't retry, and its last line, which names
+// the error the run exits on ("Failed to copy: directory not found", or
+// "Failed to sync with 3 errors: last error was: ..."), both measured on
+// v1.76.0 (2026-11-16).
+constexpr char kFatalLine[] = "Fatal error received - not attempting retries";
+constexpr char kCantRetryLine[] =
+    "Can't retry any of the errors - not attempting retries";
+
+struct FinalError {
+  bool found = false;
+  QString error;
+};
+
+FinalError LastFailedLine(const QString &log) {
+  // The command's name is one word. A file's own "Failed to copy" line
+  // starts with the file's name, and "Failed to create file system for"
+  // is the line a remote that can't be opened ends with.
+  static const QRegularExpression kFailed(QStringLiteral(
+      "^Failed to \\S+(?: with \\d+ errors: last error was)?: (.*)$"),
+      QRegularExpression::DotMatchesEverythingOption);
+  FinalError out;
+  for (const QString &line : log.split(QChar('\n'))) {
+    const LogText entry = Parse(line);
+    if (entry.stats || (!entry.level.isEmpty() &&
+                        entry.level != QLatin1String("notice"))) {
+      continue;
+    }
+    const QRegularExpressionMatch match = kFailed.match(entry.text);
+    if (match.hasMatch()) {
+      out.found = true;
+      out.error = match.captured(1);
+    }
+  }
+  return out;
+}
+
+bool HasLine(const QString &log, const char *text) {
+  for (const QString &line : log.split(QChar('\n'))) {
+    if (Parse(line).text == QLatin1String(text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// True when text is cause, or ends with ": " and cause.
+bool EndsWithCause(const QString &text, const QString &cause) {
+  return text == cause || (text.endsWith(cause) &&
+                           text.left(text.size() - cause.size())
+                               .endsWith(QLatin1String(": ")));
+}
+
 // Keeps the last max lines, with a first line saying how many went.
 QStringList KeepLast(QStringList lines, qsizetype max, const QString &note) {
   if (lines.size() <= max) {
@@ -105,6 +157,12 @@ QString DeleteCapLine(const QString &text) {
 }
 
 int ExitCodeFromLog(const QString &log) {
+  // resolveExitCode looks for a missing directory or file first.
+  const FinalError last = LastFailedLine(log);
+  const int cause = last.found ? CauseExitCode(last.error) : -1;
+  if (cause == 3 || cause == 4) {
+    return cause;
+  }
   if (!DeleteCapLine(log).isEmpty()) {
     return 7;
   }
@@ -113,6 +171,15 @@ int ExitCodeFromLog(const QString &log) {
   }
   if (log.contains(QLatin1String(kDurationLimit))) {
     return 10;
+  }
+  if (last.found) {
+    // bisync's cmd.Run has Retry off, so it prints neither retry line, and
+    // its command wraps "bisync aborted" in a fatal error
+    // (cmd/bisync/cmd.go).
+    return ExitCodeForError(
+        last.error,
+        HasLine(log, kFatalLine) || last.error == QLatin1String("bisync aborted"),
+        HasLine(log, kCantRetryLine));
   }
   bool problem = false;
   bool nothingToTransfer = false;
@@ -216,6 +283,135 @@ bool IsNoRetryError(const QString &error) {
   // fs/operations), and the deadline processError marks as no-retry.
   return error == QLatin1String("immutable file modified") ||
          error == QLatin1String("context deadline exceeded");
+}
+
+int CauseExitCode(const QString &error) {
+  // fs.ErrorDirNotFound and fs.ErrorObjectNotFound, which resolveExitCode
+  // finds with errors.Is. Measured on v1.76.0 (2026-11-16): a copy, move
+  // or sync from a missing folder ends on "directory not found" and exits 3
+  // on the CLI, and the same sync/* call over rc fails with that text.
+  if (EndsWithCause(error, QStringLiteral("directory not found"))) {
+    return 3;
+  }
+  if (EndsWithCause(error, QStringLiteral("object not found"))) {
+    return 4;
+  }
+  // fserrors.ShouldRetry (fs/fserrors/error.go) walks the cause chain. It
+  // retries an error whose Timeout() or Temporary() says so, one whose root
+  // is io.EOF, io.ErrUnexpectedEOF or an errno retriable_errors*.go lists,
+  // and one whose root's text holds a phrase from retriableErrorStrings.
+  // The roots are Go's texts for those errors on Linux, macOS and Windows,
+  // where the message is the system's English one.
+  static const QStringList kRoots{
+      // io.EOF and io.ErrUnexpectedEOF.
+      QStringLiteral("EOF"),
+      QStringLiteral("unexpected EOF"),
+      // Timeout() true: a deadline on a connection, context.DeadlineExceeded
+      // and net/http's own timeouts.
+      QStringLiteral("i/o timeout"),
+      QStringLiteral("context deadline exceeded"),
+      QStringLiteral("net/http: TLS handshake timeout"),
+      QStringLiteral("net/http: timeout awaiting response headers"),
+      // Temporary() true: a DNS server that failed to answer, and the errnos
+      // syscall.Errno calls temporary.
+      QStringLiteral("server misbehaving"),
+      QStringLiteral("interrupted system call"),
+      QStringLiteral("too many open files"),
+      QStringLiteral("too many open files in system"),
+      // EPIPE, ETIMEDOUT, ECONNREFUSED, EHOSTDOWN, EHOSTUNREACH, ENETDOWN,
+      // ENETUNREACH, ECONNABORTED, EAGAIN and ECONNRESET.
+      QStringLiteral("broken pipe"),
+      QStringLiteral("connection timed out"),
+      QStringLiteral("operation timed out"),
+      QStringLiteral("connection refused"),
+      QStringLiteral("host is down"),
+      QStringLiteral("no route to host"),
+      QStringLiteral("network is down"),
+      QStringLiteral("network is unreachable"),
+      QStringLiteral("software caused connection abort"),
+      QStringLiteral("resource temporarily unavailable"),
+      QStringLiteral("connection reset by peer"),
+      // The Windows socket and file errors retriable_errors_windows.go adds.
+      QStringLiteral("A socket operation encountered a dead network."),
+      QStringLiteral(
+          "A socket operation was attempted to an unreachable network."),
+      QStringLiteral("The connection has been broken due to keep-alive "
+                     "activity detecting a failure while the operation was "
+                     "in progress."),
+      QStringLiteral("An established connection was aborted by the software "
+                     "in your host machine."),
+      QStringLiteral(
+          "An existing connection was forcibly closed by the remote host."),
+      QStringLiteral("An operation on a socket could not be performed "
+                     "because the system lacked sufficient buffer space or "
+                     "because a queue was full."),
+      QStringLiteral("A request to send or receive data was disallowed "
+                     "because the socket is not connected and (when sending "
+                     "on a datagram socket using a sendto call) no address "
+                     "was supplied."),
+      QStringLiteral("A request to send or receive data was disallowed "
+                     "because the socket had already been shut down in that "
+                     "direction with a previous shutdown call."),
+      QStringLiteral("A connection attempt failed because the connected "
+                     "party did not properly respond after a period of "
+                     "time, or established connection failed because "
+                     "connected host has failed to respond."),
+      QStringLiteral("No connection could be made because the target "
+                     "machine actively refused it."),
+      QStringLiteral(
+          "A socket operation failed because the destination host was down."),
+      QStringLiteral(
+          "A socket operation was attempted to an unreachable host."),
+      QStringLiteral("Returned by WSARecv or WSARecvFrom to indicate the "
+                     "remote party has initiated a graceful shutdown "
+                     "sequence."),
+      QStringLiteral(
+          "A database query failed because it was actively refused."),
+      QStringLiteral("No such host is known."),
+      QStringLiteral("This is usually a temporary error during hostname "
+                     "resolution and means that the local server did not "
+                     "receive a response from an authoritative server."),
+      QStringLiteral("Reached the end of the file."),
+      QStringLiteral("The specified network name is no longer available."),
+      QStringLiteral("The pipe has been ended."),
+  };
+  static const QStringList kPhrases{
+      // retriableErrorStrings.
+      QStringLiteral("use of closed network connection"),
+      QStringLiteral("unexpected EOF reading trailer"),
+      QStringLiteral("transport connection broken"),
+      QStringLiteral("http: ContentLength="),
+      QStringLiteral("server closed idle connection"),
+      QStringLiteral("bad record MAC"),
+      QStringLiteral("stream error:"),
+      QStringLiteral("http2: server sent GOAWAY"),
+      QStringLiteral("tls: use of closed connection"),
+      // net/http's client timeout, which it adds to the request's error in
+      // parentheses ("(Client.Timeout exceeded while awaiting headers)").
+      QStringLiteral("(Client.Timeout "),
+  };
+  for (const QString &root : kRoots) {
+    if (EndsWithCause(error, root)) {
+      return 5;
+    }
+  }
+  for (const QString &phrase : kPhrases) {
+    if (error.contains(phrase)) {
+      return 5;
+    }
+  }
+  return -1;
+}
+
+int ExitCodeForError(const QString &error, bool fatal, bool noRetry) {
+  const int cause = CauseExitCode(error);
+  if (cause >= 0) {
+    return cause;
+  }
+  if (noRetry || IsNoRetryError(error)) {
+    return 6;
+  }
+  return fatal ? 7 : 1;
 }
 
 qint64 GoDurationMs(const QString &text) {
