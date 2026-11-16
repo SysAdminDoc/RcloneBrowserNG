@@ -571,6 +571,43 @@ private slots:
     QVERIFY(range.wellFormed);
     QCOMPARE(range.matchesExample, QStringLiteral("x"));
     QVERIFY2(range.negatedClass.isEmpty(), qPrintable(range.negatedClass));
+
+    // A later range in the class used to clear that, so these got the
+    // sentence. rclone v1.76.0 excluded - and b for [!-a0-9] and kept A and
+    // 5, the class Go reads as "not / to a and not 0 to 9".
+    const QStringList laterRanges{"[!-a0-9]", "*.[!-a0-9]",
+                                  QString(QChar(0xE9)) + "[^-z0-9Z]",
+                                  "[^-aa-z]a"};
+    for (const QString &pattern : laterRanges) {
+      const auto later = Describe(pattern);
+      QVERIFY2(later.valid && later.wellFormed, qPrintable(pattern));
+      QVERIFY2(later.negatedClass.isEmpty(),
+               qPrintable(pattern + ": " + later.negatedClass));
+    }
+    // Without the leading "-" the "/" stands alone, so the sentence stays.
+    const QStringList plain{"[!a0-9]", "[!0-9]"};
+    for (const QString &pattern : plain) {
+      QVERIFY2(!Describe(pattern).negatedClass.isEmpty(), qPrintable(pattern));
+    }
+  }
+
+  // "/*/x" matched name/x, which isn't at the top level. The scope said
+  // "only at the top level" anyway, and a reader takes that to mean nothing
+  // deeper goes. rclone v1.76.0 excluded name/x for /*/x and x/b for
+  // /{a,*/b}.
+  void anAnchoredPatternThatReachesDownStartsFromTheTop() {
+    const QStringList reaching{"/*/x", "/{a,*/b}", "/build/**", "/logs/"};
+    for (const QString &pattern : reaching) {
+      const auto description = Describe(pattern);
+      QVERIFY2(description.valid && description.wellFormed,
+               qPrintable(pattern));
+      QCOMPARE(description.scope,
+               QStringLiteral("only from the top level of the transfer"));
+    }
+    QCOMPARE(Describe("/file.tmp").scope,
+             QStringLiteral("only at the top level of the transfer"));
+    QCOMPARE(Describe("/*.tmp").scope,
+             QStringLiteral("only at the top level of the transfer"));
   }
 
   // DescribeAll runs on every change in the exclude editor, on the UI

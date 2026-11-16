@@ -1258,7 +1258,11 @@ struct Parser {
           return Fail("invalid character class range",
                       Text(re.substr(rangeStart, t - rangeStart)));
         }
-        firstIsRange = atFirst;
+        // Only the first item can be rclone's "/" read as the start of a
+        // range. A later range mustn't clear that.
+        if (atFirst) {
+          firstIsRange = true;
+        }
       }
       cls.ranges.append(Range{lo, hi});
       if (!cls.hasFirst) {
@@ -1761,7 +1765,11 @@ Description Describe(const QString &pattern) {
                             ? QStringLiteral("everywhere below the transfer root")
                             : QStringLiteral("at any depth");
   } else {
-    description.scope = QStringLiteral("only at the top level of the transfer");
+    // "/*/x" and "/build/**" reach below the top level, starting from it.
+    description.scope =
+        trimmed.mid(1).contains(QChar('/'))
+            ? QStringLiteral("only from the top level of the transfer")
+            : QStringLiteral("only at the top level of the transfer");
     description.missesExample = deeper;
   }
   return description;

@@ -13,7 +13,8 @@ struct Description {
   // False for a blank line, and for a pattern rclone takes but the
   // explainer can't model: a {{regexp}} section, \Q...\E, \b and the other
   // assertions, (?flags), a {n,m} repeat, \p{Greek} and other script names,
-  // nesting too deep to follow, a pattern over 1000 characters, or one with
+  // nesting too deep to follow, a pattern over 1000 characters that rclone
+  // would accept (one it refuses still gets wellFormed false), or one with
   // no path the explainer can show it excluding ("x{/}" only matches a path
   // ending in "/"). Those get no line rather than a guess.
   bool valid = false;
