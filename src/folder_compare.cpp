@@ -192,11 +192,13 @@ FolderCompareDialog::FolderCompareDialog(
   UiPolish::SetMuted(mSummary);
   layout->addWidget(mSummary);
 
+  // The card stands in for the table while there are no rows, the same way
+  // the main window's remotes and tasks lists work, so the dialog never
+  // shows a message card above an empty table.
   mEmptyState = new QLabel(this);
-  UiPolish::SetEmptyState(
-      mEmptyState, "No comparison yet",
-      "Run Compare to review matches, differences, and repair actions.");
-  layout->addWidget(mEmptyState);
+  UiPolish::SetEmptyState(mEmptyState, "No comparison yet",
+                          "Run Compare to see which files differ.");
+  layout->addWidget(mEmptyState, 1);
 
   mTable = new QTableWidget(this);
   mTable->setColumnCount(3);
@@ -264,7 +266,7 @@ FolderCompareDialog::FolderCompareDialog(
                    [this]() { enqueueRepair(RepairAction::DeleteFromSource); });
   QObject::connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
 
-  updateRepairButtons();
+  refreshTable();
 }
 
 FolderCompareDialog::~FolderCompareDialog() {
@@ -338,7 +340,7 @@ void FolderCompareDialog::runCompare() {
           mSummary->setText("No differences reported.");
           UiPolish::SetEmptyState(
               mEmptyState, "Folders match",
-              "rclone did not report any paths that need attention.");
+              "rclone found no differences between them.");
         }
         mProcess->deleteLater();
         mProcess = nullptr;
@@ -346,6 +348,9 @@ void FolderCompareDialog::runCompare() {
   QObject::connect(mProcess, &QProcess::errorOccurred, this,
                    [this](QProcess::ProcessError) {
                      mCompareButton->setEnabled(true);
+                     // Without this the card kept saying the comparison
+                     // was running after rclone failed to start.
+                     refreshTable();
                      QMessageBox::warning(
                          this, "Compare Folders",
                          "Could not start rclone: " + mProcess->errorString());
@@ -364,6 +369,10 @@ void FolderCompareDialog::refreshTable() {
 
   mTable->setRowCount(static_cast<int>(mVisibleEntryIndexes.size()));
   mEmptyState->setVisible(mVisibleEntryIndexes.isEmpty());
+  mTable->setVisible(!mVisibleEntryIndexes.isEmpty());
+  // The counts line only has something to add once there are results. Before
+  // that it repeated the card.
+  mSummary->setVisible(!mEntries.isEmpty());
   int matches = 0;
   int missingOnSource = 0;
   int missingOnDestination = 0;
@@ -407,9 +416,8 @@ void FolderCompareDialog::refreshTable() {
 
   if (mEntries.isEmpty()) {
     mSummary->setText("No comparison has been run.");
-    UiPolish::SetEmptyState(
-        mEmptyState, "No comparison yet",
-        "Run Compare to review matches, differences, and repair actions.");
+    UiPolish::SetEmptyState(mEmptyState, "No comparison yet",
+                            "Run Compare to see which files differ.");
   } else {
     mSummary->setText(
         QString("%1 shown of %2 paths. %3 match, %4 missing on source, "

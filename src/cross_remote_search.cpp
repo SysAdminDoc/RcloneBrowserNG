@@ -2,6 +2,17 @@
 #include "interface_polish.h"
 #include "utils.h"
 
+namespace {
+
+// The card stands in for the results table while it has no rows, the same
+// way the main window's remotes and tasks lists work.
+void ShowEmptyState(QLabel *card, QTableWidget *results, bool empty) {
+  card->setVisible(empty);
+  results->setVisible(!empty);
+}
+
+} // namespace
+
 CrossRemoteSearchDialog::CrossRemoteSearchDialog(
     const QStringList &remoteNames, QWidget *parent)
     : QDialog(parent), mRemotes(remoteNames) {
@@ -58,30 +69,37 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
                                       << "Audio (*.mp3 *.flac *.wav *.aac)");
   mTypeFilter->setAccessibleName("File type filter");
   filterRow->addWidget(mTypeFilter);
-  filterRow->addWidget(new QLabel("Min size (KB):", this));
+  // The unit sits on the number itself, so "100" never reads as bytes.
+  auto *minLabel = new QLabel("At least:", this);
+  filterRow->addWidget(minLabel);
   mMinSize = new QSpinBox(this);
   mMinSize->setRange(0, 999999999);
-  mMinSize->setSpecialValueText("Any");
+  mMinSize->setSuffix(" KiB");
+  mMinSize->setSpecialValueText("Any size");
   mMinSize->setAccessibleName("Minimum file size");
+  minLabel->setBuddy(mMinSize);
   filterRow->addWidget(mMinSize);
-  filterRow->addWidget(new QLabel("Max size (MB):", this));
+  auto *maxLabel = new QLabel("At most:", this);
+  filterRow->addWidget(maxLabel);
   mMaxSize = new QSpinBox(this);
   mMaxSize->setRange(0, 999999);
-  mMaxSize->setSpecialValueText("Any");
+  mMaxSize->setSuffix(" MiB");
+  mMaxSize->setSpecialValueText("Any size");
   mMaxSize->setAccessibleName("Maximum file size");
+  maxLabel->setBuddy(mMaxSize);
   filterRow->addWidget(mMaxSize);
   filterRow->addStretch();
   layout->addLayout(filterRow);
 
-  mStatus = new QLabel("Enter a pattern to search every configured remote.", this);
+  mStatus = new QLabel("Searches the remotes ticked above.", this);
   UiPolish::SetMuted(mStatus);
   layout->addWidget(mStatus);
 
   mEmptyState = new QLabel(this);
   UiPolish::SetEmptyState(
-      mEmptyState, "No search running",
-      "Use a filename pattern such as *.jpg, invoice*, or report?.pdf.");
-  layout->addWidget(mEmptyState);
+      mEmptyState, "No search yet",
+      "Type a filename pattern such as *.jpg, invoice* or report?.pdf.");
+  layout->addWidget(mEmptyState, 1);
 
   mResults = new QTableWidget(0, 4, this);
   mResults->setHorizontalHeaderLabels({"Remote", "Path", "Size", "Modified"});
@@ -95,6 +113,7 @@ CrossRemoteSearchDialog::CrossRemoteSearchDialog(
   mResults->setEditTriggers(QAbstractItemView::NoEditTriggers);
   mResults->setSortingEnabled(true);
   layout->addWidget(mResults, 1);
+  ShowEmptyState(mEmptyState, mResults, true);
 
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
   UiPolish::SetDialogButtonBox(buttons);
@@ -148,7 +167,7 @@ void CrossRemoteSearchDialog::startSearch() {
   if (query.isEmpty()) {
     UiPolish::SetFieldState(mQueryEdit, "error");
     mStatus->setText("Enter a filename pattern before searching.");
-    mEmptyState->setVisible(true);
+    ShowEmptyState(mEmptyState, mResults, true);
     UiPolish::SetEmptyState(mEmptyState, "Search needs a pattern",
                             "Examples: *.jpg, invoice*, report?.pdf");
     return;
@@ -162,7 +181,7 @@ void CrossRemoteSearchDialog::startSearch() {
   mSearchButton->setEnabled(false);
   mCancelButton->setEnabled(true);
   UiPolish::SetFieldState(mQueryEdit, QString());
-  mEmptyState->setVisible(true);
+  ShowEmptyState(mEmptyState, mResults, true);
   UiPolish::SetEmptyState(mEmptyState, "Searching remotes",
                           "Matches will appear here as rclone returns them.");
 
@@ -275,10 +294,9 @@ void CrossRemoteSearchDialog::cancelSearch() {
             .arg(mTotalMatches));
   } else {
     mStatus->setText("Search cancelled.");
-    mEmptyState->setVisible(true);
-    UiPolish::SetEmptyState(
-        mEmptyState, "Search cancelled",
-        "Start another search when you are ready.");
+    ShowEmptyState(mEmptyState, mResults, true);
+    UiPolish::SetEmptyState(mEmptyState, "Search cancelled",
+                            "Nothing turned up before you cancelled it.");
   }
 }
 
@@ -314,16 +332,24 @@ void CrossRemoteSearchDialog::finishRemoteSearch(QProcess *proc,
   } else {
     mStatus->setToolTip(QString());
   }
+  // Screen readers can't reach a tooltip, so the errors go here too.
+  mStatus->setAccessibleDescription(mStatus->toolTip());
   mStatus->setText(status);
-  mEmptyState->setVisible(mTotalMatches == 0);
+  ShowEmptyState(mEmptyState, mResults, mTotalMatches == 0);
   if (mTotalMatches == 0) {
-    UiPolish::SetEmptyState(
-        mEmptyState,
-        mFailedRemotes > 0 ? "No matches from completed remotes"
-                           : "No matching files",
-        mFailedRemotes > 0
-            ? "Check the status tooltip for remote errors, or refine the pattern."
-            : "Try a broader pattern or disable case-sensitive matching.");
+    QString detail;
+    if (mFailedRemotes > 0) {
+      detail = "Some remotes failed. Point at the line above to see why.";
+    } else if (mCaseSensitive->isChecked()) {
+      detail = "Try a broader pattern, or turn off Case-sensitive.";
+    } else {
+      detail = "Try a broader pattern.";
+    }
+    UiPolish::SetEmptyState(mEmptyState,
+                            mFailedRemotes > 0
+                                ? "No matches from the remotes that answered"
+                                : "No matching files",
+                            detail);
   }
 }
 
@@ -425,7 +451,7 @@ void CrossRemoteSearchDialog::addResult(const QString &remote,
 
   mResults->setSortingEnabled(true);
   ++mTotalMatches;
-  mEmptyState->setVisible(false);
+  ShowEmptyState(mEmptyState, mResults, false);
   mStatus->setText(
       QString("Searching... %1 found so far (%2 remote(s) pending)")
           .arg(mTotalMatches)
