@@ -4,7 +4,9 @@
 
 using RcSyncRequest::Build;
 using RcSyncRequest::ConfigGlobalsReason;
+using RcSyncRequest::DryRunGlobalReason;
 using RcSyncRequest::IndexOptions;
+using RcSyncRequest::IsDryRun;
 using RcSyncRequest::OptionIndex;
 using RcSyncRequest::Request;
 
@@ -743,6 +745,137 @@ private slots:
     const QStringList unrelated{"RCLONE_CONFIG_BK_TYPE=alias",
                                 "OTHER=:local,global.max_delete=1:/b"};
     QVERIFY(ConfigGlobalsReason(QJsonObject(), unrelated).isEmpty());
+  }
+
+  // pflag keeps the last value a bool flag gets, a short cluster gives its
+  // = value to the last letter, and "--" ends the flags.
+  void readsWhetherTheArgumentsAreADryRun_data() {
+    QTest::addColumn<QStringList>("args");
+    QTest::addColumn<bool>("dryRun");
+    QTest::newRow("no flag") << QStringList{"sync", "a:", "b:"} << false;
+    QTest::newRow("--dry-run")
+        << QStringList{"sync", "--dry-run", "a:", "b:"} << true;
+    QTest::newRow("-n") << QStringList{"sync", "-n", "a:", "b:"} << true;
+    QTest::newRow("a cluster") << QStringList{"sync", "-vn", "a:"} << true;
+    QTest::newRow("a cluster ending in n=false")
+        << QStringList{"sync", "-vn=false", "a:"} << false;
+    QTest::newRow("false for the letter after n")
+        << QStringList{"sync", "-nv=false", "a:"} << true;
+    QTest::newRow("--dry-run=false")
+        << QStringList{"sync", "--dry-run=false", "a:"} << false;
+    QTest::newRow("turned off after")
+        << QStringList{"sync", "--dry-run", "--dry-run=0", "a:"} << false;
+    QTest::newRow("turned on after")
+        << QStringList{"sync", "--dry-run=F", "--dry-run=T", "a:"} << true;
+    QTest::newRow("a value rclone refuses")
+        << QStringList{"sync", "--dry-run=yes", "a:"} << true;
+    QTest::newRow("a path after --")
+        << QStringList{"copy", "--", "-n", "b:"} << false;
+    QTest::newRow("a long flag holding n")
+        << QStringList{"sync", "--no-traverse", "a:"} << false;
+    QTest::newRow("a cluster without n")
+        << QStringList{"sync", "-vP", "a:"} << false;
+    QTest::newRow("rules ahead of the command")
+        << QStringList{"--filter", "+ x", "copy", "--dry-run", "a:", "b:"}
+        << true;
+  }
+
+  void readsWhetherTheArgumentsAreADryRun() {
+    QFETCH(QStringList, args);
+    QFETCH(bool, dryRun);
+    QCOMPARE(IsDryRun(args), dryRun);
+  }
+
+  // A section's global.dry_run, read with strconv.ParseBool, is written over
+  // --dry-run when the CLI opens the path (addConfigToContext, v1.76.0).
+  void findsWhatTurnsADryRunOff_data() {
+    QTest::addColumn<QString>("key");
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<QStringList>("environment");
+    QTest::addColumn<QString>("found");
+    const QStringList none;
+    QTest::newRow("nothing") << QStringLiteral("remote")
+                             << QStringLiteral("C:/x") << none << QString();
+    QTest::newRow("a key set false")
+        << QStringLiteral("global.dry_run") << QStringLiteral("false") << none
+        << QStringLiteral("the bk remote's global.dry_run in rclone.conf");
+    QTest::newRow("a key set 0") << QStringLiteral("global.dry_run")
+                                 << QStringLiteral("0") << none
+                                 << QStringLiteral("bk");
+    QTest::newRow("a key rclone can't read")
+        << QStringLiteral("global.dry_run") << QStringLiteral("no") << none
+        << QStringLiteral("bk");
+    QTest::newRow("a key set true") << QStringLiteral("global.dry_run")
+                                    << QStringLiteral("true") << none
+                                    << QString();
+    QTest::newRow("a key in upper case")
+        << QStringLiteral("GLOBAL.dry_run") << QStringLiteral("false") << none
+        << QString();
+    QTest::newRow("another global") << QStringLiteral("global.transfers")
+                                    << QStringLiteral("0") << none
+                                    << QString();
+    QTest::newRow("a connection string")
+        << QStringLiteral("remote")
+        << QStringLiteral(":local,global.dry_run=false:C:/x") << none
+        << QStringLiteral("bk");
+    QTest::newRow("a quoted value")
+        << QStringLiteral("remote")
+        << QStringLiteral(":local,global.dry_run='0':C:/x") << none
+        << QStringLiteral("bk");
+    QTest::newRow("a bare key") << QStringLiteral("remote")
+                                << QStringLiteral(":local,global.dry_run:C:/x")
+                                << none << QString();
+    QTest::newRow("a true value")
+        << QStringLiteral("remote")
+        << QStringLiteral(":local,global.dry_run=1,links:C:/x") << none
+        << QString();
+    QTest::newRow("a folder name")
+        << QStringLiteral("remote")
+        << QStringLiteral("C:/x,global.dry_run=false") << none << QString();
+    QTest::newRow("a longer key")
+        << QStringLiteral("remote")
+        << QStringLiteral(":local,global.dry_runs=false:C:/x") << none
+        << QString();
+    QTest::newRow("the remote's variable")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"RCLONE_CONFIG_BK_GLOBAL.DRY_RUN=false"}
+        << QStringLiteral("RCLONE_CONFIG_BK_GLOBAL.DRY_RUN");
+    QTest::newRow("the variable in lower case")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"rclone_config_bk_global.dry_run=0"}
+        << QStringLiteral("rclone_config_bk_global.dry_run");
+    QTest::newRow("the variable set true")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"RCLONE_CONFIG_BK_GLOBAL.DRY_RUN=true"} << QString();
+    QTest::newRow("a path in a variable")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"RCLONE_BACKUP_DIR=:local,global.dry_run=f:C:/b"}
+        << QStringLiteral("RCLONE_BACKUP_DIR");
+    QTest::newRow("not an rclone variable")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"OTHER=:local,global.dry_run=false:C:/b"} << QString();
+    // --dry-run on the command line wins over the flag's own variable.
+    QTest::newRow("RCLONE_DRY_RUN")
+        << QStringLiteral("remote") << QStringLiteral("C:/x")
+        << QStringList{"RCLONE_DRY_RUN=false"} << QString();
+  }
+
+  void findsWhatTurnsADryRunOff() {
+    QFETCH(QString, key);
+    QFETCH(QString, value);
+    QFETCH(QStringList, environment);
+    QFETCH(QString, found);
+    QJsonObject section;
+    section.insert("type", "alias");
+    section.insert(key, value);
+    QJsonObject dump;
+    dump.insert("bk", section);
+    const QString reason = DryRunGlobalReason(dump, environment);
+    if (found.isEmpty()) {
+      QVERIFY2(reason.isEmpty(), qPrintable(reason));
+    } else {
+      QVERIFY2(reason.contains(found), qPrintable(reason));
+    }
   }
 };
 

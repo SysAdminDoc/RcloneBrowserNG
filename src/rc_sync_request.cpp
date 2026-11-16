@@ -514,4 +514,120 @@ QString ConfigGlobalsReason(const QJsonObject &dump,
   return QString();
 }
 
+bool IsDryRun(const QStringList &args) {
+  bool on = false;
+  for (const QString &arg : args) {
+    if (arg == QLatin1String("--")) {
+      break;
+    }
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    const QString name = equals > 0 ? arg.left(equals) : arg;
+    bool value = true;
+    const bool valueOk =
+        equals < 0 || parseGoBool(arg.mid(equals + 1), &value);
+    if (name == QLatin1String("--dry-run")) {
+      // A value rclone can't read stops the run, so it counts as on.
+      on = !valueOk || value;
+      continue;
+    }
+    if (name.size() < 2 || name.startsWith(QLatin1String("--")) ||
+        !name.startsWith(QLatin1Char('-'))) {
+      continue;
+    }
+    // A short flag cluster: an = value belongs to its last letter.
+    bool letters = true;
+    for (qsizetype k = 1; letters && k < name.size(); k++) {
+      const char16_t c = name.at(k).unicode();
+      letters = (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z');
+    }
+    if (!letters || !name.contains(QLatin1Char('n'))) {
+      continue;
+    }
+    on = !(equals > 0 && name.endsWith(QLatin1Char('n')) && valueOk &&
+           !value);
+  }
+  return on;
+}
+
+QString DryRunGlobalReason(const QJsonObject &dump,
+                           const QStringList &environment) {
+  // addConfigToContext (fs/newfs.go, v1.76.0) writes a section's
+  // global.dry_run into the global config when the path opens, after the
+  // flags were read, and config.Get matches the key exactly. A connection
+  // string in a value ("remote = :local,global.dry_run=false:/x") opens with
+  // it too. A bare key in a connection string means true.
+  const auto turnsItOff = [](const QString &value) {
+    bool on = false;
+    return !parseGoBool(value, &on) || !on;
+  };
+  const auto carriesOff = [&turnsItOff](const QString &value) {
+    const QString needle = QStringLiteral(",global.dry_run");
+    for (qsizetype at = value.indexOf(needle); at >= 0;
+         at = value.indexOf(needle, at + 1)) {
+      const qsizetype end = at + needle.size();
+      if (end >= value.size() || value.indexOf(QLatin1Char(':'), end) < 0) {
+        continue;
+      }
+      const QChar next = value.at(end);
+      if (next != QLatin1Char('=')) {
+        continue; // ',' or ':' leaves it true, anything else is another key
+      }
+      qsizetype start = end + 1;
+      qsizetype stop = start;
+      if (start < value.size() && (value.at(start) == QLatin1Char('\'') ||
+                                   value.at(start) == QLatin1Char('"'))) {
+        const QChar quote = value.at(start);
+        start++;
+        stop = value.indexOf(quote, start);
+        if (stop < 0) {
+          return true; // rclone refuses it, and a refusal is safe to ask for
+        }
+      } else {
+        while (stop < value.size() && value.at(stop) != QLatin1Char(',') &&
+               value.at(stop) != QLatin1Char(':')) {
+          stop++;
+        }
+      }
+      if (turnsItOff(value.mid(start, stop - start))) {
+        return true;
+      }
+    }
+    return false;
+  };
+  for (auto it = dump.constBegin(); it != dump.constEnd(); ++it) {
+    const QJsonObject section = it.value().toObject();
+    for (auto key = section.constBegin(); key != section.constEnd(); ++key) {
+      const QString value = key.value().toString();
+      if ((key.key() == QLatin1String("global.dry_run") &&
+           turnsItOff(value)) ||
+          carriesOff(value)) {
+        return QString("the %1 remote's global.dry_run in rclone.conf")
+            .arg(it.key());
+      }
+    }
+  }
+  // ConfigToEnv (fs/config.go) gives RCLONE_CONFIG_BK_GLOBAL.DRY_RUN for
+  // [bk], and Windows reads names in any case. A path in any RCLONE_
+  // variable opens with its options too.
+  for (const QString &entry : environment) {
+    const qsizetype equals = entry.indexOf(QLatin1Char('='), 1);
+    if (equals < 0) {
+      continue;
+    }
+    const QString name = entry.left(equals);
+    const QString upper = name.toUpper();
+    const QString value = entry.mid(equals + 1);
+    if (!upper.startsWith(QLatin1String("RCLONE_"))) {
+      continue;
+    }
+    if ((upper.startsWith(QLatin1String("RCLONE_CONFIG_")) &&
+         upper.endsWith(QLatin1String("_GLOBAL.DRY_RUN")) &&
+         turnsItOff(value)) ||
+        carriesOff(value)) {
+      return name;
+    }
+  }
+  return QString();
+}
+
 } // namespace RcSyncRequest

@@ -95,4 +95,16 @@ Request Build(const QStringList &args, const QString &group,
 QString ConfigGlobalsReason(const QJsonObject &dump,
                             const QStringList &environment);
 
+// True when the arguments (the command and its flags) turn --dry-run on:
+// --dry-run, -n, a short flag cluster holding n, or --dry-run= with a value
+// Go reads as true. Everything after a "--" is a path.
+bool IsDryRun(const QStringList &args);
+
+// What in the daemon's config/dump answer or the NAME=value environment sets
+// global.dry_run to anything Go doesn't read as true, or empty when nothing
+// does. The CLI applies it over --dry-run, so a dry run it turns off would
+// run for real.
+QString DryRunGlobalReason(const QJsonObject &dump,
+                           const QStringList &environment);
+
 } // namespace RcSyncRequest

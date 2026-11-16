@@ -514,17 +514,13 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
     // Deleting, purging and anything carrying a flag this rclone does not
     // expose over the API all land here. Running the CLI inside the daemon
     // still works; it just has no stats group of its own.
-    Diagnostics::appendLog("rc-engine",
-                           QString("core/command route: %1").arg(request.reason));
-    startCommand(args, request.reason, context, callback);
+    startCommandRoute(args, request.reason, context, callback);
     return;
   }
   if (!mEndpoints.contains(request.endpoint)) {
     const QString reason =
         QString("this rclone has no %1").arg(request.endpoint);
-    Diagnostics::appendLog("rc-engine",
-                           QString("core/command route: %1").arg(reason));
-    startCommand(args, reason, context, callback);
+    startCommandRoute(args, reason, context, callback);
     return;
   }
 
@@ -536,9 +532,7 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
         if (!isDirectory) {
           const QString reason = QStringLiteral(
               "the source is a single file, which sync/* cannot take");
-          Diagnostics::appendLog(
-              "rc-engine", QString("core/command route: %1").arg(reason));
-          startCommand(args, reason, contextGuard, callback);
+          startCommandRoute(args, reason, contextGuard, callback);
           return;
         }
         // A dry run stays on sync/*, which skips every global. option,
@@ -546,7 +540,8 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
         // section's global.dry_run = false over --dry-run (measured on
         // v1.76.0: core/command deleted the files a sync/sync dry run kept),
         // so the dry run shows the run without the config's other global.
-        // options rather than risk becoming a real one.
+        // options rather than risk becoming a real one. One that can't take
+        // sync/* is checked in startCommandRoute.
         if (request.payload.value(QLatin1String("_config"))
                 .toObject()
                 .value(QLatin1String("DryRun"))
@@ -575,18 +570,13 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
                     QString("config/dump failed (%1), so rclone.conf can't be "
                             "checked for global. options")
                         .arg(error);
-                Diagnostics::appendLog(
-                    "rc-engine", QString("core/command route: %1").arg(reason));
-                startCommand(args, reason, contextGuard, callback);
+                startCommandRoute(args, reason, contextGuard, callback);
                 return;
               }
               const QString reason =
                   RcSyncRequest::ConfigGlobalsReason(dump, environment);
               if (!reason.isEmpty()) {
-                Diagnostics::appendLog(
-                    "rc-engine",
-                    QString("core/command route: %1").arg(reason));
-                startCommand(args, reason, contextGuard, callback);
+                startCommandRoute(args, reason, contextGuard, callback);
                 return;
               }
               startSync(args, request, contextGuard, callback);
@@ -716,6 +706,64 @@ void RcloneRcEngine::startSync(const QStringList &args,
 
 QString RcloneRcEngine::nextGroup() {
   return QString("rclonebrowser-%1-%2").arg(mGroupTag).arg(++mGroupCounter);
+}
+
+void RcloneRcEngine::startCommandRoute(const QStringList &args,
+                                       const QString &routeNote,
+                                       QObject *context,
+                                       const JobCallback &callback) {
+  Diagnostics::appendLog("rc-engine",
+                         QString("core/command route: %1").arg(routeNote));
+  if (!RcSyncRequest::IsDryRun(args)) {
+    startCommand(args, routeNote, context, callback);
+    return;
+  }
+  // The CLI writes a section's global.dry_run into its global config when
+  // the path opens, after --dry-run was read (addConfigToContext in
+  // fs/newfs.go, v1.76.0), so with global.dry_run = false a dry run here
+  // deleted the destination. Nothing on the command line outranks it, so
+  // such a dry run doesn't start. Only this PC's environment is known.
+  const QStringList environment =
+      isRemote() ? QStringList()
+                 : QProcessEnvironment::systemEnvironment().toStringList();
+  const QPointer<QObject> contextGuard(context);
+  QObject *owner = context ? context : static_cast<QObject *>(this);
+  postAsync(
+      "config/dump", QJsonObject(), owner,
+      [this, args, routeNote, contextGuard, environment,
+       callback](const QJsonObject &dump, const QString &error) {
+        QString refusal;
+        if (!error.isEmpty()) {
+          refusal = QString("This dry run has to run as a separate rclone "
+                            "(%1), and rclone.conf couldn't be read (%2) to "
+                            "check for a global.dry_run that would make it a "
+                            "real run. Nothing was run.")
+                        .arg(routeNote, error);
+        } else {
+          const QString setter =
+              RcSyncRequest::DryRunGlobalReason(dump, environment);
+          if (!setter.isEmpty()) {
+            refusal = QString("This dry run has to run as a separate rclone "
+                              "(%1), where %2 would turn --dry-run off and "
+                              "make it a real run. Nothing was run.")
+                          .arg(routeNote, setter);
+          }
+        }
+        if (refusal.isEmpty()) {
+          startCommand(args, routeNote, contextGuard, callback);
+          return;
+        }
+        Diagnostics::appendLog("rc-engine", refusal);
+        if (!callback) {
+          return;
+        }
+        StartedJob refused;
+        refused.error = refusal;
+        refused.routeNote = routeNote;
+        refused.displayCommand = rcCommandForDisplay(args);
+        refused.refused = true;
+        callback(refused);
+      });
 }
 
 void RcloneRcEngine::startCommand(const QStringList &args,

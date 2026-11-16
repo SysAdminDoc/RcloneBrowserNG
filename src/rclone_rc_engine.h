@@ -64,6 +64,9 @@ public:
     // caps included. Empty when the daemon didn't answer options/get. The
     // job card asks again before each retry (daemonSettings).
     QJsonObject daemonMain;
+    // The engine kept the job from starting on purpose (a dry run the CLI
+    // would run for real), so the caller must not run it another way.
+    bool refused = false;
   };
 
   using JobCallback = std::function<void(const StartedJob &job)>;
@@ -142,6 +145,10 @@ private:
   QString nextGroup();
   void startCommand(const QStringList &args, const QString &routeNote,
                     QObject *context, const JobCallback &callback);
+  // startCommand for a transfer that can't take sync/*, first checking a dry
+  // run for a global.dry_run the CLI would apply over --dry-run.
+  void startCommandRoute(const QStringList &args, const QString &routeNote,
+                         QObject *context, const JobCallback &callback);
   void startTransfer(const QStringList &args, QObject *context,
                      JobCallback callback);
   void startSync(const QStringList &args,

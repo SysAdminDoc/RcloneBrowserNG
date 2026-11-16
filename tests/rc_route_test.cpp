@@ -60,7 +60,8 @@ private:
 
   // Runs one transfer to completion and hands back the group it was given.
   QString runAndWait(RcloneRcEngine &engine, const QStringList &args,
-                     bool *started) {
+                     bool *started,
+                     RcloneRcEngine::StartedJob *startedJob = nullptr) {
     RcloneRcEngine::StartedJob result;
     bool called = false;
     engine.runCommand(args, this,
@@ -75,6 +76,9 @@ private:
     if (!ok) {
       *started = false;
       return QString();
+    }
+    if (startedJob) {
+      *startedJob = result;
     }
     *started = result.jobId >= 0;
     if (result.jobId < 0) {
@@ -440,6 +444,84 @@ private slots:
     QCOMPARE(filesUnder(dest), QStringList() << "drop.tmp" << "keep.txt"
                                              << "sub/drop2.tmp"
                                              << "sub/keep2.txt");
+  }
+
+  // A dry run that can't take sync/* runs as the CLI, where a section's
+  // global.dry_run = false turned it into a real run: a flag sync/* can't
+  // take or a single-file source deleted or copied for real (v1.76.0). Such
+  // a run doesn't start. With the key set true, or with no key, it runs on
+  // core/command and stays dry.
+  void aDryRunTheCliWouldRunForRealDoesNotStart_data() {
+    QTest::addColumn<QString>("why");
+    QTest::addColumn<QString>("key");
+    QTest::addColumn<bool>("starts");
+    for (const char *why : {"flag", "file"}) {
+      QTest::addRow("%s, key false", why)
+          << QString::fromLatin1(why) << QStringLiteral("false") << false;
+      QTest::addRow("%s, key 0", why)
+          << QString::fromLatin1(why) << QStringLiteral("0") << false;
+      QTest::addRow("%s, key true", why)
+          << QString::fromLatin1(why) << QStringLiteral("true") << true;
+      QTest::addRow("%s, no key", why)
+          << QString::fromLatin1(why) << QString() << true;
+    }
+  }
+
+  void aDryRunTheCliWouldRunForRealDoesNotStart() {
+    QFETCH(QString, why);
+    QFETCH(QString, key);
+    QFETCH(bool, starts);
+    const QString tag = QStringLiteral("dry-cli-%1-%2")
+                            .arg(why, key.isEmpty() ? QStringLiteral("none")
+                                                    : key);
+    const QString root = mDir.path();
+    const QString source = QDir(root).filePath(tag + "-src");
+    QVERIFY(QDir().mkpath(source));
+    QFile added(source + "/new.txt");
+    QVERIFY(added.open(QIODevice::WriteOnly));
+    added.write("new");
+    added.close();
+    const QString dest = makeTree(tag + "-dst");
+    const QStringList before = filesUnder(dest);
+
+    QByteArray section = "[bk]\ntype = alias\nremote = " + root.toUtf8() + "\n";
+    if (!key.isEmpty()) {
+      section += "global.dry_run = " + key.toUtf8() + "\n";
+    }
+    const QString configPath = QDir(root).filePath(tag + ".conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    config.write(section);
+    config.close();
+    struct Restore {
+      QString fixture;
+      ~Restore() { SetRcloneConf(fixture); }
+    } restore{mConfigPath};
+    SetRcloneConf(configPath);
+
+    RcloneRcEngine engine;
+    QStringList args;
+    if (why == QLatin1String("flag")) {
+      args << "sync" << "--dry-run" << "--one-file-system" << source;
+    } else {
+      args << "copy" << "--dry-run" << (source + "/new.txt");
+    }
+    args << ("bk:" + tag + "-dst");
+
+    bool started = false;
+    RcloneRcEngine::StartedJob job;
+    const QString group = runAndWait(engine, args, &started, &job);
+    QCOMPARE(started, starts);
+    if (starts) {
+      QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+      QVERIFY(!job.refused);
+    } else {
+      QVERIFY(job.refused);
+      QVERIFY2(job.error.contains("global.dry_run") &&
+                   job.error.contains("bk"),
+               qPrintable(job.error));
+    }
+    QCOMPARE(filesUnder(dest), before);
   }
 
   // A download of several selected items puts its filter rules ahead of the

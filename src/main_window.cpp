@@ -3708,6 +3708,18 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
             }
             return;
           }
+          if (job.refused) {
+            // A local rclone would run it the same way, so it doesn't run.
+            appendBackgroundError(message, job.error);
+            setStatusMessage(QString("%1 didn't start.").arg(message));
+            if (!heartbeatUrl.isEmpty()) {
+              sendHeartbeat(heartbeatUrl, false);
+            }
+            if (!webhookUrl.isEmpty()) {
+              sendWebhook(webhookUrl, taskName, false);
+            }
+            return;
+          }
           addTransferViaProcess(message, source, dest, args, heartbeatUrl,
                                 postCommand, webhookUrl, taskName,
                                 backupDirTemplate, backupRetainCount,
@@ -4048,6 +4060,12 @@ void MainWindow::addTransfer(const QString &message, const QString &source,
             widget->setStartedJob(job);
             addRcJobWidget(widget, QString(), QString(), QString(),
                            backupDirTemplate, backupRetainCount);
+            return;
+          }
+          if (job.refused) {
+            // A local rclone would run it the same way, so it doesn't run.
+            appendBackgroundError(message, job.error);
+            setStatusMessage(QString("%1 didn't start.").arg(message));
             return;
           }
           addTransferViaProcess(message, source, dest, args, QString(),
