@@ -125,7 +125,7 @@ private slots:
                             "the backup."));
 
     // rclone logs the move of the old copy beside the copy that replaces it
-    // (measured), so a lone move is never one.
+    // (measured).
     const Summary renamed = Parse(
         R"({"level":"notice","skipped":"move to a.txt.bak","size":4,"object":"a.txt"})"
         "\n"
@@ -136,9 +136,11 @@ private slots:
   }
 
   // --track-renames logs a rename as "move to <new name>" on the old name,
-  // with no copy, and it deletes nothing: a real run at --max-delete 0
-  // finishes (measured on v1.76.0, with and without a backup). A preview
-  // once took it for a replaced file and warned about the backup.
+  // with no copy. On local it deletes nothing (a real run at --max-delete 0
+  // finishes), but on the memory backend, which can copy and not move, the
+  // rename is a copy and a delete, and a rename-only sync failed at 0 and
+  // finished at 1 (measured on v1.76.0). A preview once took it for a
+  // replaced file and warned about the backup.
   void aRenameIsNotABackupMove() {
     const Summary renames = Parse(
         R"JSON({"level":"notice","msg":"Skipped move to renamed.txt as --dry-run is set (size 17)","object":"old.txt","skipped":"move to renamed.txt","size":17})JSON"
@@ -148,9 +150,19 @@ private slots:
         "{\"level\":\"info\",\"msg\":\"Renamed from \\\"old.txt\\\"\","
         "\"object\":\"renamed.txt\"}");
     QCOMPARE(renames.replacedIntoBackup, 0);
+    QCOMPARE(renames.renamed, 1);
     QCOMPARE(renames.toDelete, 0);
+    QCOMPARE(SyncPreview::DeletionTitle(renames),
+             QStringLiteral("Sync will rename 1 file"));
     const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
-    QCOMPARE(SyncPreview::CapWarnings(renames, 0, 1, nice), QStringList());
+    const QStringList atZero = SyncPreview::CapWarnings(renames, 0, -1, nice);
+    QCOMPARE(atZero.size(), 1);
+    QVERIFY2(atZero[0].contains("A rename counts too") &&
+                 !atZero[0].contains("backup") &&
+                 atZero[0].contains("This sync could stop at the delete cap "
+                                    "of 0"),
+             qPrintable(atZero[0]));
+    QCOMPARE(SyncPreview::CapWarnings(renames, 2, -1, nice), QStringList());
 
     // A rename and a replaced file in one sync with --backup-dir.
     const Summary both = Parse(
@@ -160,17 +172,163 @@ private slots:
         "\n"
         R"({"level":"notice","object":"old.txt","skipped":"move to renamed.txt","size":17})");
     QCOMPARE(both.replacedIntoBackup, 1);
+    QCOMPARE(both.renamed, 1);
     QCOMPARE(both.toTransfer, 1);
+    QCOMPARE(SyncPreview::DeletionTitle(both),
+             QStringLiteral("Sync will rename 1 file and move old copies of 1 "
+                            "file into the backup"));
 
     // Under `rclone move` the transfer is a move too, so when an object moves
-    // twice, one of the moves is its old copy going into the backup.
+    // twice, one of the moves is its old copy going into the backup. The
+    // transfer is logged last.
     const Summary moved = Parse(
         R"({"level":"notice","object":"a.txt","skipped":"move","size":3})"
         "\n"
         R"({"level":"notice","object":"a.txt","skipped":"move","size":12})"
         "\n"
-        R"({"level":"notice","object":"c.txt","skipped":"move","size":2})");
+        R"({"level":"notice","object":"c.txt","skipped":"move","size":2})",
+        20, SyncPreview::Command::Move);
     QCOMPARE(moved.replacedIntoBackup, 1);
+    QCOMPARE(moved.moved, 2);
+    QCOMPARE(moved.renamed, 0);
+    QCOMPARE(moved.toTransfer, 2);
+    QCOMPARE(moved.transferBytes, static_cast<qint64>(14));
+    QCOMPARE(SyncPreview::Headline(moved), QStringLiteral("2 to transfer."));
+    QCOMPARE(SyncPreview::DeletionTitle(moved),
+             QStringLiteral("Move will move 2 files and move old copies of 1 "
+                            "file into the backup"));
+  }
+
+  // What each dry run below logged, and the lowest --max-delete its real run
+  // finished at, all measured on rclone v1.76.0. A run that fails at a cap
+  // has to get the warning there, or Run goes straight into the failure.
+  // Local runs were on Windows, whose file names ignore case; the backup
+  // already held an older copy where the name says so.
+  void warnsAtEveryCapTheRealRunFailsAt_data() {
+    QTest::addColumn<QByteArray>("log");
+    QTest::addColumn<int>("command");
+    QTest::addColumn<int>("firstCapThatFinished");
+    QTest::addColumn<int>("replaced");
+    QTest::addColumn<int>("renamed");
+    QTest::addColumn<int>("moved");
+
+    const auto line = [](const char *object, const char *skipped, int size) {
+      return QByteArray("{\"level\":\"notice\",\"object\":\"") + object +
+             "\",\"skipped\":\"" + skipped + "\",\"size\":" +
+             QByteArray::number(size) + "}\n";
+    };
+    const int sync = static_cast<int>(SyncPreview::Command::Sync);
+    const int move = static_cast<int>(SyncPreview::Command::Move);
+
+    // A.txt over a.txt with --backup-dir. The move and the copy name the
+    // file differently, which once hid the replaced file.
+    QTest::newRow("case only, older copy")
+        << line("a.txt", "move", 3) + line("A.txt", "copy", 12) << sync << 1
+        << 1 << 0 << 0;
+    // An NFC name over the same name in NFD.
+    QTest::newRow("normalization, older copy")
+        << line("cafe\\u0301.txt", "move", 3) +
+               line("caf\\u00e9.txt", "copy", 12)
+        << sync << 1 << 1 << 0 << 0;
+    QTest::newRow("name-transform all,uppercase, older copy")
+        << line("A.TXT", "move", 3) + line("a.txt", "copy", 12) << sync << 1
+        << 1 << 0 << 0;
+    // The backup on another drive with older copies of both files, so the
+    // extra file counts three times and the replaced one twice.
+    QTest::newRow("backup on another drive")
+        << line("a.txt", "move", 3) +
+               line("k.txt", "update modification time", 1) +
+               line("A.txt", "copy", 12) +
+               line("x.txt", "move into backup dir", 5)
+        << sync << 5 << 1 << 0 << 0;
+    QTest::newRow("suffix-keep-extension")
+        << line("a.tar.gz", "move to a-old.tar.gz", 3) +
+               line("a.tar.gz", "copy", 12)
+        << sync << 0 << 1 << 0 << 0;
+    QTest::newRow("rename on local")
+        << line("old.txt", "move to renamed.txt", 16) << sync << 0 << 0 << 1
+        << 0;
+    QTest::newRow("rename on memory")
+        << line("old.txt", "move to renamed.txt", 16) << sync << 1 << 0 << 1
+        << 0;
+    QTest::newRow("two renames on memory")
+        << line("o2.txt", "move to r2.txt", 16) +
+               line("o1.txt", "move to r1.txt", 16)
+        << sync << 2 << 0 << 2 << 0;
+    // rclone move with --delete-excluded, which deletes nothing at the
+    // destination. Replacing a local file deletes the old one first.
+    QTest::newRow("move over a local file")
+        << line("a.txt", "move", 12) << move << 1 << 0 << 0 << 1;
+    // From local to memory, each moved file is copied, then deleted.
+    QTest::newRow("move between remotes")
+        << line("m.txt", "move", 7) + line("n.txt", "move", 8) << move << 2
+        << 0 << 0 << 2;
+  }
+
+  void warnsAtEveryCapTheRealRunFailsAt() {
+    QFETCH(QByteArray, log);
+    QFETCH(int, command);
+    QFETCH(int, firstCapThatFinished);
+    QFETCH(int, replaced);
+    QFETCH(int, renamed);
+    QFETCH(int, moved);
+
+    const Summary summary =
+        Parse(log, 20, static_cast<SyncPreview::Command>(command));
+    QCOMPARE(summary.replacedIntoBackup, replaced);
+    QCOMPARE(summary.renamed, renamed);
+    QCOMPARE(summary.moved, moved);
+
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    for (int cap = 0; cap < firstCapThatFinished; cap++) {
+      const QStringList warnings = SyncPreview::CapWarnings(summary, cap, -1,
+                                                            nice);
+      QVERIFY2(warnings.join(' ').contains(
+                   QString("could stop at the delete cap of %1").arg(cap)) ||
+                   warnings.join(' ').contains(
+                       QString("The delete cap is %1").arg(cap)),
+               qPrintable(QString("cap %1: %2").arg(cap).arg(
+                   warnings.join(" | "))));
+    }
+    // Every one of these runs moves something, so the summary has a
+    // title for it.
+    QVERIFY2(!SyncPreview::DeletionTitle(summary).contains("could stop"),
+             qPrintable(SyncPreview::DeletionTitle(summary)));
+  }
+
+  // The text for a run that deletes nothing names each kind of move in it.
+  void explainsWhatCanCountWhenNothingIsDeleted() {
+    Summary replaced;
+    replaced.replacedIntoBackup = 1;
+    const QString backup = SyncPreview::NoDeleteDetail(replaced);
+    QVERIFY2(backup.contains("this sync against the delete cap") &&
+                 backup.contains("old copy moved into the backup") &&
+                 !backup.contains("rename") && !backup.contains("moved file"),
+             qPrintable(backup));
+
+    Summary moves;
+    moves.command = SyncPreview::Command::Move;
+    moves.moved = 2;
+    const QString moving = SyncPreview::NoDeleteDetail(moves);
+    QVERIFY2(moving.contains("this move against the delete cap") &&
+                 moving.contains("A moved file counts") &&
+                 !moving.contains("backup"),
+             qPrintable(moving));
+    const auto nice = [](qint64 bytes) { return QString("%1 B").arg(bytes); };
+    const QStringList warnings = SyncPreview::CapWarnings(moves, 3, -1, nice);
+    QCOMPARE(warnings.size(), 1);
+    QVERIFY2(warnings[0].contains("This move could stop at the delete cap "
+                                  "of 3"),
+             qPrintable(warnings[0]));
+
+    Summary renames;
+    renames.command = SyncPreview::Command::Copy;
+    renames.renamed = 1;
+    QVERIFY2(SyncPreview::NoDeleteDetail(renames).contains("A rename at the "
+                                                           "destination"),
+             qPrintable(SyncPreview::NoDeleteDetail(renames)));
+    QCOMPARE(SyncPreview::CommandName(renames.command),
+             QStringLiteral("Copy"));
   }
 
   void titleSaysWhatHappensToTheFiles() {

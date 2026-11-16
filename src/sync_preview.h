@@ -15,7 +15,15 @@
 // from a separate `rclone check`.
 namespace SyncPreview {
 
+// The rclone command the dry run ran. Under move the transfer is a move
+// too, which changes what the dry run's moves are.
+enum class Command { Sync, Copy, Move };
+
+// "Sync", "Copy" or "Move", for titles and buttons.
+QString CommandName(Command command);
+
 struct Summary {
+  Command command = Command::Sync;
   // rclone reports a create and a replace identically, as a transfer.
   int toTransfer = 0;
   // Files whose contents already match; only the timestamp changes.
@@ -28,8 +36,13 @@ struct Summary {
   int toBackup = 0;
   // Replaced files whose old copy goes into the backup ("move", or "move to
   // a.txt.bak" with --suffix). Not a delete itself, but rclone can count one
-  // or two for it (see CapWarnings). A --track-renames rename isn't one.
+  // or two for it (see CapWarnings).
   int replacedIntoBackup = 0;
+  // Files --track-renames or --fix-case renames at the destination ("move
+  // to <new name>" with no copy beside it).
+  int renamed = 0;
+  // Under `rclone move`, the files it moves. Also in toTransfer.
+  int moved = 0;
   qint64 transferBytes = 0;
   qint64 deleteBytes = 0;
   // Capped; `moreDeletions` counts the ones not listed.
@@ -45,18 +58,22 @@ struct Summary {
 // backup dir" (a delete under --backup-dir or --suffix), or "update
 // modification time". A replaced file's old copy going to the backup is
 // "move" or "move to <name>" beside the copy that replaces it, which isn't
-// a delete; a move with no copy is a --track-renames rename, or under
-// `rclone move` the transfer itself.
-Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed = 20);
+// a delete; a move with no copy is a --track-renames or --fix-case rename,
+// or under `rclone move` the transfer itself.
+Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed = 20,
+              Command command = Command::Sync);
 
 // One line for the panel heading.
 QString Headline(const Summary &summary);
 
-// The deletion summary's title: what the sync deletes, what it moves into
+// The deletion summary's title: what the run deletes, what it moves into
 // the backup, or both. A run that deletes nothing gets the summary only to
-// warn about a cap, and its title names the old copies of replaced files
-// going into the backup.
+// warn about a cap, and its title names the moves that could trip it.
 QString DeletionTitle(const Summary &summary);
+
+// The summary's explanation for a run that deletes nothing: what in it
+// rclone can count against a delete cap.
+QString NoDeleteDetail(const Summary &summary);
 
 // Why the real run would stop at a delete cap, one line each, for the
 // deletion summary. countCap and bytesCap are -1 when there's no cap;

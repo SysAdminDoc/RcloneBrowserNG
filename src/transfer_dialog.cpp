@@ -1071,11 +1071,17 @@ void TransferDialog::acceptWithDeletionPreview() {
   ui.buttonBox->setEnabled(false);
 
   const bool remoteDaemon = RemoteDaemon::IsEnabled();
-  auto finish = [this, remoteDaemon](int code, const QByteArray &raw) {
+  const SyncPreview::Command previewed =
+      ui.rbMove->isChecked()   ? SyncPreview::Command::Move
+      : ui.rbCopy->isChecked() ? SyncPreview::Command::Copy
+                               : SyncPreview::Command::Sync;
+  auto finish = [this, remoteDaemon, previewed](int code,
+                                                const QByteArray &raw) {
     mPreviewInFlight = false;
     ui.buttonBox->setEnabled(true);
 
-    const SyncPreview::Summary summary = SyncPreview::Parse(raw);
+    const SyncPreview::Summary summary =
+        SyncPreview::Parse(raw, 20, previewed);
     if (code != 0 && !summary.deletesAnything()) {
       QString reason = summary.error;
       if (reason.isEmpty() && remoteDaemon) {
@@ -1101,8 +1107,8 @@ void TransferDialog::acceptWithDeletionPreview() {
         });
 
     // Nothing is removed and no cap can stop the run, so there is nothing
-    // to warn about. A sync that only replaces files still moves their old
-    // copies into a backup, which a cap can stop.
+    // to warn about. A run that only replaces, renames or moves files can
+    // still trip a cap with those moves.
     if (!summary.deletesAnything() && warnings.isEmpty()) {
       accept();
       return;
@@ -1154,7 +1160,7 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
                                          const QStringList &warnings) {
   // --backup-dir or --suffix moves removed files aside instead. Usually
   // that's all of them, but a sync can do both. With neither, the summary
-  // is only here for a cap warning about replaced files.
+  // is only here for a cap warning about moves the run makes.
   const bool moves = summary.toBackup > 0;
   const bool deletes = summary.toDelete > summary.toBackup;
   const bool removes = summary.deletesAnything();
@@ -1175,10 +1181,7 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
   detail->setWordWrap(true);
   QString detailText;
   if (!removes) {
-    detailText = "Nothing is removed from the destination, but each file "
-                 "this sync replaces has its old copy moved into the backup "
-                 "(--backup-dir or --suffix), and rclone can count that "
-                 "against the delete cap.";
+    detailText = SyncPreview::NoDeleteDetail(summary);
   } else if (!moves) {
     detailText = "These files exist at the destination and not at the "
                  "source, so Sync removes them. Recovering them depends on "
@@ -1233,16 +1236,19 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
   auto *buttons = new QDialogButtonBox(&dialog);
   QPushButton *cancel =
       buttons->addButton("Cancel", QDialogButtonBox::RejectRole);
-  QPushButton *run = buttons->addButton("Run Sync", QDialogButtonBox::AcceptRole);
+  const QString command = SyncPreview::CommandName(summary.command);
+  QPushButton *run =
+      buttons->addButton("Run " + command, QDialogButtonBox::AcceptRole);
   UiPolish::SetDialogButtonBox(buttons);
   UiPolish::SetPrimaryButton(run);
   cancel->setToolTip("Go back to the transfer options without running.");
-  run->setToolTip(!removes   ? "Run the sync."
-                  : !moves   ? "Run the sync, deleting the files listed above."
-                  : !deletes ? "Run the sync, moving the files listed above "
-                               "into the backup."
-                             : "Run the sync, deleting or moving the files "
-                               "listed above.");
+  const QString theRun = "Run the " + command.toLower();
+  run->setToolTip(!removes   ? theRun + "."
+                  : !moves   ? theRun + ", deleting the files listed above."
+                  : !deletes ? theRun + ", moving the files listed above "
+                                        "into the backup."
+                             : theRun + ", deleting or moving the files "
+                                        "listed above.");
   layout->addWidget(buttons);
   QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog,
                    &QDialog::accept);

@@ -8,6 +8,27 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P2
 
+- [ ] P2 — Preview a Copy or Move that carries a delete cap
+  Why: the deletion preview runs only for Sync or `--delete-excluded`, yet rclone v1.76.0 counts a Move's moved files against `--max-delete` when one replaces a destination file or crosses remotes, and a Copy with `--backup-dir` counts replaced files' backup moves. A Copy or Move whose extra options carry `--max-delete` can stop partway with no warning. The dialog's cap control is Sync-only and its tooltip says "Only Sync deletes at the destination", which reads as "Copy and Move can't hit a cap".
+  Evidence: `src/transfer_dialog.cpp` acceptWithDeletionPreview gate; measured move_overwrite (local `rclone move` replacing dst/a.txt fails at `--max-delete 0`) and mem_move_excluded (local to memory, 2 files, fails at 0 and 1).
+  Touches: `src/transfer_dialog.cpp`, `src/sync_preview.{h,cpp}`, `tests/accessibility_smoke_test.cpp`
+  Acceptance: a Copy or Move whose options hold `--max-delete` or `--max-delete-size` gets the dry-run preview, and its summary opens at a cap the measured runs fail at; the tooltip no longer implies Copy and Move are never counted; a smoke test drives a Move over an existing file at cap 0.
+  Complexity: M
+
+- [ ] P2 — Word `rclone move`'s source deletes as source deletes in the preview
+  Why: under `rclone move`, a source file that already matches the destination is deleted from the source, and the dry run logs that as "delete". The summary words every "delete" as a destination delete ("Move will delete N files"), which is wrong about where the files go missing.
+  Evidence: `src/sync_preview.cpp` Parse counts every "delete" into toDelete and DeletionTitle says "will delete"; rclone `fs/sync` move path deletes matched source objects.
+  Touches: `src/sync_preview.{h,cpp}`, `src/transfer_dialog.cpp`, `tests/sync_preview_test.cpp`
+  Acceptance: a measured `rclone move --dry-run` log with a matching source file yields a summary that says the file leaves the source, not the destination; the count still feeds the cap warning; a fixture test covers it.
+  Complexity: S
+
+- [ ] P2 — Skip the deletion preview for `--delete-excluded` under Copy and Move
+  Why: rclone v1.76.0 deletes nothing at the destination for `--delete-excluded` under `copy` or `move` (measured: no delete lines in the dry run), yet the option alone makes the dialog run a dry-run preview first, which costs a full listing for nothing.
+  Evidence: `src/transfer_dialog.cpp` acceptWithDeletionPreview treats `--delete-excluded` as a delete trigger for every mode; measured move_overwrite dry run with `--exclude *.log --delete-excluded` logs only the move.
+  Touches: `src/transfer_dialog.cpp`, `tests/accessibility_smoke_test.cpp`
+  Acceptance: Copy or Move with only `--delete-excluded` runs without a preview (unless the cap item above applies); Sync keeps it; a smoke test checks both.
+  Complexity: S
+
 - [ ] P2 — Keep live progress for a job with its own speed limit
   Why: the daemon has one bandwidth and TPS limit for every job and drops a job's own, so a task with `--bwlimit`, `--tpslimit` or `--tpslimit-burst` (and every transfer while the status bar Limit is set) now runs on core/command, where its stats never reach the card until it ends.
   Evidence: `src/rc_sync_request.cpp` `sharedLimitReason`; `src/rclone_rc_engine.cpp` startTransfer routes those to startCommand with a route note; `src/rc_job_widget.cpp` setStartedJob prints "Live progress isn't shown for this run".

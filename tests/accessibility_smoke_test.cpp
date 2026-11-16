@@ -520,10 +520,12 @@ private slots:
   }
 
   // A sync that only replaces a file deletes nothing, but the old copy goes
-  // into --backup-dir and rclone can count that against --max-delete. Run
-  // used to go straight through. Now the real dry run opens the summary at
-  // a cap the move could trip, and Run goes straight through at one it
-  // clears.
+  // into --backup-dir, and rclone can count that move against --max-delete
+  // on a remote that can't move files or when the backup already holds an
+  // older copy. This local run finishes at any cap, so the summary says it
+  // could stop. Run used to go straight through. Now the real dry run opens
+  // the summary at a cap a move could trip, and Run goes straight through
+  // at one it clears.
   void replaceOnlySyncWarnsAboutTheDeleteCap() {
     const QString rclone = FindRcloneForTests();
     if (rclone.isEmpty()) {
@@ -537,28 +539,29 @@ private slots:
     QVERIFY(root.isValid());
     const QDir dir(root.path());
     QVERIFY(dir.mkpath("src") && dir.mkpath("dst"));
-    const auto write = [&dir](const QString &name, const QByteArray &data) {
-      QFile file(dir.filePath(name));
+    const auto write = [](const QDir &in, const QString &name,
+                          const QByteArray &data) {
+      QFile file(in.filePath(name));
       return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
     };
-    QVERIFY(write("src/a.txt", "new contents"));
-    QVERIFY(write("dst/a.txt", "old"));
+    QVERIFY(write(dir, "src/a.txt", "new contents"));
+    QVERIFY(write(dir, "dst/a.txt", "old"));
 
     struct Outcome {
       bool accepted = false;
       QString title;
       QStringList labels;
     };
-    const auto runAtCap = [&](int cap, Outcome &outcome) {
+    const auto runIn = [&](const QDir &at, int cap, Outcome &outcome) {
       TransferDialog dialog(false, false, "remote", QDir(), true);
       dialog.findChild<QLineEdit *>("textSource")
-          ->setText(QDir::toNativeSeparators(dir.filePath("src")));
+          ->setText(QDir::toNativeSeparators(at.filePath("src")));
       dialog.findChild<QLineEdit *>("textDest")
-          ->setText(QDir::toNativeSeparators(dir.filePath("dst")));
+          ->setText(QDir::toNativeSeparators(at.filePath("dst")));
       dialog.findChild<QRadioButton *>("rbSync")->setChecked(true);
       qobject_cast<QLineEdit *>(
           findAccessible(&dialog, "Backup directory pattern"))
-          ->setText(QDir::toNativeSeparators(dir.filePath("bk")));
+          ->setText(QDir::toNativeSeparators(at.filePath("bk")));
       qobject_cast<QCheckBox *>(
           findAccessible(&dialog, "Cap how many files Sync deletes"))
           ->setChecked(true);
@@ -600,7 +603,7 @@ private slots:
 
     // One replaced file can count twice, so a cap of 0 or 1 could stop it.
     Outcome tight;
-    runAtCap(0, tight);
+    runIn(dir, 0, tight);
     if (QTest::currentTestFailed()) {
       return;
     }
@@ -613,11 +616,35 @@ private slots:
     QVERIFY(!QFileInfo::exists(dir.filePath("bk")));
 
     Outcome clear;
-    runAtCap(2, clear);
+    runIn(dir, 2, clear);
     if (QTest::currentTestFailed()) {
       return;
     }
     QVERIFY2(clear.accepted && clear.title.isEmpty(), qPrintable(clear.title));
+
+    // A.txt over a.txt, where file names ignore case, with an older a.txt
+    // already in the backup. The dry run logs the old copy's move as a.txt
+    // and the copy as A.txt, and the real run fails at a cap of 0 (measured
+    // on v1.76.0), so the summary has to open there too.
+    QTemporaryDir caseRoot;
+    QVERIFY(caseRoot.isValid());
+    const QDir caseDir(caseRoot.path());
+    QVERIFY(caseDir.mkpath("src") && caseDir.mkpath("dst") &&
+            caseDir.mkpath("bk"));
+    QVERIFY(write(caseDir, "src/A.txt", "new contents"));
+    QVERIFY(write(caseDir, "dst/a.txt", "old"));
+    QVERIFY(write(caseDir, "bk/a.txt", "older"));
+    Outcome caseOnly;
+    runIn(caseDir, 0, caseOnly);
+    if (QTest::currentTestFailed()) {
+      return;
+    }
+    QCOMPARE(caseOnly.title,
+             QString("Sync will move old copies of 1 file into the backup"));
+    QVERIFY2(caseOnly.labels.join('\n').contains(
+                 "could stop at the delete cap of 0"),
+             qPrintable(caseOnly.labels.join('\n')));
+    QVERIFY(QFileInfo::exists(caseDir.filePath("dst/a.txt")));
   }
 };
 
