@@ -27,6 +27,7 @@
 -   FIXED: A download of several selected items failed on the daemon when Preferences named an rclone.conf or a password command, and so did its Restart from job history. The app slipped that setting in between the first filter rule and its flag, rclone read the config path as the command, and nothing was copied. The setting now goes after the rest of the arguments when they start with a rule
 -   FIXED: A daemon job that failed could leave its card waiting forever. rclone answers a failed job's status with the job's error inside an ordinary reply, and the app took that for a failed call and kept asking
 -   FIXED: A first start that found rclone on PATH showed no remotes until the app was restarted. It loads them right away now. A saved rclone path whose file has been deleted or moved also counts as no rclone, so the app looks for one again instead of failing every call
+-   FIXED: A Copy, Move or Sync of a folder from the dual pane's "(Local filesystem)" side ran as a separate rclone, so its card showed no live progress. The app took that side's paths for single files. It checks them like any remote's now, and a folder from there runs as the daemon's own job
 
 ## [2.1.0] - 2026-11-15
 ### Distribution

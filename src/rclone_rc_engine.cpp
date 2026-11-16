@@ -42,6 +42,75 @@ QJsonArray coreCommandArguments(const QStringList &args,
   }
   return commandArgs;
 }
+
+// The index of the ':' that ends a path's remote part, found the way rclone's
+// fs/fspath.Parse finds it, or -1 for a local path. An on-the-fly remote
+// (":local:C:/x") starts with a colon, and a quoted option value
+// (":local,description='a:b':dir") can hold one. A one-letter name is a
+// Windows drive letter.
+qsizetype RemoteColon(const QString &path) {
+  enum class State { Name, Param, Value, Quoted, AfterQuote };
+  State state = State::Name;
+  qsizetype prev = 0;
+  QChar quote;
+  for (qsizetype i = 0; i < path.size(); i++) {
+    const QChar c = path.at(i);
+    switch (state) {
+    case State::Name:
+      if (i == 0 && c == QLatin1Char(':')) {
+        break;
+      }
+      if (c == QLatin1Char('/') || c == QLatin1Char('\\')) {
+        return -1;
+      }
+      if (c == QLatin1Char(':')) {
+        return i == 1 ? -1 : i;
+      }
+      if (c == QLatin1Char(',')) {
+        prev = i + 1;
+        state = State::Param;
+      }
+      break;
+    case State::Param:
+      if (c == QLatin1Char(':')) {
+        return i;
+      }
+      if (c == QLatin1Char('=')) {
+        prev = i + 1;
+        state = State::Value;
+      }
+      break;
+    case State::Value:
+      if ((c == QLatin1Char('\'') || c == QLatin1Char('"')) && i == prev) {
+        quote = c;
+        state = State::Quoted;
+      } else if (c == QLatin1Char(':')) {
+        return i;
+      } else if (c == QLatin1Char(',')) {
+        state = State::Param;
+      }
+      break;
+    case State::Quoted:
+      if (c == quote) {
+        state = State::AfterQuote;
+      }
+      break;
+    case State::AfterQuote:
+      if (c == QLatin1Char(':')) {
+        return i;
+      }
+      if (c == QLatin1Char(',')) {
+        state = State::Param;
+      } else if (c == quote) {
+        state = State::Quoted; // a doubled quote
+      } else {
+        return -1;
+      }
+      break;
+    }
+  }
+  return -1;
+}
 } // namespace
 
 RcloneRcEngine::RcloneRcEngine(QObject *parent)
@@ -529,8 +598,8 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     const QString &source, QObject *context,
     const std::function<void(bool)> &callback) {
   const QString trimmed = source.trimmed();
-  const qsizetype colon = trimmed.indexOf(QChar(':'));
-  const bool looksRemote = colon > 1;
+  const qsizetype colon = RemoteColon(trimmed);
+  const bool looksRemote = colon > 0;
 
   if (!looksRemote && !isRemote()) {
     // A local path can be answered without troubling the daemon.

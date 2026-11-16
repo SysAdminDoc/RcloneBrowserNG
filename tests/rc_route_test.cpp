@@ -272,6 +272,41 @@ private slots:
     QCOMPARE(filesUnder(dest), QStringList() << "keep.txt");
   }
 
+  // The dual-pane view's local side is the on-the-fly ":local" remote, so its
+  // transfers start with a colon. Read as a local file name that doesn't
+  // exist, a folder there went to core/command and lost its live progress.
+  void anOnTheFlySourceIsCheckedAsARemote_data() {
+    QTest::addColumn<QString>("prefix");
+    QTest::addColumn<QString>("item");
+    QTest::addColumn<bool>("native");
+    QTest::newRow("a folder") << QStringLiteral(":local:") << QString() << true;
+    QTest::newRow("a quoted option holding a colon")
+        << QStringLiteral(":local,description='a:b':") << QString() << true;
+    QTest::newRow("a file") << QStringLiteral(":local:")
+                            << QStringLiteral("/keep.txt") << false;
+  }
+
+  void anOnTheFlySourceIsCheckedAsARemote() {
+    QFETCH(QString, prefix);
+    QFETCH(QString, item);
+    QFETCH(bool, native);
+    QString tag = "otf-" + QString::fromLatin1(QTest::currentDataTag());
+    tag.replace(QLatin1Char(' '), QLatin1Char('-'));
+    const QString source = makeTree(tag + "-src");
+    const QString dest = QDir(mDir.path()).filePath(tag + "-dst");
+
+    RcloneRcEngine engine;
+    QStringList args;
+    args << "copy" << "--verbose" << (prefix + source + item) << dest;
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith(native ? "rclonebrowser-" : "job/"),
+             qPrintable("group was " + group));
+    QCOMPARE(filesUnder(dest).size(), native ? 4 : 1);
+  }
+
   // rclone ignores a path's global.<option> for a job started over rc.
   // Measured on v1.76.0, sync/sync deleted these files while the CLI moves
   // them into the backup folder, which is what the deletion check promised.
