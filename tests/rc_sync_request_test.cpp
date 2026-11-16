@@ -453,6 +453,14 @@ private slots:
     QCOMPARE(request.retriesSleepMs, Q_INT64_C(1500));
     QVERIFY(!request.payload.contains("_config"));
 
+    // rclone bisync never retries, so --retries gets it one attempt.
+    const Request bisync =
+        Build({"bisync", "--retries", "5", "remote:one", "remote:two"}, "g",
+              realIndex());
+    QVERIFY2(bisync.usable, qPrintable(bisync.reason));
+    QCOMPARE(bisync.endpoint, QStringLiteral("sync/bisync"));
+    QCOMPARE(bisync.retries, 1);
+
     // options/get on v1.76.0: --retries 0 and -1 both come out as 1, and
     // 010 is 8. A negative sleep is no sleep.
     const QList<QPair<QString, int>> counts{

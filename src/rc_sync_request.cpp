@@ -369,7 +369,10 @@ Request Build(const QStringList &args, const QString &group,
   }
 
   request.payload = payload;
-  request.retries = options.retries;
+  // The CLI's bisync runs through cmd.Run with Retry false, so it never
+  // tries again whatever --retries says (cmd/bisync/cmd.go, v1.76.0).
+  request.retries =
+      request.endpoint == QLatin1String("sync/bisync") ? 1 : options.retries;
   request.retriesSleepMs = options.retriesSleepMs;
   request.usable = true;
   return request;

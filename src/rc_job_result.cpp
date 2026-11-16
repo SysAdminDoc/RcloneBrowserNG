@@ -3,6 +3,7 @@
 #include "job_stats.h"
 #include "rc_delete_batch.h"
 #include "rclone_exit_code.h"
+#include "rclone_number.h"
 
 #include <QJsonValue>
 #include <QRegularExpression>
@@ -155,6 +156,51 @@ int WithNoTransferExit(int exitCode, qint64 transfers,
   return exitCode == 0 && transfers == 0 && flagOn ? 9 : exitCode;
 }
 
+Uncounted ClassifyUncounted(const QString &error) {
+  // rclone v1.76.0's newSyncCopyMove and runSyncCopyMove (fs/sync/sync.go),
+  // with BackupDir, GetCompareDest and GetCopyDest (fs/operations), which
+  // they call before any file is looked at. The --no-check-dest ones come
+  // first, since one of them names --backup-dir too.
+  static const QStringList kRetry{
+      QStringLiteral("can't use --no-check-dest with "),
+      QStringLiteral("unknown track renames strategy "),
+  };
+  static const QStringList kFatal{
+      QStringLiteral("can't sync or move files on overlapping remotes"),
+      QStringLiteral("can't delete and move at the same time"),
+      QStringLiteral("can't use --delete-before with --track-renames"),
+      QStringLiteral("failed to make fs for --compare-dest "),
+      QStringLiteral("failed to make fs for --copy-dest "),
+      QStringLiteral("parameter to --copy-dest has to be on the same remote "
+                     "as destination"),
+      QStringLiteral("can't use --copy-dest on a remote which doesn't "
+                     "support server side copy"),
+      QStringLiteral("failed to make fs for --backup-dir "),
+      QStringLiteral("parameter to --backup-dir has to be on the same remote "
+                     "as destination"),
+      QStringLiteral("destination and parameter to --backup-dir mustn't "
+                     "overlap"),
+      QStringLiteral("source and parameter to --backup-dir mustn't overlap"),
+      QStringLiteral("destination and parameter to --backup-dir mustn't be "
+                     "the same"),
+      QStringLiteral("source and parameter to --backup-dir mustn't be the "
+                     "same"),
+      QStringLiteral("can't use --backup-dir on a remote which doesn't "
+                     "support server-side move or copy"),
+  };
+  for (const QString &start : kRetry) {
+    if (error.startsWith(start)) {
+      return Uncounted::Retry;
+    }
+  }
+  for (const QString &start : kFatal) {
+    if (error.startsWith(start)) {
+      return Uncounted::Fatal;
+    }
+  }
+  return Uncounted::Unknown;
+}
+
 Result Read(const QJsonObject &status, const QStringList &batchLabels) {
   Result result;
   result.success = status.value("success").toBool();
@@ -219,6 +265,92 @@ Result Read(const QJsonObject &status, const QStringList &batchLabels) {
   }
   result.exitCode = exitCode >= 0 ? exitCode : (result.success ? 0 : 1);
   return result;
+}
+
+namespace {
+
+// What a cap in a sync/* call's _config comes to: -1 when it's off,
+// kUnknownCap when it can't be told. With no flag for it, rclone takes the
+// environment variable, and the daemon runs with this app's environment.
+constexpr qint64 kUnknownCap = -2;
+
+qint64 CountCap(const QJsonObject &config, const QString &key,
+                const char *variable) {
+  if (!config.contains(key)) {
+    return qEnvironmentVariableIsSet(variable) ? kUnknownCap : -1;
+  }
+  const QJsonValue value = config.value(key);
+  if (!value.isDouble()) {
+    return kUnknownCap;
+  }
+  const qint64 count = value.toInteger(-1);
+  return count < 0 ? -1 : count;
+}
+
+// A SizeSuffix goes into _config as the CLI token (rc_sync_request.cpp).
+qint64 SizeCap(const QJsonObject &config, const QString &key,
+               const char *variable) {
+  if (!config.contains(key)) {
+    return qEnvironmentVariableIsSet(variable) ? kUnknownCap : -1;
+  }
+  const QJsonValue value = config.value(key);
+  qint64 bytes = -1;
+  if (!value.isString() ||
+      RcloneNumber::ParseSize(value.toString(), &bytes) !=
+          RcloneNumber::SizeError::None) {
+    return kUnknownCap;
+  }
+  return bytes < 0 ? -1 : bytes;
+}
+
+} // namespace
+
+NextAttempt PlanNextAttempt(const QJsonObject &original,
+                            const QJsonObject &current, int attempt,
+                            qint64 bytesSoFar, qint64 deletesSoFar) {
+  static const QString kGroup = QStringLiteral("_group");
+  static const QString kConfig = QStringLiteral("_config");
+  static const QString kMaxDelete = QStringLiteral("MaxDelete");
+  static const QString kMaxTransfer = QStringLiteral("MaxTransfer");
+  const QJsonObject config = original.value(kConfig).toObject();
+  const qint64 deleteCount =
+      CountCap(config, kMaxDelete, "RCLONE_MAX_DELETE");
+  const qint64 deleteBytes = SizeCap(config, QStringLiteral("MaxDeleteSize"),
+                                     "RCLONE_MAX_DELETE_SIZE");
+  const qint64 transferBytes =
+      SizeCap(config, kMaxTransfer, "RCLONE_MAX_TRANSFER");
+  // With nothing deleted or moved so far there's nothing to carry.
+  const bool deletesCarry =
+      deletesSoFar <= 0 || (deleteCount != kUnknownCap && deleteBytes == -1);
+  const bool bytesCarry = bytesSoFar <= 0 || transferBytes != kUnknownCap;
+
+  NextAttempt next;
+  if ((!deletesCarry || !bytesCarry) && current.contains(kGroup)) {
+    next.payload = current;
+    next.sameGroup = true;
+    return next;
+  }
+  // A payload with no _group puts each job in a job/<id> group of its own.
+  next.payload = original;
+  if (original.contains(kGroup)) {
+    next.payload.insert(kGroup, QString("%1-attempt-%2")
+                                    .arg(original.value(kGroup).toString())
+                                    .arg(attempt));
+  }
+  QJsonObject lowered = config;
+  if (deleteCount >= 0 && deletesSoFar > 0) {
+    lowered.insert(kMaxDelete, qMax<qint64>(0, deleteCount - deletesSoFar));
+  }
+  if (transferBytes >= 0 && bytesSoFar > 0) {
+    // A b suffix is bytes, where a bare number would be KiB.
+    lowered.insert(kMaxTransfer,
+                   QString("%1b").arg(qMax<qint64>(0, transferBytes -
+                                                          bytesSoFar)));
+  }
+  if (lowered != config) {
+    next.payload.insert(kConfig, lowered);
+  }
+  return next;
 }
 
 } // namespace RcJobResult

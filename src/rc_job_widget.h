@@ -82,20 +82,41 @@ private:
   bool mFromCommand = false;
   // The stats read after the job ended worked, so mFiles is final.
   bool mFinalStats = false;
-  // The retry loop cmd.Run gives the CLI. Every attempt goes to the same
-  // stats group, so transfers and deletes add up across attempts as they
-  // do in one CLI run, while errors count per attempt: mErrorBase is the
-  // group's error count when the current attempt started.
+  // The retry loop cmd.Run gives the CLI. cmd.Run clears the error count
+  // and the fatal and retry flags between attempts, and a stats group never
+  // clears them, so every attempt gets a group of its own. Transfers, bytes
+  // and checks still add up across attempts, as they do in one CLI run:
+  // mCarried holds the earlier groups' share, mThisAttempt the current
+  // group's latest numbers.
+  //
+  // rclone checks --max-delete, --max-delete-size and --max-transfer
+  // against the group's own counts, where the CLI's carry across attempts.
+  // A new group gets those caps lowered by what the earlier ones used. When
+  // that can't be worked out (core/stats has no deleted-bytes count for
+  // --max-delete-size), the next attempt stays in the current group, and
+  // mErrorBase is that group's error count when the attempt started.
   QString mRetryEndpoint;
   QJsonObject mRetryPayload;
+  // What the current attempt posted.
+  QJsonObject mAttemptPayload;
+  int mErrorBase = 0;
+  int mGroupErrors = 0;
   int mAttempts = 1;
   int mAttempt = 1;
   qint64 mRetrySleepMs = 0;
   bool mRetryPending = false;
   // Cancel came after the job ended, while its last stats were read.
   bool mCancelBeforeRetry = false;
-  int mErrorBase = 0;
-  int mGroupErrors = 0;
+  struct Totals {
+    double bytes = 0;
+    double totalBytes = 0;
+    int transfers = 0;
+    int checks = 0;
+    double elapsed = 0;
+    qint64 deletes = 0;
+  };
+  Totals mCarried;
+  Totals mThisAttempt;
   QTimer mPollTimer;
   QLineEdit *mBandwidth = nullptr;
   QPushButton *mBandwidthApply = nullptr;
@@ -119,8 +140,8 @@ private:
   bool retryAfterFailure(const QJsonObject &stats, bool haveStats,
                          const QString &jobError);
   void startNextAttempt();
-  // The line cmd.Run prints when a limit stop ends the run.
-  void noteLimitStop(const QJsonObject &stats, bool haveStats);
+  // The line cmd.Run prints when a limit stop (exit 8 or 10) ends the run.
+  void noteLimitStop(const QJsonObject &stats, bool haveStats, int exitCode);
   // exitCode: the child rclone's, read from a core/command log; -1 takes 0
   // or 1 from success.
   void finish(bool success, const QString &error, int exitCode = -1);

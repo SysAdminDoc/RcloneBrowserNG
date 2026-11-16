@@ -391,7 +391,7 @@ void RcJobWidget::poll() {
                       // A success with an exit code is a limit stop (8 or
                       // 10). The 9 of --error-on-no-transfer comes later.
                       if (success && exitCode > 0) {
-                        noteLimitStop(finalStats, haveStats);
+                        noteLimitStop(finalStats, haveStats, exitCode);
                       } else if (success && mAttempt > 1) {
                         ui.output->appendPlainText(
                             QString("Attempt %1/%2 succeeded")
@@ -406,8 +406,14 @@ void RcJobWidget::poll() {
 }
 
 void RcJobWidget::applyStats(const QJsonObject &stats) {
-  const double bytes = stats.value("bytes").toDouble();
-  const double totalBytes = stats.value("totalBytes").toDouble();
+  mThisAttempt.bytes = stats.value("bytes").toDouble();
+  mThisAttempt.totalBytes = stats.value("totalBytes").toDouble();
+  mThisAttempt.transfers = stats.value("transfers").toInt();
+  mThisAttempt.checks = stats.value("checks").toInt();
+  mThisAttempt.elapsed = stats.value("elapsedTime").toDouble();
+  mThisAttempt.deletes = stats.value("deletes").toInteger();
+  const double bytes = mCarried.bytes + mThisAttempt.bytes;
+  const double totalBytes = mCarried.totalBytes + mThisAttempt.totalBytes;
   const double speed = stats.value("speed").toDouble();
   const int pct =
       totalBytes > 0 ? static_cast<int>(bytes / totalBytes * 100) : 0;
@@ -417,15 +423,17 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
                        .arg(pct));
   ui.totalsize->setText(GetNiceSize(static_cast<quint64>(totalBytes)));
   ui.bandwidth->setText(GetNiceSize(static_cast<quint64>(speed)) + "/s");
+  // The current attempt's errors, as cmd.Run counts them.
   mGroupErrors = stats.value("errors").toInt();
   mErrors = qMax(0, mGroupErrors - mErrorBase);
   ui.errors->setText(QString::number(mErrors));
-  ui.checks->setText(QString::number(stats.value("checks").toInt()));
-  mFiles = stats.value("transfers").toInt();
+  ui.checks->setText(
+      QString::number(mCarried.checks + mThisAttempt.checks));
+  mFiles = mCarried.transfers + mThisAttempt.transfers;
   ui.transferred->setText(QString::number(mFiles));
   noteDeleteCap(stats.value("lastError").toString());
 
-  const double elapsed = stats.value("elapsedTime").toDouble();
+  const double elapsed = mCarried.elapsed + mThisAttempt.elapsed;
   if (elapsed > 0) {
     const int seconds = static_cast<int>(elapsed);
     ui.elapsed->setText(QString("%1s").arg(seconds));
@@ -446,6 +454,7 @@ void RcJobWidget::noteDeleteCap(const QString &text) {
 void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
   mRetryEndpoint = job.endpoint;
   mRetryPayload = job.payload;
+  mAttemptPayload = job.payload;
   mAttempts = qMax(1, job.attempts);
   mRetrySleepMs = qMax<qint64>(0, job.retrySleepMs);
   if (!job.routeNote.isEmpty()) {
@@ -464,10 +473,36 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   if (mRetryEndpoint.isEmpty() || mUserCancelled || mStopping) {
     return false;
   }
+  // The current attempt's stats, as cmd.Run sees them. In a group an
+  // earlier attempt used too, the retry flag can be that attempt's, and the
+  // fatal flag can't be, since a fatal error ends the run.
+  int attemptErrors =
+      haveStats ? qMax(0, stats.value("errors").toInt() - mErrorBase) : 0;
+  bool fatal = haveStats && stats.value("fatalError").toBool();
+  bool retryable = haveStats && stats.value("retryError").toBool();
+  QString lastError =
+      haveStats ? stats.value("lastError").toString() : QString();
+  if (haveStats && attemptErrors == 0) {
+    // cmd.Run counts the error the run returned when nothing counted it
+    // yet, as a sync's own checks before it starts return theirs.
+    switch (RcJobResult::ClassifyUncounted(jobError)) {
+    case RcJobResult::Uncounted::Retry:
+      attemptErrors = 1;
+      retryable = true;
+      lastError = jobError;
+      break;
+    case RcJobResult::Uncounted::Fatal:
+      attemptErrors = 1;
+      fatal = true;
+      lastError = jobError;
+      break;
+    case RcJobResult::Uncounted::Unknown:
+      break;
+    }
+  }
   // The lines below are cmd.Run's own, so the output reads like a CLI run.
   // --max-delete is a fatal error there too.
-  if (mDeleteCapHit || RcloneExitCode::IsDeleteCapError(jobError) ||
-      (haveStats && stats.value("fatalError").toBool())) {
+  if (mDeleteCapHit || RcloneExitCode::IsDeleteCapError(jobError) || fatal) {
     ui.output->appendPlainText(
         QStringLiteral("Fatal error received - not attempting retries"));
     return false;
@@ -476,7 +511,6 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
     // Without the stats there's no telling what kind of errors these were.
     return false;
   }
-  const int attemptErrors = qMax(0, mGroupErrors - mErrorBase);
   if (attemptErrors == 0) {
     // The job failed without counting an error, which is how a remote that
     // can't be opened fails (a missing section, a bad backend option). The
@@ -484,15 +518,11 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
     // them and prints no attempt line.
     return false;
   }
-  // retryError is never cleared within a group, where the CLI resets it
-  // between attempts, so a later attempt that only hits errors retrying
-  // can't fix gets one more try than the CLI would give it.
-  if (!stats.value("retryError").toBool()) {
+  if (!retryable) {
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
     return false;
   }
-  QString lastError = stats.value("lastError").toString();
   if (lastError.isEmpty()) {
     lastError = jobError;
   }
@@ -525,18 +555,23 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   return true;
 }
 
-void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats) {
+void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
+                                int exitCode) {
   // A --max-transfer or --max-duration stop maps to a successful exit, but
   // cmd.Run still counted it as an error and says why it didn't retry, on
   // any attempt. core/command's child prints these lines itself.
-  if (mRetryEndpoint.isEmpty() || !haveStats) {
+  if (mRetryEndpoint.isEmpty()) {
     return;
   }
-  if (stats.value("fatalError").toBool()) {
+  // A sync returns its --max-duration stop as a fatal error it never
+  // counted, and cmd.Run counts it, so the CLI gives the fatal line in
+  // every cutoff mode (measured on v1.76.0) whatever the group holds.
+  if (exitCode == 10 || (haveStats && stats.value("fatalError").toBool())) {
     ui.output->appendPlainText(
         QStringLiteral("Fatal error received - not attempting retries"));
-  } else if (!stats.value("retryError").toBool()) {
-    // --cutoff-mode soft and cautious stop without a fatal error.
+  } else if (haveStats && !stats.value("retryError").toBool()) {
+    // A --max-transfer stop with --cutoff-mode soft or cautious counts no
+    // fatal error.
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
   }
@@ -554,13 +589,23 @@ void RcJobWidget::startNextAttempt() {
     if (mFinished || !mRetryPending) {
       return;
     }
+    // A group of its own for the next attempt where the caps allow it (see
+    // mCarried).
+    const RcJobResult::NextAttempt next = RcJobResult::PlanNextAttempt(
+        mRetryPayload, mAttemptPayload, mAttempt + 1,
+        static_cast<qint64>(mCarried.bytes + mThisAttempt.bytes),
+        mCarried.deletes + mThisAttempt.deletes);
+    const QJsonObject payload = next.payload;
+    const bool sameGroup = next.sameGroup;
+    const QString group = payload.value(QStringLiteral("_group")).toString();
     // The engine is the context, so a job started after this card went
     // away is stopped rather than left running with nothing watching it.
     const QPointer<RcJobWidget> self(this);
     RcloneRcEngine *engine = mEngine;
     engine->resubmit(
-        mRetryEndpoint, mRetryPayload, engine,
-        [self, engine](int jobId, const QString &error) {
+        mRetryEndpoint, payload, engine,
+        [self, engine, group, payload, sameGroup](int jobId,
+                                                  const QString &error) {
           if (!self || self->mFinished) {
             if (jobId >= 0) {
               engine->stopJob(jobId, engine, nullptr);
@@ -575,7 +620,25 @@ void RcJobWidget::startNextAttempt() {
           }
           self->mAttempt++;
           self->mJobId = jobId;
-          self->mErrorBase = self->mGroupErrors;
+          self->mGroup =
+              group.isEmpty() ? QString("job/%1").arg(jobId) : group;
+          self->mAttemptPayload = payload;
+          if (sameGroup) {
+            // The group goes on counting, so only its errors need a base.
+            self->mErrorBase = self->mGroupErrors;
+          } else {
+            Totals &carried = self->mCarried;
+            const Totals &done = self->mThisAttempt;
+            carried.bytes += done.bytes;
+            carried.totalBytes += done.totalBytes;
+            carried.transfers += done.transfers;
+            carried.checks += done.checks;
+            carried.elapsed += done.elapsed;
+            carried.deletes += done.deletes;
+            self->mThisAttempt = Totals();
+            self->mErrorBase = 0;
+            self->mGroupErrors = 0;
+          }
           self->mJobEnded = false;
           self->mFinalStats = false;
           self->mPollInFlight = false;

@@ -365,13 +365,29 @@ void RcloneRcEngine::finishStart(bool ok, const QString &error) {
   // be launched at all, so without this a caller could be re-entered from
   // inside its own call to ensureStartedAsync. Callers always resume on the
   // event loop instead.
-  QTimer::singleShot(0, this, [waiting = std::move(waiting), ok, error]() {
-    for (const StartCallback &callback : waiting) {
-      if (callback) {
-        callback(ok, error);
-      }
-    }
-  });
+  const int generation = mCapabilityGeneration;
+  QTimer::singleShot(
+      0, this, [this, waiting = std::move(waiting), ok, error, generation]() {
+        for (qsizetype i = 0; i < waiting.size(); i++) {
+          if (generation != mCapabilityGeneration) {
+            // The daemon was switched before this waiter heard, by an
+            // earlier waiter or anything else on the way here. The answer
+            // was the old daemon's, so the rest wait for a start on the
+            // new one, as a switch in the middle of a start does.
+            for (qsizetype rest = i; rest < waiting.size(); rest++) {
+              mPendingStarts.append(waiting.at(rest));
+            }
+            if (!mStarting) {
+              mStarting = true;
+              beginStart();
+            }
+            return;
+          }
+          if (waiting.at(i)) {
+            waiting.at(i)(ok, error);
+          }
+        }
+      });
 }
 
 void RcloneRcEngine::runCommand(const QStringList &args, QObject *context,

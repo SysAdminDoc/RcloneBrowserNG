@@ -49,9 +49,9 @@ public:
     // job card can name the items rclone couldn't delete.
     QStringList batchLabels;
     // A sync/* call doesn't retry the way the CLI does, so the job card
-    // reposts endpoint and payload in the same stats group until attempts
-    // runs out, waiting retrySleepMs between runs. Empty on core/command,
-    // where the CLI does its own retrying.
+    // reposts endpoint and payload until attempts runs out, waiting
+    // retrySleepMs between runs. Empty on core/command, where the CLI does
+    // its own retrying.
     QString endpoint;
     QJsonObject payload;
     int attempts = 1;
@@ -73,10 +73,8 @@ public:
   // job per item.
   void runDeleteBatch(const RcDeleteBatch::Plan &plan, QObject *context,
                       JobCallback callback);
-  // Posts a StartedJob's endpoint and payload again, for the next attempt.
-  // The payload keeps its _group, so the attempt adds to the same stats,
-  // and its deletes keep counting toward --max-delete as they do between
-  // the CLI's attempts.
+  // Posts a StartedJob's endpoint and a payload for the next attempt, which
+  // the job card builds (RcJobResult::PlanNextAttempt).
   void resubmit(const QString &endpoint, const QJsonObject &payload,
                 QObject *context, const ResubmitCallback &callback);
   // A job that finished with an error comes back as a status with an empty

@@ -211,11 +211,19 @@ private:
   }
 
   // What a daemon whose config file is config answers during a start, and
-  // to the core/command a transfer posts. options/info is empty, so every
-  // transfer takes core/command.
+  // to the core/command a transfer posts. options/info lists one option, so
+  // the start goes on to options/get, and rc/list has no sync/* endpoint, so
+  // every transfer takes core/command.
   static QJsonObject startAnswer(const QString &path, const QString &config) {
     if (path == "config/paths") {
       return QJsonObject{{"config", config}};
+    }
+    if (path == "options/info") {
+      return QJsonObject{
+          {"main", QJsonArray{QJsonObject{{"Name", "max_delete"},
+                                          {"FieldName", "MaxDelete"},
+                                          {"Type", "int"},
+                                          {"NoPrefix", true}}}}};
     }
     if (path == "rc/list") {
       return QJsonObject{
@@ -239,6 +247,47 @@ private slots:
     QTest::newRow("config path") << QString("config/paths");
     QTest::newRow("command list") << QString("rc/list");
     QTest::newRow("option list") << QString("options/info");
+    QTest::newRow("option values") << QString("options/get");
+  }
+
+  // A start that ended calls its waiters on the next turn of the event
+  // loop. A switch on that turn, here by the first waiter, left the rest
+  // to hear the old daemon's answer, though the current one was never
+  // asked anything.
+  void aSwitchBeforeTheWaitersHearSendsTheRestToTheNewDaemon() {
+    FakeRcServer before([](const QString &path, const QJsonObject &,
+                           const FakeRcServer::Reply &reply) {
+      reply(startAnswer(path, "/before.conf"));
+    });
+    FakeRcServer after([](const QString &path, const QJsonObject &,
+                          const FakeRcServer::Reply &reply) {
+      reply(startAnswer(path, "/after.conf"));
+    });
+    QVERIFY(before.isListening());
+    QVERIFY(after.isListening());
+
+    RcloneRcEngine engine;
+    engine.useRemoteDaemon(before.url(), "user", "pass");
+    int firstCalls = 0;
+    int secondCalls = 0;
+    bool secondOk = false;
+    QStringList afterByThen;
+    engine.ensureStartedAsync(this, [&](bool, const QString &) {
+      firstCalls++;
+      engine.useRemoteDaemon(after.url(), "user", "pass");
+    });
+    engine.ensureStartedAsync(this, [&](bool startOk, const QString &) {
+      secondCalls++;
+      secondOk = startOk;
+      afterByThen = after.paths();
+    });
+    QVERIFY(QTest::qWaitFor([&]() { return secondCalls > 0; }, 10000));
+    QTest::qWait(200);
+    QCOMPARE(firstCalls, 1);
+    QCOMPARE(secondCalls, 1);
+    QVERIFY(secondOk);
+    QVERIFY2(afterByThen.contains("config/paths"),
+             qPrintable(afterByThen.join(", ")));
   }
 
   void aDaemonSwitchedMidStartIsTheOneReached() {
@@ -278,7 +327,8 @@ private slots:
     QVERIFY(QTest::qWaitFor([&]() { return done; }, 10000));
     QVERIFY(ok);
     for (const QString &path :
-         {"rc/noopauth", "config/paths", "rc/list", "options/info"}) {
+         {"rc/noopauth", "config/paths", "rc/list", "options/info",
+          "options/get"}) {
       QVERIFY2(reachedByThen.contains(path),
                qPrintable(path + " missing from: " + reachedByThen.join(", ")));
     }

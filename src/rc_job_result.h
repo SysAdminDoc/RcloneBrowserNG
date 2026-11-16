@@ -59,4 +59,32 @@ int ExitCodeFromLog(const QString &log);
 // (exit 0, no transfers, the flag on in args), else exitCode.
 int WithNoTransferExit(int exitCode, qint64 transfers, const QStringList &args);
 
+// What cmd.Run makes of an error a sync/* job returned without counting it.
+// rclone counts an error in the stats where it happens, but the checks a
+// sync makes before it starts return theirs uncounted. cmd.Run counts the
+// returned error itself (fs.CountError) before it decides on a retry, and
+// the rc route never does, so the job card asks here when a failed job
+// counted nothing. Fatal for the ones rclone wraps in fserrors.FatalError,
+// Retry for a plain error, Unknown for the rest, such as a remote that
+// can't be opened, which the CLI fails before its retry loop starts.
+enum class Uncounted { Unknown, Retry, Fatal };
+Uncounted ClassifyUncounted(const QString &error);
+
+// The sync/* call for attempt `attempt` of a run the job card retries.
+// rclone checks --max-delete, --max-delete-size and --max-transfer against
+// the stats group's own counts, and the CLI's one group carries them across
+// attempts. A new group starts at zero, so it gets those caps lowered by
+// what the earlier attempts used: bytesSoFar and deletesSoFar, read from
+// core/stats. A cap that can't be lowered exactly keeps the attempt in the
+// current group instead (sameGroup), with current's caps: core/stats has no
+// deleted-bytes count for --max-delete-size, and a cap set through the
+// daemon's environment (RCLONE_MAX_DELETE and the rest) isn't in _config.
+struct NextAttempt {
+  QJsonObject payload;
+  bool sameGroup = false;
+};
+NextAttempt PlanNextAttempt(const QJsonObject &original,
+                            const QJsonObject &current, int attempt,
+                            qint64 bytesSoFar, qint64 deletesSoFar);
+
 } // namespace RcJobResult
