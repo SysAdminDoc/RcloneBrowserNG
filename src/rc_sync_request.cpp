@@ -352,6 +352,20 @@ Request Build(const QStringList &args, const QString &group,
     request.reason = QStringLiteral("no option metadata from the daemon");
     return request;
   }
+  // rclone skips a path's global.<option> for a job started over rc
+  // (addConfigToContext in fs/newfs.go checks IsRCRequest), so a
+  // ":local,global.backup_dir=...:" destination deleted here what the CLI
+  // moves into the backup, and the deletion check had promised the backup
+  // (measured on v1.76.0). The CLI in the daemon applies it. Any argument
+  // can be a path, and a remote nested in another's option counts too.
+  for (const QString &arg : args) {
+    if (arg.contains(QLatin1String(",global."))) {
+      request.reason = QStringLiteral(
+          "a path sets a global. option, which rclone ignores for a job "
+          "started over rc");
+      return request;
+    }
+  }
 
   const Options options = MapOptions(args.mid(1), index);
   if (!options.ok) {

@@ -251,6 +251,31 @@ private slots:
     QVERIFY2(request.reason.contains("number"), qPrintable(request.reason));
   }
 
+  // rclone ignores a path's global.<option> for a job started over rc, so a
+  // run that carries one goes to the CLI in the daemon, where it applies.
+  void refusesAPathThatSetsAGlobalOption() {
+    const QStringList dst{"sync", "remote:src",
+                          ":local,global.backup_dir=':local:bak':dst"};
+    const Request request = Build(dst, "g", realIndex());
+    QVERIFY(!request.usable);
+    QVERIFY2(request.reason.contains("global."), qPrintable(request.reason));
+
+    QStringList backup = baseCopy();
+    backup.insert(1, "--backup-dir=:local,global.max_delete=1:bak");
+    QVERIFY(!Build(backup, "g", realIndex()).usable);
+
+    const QStringList nested{
+        "sync", "remote:src",
+        ":alias,remote=':local,global.max_delete=1:dst':"};
+    QVERIFY(!Build(nested, "g", realIndex()).usable);
+
+    // override.<option> applies over rc too, so that run stays here.
+    const QStringList overridden{"sync", "remote:src",
+                                 ":local,override.max_delete=1:dst"};
+    const Request kept = Build(overridden, "g", realIndex());
+    QVERIFY2(kept.usable, qPrintable(kept.reason));
+  }
+
   void acceptsTheEqualsForm() {
     QStringList args = baseCopy();
     args.insert(1, "--transfers=6");

@@ -272,6 +272,34 @@ private slots:
     QCOMPARE(filesUnder(dest), QStringList() << "keep.txt");
   }
 
+  // rclone ignores a path's global.<option> for a job started over rc.
+  // Measured on v1.76.0, sync/sync deleted these files while the CLI moves
+  // them into the backup folder, which is what the deletion check promised.
+  // The run has to take the CLI in the daemon.
+  void aPathThatSetsAGlobalOptionRunsOnCoreCommand() {
+    const QString source = QDir(mDir.path()).filePath("global-src");
+    QVERIFY(QDir().mkpath(source));
+    const QString dest = makeTree("global-dst");
+    const QString backup = QDir(mDir.path()).filePath("global-bak");
+
+    RcloneRcEngine engine;
+    QStringList args;
+    args << "sync" << "--verbose" << source
+         << (":local,global.backup_dir=':local:" + backup + "':" + dest);
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+
+    QVERIFY2(filesUnder(dest).isEmpty(),
+             qPrintable("left in the destination: " +
+                        filesUnder(dest).join(", ")));
+    QCOMPARE(filesUnder(backup), QStringList() << "drop.tmp" << "keep.txt"
+                                               << "sub/drop2.tmp"
+                                               << "sub/keep2.txt");
+  }
+
   // core/bwlimit is the only live tuning rclone actually offers. Measured on
   // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
   // file in flight for eight seconds while a job started afterwards used all
