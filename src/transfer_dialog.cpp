@@ -1061,6 +1061,10 @@ void TransferDialog::acceptWithDeletionPreview() {
 
   // The preview lists every delete, cap or not, and the summary says when
   // the cap will stop the real run.
+  // The summary reads the caps and flags from the options the check runs
+  // with. Its Run button runs what the dialog holds then, so nothing that
+  // changes them stays live while the check runs.
+  const QStringList planned = getJobOptions()->getOptions();
   QStringList command = getJobOptions()->getPreviewOptions();
   if (!command.contains("--use-json-log")) {
     command << "--use-json-log";
@@ -1069,19 +1073,42 @@ void TransferDialog::acceptWithDeletionPreview() {
 
   mPreviewInFlight = true;
   ui.buttonBox->setEnabled(false);
+  auto locked = std::make_shared<QList<QPointer<QWidget>>>();
+  for (QWidget *input : findChildren<QWidget *>()) {
+    if (input->isEnabled() &&
+        (qobject_cast<QAbstractButton *>(input) != nullptr ||
+         qobject_cast<QLineEdit *>(input) != nullptr ||
+         qobject_cast<QComboBox *>(input) != nullptr ||
+         qobject_cast<QAbstractSpinBox *>(input) != nullptr ||
+         qobject_cast<QPlainTextEdit *>(input) != nullptr ||
+         qobject_cast<QTextEdit *>(input) != nullptr)) {
+      input->setEnabled(false);
+      locked->append(input);
+    }
+  }
+  const auto unlock = [this, locked]() {
+    mPreviewInFlight = false;
+    ui.buttonBox->setEnabled(true);
+    for (const QPointer<QWidget> &input : std::as_const(*locked)) {
+      if (input) {
+        input->setEnabled(true);
+      }
+    }
+    locked->clear();
+  };
 
   const bool remoteDaemon = RemoteDaemon::IsEnabled();
   const SyncPreview::Command previewed =
-      ui.rbMove->isChecked()   ? SyncPreview::Command::Move
-      : ui.rbCopy->isChecked() ? SyncPreview::Command::Copy
-                               : SyncPreview::Command::Sync;
-  auto finish = [this, remoteDaemon, previewed](int code,
-                                                const QByteArray &raw) {
-    mPreviewInFlight = false;
-    ui.buttonBox->setEnabled(true);
+      ui.rbMove->isChecked()     ? SyncPreview::Command::Move
+      : ui.rbCopy->isChecked()   ? SyncPreview::Command::Copy
+      : ui.rbBisync->isChecked() ? SyncPreview::Command::Bisync
+                                 : SyncPreview::Command::Sync;
+  auto finish = [this, remoteDaemon, previewed, planned,
+                 unlock](int code, const QByteArray &raw) {
+    unlock();
 
-    const SyncPreview::Summary summary =
-        SyncPreview::Parse(raw, 20, previewed);
+    const SyncPreview::Summary summary = SyncPreview::Parse(
+        raw, 20, previewed, SyncPreview::FlagsIn(planned));
     if (code != 0 && !summary.deletesAnything()) {
       QString reason = summary.error;
       if (reason.isEmpty() && remoteDaemon) {
@@ -1099,12 +1126,18 @@ void TransferDialog::acceptWithDeletionPreview() {
     // The caps the run will use, from the cap field, the extra options or
     // the default options. The count is files: rclone logs a directory it
     // would remove as "remove directory", which the summary doesn't count.
-    const JobOptions::DeleteCaps caps =
-        JobOptions::DeleteCapsIn(getJobOptions()->getOptions());
-    const QStringList warnings = SyncPreview::CapWarnings(
+    const JobOptions::DeleteCaps caps = JobOptions::DeleteCapsIn(planned);
+    QStringList warnings = SyncPreview::CapWarnings(
         summary, caps.count, caps.bytes, [](qint64 bytes) {
           return GetNiceSize(static_cast<quint64>(bytes));
         });
+    // A check that ended on an error may not have reached every file. A
+    // bisync's dry run stops at its delete caps the way the real run does.
+    if (code != 0 && !summary.error.isEmpty()) {
+      warnings.prepend(QString("The check ended early with an error, so it "
+                               "may not list everything. rclone said \"%1\".")
+                           .arg(summary.error));
+    }
 
     // Nothing is removed and no cap can stop the run, so there is nothing
     // to warn about. A run that only replaces, renames or moves files can
@@ -1130,13 +1163,12 @@ void TransferDialog::acceptWithDeletionPreview() {
   UseRclonePassword(proc);
 
   QObject::connect(proc, &QProcess::errorOccurred, this,
-                   [this, proc](QProcess::ProcessError error) {
+                   [this, proc, unlock](QProcess::ProcessError error) {
                      if (error != QProcess::FailedToStart) {
                        return;
                      }
                      proc->deleteLater();
-                     mPreviewInFlight = false;
-                     ui.buttonBox->setEnabled(true);
+                     unlock();
                      // Do not run a deleting sync we could not preview.
                      showValidation(ui.textSource,
                                     "Could not start rclone to check what "

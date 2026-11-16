@@ -17,13 +17,31 @@ namespace SyncPreview {
 
 // The rclone command the dry run ran. Under move the transfer is a move
 // too, which changes what the dry run's moves are.
-enum class Command { Sync, Copy, Move };
+enum class Command { Sync, Copy, Move, Bisync };
 
-// "Sync", "Copy" or "Move", for titles and buttons.
+// "Sync", "Copy", "Move" or "Bisync", for titles and buttons.
 QString CommandName(Command command);
+
+// The run's flags that change what its dry run leaves out.
+struct RunFlags {
+  // --backup-dir or --suffix. A replaced file's old copy goes into the
+  // backup, and so does the old copy of a file rclone uploads again
+  // because the remote can't set its timestamp.
+  bool backup = false;
+  // --track-renames or --fix-case, so a "move to" another name can be a
+  // rename. Without either, every move is an old copy going into the
+  // backup, whatever --name-transform does to its name.
+  bool renames = false;
+};
+
+// Reads RunFlags from the run's arguments, the way rclone's flag parser
+// does: the last value wins, --fix-case=false turns it off, and the value
+// after --exclude, --include or --filter is a pattern, not a flag.
+RunFlags FlagsIn(const QStringList &arguments);
 
 struct Summary {
   Command command = Command::Sync;
+  RunFlags flags;
   // rclone reports a create and a replace identically, as a transfer.
   int toTransfer = 0;
   // Files whose contents already match; only the timestamp changes.
@@ -39,7 +57,8 @@ struct Summary {
   // or two for it (see CapWarnings).
   int replacedIntoBackup = 0;
   // Files --track-renames or --fix-case renames at the destination ("move
-  // to <new name>" with no copy beside it).
+  // to <new name>" with no copy beside it, or under --fix-case to the same
+  // name in another case or Unicode form).
   int renamed = 0;
   // Under `rclone move`, the files it moves. Also in toTransfer.
   int moved = 0;
@@ -61,7 +80,7 @@ struct Summary {
 // a delete; a move with no copy is a --track-renames or --fix-case rename,
 // or under `rclone move` the transfer itself.
 Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed = 20,
-              Command command = Command::Sync);
+              Command command = Command::Sync, RunFlags flags = RunFlags());
 
 // One line for the panel heading.
 QString Headline(const Summary &summary);
@@ -77,7 +96,9 @@ QString NoDeleteDetail(const Summary &summary);
 
 // Why the real run would stop at a delete cap, one line each, for the
 // deletion summary. countCap and bytesCap are -1 when there's no cap;
-// niceSize formats a byte count.
+// niceSize formats a byte count. A bisync gets none: its dry run keeps
+// the caps and stops where the real run would, and its --max-delete is a
+// percentage.
 QStringList CapWarnings(const Summary &summary, qint64 countCap,
                         qint64 bytesCap,
                         const std::function<QString(qint64)> &niceSize);

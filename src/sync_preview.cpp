@@ -37,6 +37,13 @@ bool LooksLikeBackupName(const QString &object, const QString &target) {
   return false;
 }
 
+// The values Go's strconv.ParseBool reads as false, which pflag uses for a
+// bool flag's =value.
+bool IsGoFalse(QStringView value) {
+  return value == u"0" || value == u"f" || value == u"F" ||
+         value == u"false" || value == u"FALSE" || value == u"False";
+}
+
 } // namespace
 
 QString CommandName(Command command) {
@@ -45,16 +52,67 @@ QString CommandName(Command command) {
     return QStringLiteral("Copy");
   case Command::Move:
     return QStringLiteral("Move");
+  case Command::Bisync:
+    return QStringLiteral("Bisync");
   case Command::Sync:
     break;
   }
   return QStringLiteral("Sync");
 }
 
+RunFlags FlagsIn(const QStringList &arguments) {
+  static const QStringList kPatternFlags{QStringLiteral("--exclude"),
+                                         QStringLiteral("--include"),
+                                         QStringLiteral("--filter")};
+  bool backupDir = false;
+  bool suffix = false;
+  bool trackRenames = false;
+  bool fixCase = false;
+  for (qsizetype i = 0; i < arguments.size(); i++) {
+    const QString &arg = arguments.at(i);
+    if (kPatternFlags.contains(arg)) {
+      i++; // its pattern, which can look like a flag
+      continue;
+    }
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    const QString name = equals > 0 ? arg.left(equals) : arg;
+    if (name == QLatin1String("--backup-dir") ||
+        name == QLatin1String("--suffix")) {
+      // A string flag takes the next argument when it has no =value, even
+      // one that starts with --.
+      QString value;
+      if (equals > 0) {
+        value = arg.mid(equals + 1);
+      } else if (i + 1 < arguments.size()) {
+        value = arguments.at(++i);
+      }
+      if (name == QLatin1String("--backup-dir")) {
+        backupDir = !value.isEmpty();
+      } else {
+        suffix = !value.isEmpty();
+      }
+    } else if (name == QLatin1String("--track-renames") ||
+               name == QLatin1String("--fix-case")) {
+      const bool on =
+          equals < 0 || !IsGoFalse(QStringView(arg).mid(equals + 1));
+      if (name == QLatin1String("--track-renames")) {
+        trackRenames = on;
+      } else {
+        fixCase = on;
+      }
+    }
+  }
+  RunFlags flags;
+  flags.backup = backupDir || suffix;
+  flags.renames = trackRenames || fixCase;
+  return flags;
+}
+
 Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed,
-              Command command) {
+              Command command, RunFlags flags) {
   Summary summary;
   summary.command = command;
+  summary.flags = flags;
   // A replaced file's old copy going into the backup is a "move" (or "move
   // to a.txt.bak" with --suffix) next to the "copy" that replaces it. A
   // --track-renames or --fix-case rename is a "move to <new name>" with no
@@ -126,17 +184,37 @@ Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed,
     }
   }
 
+  // --fix-case renames a destination file whose name differs from the
+  // source's only in case or Unicode form "to" the source's name. When the
+  // file is replaced too, the real run then moves the renamed file's old
+  // copy into the backup, which the dry run doesn't log: its rename hands
+  // the replace no file to back up (measured on v1.76.0).
+  QList<LoggedMove> others;
+  QSet<QString> caseRenamed;
+  for (const LoggedMove &move : std::as_const(moves)) {
+    if (flags.renames && !move.target.isEmpty() &&
+        move.target != move.object &&
+        PairKey(move.target) == PairKey(move.object)) {
+      summary.renamed++;
+      caseRenamed.insert(PairKey(move.object));
+    } else {
+      others.append(move);
+    }
+  }
+
+  QSet<QString> transferred;
   if (command == Command::Move) {
     // One move per file is the transfer, the last one logged for it. Any
     // other is its old copy going into the backup.
     QHash<QString, qint64> lastSize;
     QHash<QString, int> count;
-    for (const LoggedMove &move : std::as_const(moves)) {
+    for (const LoggedMove &move : std::as_const(others)) {
       const QString key = PairKey(move.object);
       lastSize.insert(key, move.size);
       count[key]++;
     }
     for (auto it = count.constBegin(); it != count.constEnd(); ++it) {
+      transferred.insert(it.key());
       summary.moved++;
       summary.replacedIntoBackup += it.value() - 1;
       summary.toTransfer++;
@@ -145,17 +223,28 @@ Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed,
         summary.transferBytes += size;
       }
     }
-    return summary;
+  } else {
+    transferred = copied;
+    for (const LoggedMove &move : std::as_const(others)) {
+      // A rename is always "move to" another name, so a plain move without
+      // a copy found for it is still an old copy going into the backup.
+      // Without --track-renames or --fix-case nothing renames, so a "move
+      // to" a name --name-transform made is one too.
+      if (!flags.renames || copied.contains(PairKey(move.object)) ||
+          move.target.isEmpty() ||
+          LooksLikeBackupName(move.object, move.target)) {
+        summary.replacedIntoBackup++;
+      } else {
+        summary.renamed++;
+      }
+    }
   }
 
-  for (const LoggedMove &move : std::as_const(moves)) {
-    // A rename is always "move to" another name, so a plain move without
-    // a copy found for it is still an old copy going into the backup.
-    if (copied.contains(PairKey(move.object)) || move.target.isEmpty() ||
-        LooksLikeBackupName(move.object, move.target)) {
-      summary.replacedIntoBackup++;
-    } else {
-      summary.renamed++;
+  if (flags.backup) {
+    for (const QString &key : std::as_const(caseRenamed)) {
+      if (transferred.contains(key)) {
+        summary.replacedIntoBackup++;
+      }
     }
   }
   return summary;
@@ -210,6 +299,15 @@ QString JoinWithAnd(const QStringList &parts) {
   return parts.mid(0, parts.size() - 1).join(", ") + " and " + parts.last();
 }
 
+// With a backup, a timestamp update can be an upload: on a remote that
+// can't set a file's time in place, rclone uploads the file again and its
+// old copy goes into the backup, which counts like a replaced file's
+// (measured on v1.76.0 against rclone's own WebDAV server). The dry run
+// logs only the update.
+int Reuploads(const Summary &summary) {
+  return summary.flags.backup ? summary.toUpdate : 0;
+}
+
 } // namespace
 
 QString DeletionTitle(const Summary &summary) {
@@ -227,6 +325,9 @@ QString DeletionTitle(const Summary &summary) {
     if (summary.replacedIntoBackup > 0) {
       parts << "move old copies of " + Files(summary.replacedIntoBackup) +
                    " into the backup";
+    }
+    if (Reuploads(summary) > 0) {
+      parts << "update the time on " + Files(Reuploads(summary));
     }
     if (parts.isEmpty()) {
       return run + " could stop at a delete cap";
@@ -263,6 +364,10 @@ QString NoDeleteDetail(const Summary &summary) {
              "or when rclone has to copy it and delete the original, as it "
              "does between two different remotes.";
   }
+  if (Reuploads(summary) > 0) {
+    lines << "A remote that can't change a file's time uploads the file "
+             "again, and its old copy moves into the backup.";
+  }
   return lines.join(' ');
 }
 
@@ -270,6 +375,9 @@ QStringList CapWarnings(const Summary &summary, qint64 countCap,
                         qint64 bytesCap,
                         const std::function<QString(qint64)> &niceSize) {
   QStringList warnings;
+  if (summary.command == Command::Bisync) {
+    return warnings; // its dry run kept the caps (see the header)
+  }
   const QString run = CommandName(summary.command).toLower();
   const QString removing = Removing(summary);
   // A move can count against both caps, and the dry run logs none of it
@@ -287,11 +395,15 @@ QStringList CapWarnings(const Summary &summary, qint64 countCap,
   //  - a rename that only changes case or Unicode normalization goes
   //    through a temporary name, two moves, so a copy and delete each on a
   //    remote that can't move.
+  //  - a --fix-case rename hands rclone no file at the new name, so it
+  //    deletes nothing first.
   // So a file moved into the backup counts at most three times (once for
   // being removed), and any other move, a replaced file's old copy, a
-  // rename or a Move transfer, at most twice.
+  // rename, a Move transfer or the old copy of a file uploaded again for
+  // its time, at most twice.
+  const qint64 reuploads = Reuploads(summary);
   const qint64 otherMoves = static_cast<qint64>(summary.replacedIntoBackup) +
-                            summary.renamed + summary.moved;
+                            summary.renamed + summary.moved + reuploads;
   const bool extra = summary.toBackup > 0 || otherMoves > 0;
   const qint64 mostCounted =
       static_cast<qint64>(summary.toDelete - summary.toBackup) +
@@ -343,6 +455,10 @@ QStringList CapWarnings(const Summary &summary, qint64 countCap,
       why << "Move counts a file when it replaces one at the destination, "
              "and when it has to copy the file and delete the original, as "
              "it does between two different remotes.";
+    }
+    if (reuploads > 0) {
+      why << "On a remote that can't change a file's time, rclone uploads "
+             "the file again and counts moving its old copy into the backup.";
     }
     warnings << QString("%1 This %2 could stop at %3 before it's done.")
                     .arg(why.join(' '), run, could.join(" or "));

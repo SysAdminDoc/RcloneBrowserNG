@@ -5,6 +5,23 @@
 using SyncPreview::Parse;
 using SyncPreview::Summary;
 
+// The flags a measured run used.
+static SyncPreview::RunFlags Flags(bool backup, bool renames) {
+  SyncPreview::RunFlags flags;
+  flags.backup = backup;
+  flags.renames = renames;
+  return flags;
+}
+
+// One dry-run line the way rclone writes it.
+static QByteArray Line(const char *object, const char *skipped, int size) {
+  return QByteArray("{\"level\":\"notice\",\"object\":\"") + object +
+         "\",\"skipped\":\"" + skipped + "\",\"size\":" +
+         QByteArray::number(size) + "}\n";
+}
+
+static QString Nice(qint64 bytes) { return QString("%1 B").arg(bytes); }
+
 // Captured verbatim from `rclone sync --dry-run --use-json-log -v` on
 // rclone v1.75.0, against a source and destination holding: keep.txt
 // (identical), changed.txt (differs), new.txt (source only), and
@@ -148,7 +165,8 @@ private slots:
         // moc reads raw strings as plain ones, so an escaped quote inside
         // one hides the test class from it. This line is a plain literal.
         "{\"level\":\"info\",\"msg\":\"Renamed from \\\"old.txt\\\"\","
-        "\"object\":\"renamed.txt\"}");
+        "\"object\":\"renamed.txt\"}",
+        20, SyncPreview::Command::Sync, Flags(false, true));
     QCOMPARE(renames.replacedIntoBackup, 0);
     QCOMPARE(renames.renamed, 1);
     QCOMPARE(renames.toDelete, 0);
@@ -170,7 +188,8 @@ private slots:
         "\n"
         R"({"level":"notice","object":"b.txt","skipped":"copy","size":5})"
         "\n"
-        R"({"level":"notice","object":"old.txt","skipped":"move to renamed.txt","size":17})");
+        R"({"level":"notice","object":"old.txt","skipped":"move to renamed.txt","size":17})",
+        20, SyncPreview::Command::Sync, Flags(true, true));
     QCOMPARE(both.replacedIntoBackup, 1);
     QCOMPARE(both.renamed, 1);
     QCOMPARE(both.toTransfer, 1);
@@ -211,58 +230,85 @@ private slots:
     QTest::addColumn<int>("replaced");
     QTest::addColumn<int>("renamed");
     QTest::addColumn<int>("moved");
+    // --backup-dir or --suffix, and --track-renames or --fix-case.
+    QTest::addColumn<bool>("backup");
+    QTest::addColumn<bool>("renames");
 
-    const auto line = [](const char *object, const char *skipped, int size) {
-      return QByteArray("{\"level\":\"notice\",\"object\":\"") + object +
-             "\",\"skipped\":\"" + skipped + "\",\"size\":" +
-             QByteArray::number(size) + "}\n";
-    };
     const int sync = static_cast<int>(SyncPreview::Command::Sync);
     const int move = static_cast<int>(SyncPreview::Command::Move);
 
     // A.txt over a.txt with --backup-dir. The move and the copy name the
     // file differently, which once hid the replaced file.
     QTest::newRow("case only, older copy")
-        << line("a.txt", "move", 3) + line("A.txt", "copy", 12) << sync << 1
-        << 1 << 0 << 0;
+        << Line("a.txt", "move", 3) + Line("A.txt", "copy", 12) << sync << 1
+        << 1 << 0 << 0 << true << false;
     // An NFC name over the same name in NFD.
     QTest::newRow("normalization, older copy")
-        << line("cafe\\u0301.txt", "move", 3) +
-               line("caf\\u00e9.txt", "copy", 12)
-        << sync << 1 << 1 << 0 << 0;
+        << Line("cafe\\u0301.txt", "move", 3) +
+               Line("caf\\u00e9.txt", "copy", 12)
+        << sync << 1 << 1 << 0 << 0 << true << false;
     QTest::newRow("name-transform all,uppercase, older copy")
-        << line("A.TXT", "move", 3) + line("a.txt", "copy", 12) << sync << 1
-        << 1 << 0 << 0;
+        << Line("A.TXT", "move", 3) + Line("a.txt", "copy", 12) << sync << 1
+        << 1 << 0 << 0 << true << false;
     // The backup on another drive with older copies of both files, so the
     // extra file counts three times and the replaced one twice.
     QTest::newRow("backup on another drive")
-        << line("a.txt", "move", 3) +
-               line("k.txt", "update modification time", 1) +
-               line("A.txt", "copy", 12) +
-               line("x.txt", "move into backup dir", 5)
-        << sync << 5 << 1 << 0 << 0;
+        << Line("a.txt", "move", 3) +
+               Line("k.txt", "update modification time", 1) +
+               Line("A.txt", "copy", 12) +
+               Line("x.txt", "move into backup dir", 5)
+        << sync << 5 << 1 << 0 << 0 << true << false;
     QTest::newRow("suffix-keep-extension")
-        << line("a.tar.gz", "move to a-old.tar.gz", 3) +
-               line("a.tar.gz", "copy", 12)
-        << sync << 0 << 1 << 0 << 0;
+        << Line("a.tar.gz", "move to a-old.tar.gz", 3) +
+               Line("a.tar.gz", "copy", 12)
+        << sync << 0 << 1 << 0 << 0 << true << false;
+    // With --track-renames.
     QTest::newRow("rename on local")
-        << line("old.txt", "move to renamed.txt", 16) << sync << 0 << 0 << 1
-        << 0;
+        << Line("old.txt", "move to renamed.txt", 16) << sync << 0 << 0 << 1
+        << 0 << false << true;
     QTest::newRow("rename on memory")
-        << line("old.txt", "move to renamed.txt", 16) << sync << 1 << 0 << 1
-        << 0;
+        << Line("old.txt", "move to renamed.txt", 16) << sync << 1 << 0 << 1
+        << 0 << false << true;
     QTest::newRow("two renames on memory")
-        << line("o2.txt", "move to r2.txt", 16) +
-               line("o1.txt", "move to r1.txt", 16)
-        << sync << 2 << 0 << 2 << 0;
+        << Line("o2.txt", "move to r2.txt", 16) +
+               Line("o1.txt", "move to r1.txt", 16)
+        << sync << 2 << 0 << 2 << 0 << false << true;
+    // --fix-case on the memory backend, an NFC name over the same name in
+    // NFD, with an older copy in the backup under the NFD name. The rename
+    // goes through a temporary name, a copy and delete each time, and then
+    // the renamed file's old copy moves into the backup, which the dry run
+    // doesn't list. The preview once read the rename as that move.
+    QTest::newRow("fix-case with --backup-dir on memory")
+        << Line("cafe\\u0301.txt", "move to caf\\u00e9.txt", 3) +
+               Line("caf\\u00e9.txt", "copy", 19)
+        << sync << 3 << 1 << 1 << 0 << true << true;
+    QTest::newRow("fix-case of two files with --backup-dir on memory")
+        << Line("re\\u0301sume\\u0301.doc", "move to r\\u00e9sum\\u00e9.doc",
+                3) +
+               Line("cafe\\u0301.txt", "move to caf\\u00e9.txt", 3) +
+               Line("r\\u00e9sum\\u00e9.doc", "copy", 19) +
+               Line("caf\\u00e9.txt", "copy", 19)
+        << sync << 6 << 2 << 2 << 0 << true << true;
+    QTest::newRow("fix-case with --suffix on memory")
+        << Line("cafe\\u0301.txt", "move to caf\\u00e9.txt", 3) +
+               Line("caf\\u00e9.txt", "copy", 19)
+        << sync << 3 << 1 << 1 << 0 << true << true;
+    // --refresh-times with --backup-dir on rclone's own WebDAV server,
+    // which can't set a file's time. Both files are uploaded again and
+    // their older backup copies deleted, which the dry run doesn't list.
+    QTest::newRow("refresh-times with --backup-dir on WebDAV")
+        << Line("f1.txt", "update modification time", 65) +
+               Line("f0.txt", "update modification time", 65)
+        << sync << 2 << 0 << 0 << 0 << true << false;
     // rclone move with --delete-excluded, which deletes nothing at the
     // destination. Replacing a local file deletes the old one first.
     QTest::newRow("move over a local file")
-        << line("a.txt", "move", 12) << move << 1 << 0 << 0 << 1;
+        << Line("a.txt", "move", 12) << move << 1 << 0 << 0 << 1 << false
+        << false;
     // From local to memory, each moved file is copied, then deleted.
     QTest::newRow("move between remotes")
-        << line("m.txt", "move", 7) + line("n.txt", "move", 8) << move << 2
-        << 0 << 0 << 2;
+        << Line("m.txt", "move", 7) + Line("n.txt", "move", 8) << move << 2
+        << 0 << 0 << 2 << false << false;
   }
 
   void warnsAtEveryCapTheRealRunFailsAt() {
@@ -272,9 +318,12 @@ private slots:
     QFETCH(int, replaced);
     QFETCH(int, renamed);
     QFETCH(int, moved);
+    QFETCH(bool, backup);
+    QFETCH(bool, renames);
 
     const Summary summary =
-        Parse(log, 20, static_cast<SyncPreview::Command>(command));
+        Parse(log, 20, static_cast<SyncPreview::Command>(command),
+              Flags(backup, renames));
     QCOMPARE(summary.replacedIntoBackup, replaced);
     QCOMPARE(summary.renamed, renamed);
     QCOMPARE(summary.moved, moved);
@@ -294,6 +343,153 @@ private slots:
     // title for it.
     QVERIFY2(!SyncPreview::DeletionTitle(summary).contains("could stop"),
              qPrintable(SyncPreview::DeletionTitle(summary)));
+  }
+
+  // On Windows, whose names ignore case, --fix-case renames a.txt to A.txt
+  // and then replaces it. With no backup set, the summary still said old
+  // copies would go into the backup and named --backup-dir. Under Move it
+  // read the rename and the moved file as one file moving twice.
+  void aFixCaseRenameIsARename() {
+    const Summary sync =
+        Parse(Line("a.txt", "move to A.txt", 3) + Line("A.txt", "copy", 12),
+              20, SyncPreview::Command::Sync, Flags(false, true));
+    QCOMPARE(sync.renamed, 1);
+    QCOMPARE(sync.replacedIntoBackup, 0);
+    QCOMPARE(SyncPreview::DeletionTitle(sync),
+             QStringLiteral("Sync will rename 1 file"));
+    QVERIFY2(!SyncPreview::NoDeleteDetail(sync).contains("backup"),
+             qPrintable(SyncPreview::NoDeleteDetail(sync)));
+
+    const QByteArray moveLog =
+        Line("a.txt", "move to A.txt", 3) + Line("A.txt", "move", 12);
+    const Summary move =
+        Parse(moveLog, 20, SyncPreview::Command::Move, Flags(false, true));
+    QCOMPARE(move.renamed, 1);
+    QCOMPARE(move.moved, 1);
+    QCOMPARE(move.replacedIntoBackup, 0);
+    QCOMPARE(move.transferBytes, static_cast<qint64>(12));
+    QCOMPARE(SyncPreview::DeletionTitle(move),
+             QStringLiteral("Move will move 1 file and rename 1 file"));
+
+    // With a backup, the renamed file's old copy goes into it.
+    QCOMPARE(Parse(moveLog, 20, SyncPreview::Command::Move, Flags(true, true))
+                 .replacedIntoBackup,
+             1);
+    // A file whose contents match is only renamed, so nothing goes into
+    // the backup.
+    QCOMPARE(Parse(Line("a.txt", "move to A.txt", 3), 20,
+                   SyncPreview::Command::Sync, Flags(true, true))
+                 .replacedIntoBackup,
+             0);
+  }
+
+  // --name-transform file,prefix=x_ with --backup-dir moves the old copy
+  // of a replaced x_a.txt to x_x_a.txt in the backup, logged beside the
+  // copy of a.txt (measured on v1.76.0). Nothing renames without
+  // --track-renames or --fix-case, and the summary once called it a rename.
+  void aNameTransformMoveIsABackupMove() {
+    const Summary summary = Parse(
+        Line("x_a.txt", "move to x_x_a.txt", 3) + Line("a.txt", "copy", 12),
+        20, SyncPreview::Command::Sync, Flags(true, false));
+    QCOMPARE(summary.replacedIntoBackup, 1);
+    QCOMPARE(summary.renamed, 0);
+    QCOMPARE(SyncPreview::DeletionTitle(summary),
+             QStringLiteral("Sync will move old copies of 1 file into the "
+                            "backup"));
+  }
+
+  // The WebDAV run above also deleted 26 B of older backup copies, so a
+  // size cap could stop it too. Without a backup the file is uploaded over
+  // its old copy, or the old copy is removed without a count
+  // (fs/operations/operations.go), so nothing counts.
+  void timestampUpdatesCountWithABackup() {
+    const QByteArray log = Line("f1.txt", "update modification time", 65) +
+                           Line("f0.txt", "update modification time", 65);
+    const Summary backedUp =
+        Parse(log, 20, SyncPreview::Command::Sync, Flags(true, false));
+    QCOMPARE(backedUp.toUpdate, 2);
+    QCOMPARE(SyncPreview::DeletionTitle(backedUp),
+             QStringLiteral("Sync will update the time on 2 files"));
+    QVERIFY2(SyncPreview::NoDeleteDetail(backedUp).contains(
+                 "can't change a file's time"),
+             qPrintable(SyncPreview::NoDeleteDetail(backedUp)));
+    const QStringList size = SyncPreview::CapWarnings(backedUp, -1, 25, Nice);
+    QCOMPARE(size.size(), 1);
+    QVERIFY2(size[0].contains("can't change a file's time") &&
+                 size[0].contains("could stop at --max-delete-size (25 B)"),
+             qPrintable(size[0]));
+    QCOMPARE(SyncPreview::CapWarnings(backedUp, 4, -1, Nice), QStringList());
+
+    const Summary plain =
+        Parse(log, 20, SyncPreview::Command::Sync, Flags(false, false));
+    QCOMPARE(SyncPreview::CapWarnings(plain, 0, 0, Nice), QStringList());
+  }
+
+  void readsTheFlagsTheWayRcloneDoes_data() {
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<bool>("backup");
+    QTest::addColumn<bool>("renames");
+
+    QTest::newRow("none") << QStringList{"sync", "a", "b"} << false << false;
+    QTest::newRow("--backup-dir x")
+        << QStringList{"sync", "a", "b", "--backup-dir", "x"} << true << false;
+    QTest::newRow("--backup-dir=x")
+        << QStringList{"sync", "--backup-dir=x", "a", "b"} << true << false;
+    QTest::newRow("--backup-dir=") << QStringList{"sync", "--backup-dir="}
+                                   << false << false;
+    QTest::newRow("--suffix .bak")
+        << QStringList{"sync", "--suffix", ".bak"} << true << false;
+    QTest::newRow("--suffix=") << QStringList{"sync", "--suffix="} << false
+                               << false;
+    // It only changes where --suffix goes.
+    QTest::newRow("--suffix-keep-extension alone")
+        << QStringList{"sync", "--suffix-keep-extension"} << false << false;
+    QTest::newRow("the last --backup-dir wins")
+        << QStringList{"sync", "--backup-dir", "x", "--backup-dir", ""}
+        << false << false;
+    QTest::newRow("--fix-case") << QStringList{"sync", "--fix-case"} << false
+                                << true;
+    QTest::newRow("--fix-case=false")
+        << QStringList{"sync", "--fix-case", "--fix-case=false"} << false
+        << false;
+    QTest::newRow("--track-renames=true")
+        << QStringList{"sync", "--track-renames=true"} << false << true;
+    QTest::newRow("--track-renames=F")
+        << QStringList{"sync", "--track-renames=F"} << false << false;
+    QTest::newRow("--track-renames-strategy")
+        << QStringList{"sync", "--track-renames-strategy", "modtime"} << false
+        << false;
+    // A pattern can look like a flag.
+    QTest::newRow("--exclude --fix-case")
+        << QStringList{"sync", "--exclude", "--fix-case"} << false << false;
+    QTest::newRow("--filter --backup-dir")
+        << QStringList{"sync", "--filter", "--backup-dir", "x"} << false
+        << false;
+    // A string flag takes the next argument, whatever it looks like.
+    QTest::newRow("--backup-dir --fix-case")
+        << QStringList{"sync", "--backup-dir", "--fix-case"} << true << false;
+  }
+
+  void readsTheFlagsTheWayRcloneDoes() {
+    QFETCH(QStringList, arguments);
+    QFETCH(bool, backup);
+    QFETCH(bool, renames);
+    const SyncPreview::RunFlags flags = SyncPreview::FlagsIn(arguments);
+    QCOMPARE(flags.backup, backup);
+    QCOMPARE(flags.renames, renames);
+  }
+
+  // A bisync's dry run keeps its caps and stops where the real run would,
+  // and its --max-delete is a percentage, so the summary adds no cap
+  // warning of its own. It used to say Sync in its title and button.
+  void aBisyncIsNamedAndLeavesItsCapsToItsDryRun() {
+    const Summary summary =
+        Parse(Line("a.txt", "delete", 3) + Line("b.txt", "delete", 3) +
+                  Line("c.txt", "delete", 3),
+              20, SyncPreview::Command::Bisync);
+    QCOMPARE(SyncPreview::DeletionTitle(summary),
+             QStringLiteral("Bisync will delete 3 files"));
+    QCOMPARE(SyncPreview::CapWarnings(summary, 1, 1, Nice), QStringList());
   }
 
   // The text for a run that deletes nothing names each kind of move in it.

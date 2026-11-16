@@ -28,6 +28,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 
@@ -426,6 +427,67 @@ private slots:
     emit buttons->accepted();
     QCOMPARE(accepted.count(), 1);
     QVERIFY(!dialog.isVisible());
+  }
+
+  // The deletion summary reads the caps and flags the check ran with, and
+  // its Run button runs whatever the dialog holds by then. Switching Sync
+  // to Copy while the check ran gave a Sync summary for a Copy run, so
+  // every option stays off until the check is back.
+  void theDeletionCheckLocksTheOptionsWhileItRuns() {
+    if (mRclone.isEmpty()) {
+      QSKIP("rclone is not on PATH");
+    }
+    QTemporaryDir from;
+    QTemporaryDir to;
+    QVERIFY(from.isValid());
+    QVERIFY(to.isValid());
+    QFile keep(from.filePath("keep.txt"));
+    QVERIFY(keep.open(QIODevice::WriteOnly));
+    keep.write("keep");
+    keep.close();
+    QFile extra(to.filePath("extra.txt"));
+    QVERIFY(extra.open(QIODevice::WriteOnly));
+    extra.write("extra");
+    extra.close();
+
+    TransferDialog dialog(false, false, "remote", QDir(), true);
+    auto *source = dialog.findChild<QLineEdit *>("textSource");
+    auto *dest = dialog.findChild<QLineEdit *>("textDest");
+    auto *sync = dialog.findChild<QRadioButton *>("rbSync");
+    auto *copy = dialog.findChild<QRadioButton *>("rbCopy");
+    auto *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(source != nullptr);
+    QVERIFY(dest != nullptr);
+    QVERIFY(sync != nullptr);
+    QVERIFY(copy != nullptr);
+    QVERIFY(buttons != nullptr);
+    source->setText(from.path());
+    dest->setText(to.path());
+    sync->setChecked(true);
+
+    // The summary is a modal child of the dialog. Note its title and
+    // close it, the way Cancel would.
+    QString title;
+    QTimer closer;
+    QObject::connect(&closer, &QTimer::timeout, &dialog, [&dialog, &title]() {
+      for (QDialog *summary : dialog.findChildren<QDialog *>()) {
+        if (summary->isVisible()) {
+          title = summary->windowTitle();
+          summary->reject();
+        }
+      }
+    });
+    closer.start(20);
+
+    emit buttons->accepted();
+    QVERIFY2(!sync->isEnabled() && !copy->isEnabled() && !dest->isEnabled(),
+             "the options stayed live while the check ran");
+    QTRY_VERIFY_WITH_TIMEOUT(!title.isEmpty(), 30000);
+    QCOMPARE(title, QStringLiteral("Sync will delete 1 file"));
+    QVERIFY(sync->isEnabled());
+    QVERIFY(copy->isEnabled());
+    QVERIFY(dest->isEnabled());
+    QVERIFY(buttons->isEnabled());
   }
 
   void presetSelectionStillAppliesItsValues() {
