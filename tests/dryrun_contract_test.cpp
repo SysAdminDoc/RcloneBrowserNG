@@ -263,6 +263,133 @@ private slots:
     }
   }
 
+  // rclone applies a global.dry_run option to the whole run when it opens a
+  // path that carries one, after it read the flags (addConfigToContext in
+  // fs/newfs.go). Measured on v1.76.0, each of these deleted for real in a
+  // dry run, a remote nested in another's option too. A key ends at = , or
+  // : and matches exactly, so the others stay as typed.
+  void previewsIgnoreGlobalDryRunInPaths() {
+    const QStringList saved{
+        "sync",
+        "src",
+        ":local,global.dry_run=false:dst",
+        "--backup-dir=:local,global.dry_run=false:bak",
+        "--compare-dest",
+        "remote,global.dry_run,x=1:cmp",
+        ":alias,remote=':local,global.dry_run=False:d',global.dry_run=0:",
+        ":local,global.dry_run_kept=false:k",
+        ":local,global.DRY_RUN=false:u",
+        ":local,xglobal.dry_run=false:v"};
+    const QStringList expected{
+        "sync",
+        "--dry-run",
+        "src",
+        ":local,ignored.global.dry_run=false:dst",
+        "--backup-dir=:local,ignored.global.dry_run=false:bak",
+        "--compare-dest",
+        "remote,ignored.global.dry_run,x=1:cmp",
+        ":alias,remote=':local,ignored.global.dry_run=False:d',"
+        "ignored.global.dry_run=0:",
+        ":local,global.dry_run_kept=false:k",
+        ":local,global.DRY_RUN=false:u",
+        ":local,xglobal.dry_run=false:v"};
+    QCOMPARE(JobOptions::DryRunArguments(saved), expected);
+    // A second pass changes nothing more.
+    QCOMPARE(JobOptions::DryRunArguments(expected), expected);
+    // Bisync keeps its caps, not the option.
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"bisync", "a,global.dry_run=f:", "b:"}),
+             (QStringList{"bisync", "--dry-run", "a,ignored.global.dry_run=f:",
+                          "b:"}));
+  }
+
+  // The transfer dialog's Dry Run builds getOptions() with dryRun set, and
+  // the extra options come after the app's --dry-run, so a --dry-run=false
+  // typed there turned it into a real run. The task's own run keeps
+  // everything as typed.
+  void dialogDryRunsStayDryRuns() {
+    auto sync = makeTask(JobOptions::Sync, true);
+    sync->extra = "--dry-run=false -vn=false";
+    sync->dest = ":local,global.dry_run=false:dst";
+    const QStringList dry = sync->getOptions();
+    QCOMPARE(dry.value(1), QString("--dry-run"));
+    QVERIFY2(!dry.contains("--dry-run=false") && !dry.contains("-vn=false") &&
+                 dry.contains("-vn"),
+             qPrintable(dry.join(' ')));
+    QCOMPARE(dry.last(), QString(":local,ignored.global.dry_run=false:dst"));
+
+    sync->dryRun = false;
+    const QStringList run = sync->getOptions();
+    QVERIFY2(run.contains("--dry-run=false") && run.contains("-vn=false"),
+             qPrintable(run.join(' ')));
+    QCOMPARE(run.last(), QString(":local,global.dry_run=false:dst"));
+    delete sync;
+  }
+
+  // The same paths through the installed rclone, and the dialog's own
+  // arguments last.
+  void pathOptionsDeleteNothingInRealRclone() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH and RCLONE_BROWSER_TEST_RCLONE is unset");
+    }
+    // @S, @D and @B stand for the source, destination and backup folders.
+    const QList<QStringList> cases{
+        {"sync", "@S", ":local,global.dry_run=false:@D"},
+        {"sync", ":local,global.dry_run=False:@S", "@D"},
+        {"sync", "--backup-dir", ":local,global.dry_run=false:@B", "@S",
+         ":local:@D"},
+        {"sync", "--backup-dir=:local,global.dry_run=false:@B", "@S",
+         ":local:@D"},
+        {"sync", "--compare-dest", ":local,global.dry_run=false:@B", "@S", "@D"},
+        {"sync", ":local,global.dry_run:@S", ":local,global.dry_run=false:@D"},
+        {"sync", "@S", ":alias,remote=':local,global.dry_run=false:@D':"},
+        {},
+    };
+    for (const QStringList &c : cases) {
+      QTemporaryDir dir;
+      QVERIFY(dir.isValid());
+      const QString src = dir.filePath("src");
+      const QString dst = dir.filePath("dst");
+      const QString bak = dir.filePath("bak");
+      QVERIFY(QDir().mkpath(src) && QDir().mkpath(dst) && QDir().mkpath(bak));
+      for (const QString &path : {src + "/keep.txt", dst + "/extra.txt",
+                                  dir.filePath("rclone.conf")}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(path.endsWith(".conf") ? "" : "x");
+      }
+      QStringList args;
+      if (c.isEmpty()) {
+        auto sync = makeTask(JobOptions::Sync, true);
+        sync->extra = "--dry-run=false";
+        sync->source = src;
+        sync->dest = ":local,global.dry_run=false:" + dst;
+        args = sync->getOptions();
+        delete sync;
+      } else {
+        QStringList filled = c;
+        filled.replaceInStrings("@S", src);
+        filled.replaceInStrings("@D", dst);
+        filled.replaceInStrings("@B", bak);
+        args = JobOptions::DryRunArguments(filled);
+      }
+      QProcess process;
+      process.setWorkingDirectory(dir.path());
+      process.start(rclone, QStringList{"--config", dir.filePath("rclone.conf")}
+                                << args);
+      QVERIFY(process.waitForFinished(60000));
+      // A run rclone refused would leave the file too, and prove nothing.
+      QVERIFY2(process.exitStatus() == QProcess::NormalExit &&
+                   process.exitCode() == 0,
+               qPrintable(args.join(' ') + "\n" +
+                          QString::fromUtf8(process.readAllStandardError())));
+      QCOMPARE(QDir(dst).entryList(QDir::Files), QStringList{"extra.txt"});
+      QVERIFY2(QDir(bak).entryList(QDir::Files).isEmpty(),
+               qPrintable(args.join(' ')));
+    }
+  }
+
   // pflag gives --exclude, --include and --filter the next argument whatever
   // it looks like (measured on v1.76.0: `rclone sync --exclude -n` is a real
   // run that deletes, and `--filter "- run=*"` skips run=1.txt). A preview

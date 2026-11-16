@@ -29,6 +29,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and the check's dry run strips `global.max_delete` and `global.max_delete_size` from its paths, with real-rclone rows in sync_preview_test for both.
   Complexity: M
 
+- [ ] P2 — Keep a dry run dry when rclone.conf or the environment sets `global.dry_run`
+  Why: a dry run renames `global.dry_run` in its arguments (JobOptions::KeepDryRunOn), but rclone also reads it from the opened remote's config section and from `RCLONE_CONFIG_<REMOTE>_GLOBAL.DRY_RUN`. Measured on v1.76.0 (2026-11-16): `sync --dry-run src dd:` deleted for real with `global.dry_run = false` in `[dd]`, through an alias pointing at that section too, and with `RCLONE_CONFIG_DD_GLOBAL.DRY_RUN=false` set. A CLI preview, the task list's and history's Dry Run and the dialog's Dry Run button all go through rclone's own config. rc jobs (sync/*) skip `global.` options (IsRCRequest), core/command children don't.
+  Evidence: `src/job_options.cpp` KeepDryRunOn; each case reproduced with a throwaway rclone.conf and a local destination of three files; addConfigToContext in fs/newfs.go reads config.Get, which takes the section and env.
+  Touches: `src/job_options.{h,cpp}`, `src/sync_preview.{h,cpp}`, `src/main_window.cpp`, `tests/dryrun_contract_test.cpp`
+  Acceptance: before any dry run, the app reads the sections of every remote its paths name (nested ones too, through `config dump` on the run's own config) and its environment, and refuses the dry run with a message naming the remote when one turns `global.dry_run` off (or passes `--config` with the section's key renamed, if that's measured to work); real-rclone rows cover the section, the alias and the env forms.
+  Complexity: M
+
 - [ ] P2 — Word a Dropbox or Koofr `--suffix` replace as a delete
   Why: on a remote that can't set a file's time without deleting it (backend/dropbox and backend/koofr return ErrorCantSetModTimeWithoutDelete), equal() removes the old file when `--backup-dir` is empty (fs/operations/operations.go:338-348, v1.76.0) instead of renaming it to the `--suffix` name, and that remove isn't counted against the caps. The summary says the old copy moves into the backup and warns about a cap it can't reach.
   Evidence: `src/sync_preview.cpp` NoDeleteDetail and CapWarnings treat every re-upload under a backup the same way; read in the source, not measured (no Dropbox or Koofr account).

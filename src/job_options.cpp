@@ -72,9 +72,45 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   static const QStringList kPatternFlags{QStringLiteral("--exclude"),
                                          QStringLiteral("--include"),
                                          QStringLiteral("--filter")};
+  args = KeepDryRunOn(args);
   const bool dropCaps = args.value(0) != QLatin1String("bisync");
-  for (qsizetype i = 0; i < args.size();) {
+  for (qsizetype i = 0; dropCaps && i < args.size();) {
     const QString arg = args.at(i);
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    const QString name = equals > 0 ? arg.left(equals) : arg;
+    if (i > 0 && kPatternFlags.contains(args.at(i - 1))) {
+      i++; // a pattern; a cap left in only stops the preview early
+    } else if (kCaps.contains(arg)) {
+      args.remove(i, qMin<qsizetype>(2, args.size() - i));
+    } else if (equals > 0 && kCaps.contains(name)) {
+      args.removeAt(i);
+    } else {
+      i++;
+    }
+  }
+  // Only the argument right after the command is surely a flag. Anywhere
+  // else a --dry-run or -n can be the value of the option before it
+  // (`--exclude -n` excludes a file named -n and changes everything), so
+  // the preview adds its own. A second --dry-run is harmless.
+  if (args.value(1) != QLatin1String("--dry-run") &&
+      args.value(1) != QLatin1String("-n")) {
+    args.insert(args.isEmpty() ? 0 : 1, QStringLiteral("--dry-run"));
+  }
+  return args;
+}
+
+QStringList JobOptions::KeepDryRunOn(QStringList args) {
+  // rclone reads a global.dry_run option in every path it opens, a remote
+  // nested in another's option too (":alias,remote=':local,global.dry_run=
+  // false:dir':"), and sets it for the whole run after the flags were read
+  // (addConfigToContext in fs/newfs.go), so global.dry_run=false made a dry
+  // run delete for real. The key is exact, and rclone ignores a key it
+  // doesn't know, so renaming it wherever it stands keeps the dry run on
+  // (measured on v1.76.0, 2026-11-16). An option always follows a comma.
+  static const QString kGlobalDryRun = QStringLiteral(",global.dry_run");
+  static const QString kIgnored = QStringLiteral("ignored.");
+  for (qsizetype i = 0; i < args.size(); i++) {
+    QString arg = args.at(i);
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
     const QString name = equals > 0 ? arg.left(equals) : arg;
     // A short flag cluster gives its = value to the letter just before it,
@@ -97,24 +133,20 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
       // hand that option the next argument. A true value keeps the dry run,
       // and anything else is refused by rclone for the real run too.
       args[i] = arg.left(equals);
-      i++;
-    } else if (dropCaps && i > 0 && kPatternFlags.contains(args.at(i - 1))) {
-      i++; // a pattern; a cap left in only stops the preview early
-    } else if (dropCaps && kCaps.contains(arg)) {
-      args.remove(i, qMin<qsizetype>(2, args.size() - i));
-    } else if (dropCaps && equals > 0 && kCaps.contains(name)) {
-      args.removeAt(i);
-    } else {
-      i++;
+      continue;
     }
-  }
-  // Only the argument right after the command is surely a flag. Anywhere
-  // else a --dry-run or -n can be the value of the option before it
-  // (`--exclude -n` excludes a file named -n and changes everything), so
-  // the preview adds its own. A second --dry-run is harmless.
-  if (args.value(1) != QLatin1String("--dry-run") &&
-      args.value(1) != QLatin1String("-n")) {
-    args.insert(args.isEmpty() ? 0 : 1, QStringLiteral("--dry-run"));
+    // Every argument, for the same reason: a pattern or another option's
+    // value only changes what a dry run lists.
+    for (qsizetype at = arg.indexOf(kGlobalDryRun); at >= 0;
+         at = arg.indexOf(kGlobalDryRun, at + 1)) {
+      const qsizetype end = at + kGlobalDryRun.size();
+      if (end < arg.size() &&
+          (arg.at(end) == QLatin1Char('=') || arg.at(end) == QLatin1Char(',') ||
+           arg.at(end) == QLatin1Char(':'))) {
+        arg.insert(at + 1, kIgnored);
+      }
+    }
+    args[i] = arg;
   }
   return args;
 }
@@ -364,7 +396,9 @@ QStringList JobOptions::getOptions() const {
   list << source;
   list << dest;
 
-  return list;
+  // The extra and default options come after the app's --dry-run, and the
+  // last value rclone is given wins.
+  return dryRun ? KeepDryRunOn(list) : list;
 }
 
 SerializationException::SerializationException(QString msg)
