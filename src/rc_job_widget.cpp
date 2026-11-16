@@ -390,7 +390,20 @@ void RcJobWidget::poll() {
                         applyStats(finalStats);
                         mFinalStats = true;
                       }
-                      if (!success &&
+                      // A soft or cautious --max-transfer stop is the job's
+                      // error only when the try had no plain one to return,
+                      // yet rclone can have counted one it never returned
+                      // (a destination file it couldn't hash, a modtime it
+                      // couldn't set). cmd.Run retries any try whose group
+                      // has a retry error, so the card does too. A flag an
+                      // earlier try left in the group says nothing about
+                      // this one (see noteLimitStop).
+                      const bool retryableStop =
+                          success && exitCode == 8 && haveStats &&
+                          !finalStats.value("fatalError").toBool() &&
+                          finalStats.value("retryError").toBool() &&
+                          !mRetryFlagCarried;
+                      if ((!success || retryableStop) &&
                           retryAfterFailure(finalStats, haveStats, jobError)) {
                         return;
                       }
@@ -644,7 +657,9 @@ void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
     // fatal error. A group's retry flag from an earlier attempt says nothing
     // here, and the job returned the stop, a no-retry error, so it had no
     // plain one to return (see retryAfterFailure for the ones it counts
-    // without returning).
+    // without returning). A flag this attempt raised went through
+    // retryAfterFailure first, and gets here only once the tries ran out or
+    // a cancel stopped the next one.
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
   }

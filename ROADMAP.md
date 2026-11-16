@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P2
 
-- [ ] P2 — Retry a soft `--max-transfer` stop when the try also had a retryable error
-  Why: cmd.Run (cmd/cmd.go:271, v1.76.0) retries any try whose group has a retry error, so a soft or cautious `--max-transfer` stop that came with, say, a locked file is tried again on the CLI. The card treats every limit stop as the end of the run, so in a try with a group of its own it stops where the CLI goes on.
-  Evidence: `src/rc_job_widget.cpp` noteLimitStop prints no "Can't retry" line when the group's retryError is up, yet the run ends there all the same; the B2 review (P2) found it by reading, not by running.
-  Touches: `src/rc_job_widget.cpp`, `tests/rc_job_widget_test.cpp`
-  Acceptance: measured first with `rclone copy --max-transfer 1 --cutoff-mode soft` plus a locked source file, CLI and daemon route side by side; the card prints the same attempt lines and exit code the CLI does; a real-daemon test covers the locked-file case and a fake one the plain stop.
-  Complexity: S
-
 - [ ] P2 — Wait out a backend's retry-after time before the next try
   Why: cmd.Run (cmd/cmd.go:275-281, v1.76.0) sleeps until the stats' RetryAfter time when a backend sent one (a rate limit's Retry-After, for one) before it logs "Attempt n/m failed" and sleeps `--retries-sleep`. The card waits only `--retries-sleep`, so against a rate-limited remote it tries again sooner than the CLI and can fail the same way again.
   Evidence: `src/rc_job_widget.cpp` startNextAttempt waits mRetrySleepMs and nothing else. Whether core/stats reports a group's retry-after time hasn't been checked (fs/accounting/stats.go RemoteStats).

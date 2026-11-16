@@ -170,6 +170,54 @@ private slots:
     QVERIFY2(!run.output.contains("succeeded"), qPrintable(run.output));
   }
 
+  // A soft stop is the job's error only when the attempt had no plain one,
+  // but rclone can have counted one it never returned, and then the
+  // attempt's own group says a retry could fix it. cmd.Run retries any
+  // attempt like that, and exits 8 on the stop the last one returned.
+  void aSoftStopWithItsOwnRetryErrorIsRetried_data() {
+    QTest::addColumn<bool>("laterRetryable");
+    QTest::newRow("every attempt") << true;
+    QTest::newRow("only the first") << false;
+  }
+
+  void aSoftStopWithItsOwnRetryErrorIsRetried() {
+    QFETCH(bool, laterRetryable);
+    const QString stop = "max transfer limit reached as set by --max-transfer";
+    int current = 1;
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &body,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            current = body.value("jobid").toInt();
+            reply(QJsonObject{{"finished", true},
+                              {"success", false},
+                              {"error", stop},
+                              {"output", QJsonObject()}});
+            return;
+          }
+          reply(QJsonObject{{"errors", 2},
+                            {"fatalError", false},
+                            {"retryError", current == 1 || laterRetryable},
+                            {"lastError", stop}});
+        });
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY(run.success);
+    QCOMPARE(run.entry.exitCode, 8);
+    QCOMPARE(run.resubmits, laterRetryable ? 2 : 1);
+    QCOMPARE(run.resubmittedAll.value(0).value("_group").toString(),
+             QString("rclonebrowser-1-attempt-2"));
+    QVERIFY2(run.output.contains("Attempt 1/3 failed with 2 errors and: " +
+                                 stop),
+             qPrintable(run.output));
+    QCOMPARE(run.output.contains("Attempt 3/3 failed with 2 errors and: " +
+                                 stop),
+             laterRetryable);
+    QCOMPARE(run.output.count(
+                 "Can't retry any of the errors - not attempting retries"),
+             laterRetryable ? 0 : 1);
+    QVERIFY2(!run.output.contains("succeeded"), qPrintable(run.output));
+  }
+
   // Measured with the CLI on v1.76.0: every --cutoff-mode ends a
   // --max-duration stop with the fatal line, and exits 10.
   void aMaxDurationStopEndsWithTheFatalLine_data() {
@@ -1189,6 +1237,62 @@ private slots:
     // The last attempt returned the mismatch, a no-retry error, and the CLI
     // exits 6 on it.
     QCOMPARE(entry.exitCode, 6);
+#else
+    QSKIP("locks a file the Windows way");
+#endif
+  }
+
+  // A soft --max-transfer stop next to an error a retry could fix, as the
+  // CLI ran the same files on v1.76.0. A source file held open fails to
+  // copy, and the job returns that plain error ahead of the stop, so
+  // attempt 1 is retried, and attempt 2, with none of the cap left, stops
+  // at once with nothing to retry. A destination file held open can't be
+  // hashed, which rclone counts and never returns, so every attempt
+  // returns only the stop with a retry error in its own group, and the CLI
+  // tries all 3 times and exits 8. The card used to end after attempt 1.
+  void aSoftStopNextToARetryableErrorIsRetried_data() {
+    QTest::addColumn<bool>("lockDest");
+    QTest::newRow("locked source") << false;
+    QTest::newRow("unhashable destination") << true;
+  }
+
+  void aSoftStopNextToARetryableErrorIsRetried() {
+#ifdef Q_OS_WIN
+    QFETCH(bool, lockDest);
+    const QString tag = lockDest ? "dst" : "src";
+    const QString source = makeDir("softstop-src-" + tag);
+    const QString dest = makeDir("softstop-dst-" + tag);
+    writeFile(source + "/a.txt", "same content");
+    if (lockDest) {
+      writeFile(dest + "/a.txt", "same content");
+      QFile older(dest + "/a.txt");
+      QVERIFY(older.open(QIODevice::ReadWrite));
+      QVERIFY(older.setFileTime(QDateTime::currentDateTime().addDays(-1),
+                                QFileDevice::FileModificationTime));
+    }
+    const QStringList bins{"b.bin", "c.bin", "d.bin"};
+    for (const QString &name : bins) {
+      writeFile(source + "/" + name, QByteArray(300, 'x'));
+    }
+    HANDLE lock = lockFile((lockDest ? dest : source) + "/a.txt");
+    QVERIFY(lock != INVALID_HANDLE_VALUE);
+    const QStringList args{"copy",        "--max-transfer",  "100b",
+                           "--cutoff-mode", "soft",          "--transfers",
+                           "1",           "--checkers",      "1",
+                           "--order-by",  "name,ascending", source,
+                           dest};
+    const JobHistoryEntry entry = runCard(args, "rclonebrowser-");
+    CloseHandle(lock);
+    QVERIFY2(mSuccess, qPrintable(mOutput));
+    QCOMPARE(entry.exitCode, 8);
+    QVERIFY2(mOutput.contains("Attempt 1/3 failed with "), qPrintable(mOutput));
+    const bool allTries = mOutput.contains("Attempt 3/3 failed with ");
+    QVERIFY2(allTries == lockDest, qPrintable(mOutput));
+    const bool noRetryLine = mOutput.contains(
+        "Can't retry any of the errors - not attempting retries");
+    QVERIFY2(noRetryLine == !lockDest, qPrintable(mOutput));
+    QVERIFY(QFile::exists(dest + "/b.bin"));
+    QVERIFY(!QFile::exists(dest + "/c.bin"));
 #else
     QSKIP("locks a file the Windows way");
 #endif
