@@ -277,6 +277,90 @@ private slots:
     QVERIFY(!request.usable);
   }
 
+  // Every Sync the app builds names a delete timing. options/info has no
+  // entry for one, so they come from options/get's main.DeleteMode.
+  void mapsEachDeleteTimingTheDaemonReports() {
+    OptionIndex index = realIndex();
+    RcSyncRequest::AddDeleteModes(
+        &index, QJsonObject{{"main", QJsonObject{{"DeleteMode", 3}}}});
+    const QList<QPair<QString, int>> timings{
+        {"--delete-before", 1}, {"--delete-during", 2}, {"--delete-after", 3}};
+    for (const auto &timing : timings) {
+      const QStringList args{"sync", timing.first, "remote:src", "remote:dst"};
+      const Request request = Build(args, "g", index);
+      QVERIFY2(request.usable, qPrintable(request.reason));
+      QCOMPARE(request.endpoint, QStringLiteral("sync/sync"));
+      const QJsonValue mode =
+          request.payload.value("_config").toObject().value("DeleteMode");
+      QVERIFY2(mode.isDouble(), "DeleteMode must be a JSON number");
+      QCOMPARE(mode.toInt(), timing.second);
+    }
+  }
+
+  // A daemon that doesn't report DeleteMode as a number keeps the timing on
+  // core/command, since _config drops a key it doesn't know without a word.
+  void keepsTimingsOnCoreCommandWithoutTheDaemonsDeleteMode() {
+    const QStringList args{"sync", "--delete-during", "remote:src",
+                           "remote:dst"};
+    for (const QJsonObject &values :
+         {QJsonObject(), QJsonObject{{"main", QJsonObject()}},
+          QJsonObject{{"main", QJsonObject{{"DeleteMode", "after"}}}}}) {
+      OptionIndex index = realIndex();
+      RcSyncRequest::AddDeleteModes(&index, values);
+      const Request request = Build(args, "g", index);
+      QVERIFY(!request.usable);
+      QVERIFY2(request.reason.contains("--delete-during"),
+               qPrintable(request.reason));
+    }
+  }
+
+  // Each flag keeps its last value, as pflag does, and two timings set at
+  // once stop the CLI, so they go to core/command to say so.
+  void readsDeleteTimingsTheWayTheCliDoes() {
+    OptionIndex index = realIndex();
+    RcSyncRequest::AddDeleteModes(
+        &index, QJsonObject{{"main", QJsonObject{{"DeleteMode", 3}}}});
+    const auto mode = [&index](const QStringList &flags) {
+      const Request request =
+          Build(QStringList{"sync"} + flags + QStringList{"a:", "b:"}, "g",
+                index);
+      if (!request.usable) {
+        return -1;
+      }
+      return request.payload.value("_config").toObject().value("DeleteMode")
+          .toInt(0);
+    };
+    QCOMPARE(mode({"--delete-before", "--delete-before=false",
+                   "--delete-during"}),
+             2);
+    QCOMPARE(mode({"--delete-after=0"}), 0);
+    QCOMPARE(mode({"--delete-before=T"}), 1);
+    QCOMPARE(mode({"--delete-before", "--delete-after"}), -1);
+    QCOMPARE(mode({"--delete-before=yes"}), -1);
+  }
+
+  // rclone reads a bool's value with Go's strconv.ParseBool.
+  void readsBoolValuesTheWayRcloneDoes() {
+    const auto dryRun = [](const QString &flag) {
+      const Request request =
+          Build(QStringList{"copy", flag, "a:", "b:"}, "g", realIndex());
+      if (!request.usable) {
+        return -1;
+      }
+      return int(request.payload.value("_config").toObject().value("DryRun")
+                     .toBool());
+    };
+    QCOMPARE(dryRun("--dry-run"), 1);
+    QCOMPARE(dryRun("--dry-run=0"), 0);
+    QCOMPARE(dryRun("--dry-run=F"), 0);
+    QCOMPARE(dryRun("--dry-run=False"), 0);
+    QCOMPARE(dryRun("--dry-run=1"), 1);
+    QCOMPARE(dryRun("--dry-run=TRUE"), 1);
+    QCOMPARE(dryRun("--dry-run=FaLsE"), -1);
+    QCOMPARE(dryRun("--dry-run=yes"), -1);
+    QCOMPARE(dryRun("--dry-run="), -1);
+  }
+
   void omitsEmptySections() {
     const Request request = Build(baseCopy(), "g", realIndex());
     QVERIFY2(request.usable, qPrintable(request.reason));

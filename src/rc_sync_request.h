@@ -37,6 +37,12 @@ using OptionIndex = QHash<QString, OptionSpec>;
 
 OptionIndex IndexOptions(const QJsonObject &optionsInfo);
 
+// options/info has no entry for --delete-before, --delete-during or
+// --delete-after, which set ConfigInfo.DeleteMode. They're added to the
+// index only when the daemon's options/get reports main.DeleteMode as a
+// number, so a rclone that renamed it keeps those runs on core/command.
+void AddDeleteModes(OptionIndex *index, const QJsonObject &optionsGet);
+
 // CLI flags turned into the _config and _filter objects. Anything that isn't
 // a flag comes back in positional. ok is false, with reason set, as soon as
 // one flag can't be mapped.

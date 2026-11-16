@@ -282,9 +282,24 @@ void RcloneRcEngine::loadCapabilities(const std::function<void()> &done) {
                           // Either failure just leaves the tables empty, and
                           // an empty table means every transfer keeps the old
                           // core/command route.
-                          if (done) {
-                            done();
+                          if (mOptionIndex.isEmpty()) {
+                            if (done) {
+                              done();
+                            }
+                            return;
                           }
+                          // The delete timings are only in options/get.
+                          postAsync("options/get", QJsonObject(), this,
+                                    [this, done](const QJsonObject &values,
+                                                 const QString &getError) {
+                                      if (getError.isEmpty()) {
+                                        RcSyncRequest::AddDeleteModes(
+                                            &mOptionIndex, values);
+                                      }
+                                      if (done) {
+                                        done();
+                                      }
+                                    });
                         });
             });
 }

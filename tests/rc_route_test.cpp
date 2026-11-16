@@ -461,11 +461,11 @@ private slots:
                         status->value("error").toString()));
   }
 
-  // A Sync the app builds always names a delete timing, and rclone's
-  // options/info has no entry for those flags, so the run goes through
-  // core/command. job/status calls that job a success whenever the daemon
-  // ran the command; the cap stop is only in the child rclone's output.
-  void theDeleteCapStopsTheSyncTheAppBuilds() {
+  // A Sync with a flag options/info doesn't list (--one-file-system) goes
+  // through core/command. job/status calls that job a success whenever the
+  // daemon ran the command; the cap stop is only in the child rclone's
+  // output.
+  void theDeleteCapStopsASyncOnCoreCommand() {
     const QString source = QDir(mDir.path()).filePath("cap-cmd-src");
     QVERIFY(QDir().mkpath(source));
     const QString dest = QDir(mDir.path()).filePath("cap-cmd-dst");
@@ -479,7 +479,7 @@ private slots:
     RcloneRcEngine engine;
     RcloneRcEngine::StartedJob job;
     bool called = false;
-    engine.runCommand(QStringList() << "sync" << "--delete-during"
+    engine.runCommand(QStringList() << "sync" << "--one-file-system"
                                     << "--max-delete" << "2" << source << dest,
                       this, [&](const RcloneRcEngine::StartedJob &started) {
                         job = started;
@@ -524,9 +524,9 @@ private slots:
   }
 
   // --max-transfer stops a run on purpose, and the CLI route calls exit 8 a
-  // success. Both daemon routes must read it the same way: core/command
-  // (a Sync with a delete timing) and sync/copy (a plain Copy).
-  void aTransferLimitStopReadsAsFinishedOnBothRoutes() {
+  // success. Every daemon route must read it the same way: core/command
+  // (a Sync with an unlisted flag), sync/sync and sync/copy.
+  void aTransferLimitStopReadsAsFinishedOnEveryRoute() {
     const QString source = QDir(mDir.path()).filePath("limit-src");
     QVERIFY(QDir().mkpath(source));
     {
@@ -540,13 +540,14 @@ private slots:
     }
 
     const QList<QStringList> routes{
+        {"sync", "--one-file-system"},
         {"sync", "--delete-during"},
         {"copy"},
     };
     QStringList groups;
     for (const QStringList &command : routes) {
-      const QString dest =
-          QDir(mDir.path()).filePath("limit-dst-" + command.first());
+      const QString dest = QDir(mDir.path()).filePath(
+          "limit-dst-" + command.join('_').remove('-'));
       QVERIFY(QDir().mkpath(dest));
       RcloneRcEngine engine;
       RcloneRcEngine::StartedJob job;
@@ -566,11 +567,94 @@ private slots:
                                   QJsonDocument(status).toJson()))));
       QVERIFY(result.error.isEmpty());
     }
-    // Each route really ran: the Sync's delete timing sends it through
-    // core/command, and the Copy goes to sync/copy.
+    // Each route really ran: --one-file-system sends the first Sync through
+    // core/command, and the other two go to sync/sync and sync/copy.
     QVERIFY2(groups.at(0).startsWith("job/"), qPrintable(groups.join(", ")));
     QVERIFY2(groups.at(1).startsWith("rclonebrowser-"),
              qPrintable(groups.join(", ")));
+    QVERIFY2(groups.at(2).startsWith("rclonebrowser-"),
+             qPrintable(groups.join(", ")));
+  }
+
+  // Every Sync the app builds names a delete timing. Each one has to reach
+  // sync/sync with that timing applied, so its card reads live stats from
+  // its own group. A --max-transfer stop shows the timing: before and
+  // during delete first, and after skips the deletes once the copy failed.
+  void eachDeleteTimingRunsOnTheSyncRoute() {
+    const QString source = QDir(mDir.path()).filePath("timing-src");
+    QVERIFY(QDir().mkpath(source));
+    {
+      QFile big(source + "/big.bin");
+      QVERIFY(big.open(QIODevice::WriteOnly));
+      QByteArray block(64 * 1024, '\0');
+      for (int i = 0; i < 32; ++i) {
+        block.fill(char('a' + i % 26));
+        big.write(block);
+      }
+    }
+    const QList<QPair<QString, bool>> timings{{"--delete-before", true},
+                                              {"--delete-during", true},
+                                              {"--delete-after", false}};
+    for (const auto &timing : timings) {
+      const QString dest = QDir(mDir.path()).filePath(
+          "timing-dst" + QString(timing.first).remove('-'));
+      QVERIFY(QDir().mkpath(dest));
+      for (int i = 1; i <= 3; ++i) {
+        QFile old(dest + QString("/old%1.txt").arg(i));
+        QVERIFY(old.open(QIODevice::WriteOnly));
+        old.write("old");
+      }
+      // The options a default Sync from the transfer dialog carries.
+      const QStringList args{"sync",
+                             timing.first,
+                             "--max-delete",
+                             "100",
+                             "--verbose",
+                             "--transfers",
+                             "1",
+                             "--checkers",
+                             "8",
+                             "--contimeout",
+                             "60s",
+                             "--timeout",
+                             "300s",
+                             "--retries",
+                             "1",
+                             "--low-level-retries",
+                             "10",
+                             "--max-transfer",
+                             "1k",
+                             "--use-json-log",
+                             "--stats",
+                             "1s",
+                             "--stats-file-name-length",
+                             "0",
+                             source,
+                             dest};
+      RcloneRcEngine engine;
+      RcloneRcEngine::StartedJob job;
+      const QJsonObject status = RunToEnd(engine, args, &job);
+      QVERIFY2(!status.isEmpty(), qPrintable(timing.first + " never finished"));
+      QVERIFY2(job.group.startsWith("rclonebrowser-"),
+               qPrintable(timing.first + " ran via " + job.group));
+
+      const QStringList left = filesUnder(dest);
+      const bool deletedFirst = !left.contains("old1.txt");
+      QVERIFY2(deletedFirst == timing.second,
+               qPrintable(timing.first + " left " + left.join(", ")));
+
+      QJsonObject stats;
+      bool statsCalled = false;
+      engine.coreStats(job.group, this,
+                       [&](const QJsonObject &s, const QString &) {
+                         stats = s;
+                         statsCalled = true;
+                       });
+      QVERIFY(QTest::qWaitFor([&]() { return statsCalled; }, 30000));
+      QVERIFY2(stats.value("bytes").toDouble() > 0,
+               qPrintable(timing.first + " stats: " +
+                          QJsonDocument(stats).toJson()));
+    }
   }
 
   // sync/copy takes --error-on-no-transfer into its _config, then reports a

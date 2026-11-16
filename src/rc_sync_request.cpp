@@ -51,6 +51,31 @@ void insertValue(QJsonObject &section, const OptionSpec &spec,
   section.insert(spec.key, value);
 }
 
+// rclone reads a bool flag's value with Go's strconv.ParseBool, so
+// --checksum=0 turns it off and --checksum=yes stops rclone.
+bool parseGoBool(const QString &text, bool *value) {
+  static const QStringList kTrue{"1", "t", "T", "TRUE", "true", "True"};
+  static const QStringList kFalse{"0", "f", "F", "FALSE", "false", "False"};
+  *value = kTrue.contains(text);
+  return *value || kFalse.contains(text);
+}
+
+// _config takes ConfigInfo.DeleteMode as fs.DeleteMode's number (measured
+// on v1.76.0: 1 deletes before copying, 2 during, 3 after, which is also
+// the default; the name as a string is refused with a 400).
+int deleteModeFor(const QString &flag) {
+  if (flag == "--delete-before") {
+    return 1;
+  }
+  if (flag == "--delete-during") {
+    return 2;
+  }
+  if (flag == "--delete-after") {
+    return 3;
+  }
+  return 0;
+}
+
 } // namespace
 
 OptionIndex IndexOptions(const QJsonObject &optionsInfo) {
@@ -80,8 +105,23 @@ OptionIndex IndexOptions(const QJsonObject &optionsInfo) {
   return index;
 }
 
+void AddDeleteModes(OptionIndex *index, const QJsonObject &optionsGet) {
+  if (!optionsGet.value("main").toObject().value("DeleteMode").isDouble()) {
+    return;
+  }
+  OptionSpec spec;
+  spec.section = QStringLiteral("main");
+  spec.key = QStringLiteral("DeleteMode");
+  spec.type = QStringLiteral("DeleteMode");
+  for (const char *flag : {"--delete-before", "--delete-during",
+                           "--delete-after"}) {
+    index->insert(QString::fromLatin1(flag), spec);
+  }
+}
+
 Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
   Options options;
+  bool deleteFlags[4] = {false, false, false, false};
 
   for (int i = 0; i < tokens.size(); i++) {
     QString token = tokens.at(i);
@@ -126,17 +166,31 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
       return options;
     }
     const OptionSpec &spec = found.value();
+
+    const int deleteMode =
+        spec.type == QLatin1String("DeleteMode") ? deleteModeFor(token) : 0;
+    if (deleteMode != 0) {
+      bool on = true;
+      if (hasInlineValue && !parseGoBool(inlineValue, &on)) {
+        options.reason = QString("%1 expects true or false and got \"%2\"")
+                             .arg(token, inlineValue);
+        return options;
+      }
+      // Each flag keeps the last value it was given, as on the CLI.
+      deleteFlags[deleteMode] = on;
+      continue;
+    }
     QJsonObject &section =
         spec.section == "filter" ? options.filter : options.config;
 
     if (spec.type == "bool") {
-      if (hasInlineValue) {
-        insertValue(section, spec,
-                    QJsonValue(inlineValue.compare("false",
-                                                   Qt::CaseInsensitive) != 0));
-      } else {
-        insertValue(section, spec, QJsonValue(true));
+      bool on = true;
+      if (hasInlineValue && !parseGoBool(inlineValue, &on)) {
+        options.reason = QString("%1 expects true or false and got \"%2\"")
+                             .arg(token, inlineValue);
+        return options;
       }
+      insertValue(section, spec, QJsonValue(on));
       continue;
     }
 
@@ -159,6 +213,25 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
       return options;
     }
     insertValue(section, spec, encoded);
+  }
+
+  int chosen = 0;
+  for (int mode = 1; mode <= 3; mode++) {
+    if (!deleteFlags[mode]) {
+      continue;
+    }
+    if (chosen != 0) {
+      // The CLI stops with "Only one of --delete-before, --delete-during
+      // or --delete-after can be used", and core/command says the same.
+      options.reason = QStringLiteral(
+          "more than one of --delete-before, --delete-during and "
+          "--delete-after is set");
+      return options;
+    }
+    chosen = mode;
+  }
+  if (chosen != 0) {
+    options.config.insert("DeleteMode", chosen);
   }
 
   options.ok = true;
