@@ -37,10 +37,19 @@ void SetTableView(QTableView *view,
                   const QString &accessibleName = QString());
 void SetDialogButtonBox(QDialogButtonBox *buttons);
 void SetWindowDefaults(QWidget *widget, QSize minimumSize = QSize());
+// Wraps every page in a scroll area that scrolls vertically only, so a tall
+// tab never pushes its dialog past the screen.
+void MakeTabPagesScrollable(QTabWidget *tabs);
+// Shows the tab that holds the widget (pages wrapped by
+// MakeTabPagesScrollable included) and scrolls it into view.
+bool ShowTabContaining(QTabWidget *tabs, QWidget *widget);
 
 void SetAccessibleFormField(QWidget *widget, const QString &name,
                             const QString &description = QString());
 bool IsHighContrastActive();
+// A file glyph in the accent color, for buttons. The style's own file icon
+// is a white page with a pale outline that nearly vanishes on a light button.
+QIcon FileIcon();
 QColor BestContrastingColor(const QColor &background,
                             const QList<QColor> &candidates);
 

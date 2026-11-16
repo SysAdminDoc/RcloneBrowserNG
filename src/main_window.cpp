@@ -146,44 +146,6 @@ void setStagedTransferItem(QListWidgetItem *item,
 
 } // namespace
 
-#if !defined(Q_OS_MACOS)
-// Fusion-based dark theme used on Windows and Linux. macOS follows the
-// system appearance instead. Includes Disabled and PlaceholderText roles so
-// secondary states stay readable in dark mode.
-static void applyDarkTheme() {
-  qApp->setStyle(QStyleFactory::create("Fusion"));
-
-  QPalette darkPalette;
-  darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
-  darkPalette.setColor(QPalette::WindowText, Qt::white);
-  darkPalette.setColor(QPalette::Base, QColor(25, 25, 25));
-  darkPalette.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
-  darkPalette.setColor(QPalette::ToolTipBase, QColor(42, 42, 42));
-  darkPalette.setColor(QPalette::ToolTipText, Qt::white);
-  darkPalette.setColor(QPalette::Text, Qt::white);
-  darkPalette.setColor(QPalette::Button, QColor(53, 53, 53));
-  darkPalette.setColor(QPalette::ButtonText, Qt::white);
-  darkPalette.setColor(QPalette::BrightText, Qt::red);
-  darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
-  darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-  darkPalette.setColor(QPalette::HighlightedText, Qt::black);
-  darkPalette.setColor(QPalette::PlaceholderText, QColor(160, 160, 160));
-
-  const QColor disabledText(128, 128, 128);
-  darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
-  darkPalette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
-  darkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
-  darkPalette.setColor(QPalette::Disabled, QPalette::Highlight,
-                       QColor(80, 80, 80));
-  darkPalette.setColor(QPalette::Disabled, QPalette::HighlightedText,
-                       disabledText);
-
-  qApp->setPalette(darkPalette);
-
-  UiPolish::ApplyApplicationStyle(true);
-}
-#endif
-
 MainWindow::MainWindow(bool initializeRuntime)
     : mInitializeRuntime(initializeRuntime) {
   ui.setupUi(this);
@@ -203,17 +165,14 @@ MainWindow::MainWindow(bool initializeRuntime)
 #endif
 #if defined(Q_OS_MACOS)
     // On macOS 11+ (our deployment target), Qt respects the system dark
-    // mode natively — no Fusion override needed.
+    // mode natively, so the native style stays.
     Q_UNUSED(explicitDark);
     Q_UNUSED(systemDark);
     UiPolish::ApplyApplicationStyle(false);
 #else
-    const bool useDarkStyle = explicitDark || systemDark;
-    if (useDarkStyle) {
-      applyDarkTheme();
-    } else {
-      UiPolish::ApplyApplicationStyle(false);
-    }
+    // One path for both themes: Fusion, a palette and a stylesheet built
+    // from the same tokens (see interface_polish.cpp).
+    UiPolish::ApplyApplicationStyle(explicitDark || systemDark);
 #endif
   }
 

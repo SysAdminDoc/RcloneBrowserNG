@@ -1,5 +1,6 @@
 #include "progress_dialog.h"
 #include "interface_polish.h"
+#include <algorithm>
 
 ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
                                const QString &message, QProcess *process,
@@ -36,7 +37,9 @@ ProgressDialog::ProgressDialog(const QString &title, const QString &operation,
                      ui.output->setVisible(checked);
                      ui.buttonShowOutput->setArrowType(
                          checked ? Qt::DownArrow : Qt::RightArrow);
-                     if (!checked) {
+                     if (checked) {
+                       resize(width(), (std::max)(height(), sizeHint().height()));
+                     } else {
                        adjustSize();
                      }
                    });
