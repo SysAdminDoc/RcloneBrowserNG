@@ -6,6 +6,15 @@ Actionable work only. Historical and completed roadmap material is archived in C
 
 Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 2026-11-15 pass.
 
+### P1
+
+- [ ] P1 — Send a run to core/command when a remote's config section sets a `global.` option
+  Why: a job the daemon runs itself (sync/*) skips every `global.<option>` (addConfigToContext in fs/newfs.go checks IsRCRequest), and that includes one from a remote's section in rclone.conf or an `RCLONE_CONFIG_<REMOTE>_GLOBAL.*` variable. The deletion check runs the CLI, which applies it. A section holding `global.backup_dir` makes the check list each file as moving into the backup, and the daemon's job then deletes it. RcSyncRequest::Build already refuses a `,global.` option typed in a path, which was measured to delete this way. The section form takes the same code path but wasn't measured.
+  Evidence: `src/rc_sync_request.cpp` Build checks the arguments only; `src/rclone_rc_engine.cpp` runCommand builds the request without reading the config.
+  Touches: `src/rclone_rc_engine.{h,cpp}`, `src/rc_sync_request.{h,cpp}`, `tests/rc_route_test.cpp`
+  Acceptance: measured first on v1.76.0 with a section `[bk] type = alias, remote = <dst>, global.backup_dir = <bak>`; the engine reads `config/dump` from the daemon before it builds a sync/* request and takes core/command when any section holds a `global.` key (and when this PC's environment has an `RCLONE_CONFIG_*_GLOBAL.` variable for a local daemon); a real-rcd row in rc_route_test shows the files in the backup folder.
+  Complexity: M
+
 ### P2
 
 - [ ] P2 — Let a later try in the same stats group delete what the CLI's would
@@ -22,11 +31,11 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: a Copy or Move whose options hold `--max-delete` or `--max-delete-size` gets the dry-run preview, and its summary opens at a cap the measured runs fail at; the tooltip no longer implies Copy and Move are never counted; a smoke test drives a Move over an existing file at cap 0.
   Complexity: M
 
-- [ ] P2 — Read `global.` options from a remote's config section, and keep a path's caps out of the check
-  Why: rclone v1.76.0 applies a `global.<option>` from a remote's section in rclone.conf when it opens that remote, the same as one in a connection string (fs/newfs.go:98-145). EffectiveArguments reads the connection string's only, so a section carrying `global.fix_case` or `global.backup_dir` reaches the run without the summary knowing. A `global.max_delete` in a path also stops the deletion check's own dry run partway, since it wins over the command line and the dry run can't drop it the way it drops `--max-delete`; the summary then quotes rclone's error instead of listing every file.
-  Evidence: `src/sync_preview.cpp` EffectiveArguments and ConnectionOptions; `src/transfer_dialog.cpp` acceptWithDeletionPreview; read in fs/newfs.go, not measured for the config section.
+- [ ] P2 — Read `global.` options from a remote's config section
+  Why: rclone v1.76.0 applies a `global.<option>` from a remote's section in rclone.conf when it opens that remote, the same as one in a connection string (fs/newfs.go:98-145). EffectiveArguments reads the connection string's only, so a section carrying `global.fix_case` or `global.backup_dir` reaches the run without the summary knowing. A section's `global.max_delete` also stops the deletion check's own dry run partway, since the dry run renames that option only where a path spells it out. The summary then quotes rclone's error instead of listing every file.
+  Evidence: `src/sync_preview.cpp` EffectiveArguments and ConnectionOptions; `src/job_options.cpp` DryRunArguments; read in fs/newfs.go, not measured for the config section.
   Touches: `src/sync_preview.{h,cpp}`, `src/transfer_dialog.cpp`, `tests/sync_preview_test.cpp`
-  Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and the check's dry run strips `global.max_delete` and `global.max_delete_size` from its paths, with real-rclone rows in sync_preview_test for both.
+  Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and a section's `global.max_delete` or `global.max_delete_size` doesn't stop the check's dry run, with real-rclone rows in sync_preview_test for both.
   Complexity: M
 
 - [ ] P2 — Keep a dry run dry when rclone.conf or the environment sets `global.dry_run`

@@ -390,6 +390,88 @@ private slots:
     }
   }
 
+  // A path's global.max_delete or global.max_delete_size caps the run like
+  // the flag does (addConfigToContext in fs/newfs.go), so it stopped a
+  // sync's check partway. The check renames them the way it drops the flags.
+  // A pattern is never opened as a path and keeps its text, and bisync keeps
+  // its caps.
+  void previewsDropCapsSetInPaths() {
+    const QStringList saved{
+        "sync",
+        "--exclude",
+        "a,global.max_delete=1:b",
+        "--exclude=a,global.max_delete=1:b",
+        "src",
+        ":local,global.max_delete=1:dst",
+        "--backup-dir=:local,global.max_delete_size=1k,global.max_delete:bak",
+        ":local,global.max_delete_sizes=1:k"};
+    const QStringList expected{
+        "sync",
+        "--dry-run",
+        "--exclude",
+        "a,global.max_delete=1:b",
+        "--exclude=a,global.max_delete=1:b",
+        "src",
+        ":local,ignored.global.max_delete=1:dst",
+        "--backup-dir=:local,ignored.global.max_delete_size=1k,"
+        "ignored.global.max_delete:bak",
+        ":local,global.max_delete_sizes=1:k"};
+    QCOMPARE(JobOptions::DryRunArguments(saved), expected);
+    QCOMPARE(JobOptions::DryRunArguments(expected), expected);
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"bisync", "a,global.max_delete=50:", "b:"}),
+             (QStringList{"bisync", "--dry-run", "a,global.max_delete=50:",
+                          "b:"}));
+
+    // The task's own run keeps them, and so does what the summary reads.
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->dest = ":local,global.max_delete=1:dst";
+    QCOMPARE(sync->getOptions().last(), sync->dest);
+    QVERIFY2(sync->getPreviewOptions().last().contains("ignored.global."),
+             qPrintable(sync->getPreviewOptions().join(' ')));
+    delete sync;
+  }
+
+  // The same caps through the installed rclone: each of the three deletes
+  // is listed and the run ends cleanly.
+  void pathCapsLeaveTheCheckWholeInRealRclone() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH and RCLONE_BROWSER_TEST_RCLONE is unset");
+    }
+    const QStringList dests{":local,global.max_delete=1:@D",
+                            ":local,global.max_delete_size=1B:@D"};
+    for (const QString &form : dests) {
+      QTemporaryDir dir;
+      QVERIFY(dir.isValid());
+      const QString src = dir.filePath("src");
+      const QString dst = dir.filePath("dst");
+      QVERIFY(QDir().mkpath(src) && QDir().mkpath(dst));
+      for (const QString &path : {dst + "/a.txt", dst + "/b.txt",
+                                  dst + "/c.txt", dir.filePath("rclone.conf")}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(path.endsWith(".conf") ? "" : "x");
+      }
+      QString dest = form;
+      dest.replace("@D", dst);
+      const QStringList args =
+          JobOptions::DryRunArguments(QStringList{"sync", src, dest});
+      QProcess process;
+      process.setWorkingDirectory(dir.path());
+      process.start(rclone, QStringList{"--config", dir.filePath("rclone.conf")}
+                                << args);
+      QVERIFY(process.waitForFinished(60000));
+      const QString log = QString::fromUtf8(process.readAllStandardError());
+      QVERIFY2(process.exitStatus() == QProcess::NormalExit &&
+                   process.exitCode() == 0,
+               qPrintable(args.join(' ') + "\n" + log));
+      QVERIFY2(log.count("Skipped delete as --dry-run is set") == 3,
+               qPrintable(args.join(' ') + "\n" + log));
+      QCOMPARE(QDir(dst).entryList(QDir::Files).size(), 3);
+    }
+  }
+
   // pflag gives --exclude, --include and --filter the next argument whatever
   // it looks like (measured on v1.76.0: `rclone sync --exclude -n` is a real
   // run that deletes, and `--filter "- run=*"` skips run=1.txt). A preview

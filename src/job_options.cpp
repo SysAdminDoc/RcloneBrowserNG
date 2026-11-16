@@ -20,6 +20,24 @@ bool IsGoFalse(QStringView value) {
          value == u"false" || value == u"FALSE" || value == u"False";
 }
 
+// Renames each ",global.<key>" option in arg to ",ignored.global.<key>".
+// rclone's fspath.Parse ends a key only at = , or :, config.Get matches the
+// key exactly, and a key rclone doesn't know is ignored (measured on
+// v1.76.0), so the renamed option does nothing. An option always follows a
+// comma.
+void IgnoreGlobalOption(QString &arg, const QString &key) {
+  const QString needle = QStringLiteral(",global.") + key;
+  for (qsizetype at = arg.indexOf(needle); at >= 0;
+       at = arg.indexOf(needle, at + 1)) {
+    const qsizetype end = at + needle.size();
+    if (end < arg.size() &&
+        (arg.at(end) == QLatin1Char('=') || arg.at(end) == QLatin1Char(',') ||
+         arg.at(end) == QLatin1Char(':'))) {
+      arg.insert(at + 1, QStringLiteral("ignored."));
+    }
+  }
+}
+
 QString backupDateToken() {
   static QAtomicInteger<quint64> sequence = 0;
   const quint64 seq = sequence.fetchAndAddRelaxed(1);
@@ -72,19 +90,29 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   static const QStringList kPatternFlags{QStringLiteral("--exclude"),
                                          QStringLiteral("--include"),
                                          QStringLiteral("--filter")};
+  // A path's global.max_delete or global.max_delete_size caps the run the
+  // same way (addConfigToContext in fs/newfs.go), so the check renames
+  // those too. A pattern is never opened as a path, so it keeps its text.
+  static const QStringList kGlobalCaps{QStringLiteral("max_delete"),
+                                       QStringLiteral("max_delete_size")};
   args = KeepDryRunOn(args);
   const bool dropCaps = args.value(0) != QLatin1String("bisync");
   for (qsizetype i = 0; dropCaps && i < args.size();) {
-    const QString arg = args.at(i);
+    QString arg = args.at(i);
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
     const QString name = equals > 0 ? arg.left(equals) : arg;
-    if (i > 0 && kPatternFlags.contains(args.at(i - 1))) {
+    if ((i > 0 && kPatternFlags.contains(args.at(i - 1))) ||
+        (equals > 0 && kPatternFlags.contains(name))) {
       i++; // a pattern; a cap left in only stops the preview early
     } else if (kCaps.contains(arg)) {
       args.remove(i, qMin<qsizetype>(2, args.size() - i));
     } else if (equals > 0 && kCaps.contains(name)) {
       args.removeAt(i);
     } else {
+      for (const QString &key : kGlobalCaps) {
+        IgnoreGlobalOption(arg, key);
+      }
+      args[i] = arg;
       i++;
     }
   }
@@ -104,11 +132,9 @@ QStringList JobOptions::KeepDryRunOn(QStringList args) {
   // nested in another's option too (":alias,remote=':local,global.dry_run=
   // false:dir':"), and sets it for the whole run after the flags were read
   // (addConfigToContext in fs/newfs.go), so global.dry_run=false made a dry
-  // run delete for real. The key is exact, and rclone ignores a key it
-  // doesn't know, so renaming it wherever it stands keeps the dry run on
-  // (measured on v1.76.0, 2026-11-16). An option always follows a comma.
-  static const QString kGlobalDryRun = QStringLiteral(",global.dry_run");
-  static const QString kIgnored = QStringLiteral("ignored.");
+  // run delete for real. Renaming it wherever it stands keeps the dry run on
+  // (measured on v1.76.0, 2026-11-16).
+  static const QString kDryRunKey = QStringLiteral("dry_run");
   for (qsizetype i = 0; i < args.size(); i++) {
     QString arg = args.at(i);
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
@@ -137,15 +163,7 @@ QStringList JobOptions::KeepDryRunOn(QStringList args) {
     }
     // Every argument, for the same reason: a pattern or another option's
     // value only changes what a dry run lists.
-    for (qsizetype at = arg.indexOf(kGlobalDryRun); at >= 0;
-         at = arg.indexOf(kGlobalDryRun, at + 1)) {
-      const qsizetype end = at + kGlobalDryRun.size();
-      if (end < arg.size() &&
-          (arg.at(end) == QLatin1Char('=') || arg.at(end) == QLatin1Char(',') ||
-           arg.at(end) == QLatin1Char(':'))) {
-        arg.insert(at + 1, kIgnored);
-      }
-    }
+    IgnoreGlobalOption(arg, kDryRunKey);
     args[i] = arg;
   }
   return args;
