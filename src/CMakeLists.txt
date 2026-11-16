@@ -88,6 +88,8 @@ set(SOURCE
   lsjson_parser.cpp
   rclone_exit_code.cpp
   rclone_installer.cpp
+  big_uint.cpp
+  pgp_clearsign.cpp
   task_notify.cpp
   rclone_security_floor.cpp
   winfsp_floor.cpp
@@ -149,6 +151,8 @@ set(OTHER
   vfs_upload_state.h
   vss_snapshot.h
   rclone_installer.h
+  big_uint.h
+  pgp_clearsign.h
   winfsp_floor.h
   remote_daemon.h
   rc_certificate.h

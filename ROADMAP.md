@@ -6,15 +6,6 @@ Actionable work only. Historical and completed roadmap material is archived in C
 
 Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 2026-11-15 pass.
 
-### P1
-
-- [ ] P1 — Check rclone's signature on the checksum list before installing a download
-  Why: the first-start downloader trusts the SHA256SUMS that comes from the same server as the zip, so it catches a corrupt download but not a tampered one. `rclone selfupdate` also checks that list's PGP signature against rclone's built-in key, and the update prompt now uses our downloader instead of selfupdate when rclone's folder isn't writable, so that path checks less than the one it replaced.
-  Evidence (Verified): `src/rclone_installer.cpp:144` (`ChecksumFor`) reads the hash lines and skips the signature; `downloads.rclone.org/v1.76.0/SHA256SUMS` is clearsigned (`Hash: SHA1`, a v4 DSA signature from key ID `93935E02FF3B54FA`); rclone's `cmd/selfupdate/verify.go` embeds `ncwPublicKeyPGP` and runs `clearsign.Decode` then `openpgp.CheckDetachedSignature`.
-  Touches: `src/rclone_installer.{h,cpp}`, new `src/pgp_clearsign.{h,cpp}` (clearsign text canonicalization, the v4 signature trailer, DSA verify), `src/CMakeLists.txt`, `CMakeLists.txt`, `tests/rclone_installer_test.cpp`, new `tests/pgp_clearsign_test.cpp`
-  Acceptance: a download goes ahead only when SHA256SUMS verifies against rclone's key compiled into the app; tests feed the real v1.76.0 SHA256SUMS (accepted), the same list with one hash changed (refused) and a list signed by another key (refused); the fake release server signs with a test key that only the test build trusts; `RB_RCLONE_LIVE_DOWNLOAD=1` still passes.
-  Complexity: M
-
 ### P2
 
 - [ ] P2 — Offer "finish current files, then stop" alongside kill

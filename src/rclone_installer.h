@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -17,9 +18,11 @@ class QTimer;
 class QWidget;
 
 // Fetches the current rclone from downloads.rclone.org when none is found,
-// checks the archive against rclone's published SHA256SUMS and puts the
-// binary beside the app. A Program Files install can't be written without
-// admin rights, so on Windows the app starts an elevated copy of itself with
+// checks the PGP signature on rclone's published SHA256SUMS against rclone's
+// release key (as `rclone selfupdate` does), checks the archive against that
+// list and puts the binary beside the app. A Program Files install can't be
+// written without admin rights, so on Windows the app starts an elevated copy
+// of itself with
 // kHelperFlag to place the file. That helper only ever writes rclone.exe into
 // its own folder, and only bytes whose hash matches the one it was given.
 namespace RcloneInstaller {
@@ -40,9 +43,12 @@ QString ArchiveName(const QString &version, const QString &platform);
 // The binary's path inside that archive:
 // rclone-v1.76.0-windows-amd64/rclone.exe
 QString ArchiveMember(const QString &version, const QString &platform);
-// The lowercase hex SHA-256 listed for fileName in a SHA256SUMS body, signed
-// or not. Empty when the file isn't listed or its line is malformed.
+// The lowercase hex SHA-256 listed for fileName in SHA256SUMS text. The
+// download passes only the text a verified signature covers. Empty when the
+// file isn't listed or its line is malformed.
 QByteArray ChecksumFor(const QByteArray &sums, const QString &fileName);
+// The armored keys a download trusts by default: rclone's release key.
+QList<QByteArray> RcloneReleaseKeys();
 
 // Where a downloaded rclone goes: the app's own folder on Windows (the
 // install or portable folder), a per-user folder elsewhere, since a macOS
@@ -80,6 +86,9 @@ public:
   struct Source {
     QUrl base = QUrl(QString::fromLatin1(kDefaultBaseUrl));
     QString platform = PlatformTag();
+    // SHA256SUMS must carry a signature from one of these. Only tests add a
+    // key of their own.
+    QList<QByteArray> trustedKeys = RcloneReleaseKeys();
   };
 
   explicit Download(const Source &source, QObject *parent = nullptr);

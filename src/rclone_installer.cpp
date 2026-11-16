@@ -1,4 +1,6 @@
 #include "rclone_installer.h"
+#include "pgp_clearsign.h"
+#include "rclone_security_floor.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -152,6 +154,10 @@ QByteArray ChecksumFor(const QByteArray &sums, const QString &fileName) {
     }
   }
   return QByteArray();
+}
+
+QList<QByteArray> RcloneReleaseKeys() {
+  return {QByteArray(PgpClearsign::kRcloneReleaseKey)};
 }
 
 QString InstallDir() {
@@ -330,6 +336,17 @@ void Download::start(const QString &destDir) {
                .arg(mSource.base.host()));
       return;
     }
+    // version.txt isn't signed, and an old release's list carries a real
+    // signature too. Refusing anything below the floor keeps a server from
+    // steering the download to an rclone with known holes.
+    if (RcloneSecurityFloor::IsBelowFloor(mVersion)) {
+      fail(QStringLiteral("%1 offered rclone v%2, which is older than v%3, "
+                          "the oldest version this app accepts. Nothing was "
+                          "installed.")
+               .arg(mSource.base.host(), mVersion,
+                    QString::fromLatin1(RcloneSecurityFloor::kMinimumVersion)));
+      return;
+    }
     fetchSums();
   });
 }
@@ -416,8 +433,20 @@ void Download::fetchSums() {
   emit stage(QStringLiteral("Checking rclone v%1...").arg(mVersion));
   get(at(QStringLiteral("v%1/SHA256SUMS").arg(mVersion)),
       [this](const QByteArray &body) {
+        // The list comes from the same server as the zip, so its hash alone
+        // only proves the download wasn't damaged. rclone's signature on the
+        // list is what proves rclone published it.
+        const PgpClearsign::Verified verified =
+            PgpClearsign::Verify(body, mSource.trustedKeys);
+        if (!verified.ok) {
+          fail(QStringLiteral("rclone's checksum list for v%1 failed its "
+                              "signature check (%2), so nothing was "
+                              "installed.")
+                   .arg(mVersion, verified.error));
+          return;
+        }
         const QString archive = ArchiveName(mVersion, mSource.platform);
-        mExpected = ChecksumFor(body, archive);
+        mExpected = ChecksumFor(verified.text, archive);
         if (mExpected.isEmpty()) {
           fail(QStringLiteral("rclone's checksum list has no entry for %1.")
                    .arg(archive));

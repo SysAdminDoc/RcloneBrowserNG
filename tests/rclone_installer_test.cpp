@@ -1,4 +1,6 @@
 #include "rclone_installer.h"
+#include "pgp_test_signer.h"
+#include "rclone_security_floor.h"
 
 #include <QApplication>
 #include <QCryptographicHash>
@@ -123,7 +125,8 @@ public:
     mRoutes.insert(path, qMakePair(status, body));
   }
 
-  // A release whose zip holds binary under rclone's real layout.
+  // A release whose zip holds binary under rclone's real layout, with a
+  // SHA256SUMS signed by the test key.
   QByteArray publish(const QString &version, const QString &platform,
                      const QByteArray &binary, bool corruptSums = false) {
     const QByteArray zip = StoredZip(
@@ -138,13 +141,16 @@ public:
     serve(QStringLiteral("/version.txt"),
           QStringLiteral("rclone v%1\n").arg(version).toUtf8());
     serve(QStringLiteral("/v%1/SHA256SUMS").arg(version),
-          "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA1\n\n" +
-              Sha256Hex("other") + "  rclone-v" + version.toUtf8() +
-              "-aix-ppc64.zip\n" + hash + "  " + archive.toUtf8() +
-              "\n-----BEGIN PGP SIGNATURE-----\n\nxyz\n"
-              "-----END PGP SIGNATURE-----\n");
+          PgpTestSigner::Clearsign(SumsText(version, archive, hash)));
     serve(QStringLiteral("/v%1/%2").arg(version, archive), zip);
     return zip;
+  }
+
+  // The list's text before signing: another platform's line, then archive's.
+  static QByteArray SumsText(const QString &version, const QString &archive,
+                             const QByteArray &hash) {
+    return Sha256Hex("other") + "  rclone-v" + version.toUtf8() +
+           "-aix-ppc64.zip\n" + hash + "  " + archive.toUtf8() + "\n";
   }
 
   int hits(const QString &path) const { return mHits.value(path); }
@@ -186,6 +192,15 @@ private:
   QHash<QString, QPair<int, QByteArray>> mRoutes;
   QHash<QString, int> mHits;
 };
+
+// The fake release, trusting the test key that signs its lists. A plain
+// {base, platform} source trusts only rclone's own key, as the app does.
+RcloneInstaller::Download::Source Trusting(const FakeRelease &release,
+                                           const QString &platform) {
+  RcloneInstaller::Download::Source source{release.base(), platform};
+  source.trustedKeys = {QByteArray(PgpTestSigner::kPublicKey)};
+  return source;
+}
 
 struct Outcome {
   QString path;
@@ -341,7 +356,7 @@ private slots:
     QTemporaryDir dest;
     QVERIFY(dest.isValid());
 
-    RcloneInstaller::Download download({release.base(), platform});
+    RcloneInstaller::Download download(Trusting(release, platform));
     QSignalSpy progress(&download, &RcloneInstaller::Download::progress);
     const Outcome outcome = Run(download, dest.path());
     QVERIFY2(outcome.error.isEmpty(), qPrintable(outcome.error));
@@ -365,7 +380,7 @@ private slots:
     FakeRelease release;
     release.publish("9.9.9", platform, "tampered", true);
     QTemporaryDir dest;
-    RcloneInstaller::Download download({release.base(), platform});
+    RcloneInstaller::Download download(Trusting(release, platform));
     const Outcome outcome = Run(download, dest.path());
     QVERIFY(outcome.path.isEmpty());
     QVERIFY2(outcome.error.contains("checksum"), qPrintable(outcome.error));
@@ -380,14 +395,92 @@ private slots:
     FakeRelease release;
     release.publish("9.9.9", platform, "x");
     release.serve("/v9.9.9/SHA256SUMS",
-                  Sha256Hex("x") + "  rclone-v9.9.9-plan9-amd64.zip\n");
+                  PgpTestSigner::Clearsign(
+                      Sha256Hex("x") + "  rclone-v9.9.9-plan9-amd64.zip\n"));
     QTemporaryDir dest;
-    RcloneInstaller::Download download({release.base(), platform});
+    RcloneInstaller::Download download(Trusting(release, platform));
     const Outcome outcome = Run(download, dest.path());
     QVERIFY2(outcome.error.contains("no entry"), qPrintable(outcome.error));
     QCOMPARE(release.hits(QStringLiteral("/v9.9.9/") +
                           RcloneInstaller::ArchiveName("9.9.9", platform)),
              0);
+  }
+
+  // The app trusts rclone's key alone, so a list signed by any other key,
+  // here the test key, stops the download before the zip is fetched.
+  void refusesAListRcloneDidNotSign() {
+    const QString platform = RcloneInstaller::PlatformTag();
+    FakeRelease release;
+    release.publish("9.9.9", platform, "signed by someone else");
+    QTemporaryDir dest;
+    RcloneInstaller::Download download({release.base(), platform});
+    const Outcome outcome = Run(download, dest.path());
+    QVERIFY(outcome.path.isEmpty());
+    QVERIFY2(outcome.error.contains("signature check"),
+             qPrintable(outcome.error));
+    QVERIFY(QDir(dest.path()).isEmpty());
+    QCOMPARE(release.hits(QStringLiteral("/v9.9.9/") +
+                          RcloneInstaller::ArchiveName("9.9.9", platform)),
+             0);
+  }
+
+  // A server that swaps the zip and the hash beside it. The new hash
+  // matches the new zip, so only the signature can catch it.
+  void refusesAListChangedAfterSigning() {
+    const QString platform = RcloneInstaller::PlatformTag();
+    FakeRelease release;
+    const QByteArray zip = release.publish("9.9.9", platform, "swapped in");
+    const QString archive = RcloneInstaller::ArchiveName("9.9.9", platform);
+    const QByteArray genuine = Sha256Hex("the zip that was signed");
+    QByteArray tampered = PgpTestSigner::Clearsign(
+        FakeRelease::SumsText("9.9.9", archive, genuine));
+    QVERIFY(tampered.contains(genuine));
+    tampered.replace(genuine, Sha256Hex(zip));
+    release.serve("/v9.9.9/SHA256SUMS", tampered);
+    QTemporaryDir dest;
+    RcloneInstaller::Download download(Trusting(release, platform));
+    const Outcome outcome = Run(download, dest.path());
+    QVERIFY(outcome.path.isEmpty());
+    QVERIFY2(outcome.error.contains("signature check"),
+             qPrintable(outcome.error));
+    QVERIFY(QDir(dest.path()).isEmpty());
+    QCOMPARE(release.hits(QStringLiteral("/v9.9.9/") + archive), 0);
+  }
+
+  void refusesAnUnsignedList() {
+    const QString platform = RcloneInstaller::PlatformTag();
+    FakeRelease release;
+    const QByteArray zip = release.publish("9.9.9", platform, "unsigned");
+    const QString archive = RcloneInstaller::ArchiveName("9.9.9", platform);
+    release.serve("/v9.9.9/SHA256SUMS",
+                  FakeRelease::SumsText("9.9.9", archive, Sha256Hex(zip)));
+    QTemporaryDir dest;
+    RcloneInstaller::Download download(Trusting(release, platform));
+    const Outcome outcome = Run(download, dest.path());
+    QVERIFY2(outcome.error.contains("signature check"),
+             qPrintable(outcome.error));
+    QVERIFY(QDir(dest.path()).isEmpty());
+    QCOMPARE(release.hits(QStringLiteral("/v9.9.9/") + archive), 0);
+  }
+
+  // version.txt isn't signed and old releases carry real signatures, so a
+  // server could otherwise steer the download back to an rclone with known
+  // holes. Nothing below the security floor is fetched.
+  void refusesAnRcloneBelowTheSecurityFloor() {
+    const QString platform = RcloneInstaller::PlatformTag();
+    FakeRelease release;
+    release.publish("1.70.0", platform, "an old rclone");
+    QTemporaryDir dest;
+    RcloneInstaller::Download download(Trusting(release, platform));
+    const Outcome outcome = Run(download, dest.path());
+    QVERIFY(outcome.path.isEmpty());
+    QVERIFY(RcloneSecurityFloor::IsBelowFloor("1.70.0"));
+    QVERIFY2(outcome.error.contains(
+                 "older than v" +
+                 QString::fromLatin1(RcloneSecurityFloor::kMinimumVersion)),
+             qPrintable(outcome.error));
+    QVERIFY(QDir(dest.path()).isEmpty());
+    QCOMPARE(release.hits(QStringLiteral("/v1.70.0/SHA256SUMS")), 0);
   }
 
   void reportsAServerWithoutRclone() {
@@ -431,7 +524,7 @@ private slots:
     const QString dest = blocker + "/rclone-here";
     QVERIFY(!RcloneInstaller::CanWriteTo(dest));
 
-    RcloneInstaller::Download download({release.base(), platform});
+    RcloneInstaller::Download download(Trusting(release, platform));
     const Outcome outcome = Run(download, dest);
     QVERIFY2(outcome.error.isEmpty(), qPrintable(outcome.error));
     const QString expected = QDir(RcloneInstaller::FallbackDir())
@@ -492,7 +585,7 @@ private slots:
     auto path = std::make_shared<QString>();
     AnswerNextQuestion("Download rclone", "rclone-not-found.png");
     RcloneInstaller::OfferDownload(
-        nullptr, {release.base(), platform}, dest.path(),
+        nullptr, Trusting(release, platform), dest.path(),
         [choice, path](RcloneInstaller::SetupChoice made, const QString &where) {
           *choice = static_cast<int>(made);
           *path = where;
@@ -520,7 +613,7 @@ private slots:
     auto choice = std::make_shared<int>(-1);
     auto path = std::make_shared<QString>();
     RcloneInstaller::RunDownload(
-        nullptr, {release.base(), platform}, dest.path(),
+        nullptr, Trusting(release, platform), dest.path(),
         [choice, path](RcloneInstaller::SetupChoice made, const QString &where) {
           *choice = static_cast<int>(made);
           *path = where;
@@ -589,7 +682,7 @@ private slots:
           round + " " + QByteArray::number(QDateTime::currentMSecsSinceEpoch());
       release.publish("9.9.9", RcloneInstaller::PlatformTag(), binary);
       RcloneInstaller::Download download(
-          {release.base(), RcloneInstaller::PlatformTag()});
+          Trusting(release, RcloneInstaller::PlatformTag()));
       const Outcome outcome = Run(download, folder, 90000);
       QVERIFY2(outcome.error.isEmpty(), qPrintable(outcome.error));
       QVERIFY2(download.note().isEmpty(), qPrintable(download.note()));
