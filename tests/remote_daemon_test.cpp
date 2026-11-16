@@ -293,6 +293,39 @@ private slots:
              qPrintable(afterByThen.join(", ")));
   }
 
+  // A null context means the reply isn't tied to any object. Qt refuses a
+  // connection whose receiver is null, so the answer was never delivered.
+  void aNullContextStillGetsItsAnswer() {
+    FakeRcServer daemon([](const QString &path, const QJsonObject &,
+                           const FakeRcServer::Reply &reply) {
+      if (path == "job/status") {
+        reply(QJsonObject{{"id", 7}, {"finished", true}, {"success", true},
+                          {"error", ""}});
+        return;
+      }
+      reply(startAnswer(path, "/null.conf"));
+    });
+    QVERIFY(daemon.isListening());
+
+    RcloneRcEngine engine;
+    engine.useRemoteDaemon(daemon.url(), "user", "pass");
+    bool started = false;
+    engine.ensureStartedAsync(
+        this, [&](bool startOk, const QString &) { started = startOk; });
+    QVERIFY(QTest::qWaitFor([&]() { return started; }, 10000));
+
+    bool answered = false;
+    QString error;
+    engine.jobStatus(7, nullptr,
+                     [&](const QJsonObject &, const QString &callError) {
+                       answered = true;
+                       error = callError;
+                     });
+    QVERIFY2(QTest::qWaitFor([&]() { return answered; }, 5000),
+             "job/status with no context never answered");
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+  }
+
   void aDaemonSwitchedMidStartIsTheOneReached() {
     QFETCH(QString, held);
     FakeRcServer::Reply release;

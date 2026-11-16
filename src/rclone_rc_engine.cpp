@@ -937,11 +937,17 @@ void RcloneRcEngine::postAsync(const QString &path, const QJsonObject &payload,
   QObject::connect(timer, &QTimer::timeout, reply, &QNetworkReply::abort);
   timer->start(kRcRequestTimeoutMs);
 
-  QObject::connect(context, &QObject::destroyed, reply,
-                   &QNetworkReply::deleteLater);
+  // A null context means the reply isn't tied to any object, as in the early
+  // answer above. Qt refuses a connection with a null receiver, so the engine
+  // receives it then.
+  QObject *receiver = context ? context : static_cast<QObject *>(this);
+  if (context) {
+    QObject::connect(context, &QObject::destroyed, reply,
+                     &QNetworkReply::deleteLater);
+  }
 
   QObject::connect(
-      reply, &QNetworkReply::finished, context,
+      reply, &QNetworkReply::finished, receiver,
       [reply, callback, trusted, url = mUrl]() {
         reply->deleteLater();
 
