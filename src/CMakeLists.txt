@@ -193,7 +193,7 @@ if(WIN32)
   target_link_libraries(RcloneBrowser version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp
     identity_migration.cpp job_options_store.cpp job_options.cpp
-    rclone_number.cpp)
+    bwlimit_timetable.cpp rclone_number.cpp)
   target_link_libraries(RcloneBrowserPassword Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network advapi32)
 elseif(APPLE)
   find_library(COCOA_LIB Cocoa REQUIRED)
