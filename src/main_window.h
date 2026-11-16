@@ -119,7 +119,9 @@ private:
   RemoteWidget *createRemoteWidgetInstance(const QString &name,
                                            const QString &type,
                                            QWidget *parent);
-  void setStatusMessage(const QString &message);
+  // The tooltip shows detail when given, else the message itself.
+  void setStatusMessage(const QString &message,
+                        const QString &detail = QString());
   void showCreateRemoteDialog(const QVector<RemoteProvider> &providers);
   void createCombineRemote(const QString &initialName,
                            const QString &preselected);

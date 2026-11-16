@@ -272,15 +272,15 @@ void ClearJobOptionsList(QList<JobOptions *> *tasks) {
 QString JobOptionsStoreSecurityNotice() {
 #if defined(Q_OS_WIN32)
   return QStringLiteral(
-      "Saved-task URLs and shell hooks use Windows DPAPI when available. "
-      "If DPAPI is unavailable, the fallback is reversible local encoding, "
-      "not encryption; protect the tasks.json file. Support exports redact "
-      "secret values.");
+      "Saved tasks protect these URLs and commands with your Windows account "
+      "(DPAPI). If that isn't available, they're saved in a reversible form "
+      "(not encryption), so keep tasks.json private. Support exports hide "
+      "them.");
 #else
   return QStringLiteral(
-      "Warning: saved-task URLs and shell hooks use reversible local encoding "
-      "on this platform, not encryption. Protect the tasks.json file. Support "
-      "exports redact secret values.");
+      "Saved tasks keep these URLs and commands in a reversible form (not "
+      "encryption) on this system, so keep tasks.json private. Support "
+      "exports hide them.");
 #endif
 }
 

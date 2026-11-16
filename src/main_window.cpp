@@ -188,6 +188,12 @@ MainWindow::MainWindow(bool initializeRuntime)
   ui.verticalLayout_6->setSpacing(10);
   ui.jobs->setSpacing(8);
   ui.tasksActionBar->setMaximumHeight(QWIDGETSIZE_MAX);
+  // Its own height only. With the list empty it used to take half the tab
+  // and float the buttons in the middle.
+  ui.tasksActionBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  if (auto *bar = qobject_cast<QBoxLayout *>(ui.tasksActionBar->layout())) {
+    bar->addStretch(1);
+  }
   UiPolish::SetEmptyState(
       ui.noJobsAvailable, "No active work",
       "Transfers, mounts and streams will appear here with live progress.");
@@ -896,10 +902,33 @@ MainWindow::MainWindow(bool initializeRuntime)
                     } else {
                       QString err = QString::fromUtf8(
                           check->readAllStandardError()).trimmed();
-                      if (err.contains("not supported"))
+                      if (err.contains("not supported")) {
                         safeTable->item(i, 2)->setText("OK (quota N/A)");
-                      else
-                        safeTable->item(i, 2)->setText("Error: " + err.left(80));
+                      } else {
+                        // The column is narrow, and 80 characters of stderr
+                        // were cut to "Error:...e Driv". The cell says Error
+                        // and the hover gives rclone's last line without its
+                        // date and level.
+                        QString detail = err.section('\n', -1).trimmed();
+                        if (detail.size() > 20 && detail.at(4) == '/' &&
+                            detail.at(7) == '/' && detail.at(13) == ':') {
+                          detail = detail.mid(20).trimmed();
+                        }
+                        for (const char *level : {"ERROR", "CRITICAL", "NOTICE"}) {
+                          if (detail.startsWith(QLatin1String(level)) &&
+                              detail.indexOf(':') > 0) {
+                            detail = detail.mid(detail.indexOf(':') + 1).trimmed();
+                            break;
+                          }
+                        }
+                        if (detail.isEmpty()) {
+                          detail = "rclone stopped without saying why.";
+                        }
+                        QTableWidgetItem *cell = safeTable->item(i, 2);
+                        cell->setText("Error");
+                        cell->setToolTip(detail);
+                        cell->setData(Qt::AccessibleDescriptionRole, detail);
+                      }
                     }
                   });
               QTimer::singleShot(15000, check, [check]() {
@@ -926,10 +955,14 @@ MainWindow::MainWindow(bool initializeRuntime)
       QStringList lines;
       lines << caps.summary() << "" << "Remote Health:";
       for (int r = 0; r < table->rowCount(); ++r) {
+        // The report keeps the error text the cell only shows on hover.
+        QString status = table->item(r, 2)->text();
+        if (!table->item(r, 2)->toolTip().isEmpty()) {
+          status += " (" + table->item(r, 2)->toolTip() + ")";
+        }
         lines << QString("  %1 (%2): %3  Quota: %4")
                      .arg(table->item(r, 0)->text(), table->item(r, 1)->text(),
-                          table->item(r, 2)->text(),
-                          table->item(r, 3)->text());
+                          status, table->item(r, 3)->text());
       }
       auto *diskTable = dialog.findChild<QTableWidget *>("diskTable");
       if (diskTable && diskTable->rowCount() > 0) {
@@ -1432,7 +1465,7 @@ MainWindow::MainWindow(bool initializeRuntime)
   ui.refresh->setIcon(style->standardIcon(QStyle::SP_BrowserReload));
   ui.open->setIcon(style->standardIcon(QStyle::SP_DialogOpenButton));
   ui.buttonDeleteTask->setIcon(style->standardIcon(QStyle::SP_TrashIcon));
-  ui.buttonEditTask->setIcon(style->standardIcon(QStyle::SP_FileIcon));
+  ui.buttonEditTask->setIcon(UiPolish::FileIcon());
   ui.buttonRunTask->setIcon(style->standardIcon(QStyle::SP_CommandLink));
   ui.buttonCopyTaskCmd->setIcon(style->standardIcon(QStyle::SP_FileLinkIcon));
   ui.buttonDryrunTask->setIcon(style->standardIcon(QStyle::SP_FileDialogContentsView));
@@ -1465,9 +1498,16 @@ MainWindow::MainWindow(bool initializeRuntime)
     unscheduleBtn->setAccessibleName("Unschedule selected task");
     unscheduleBtn->setEnabled(false);
 
-    if (QLayout *layout = ui.buttonDeleteTask->parentWidget()->layout()) {
-      layout->addWidget(scheduleBtn);
-      layout->addWidget(unscheduleBtn);
+    // Fixed like the buttons before them. Otherwise these two split the
+    // row's spare width and stretch to several hundred pixels each.
+    scheduleBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    unscheduleBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    // Ahead of the stretch that keeps the row packed to the left.
+    if (auto *layout = qobject_cast<QBoxLayout *>(
+            ui.buttonDeleteTask->parentWidget()->layout())) {
+      const int after = layout->indexOf(ui.buttonCopyTaskCmd) + 1;
+      layout->insertWidget(after, scheduleBtn);
+      layout->insertWidget(after + 1, unscheduleBtn);
     }
 
     QObject::connect(ui.tasksListWidget, &QListWidget::itemSelectionChanged,
@@ -1789,6 +1829,8 @@ MainWindow::MainWindow(bool initializeRuntime)
   mStatusMessage = new QLabel();
   mStatusMessage->setMinimumWidth(0);
   mStatusMessage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  // Lines up with the content above instead of touching the window edge.
+  mStatusMessage->setContentsMargins(8, 0, 0, 0);
   ui.statusBar->addWidget(mStatusMessage, 1);
 
   auto *bwLabel = new QLabel("Limit:", this);
@@ -2116,37 +2158,44 @@ void MainWindow::rcloneGetVersion() {
             QFileInfo ContentsPath(MacOSPath.dir().path());
             appBundlePath = QFileInfo(ContentsPath.dir().path());
 
-            setStatusMessage(
-                rclone_info1 + " in " +
-                QDir::toNativeSeparators(GetRclone().replace(
-                    appBundlePath.fileName() + "/Contents/MacOS/../../../",
-                    "")) +
-                ", " + rclone_info2 + ", " + rclone_info3);
+          // The bar shows the version; the path and platform go in the
+          // tooltip, since a long path used to be cut off mid-word.
+          setStatusMessage(
+              rclone_info1,
+              rclone_info1 + " in " +
+                  QDir::toNativeSeparators(GetRclone().replace(
+                      appBundlePath.fileName() + "/Contents/MacOS/../../../",
+                      "")) +
+                  ", " + rclone_info2 + ", " + rclone_info3);
 
           } else {
 
-            setStatusMessage(rclone_info1 + " in " +
-                             QDir::toNativeSeparators(GetRclone()) + ", " +
-                             rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1,
+                             rclone_info1 + " in " +
+                                 QDir::toNativeSeparators(GetRclone()) + ", " +
+                                 rclone_info2 + ", " + rclone_info3);
           }
 #else
 #ifdef Q_OS_WIN
-          setStatusMessage(rclone_info1 + " in " +
-                           QDir::toNativeSeparators(GetRclone()) + ", " +
-                           rclone_info2 + ", " + rclone_info3);
+          setStatusMessage(rclone_info1,
+                           rclone_info1 + " in " +
+                               QDir::toNativeSeparators(GetRclone()) + ", " +
+                               rclone_info2 + ", " + rclone_info3);
 #else
           if (IsPortableMode()) {
             QString xdg_config_home = qgetenv("XDG_CONFIG_HOME");
             QString appImageConfigFolder = xdg_config_home.right(xdg_config_home.length()-xdg_config_home.lastIndexOf("/"));
 
-            setStatusMessage(rclone_info1 + " in " +
-                             QDir::toNativeSeparators(GetRclone().replace(
-                                 appImageConfigFolder + "/..", "")) +
-                             ", " + rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1,
+                             rclone_info1 + " in " +
+                                 QDir::toNativeSeparators(GetRclone().replace(
+                                     appImageConfigFolder + "/..", "")) +
+                                 ", " + rclone_info2 + ", " + rclone_info3);
           } else {
-            setStatusMessage(rclone_info1 + " in " +
-                             QDir::toNativeSeparators(GetRclone()) + ", " +
-                             rclone_info2 + ", " + rclone_info3);
+            setStatusMessage(rclone_info1,
+                             rclone_info1 + " in " +
+                                 QDir::toNativeSeparators(GetRclone()) + ", " +
+                                 rclone_info2 + ", " + rclone_info3);
          }
 #endif
 #endif
@@ -2157,10 +2206,11 @@ void MainWindow::rcloneGetVersion() {
           // build of the floor release may predate its fixes
           if (RcloneSecurityFloor::IsBelowFloor(rcloneVersionAsPrinted)) {
             setStatusMessage(
-                mStatusMessage->text() + "  -  WARNING: rclone " +
-                rcloneVersionAsPrinted +
-                " has security fixes available (update to " +
-                RcloneSecurityFloor::kMinimumVersion + "+)");
+                mStatusMessage->text() + " (security update available)",
+                mStatusMessage->toolTip() + "\nrclone " +
+                    rcloneVersionAsPrinted +
+                    " has security fixes available. Update to " +
+                    RcloneSecurityFloor::kMinimumVersion + " or newer.");
             const QString warnedKey =
                 RcloneSecurityFloor::WarnedKey(rcloneVersionAsPrinted);
             if (settings->value("Settings/rcloneCveWarnedVersion").toString() !=
@@ -2935,9 +2985,10 @@ void MainWindow::updateRemoteDaemonMode(bool closeBrowserTabs) {
   }
 }
 
-void MainWindow::setStatusMessage(const QString &message) {
+void MainWindow::setStatusMessage(const QString &message,
+                                  const QString &detail) {
   mStatusMessage->setText(message);
-  mStatusMessage->setToolTip(message);
+  mStatusMessage->setToolTip(detail.isEmpty() ? message : detail);
 }
 
 void MainWindow::showRemotesEmptyState(const QString &title,
@@ -3419,18 +3470,27 @@ bool MainWindow::canClose() {
   ui.tabs->setCurrentIndex(1);
   showNormal();
 
-  int button = QMessageBox::question(
-      this, qApp->applicationDisplayName(),
-      QString("There are %1 job(s) running.\n"
-              "Do you want to stop them and quit?")
-          .arg(mJobCount),
-      QMessageBox::Yes | QMessageBox::No);
+  QMessageBox prompt(QMessageBox::Question, qApp->applicationDisplayName(),
+                     mJobCount == 1
+                         ? QString("1 job is still running.")
+                         : QString("%1 jobs are still running.").arg(mJobCount),
+                     QMessageBox::NoButton, this);
+  prompt.setInformativeText(mJobCount == 1 ? "Quitting stops it."
+                                           : "Quitting stops them.");
+  QPushButton *stopButton =
+      prompt.addButton("Stop and Quit", QMessageBox::AcceptRole);
+  QPushButton *keepButton =
+      prompt.addButton("Keep Running", QMessageBox::RejectRole);
+  prompt.setDefaultButton(keepButton);
+  prompt.setEscapeButton(keepButton);
+  prompt.exec();
+  const bool stopJobs = prompt.clickedButton() == stopButton;
 
   if (!wasVisible) {
     hide();
   }
 
-  if (button == QMessageBox::Yes) {
+  if (stopJobs) {
     // collect first - cancel() emits closed() which removes widgets from
     // the layout and would shift indices mid-iteration, skipping jobs
     QList<QWidget *> widgets;

@@ -26,11 +26,12 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) : QDialog(parent) {
   UiPolish::SetCompactToolButton(ui.defaultUploadDirBrowse,
                                  "Browse for default upload folder");
   QStyle *style = qApp->style();
+  // A file picker shows the file icon and a folder picker the folder icon,
+  // the same as the transfer dialog.
   ui.rcloneBrowse->setText("Browse");
-  ui.rcloneBrowse->setIcon(style->standardIcon(QStyle::SP_DialogOpenButton));
+  ui.rcloneBrowse->setIcon(UiPolish::FileIcon());
   ui.rcloneConfBrowse->setText("Browse");
-  ui.rcloneConfBrowse->setIcon(
-      style->standardIcon(QStyle::SP_DialogOpenButton));
+  ui.rcloneConfBrowse->setIcon(UiPolish::FileIcon());
   ui.defaultDownloadDirBrowse->setText("Browse");
   ui.defaultDownloadDirBrowse->setIcon(style->standardIcon(QStyle::SP_DirIcon));
   ui.defaultUploadDirBrowse->setText("Browse");
