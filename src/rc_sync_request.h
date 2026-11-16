@@ -125,4 +125,17 @@ bool ParseConfigDump(const QByteArray &output, QJsonObject *dump);
 QString DaemonConflictReason(const QJsonObject &config,
                              const QJsonObject &daemonMain);
 
+// The index of the ':' that ends a path's remote part, found the way
+// rclone's fs/fspath.Parse finds it, or -1 for a local path.
+qsizetype RemoteColon(const QString &path);
+
+// Where operations/stat looks to see what a path is: the fs holding it and
+// its name there. An empty remote means the path is a root. An empty fs
+// with a remote is a local path with no folder in it.
+struct StatTarget {
+  QString fs;
+  QString remote;
+};
+StatTarget StatTargetFor(const QString &path);
+
 } // namespace RcSyncRequest

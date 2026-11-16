@@ -288,6 +288,13 @@ private slots:
         << QStringLiteral(":local,description='a:b':") << QString() << true;
     QTest::newRow("a file") << QStringLiteral(":local:")
                             << QStringLiteral("/keep.txt") << false;
+#if defined(Q_OS_WIN)
+    // Split only at '/', this path had no folder, so the daemon looked for
+    // all of it in its working folder and a file went to sync/* and failed.
+    QTest::newRow("a file in backslashes") << QStringLiteral(":local:")
+                                           << QStringLiteral("\\keep.txt")
+                                           << false;
+#endif
   }
 
   void anOnTheFlySourceIsCheckedAsARemote() {
@@ -301,7 +308,10 @@ private slots:
 
     RcloneRcEngine engine;
     QStringList args;
-    args << "copy" << "--verbose" << (prefix + source + item) << dest;
+    const QString folder = item.startsWith(QLatin1Char('\\'))
+                               ? QDir::toNativeSeparators(source)
+                               : source;
+    args << "copy" << "--verbose" << (prefix + folder + item) << dest;
 
     bool started = false;
     const QString group = runAndWait(engine, args, &started);

@@ -1000,6 +1000,91 @@ private slots:
                qPrintable(reason));
     }
   }
+
+  // fspath.Parse reads a one-character name as a drive only when it's an
+  // ASCII letter on Windows (fs/driveletter, v1.76.0).
+  void findsTheColonParseFinds_data() {
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<int>("colon");
+#if defined(Q_OS_WIN)
+    const int drive = -1;
+#else
+    const int drive = 1;
+#endif
+    QTest::newRow("a remote") << QStringLiteral("remote:dir") << 6;
+    QTest::newRow("on the fly") << QStringLiteral(":local:C:/x") << 6;
+    QTest::newRow("a quoted colon")
+        << QStringLiteral(":local,description='a:b':x") << 24;
+    QTest::newRow("a drive letter") << QStringLiteral("C:dir") << drive;
+    QTest::newRow("a lower-case drive") << QStringLiteral("q:/x") << drive;
+    QTest::newRow("a digit") << QStringLiteral("1:dir") << 1;
+    QTest::newRow("an underscore") << QStringLiteral("_:dir") << 1;
+    QTest::newRow("an accented letter")
+        << (QString(QChar(0xE9)) + QStringLiteral(":dir")) << 1;
+    QTest::newRow("a drive's path") << QStringLiteral("D:\\a:b") << drive;
+    QTest::newRow("a slash first") << QStringLiteral("/a:b") << -1;
+  }
+
+  void findsTheColonParseFinds() {
+    QFETCH(QString, path);
+    QFETCH(int, colon);
+    QCOMPARE(RcSyncRequest::RemoteColon(path), qsizetype(colon));
+  }
+
+  void looksAtAPathFromItsFolder_data() {
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<QString>("fs");
+    QTest::addColumn<QString>("remote");
+    QTest::newRow("a file at a drive root")
+        << QStringLiteral(":local:C:/rootfile.txt")
+        << QStringLiteral(":local:C:/") << QStringLiteral("rootfile.txt");
+    QTest::newRow("backslashes")
+        << QStringLiteral(":local:C:\\dir\\one.txt")
+        << QStringLiteral(":local:C:\\dir") << QStringLiteral("one.txt");
+    QTest::newRow("a backslash at a drive root")
+        << QStringLiteral(":local:C:\\one.txt")
+        << QStringLiteral(":local:C:\\") << QStringLiteral("one.txt");
+    QTest::newRow("a file at the root")
+        << QStringLiteral(":local:/file.txt") << QStringLiteral(":local:/")
+        << QStringLiteral("file.txt");
+    QTest::newRow("options")
+        << QStringLiteral(":local,description='a/b:c':D:/x/y.txt")
+        << QStringLiteral(":local,description='a/b:c':D:/x")
+        << QStringLiteral("y.txt");
+    QTest::newRow("a relative name")
+        << QStringLiteral(":local:a.txt") << QStringLiteral(":local:")
+        << QStringLiteral("a.txt");
+    QTest::newRow("a remote's folder")
+        << QStringLiteral("remote:dir/file") << QStringLiteral("remote:dir")
+        << QStringLiteral("file");
+    QTest::newRow("a remote's top level")
+        << QStringLiteral("remote:file") << QStringLiteral("remote:")
+        << QStringLiteral("file");
+    QTest::newRow("a leading slash on a remote")
+        << QStringLiteral("remote:/file") << QStringLiteral("remote:")
+        << QStringLiteral("file");
+    QTest::newRow("a backslash in a remote's name")
+        << QStringLiteral("remote:dir\\file") << QStringLiteral("remote:")
+        << QStringLiteral("dir\\file");
+#if defined(Q_OS_WIN)
+    QTest::newRow("a local file at a root")
+        << QStringLiteral("C:\\file.txt") << QStringLiteral("C:\\")
+        << QStringLiteral("file.txt");
+#endif
+    QTest::newRow("a root") << QStringLiteral("/") << QStringLiteral("/")
+                            << QString();
+    QTest::newRow("a bare name") << QStringLiteral("file.txt") << QString()
+                                 << QStringLiteral("file.txt");
+  }
+
+  void looksAtAPathFromItsFolder() {
+    QFETCH(QString, path);
+    QFETCH(QString, fs);
+    QFETCH(QString, remote);
+    const RcSyncRequest::StatTarget target = RcSyncRequest::StatTargetFor(path);
+    QCOMPARE(target.fs, fs);
+    QCOMPARE(target.remote, remote);
+  }
 };
 
 QTEST_APPLESS_MAIN(RcSyncRequestTest)

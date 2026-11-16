@@ -1,6 +1,7 @@
 #include "rc_sync_request.h"
 #include "rclone_number.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace RcSyncRequest {
@@ -685,6 +686,119 @@ bool ParseConfigDump(const QByteArray &output, QJsonObject *dump) {
     *dump = document.object();
   }
   return true;
+}
+
+namespace {
+bool isDriveLetter(QChar c) {
+#if defined(Q_OS_WIN)
+  return (c >= QLatin1Char('a') && c <= QLatin1Char('z')) ||
+         (c >= QLatin1Char('A') && c <= QLatin1Char('Z'));
+#else
+  Q_UNUSED(c);
+  return false;
+#endif
+}
+} // namespace
+
+// The index of the ':' that ends a path's remote part, found the way rclone's
+// fs/fspath.Parse finds it, or -1 for a local path. An on-the-fly remote
+// (":local:C:/x") starts with a colon, and a quoted option value
+// (":local,description='a:b':dir") can hold one. On Windows a name that is
+// one ASCII letter is a drive (fs/driveletter, v1.76.0). Anywhere else, and
+// for any other one-character name, it's a remote.
+qsizetype RemoteColon(const QString &path) {
+  enum class State { Name, Param, Value, Quoted, AfterQuote };
+  State state = State::Name;
+  qsizetype prev = 0;
+  QChar quote;
+  for (qsizetype i = 0; i < path.size(); i++) {
+    const QChar c = path.at(i);
+    switch (state) {
+    case State::Name:
+      if (i == 0 && c == QLatin1Char(':')) {
+        break;
+      }
+      if (c == QLatin1Char('/') || c == QLatin1Char('\\')) {
+        return -1;
+      }
+      if (c == QLatin1Char(':')) {
+        return i == 1 && isDriveLetter(path.at(0)) ? -1 : i;
+      }
+      if (c == QLatin1Char(',')) {
+        prev = i + 1;
+        state = State::Param;
+      }
+      break;
+    case State::Param:
+      if (c == QLatin1Char(':')) {
+        return i;
+      }
+      if (c == QLatin1Char('=')) {
+        prev = i + 1;
+        state = State::Value;
+      }
+      break;
+    case State::Value:
+      if ((c == QLatin1Char('\'') || c == QLatin1Char('"')) && i == prev) {
+        quote = c;
+        state = State::Quoted;
+      } else if (c == QLatin1Char(':')) {
+        return i;
+      } else if (c == QLatin1Char(',')) {
+        state = State::Param;
+      }
+      break;
+    case State::Quoted:
+      if (c == quote) {
+        state = State::AfterQuote;
+      }
+      break;
+    case State::AfterQuote:
+      if (c == QLatin1Char(':')) {
+        return i;
+      }
+      if (c == QLatin1Char(',')) {
+        state = State::Param;
+      } else if (c == quote) {
+        state = State::Quoted; // a doubled quote
+      } else {
+        return -1;
+      }
+      break;
+    }
+  }
+  return -1;
+}
+
+StatTarget StatTargetFor(const QString &path) {
+  const qsizetype colon = RemoteColon(path);
+  const QString prefix = colon >= 0 ? path.left(colon + 1) : QString();
+  const QString rest = path.mid(colon + 1);
+  // A local path splits at either separator, since Windows takes both and
+  // a remote daemon's path can be a Windows one. On any other backend a
+  // backslash is part of a name.
+  const bool local = colon < 0 ||
+                     prefix.startsWith(QLatin1String(":local:")) ||
+                     prefix.startsWith(QLatin1String(":local,"));
+  qsizetype separator = rest.lastIndexOf(QChar('/'));
+  if (local) {
+    separator = (std::max)(separator, rest.lastIndexOf(QChar('\\')));
+  }
+  StatTarget target;
+  if (separator < 0) {
+    target.fs = prefix;
+    target.remote = rest;
+    return target;
+  }
+  QString folder = rest.left(separator);
+  // "C:" alone is the current folder on that drive and an empty folder is
+  // the current one, so a root keeps its separator.
+  if (local && (folder.isEmpty() || folder.endsWith(QChar(':')))) {
+    folder = rest.left(separator + 1);
+  }
+  target.fs = prefix + folder;
+  target.remote = rest.mid(separator + 1);
+  return target;
 }
 
 QString DaemonConflictReason(const QJsonObject &config,

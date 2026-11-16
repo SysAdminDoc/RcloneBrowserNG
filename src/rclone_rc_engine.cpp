@@ -39,74 +39,6 @@ QJsonObject coreCommandPayload(const QStringList &args,
   return payload;
 }
 
-// The index of the ':' that ends a path's remote part, found the way rclone's
-// fs/fspath.Parse finds it, or -1 for a local path. An on-the-fly remote
-// (":local:C:/x") starts with a colon, and a quoted option value
-// (":local,description='a:b':dir") can hold one. A one-letter name is a
-// Windows drive letter.
-qsizetype RemoteColon(const QString &path) {
-  enum class State { Name, Param, Value, Quoted, AfterQuote };
-  State state = State::Name;
-  qsizetype prev = 0;
-  QChar quote;
-  for (qsizetype i = 0; i < path.size(); i++) {
-    const QChar c = path.at(i);
-    switch (state) {
-    case State::Name:
-      if (i == 0 && c == QLatin1Char(':')) {
-        break;
-      }
-      if (c == QLatin1Char('/') || c == QLatin1Char('\\')) {
-        return -1;
-      }
-      if (c == QLatin1Char(':')) {
-        return i == 1 ? -1 : i;
-      }
-      if (c == QLatin1Char(',')) {
-        prev = i + 1;
-        state = State::Param;
-      }
-      break;
-    case State::Param:
-      if (c == QLatin1Char(':')) {
-        return i;
-      }
-      if (c == QLatin1Char('=')) {
-        prev = i + 1;
-        state = State::Value;
-      }
-      break;
-    case State::Value:
-      if ((c == QLatin1Char('\'') || c == QLatin1Char('"')) && i == prev) {
-        quote = c;
-        state = State::Quoted;
-      } else if (c == QLatin1Char(':')) {
-        return i;
-      } else if (c == QLatin1Char(',')) {
-        state = State::Param;
-      }
-      break;
-    case State::Quoted:
-      if (c == quote) {
-        state = State::AfterQuote;
-      }
-      break;
-    case State::AfterQuote:
-      if (c == QLatin1Char(':')) {
-        return i;
-      }
-      if (c == QLatin1Char(',')) {
-        state = State::Param;
-      } else if (c == quote) {
-        state = State::Quoted; // a doubled quote
-      } else {
-        return -1;
-      }
-      break;
-    }
-  }
-  return -1;
-}
 } // namespace
 
 RcloneRcEngine::RcloneRcEngine(QObject *parent)
@@ -592,7 +524,7 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     const QString &source, QObject *context,
     const std::function<void(bool)> &callback) {
   const QString trimmed = source.trimmed();
-  const qsizetype colon = RemoteColon(trimmed);
+  const qsizetype colon = RcSyncRequest::RemoteColon(trimmed);
   const bool looksRemote = colon > 0;
 
   if (!looksRemote && !isRemote()) {
@@ -610,34 +542,20 @@ void RcloneRcEngine::resolveSourceIsDirectory(
     return;
   }
 
-  QString fs;
-  QString remote;
-  if (looksRemote) {
-    const qsizetype lastSlash = trimmed.lastIndexOf(QChar('/'));
-    if (lastSlash > colon) {
-      fs = trimmed.left(lastSlash);
-      remote = trimmed.mid(lastSlash + 1);
-    } else {
-      fs = trimmed.left(colon + 1);
-      remote = trimmed.mid(colon + 1);
+  // A local path on a remote daemon is a path on that machine, so only the
+  // daemon can say what it is. ":local:C:/a.txt" and ":local:C:\dir\a.txt"
+  // are local paths too, looked at from "C:/" and "C:\dir".
+  const RcSyncRequest::StatTarget target =
+      RcSyncRequest::StatTargetFor(trimmed);
+  if (!looksRemote && target.fs.isEmpty()) {
+    // No folder to look in, so take the route that copes with either.
+    if (callback) {
+      callback(false);
     }
-  } else {
-    // A local path on a remote daemon is a path on that machine, so only the
-    // daemon can say what it is.
-    const qsizetype separator = qMax(trimmed.lastIndexOf(QChar('/')),
-                                     trimmed.lastIndexOf(QChar('\\')));
-    if (separator < 0) {
-      if (callback) {
-        callback(false);
-      }
-      return;
-    }
-    fs = trimmed.left(separator);
-    if (fs.isEmpty() || fs.endsWith(QChar(':'))) {
-      fs = trimmed.left(separator + 1); // "/" or "C:\"
-    }
-    remote = trimmed.mid(separator + 1);
+    return;
   }
+  const QString &fs = target.fs;
+  const QString &remote = target.remote;
   if (remote.isEmpty()) {
     if (callback) {
       callback(true);
