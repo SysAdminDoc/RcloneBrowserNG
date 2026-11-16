@@ -4,6 +4,7 @@
 #include "job_options.h"
 #include "job_widget.h"
 #include "mount_backend.h"
+#include "mount_health.h"
 #include "mount_options.h"
 #include "list_of_job_options.h"
 #include "mount_widget.h"
@@ -948,7 +949,7 @@ MainWindow::MainWindow(bool initializeRuntime)
     btnRow->addStretch();
     layout->addLayout(btnRow);
 
-    if (caps.hasCoreDisks()) {
+    {
       auto *diskLabel = new QLabel("<b>Local Disks</b>", &dialog);
       layout->addWidget(diskLabel);
       auto *diskTable = new QTableWidget(&dialog);
@@ -963,44 +964,45 @@ MainWindow::MainWindow(bool initializeRuntime)
       diskTable->setMaximumHeight(120);
       layout->addWidget(diskTable);
 
-      auto *diskProc = new QProcess(&dialog);
-      UseRclonePassword(diskProc);
-      diskProc->setProgram(GetRclone());
-      diskProc->setArguments(QStringList()
-                              << "rc" << "--loopback" << "core/disks");
-      diskProc->setProcessChannelMode(QProcess::SeparateChannels);
+      // Read from the system itself. The rclone core/disks call this used
+      // to make returns names only, so the table never got a row. Off the
+      // GUI thread, since a disconnected network drive can stall the read.
       QPointer<QTableWidget> safeDiskTable(diskTable);
-      QObject::connect(
-          diskProc,
-          static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(
-              &QProcess::finished),
-          &dialog, [diskProc, safeDiskTable](int rc, QProcess::ExitStatus) {
-            diskProc->deleteLater();
-            if (!safeDiskTable || rc != 0) return;
-            QJsonDocument doc = QJsonDocument::fromJson(
-                diskProc->readAllStandardOutput());
-            QJsonArray disks = doc.object().value("diskInfo").toArray();
-            safeDiskTable->setRowCount(static_cast<int>(disks.size()));
-            for (int i = 0; i < disks.size(); ++i) {
-              QJsonObject d = disks[i].toObject();
-              QString path = d.value("path").toString();
-              QString fs = d.value("fsType").toString();
-              qint64 total = d.value("total").toVariant().toLongLong();
-              qint64 free = d.value("free").toVariant().toLongLong();
-              qint64 used = total > 0 ? total - free : 0;
-              safeDiskTable->setItem(i, 0, new QTableWidgetItem(path));
-              safeDiskTable->setItem(i, 1, new QTableWidgetItem(fs));
-              safeDiskTable->setItem(i, 2, new QTableWidgetItem(
-                  total > 0 ? GetNiceSize(static_cast<quint64>(used)) : "N/A"));
-              safeDiskTable->setItem(i, 3, new QTableWidgetItem(
-                  total > 0 ? GetNiceSize(static_cast<quint64>(total)) : "N/A"));
+      QCoreApplication *application = QCoreApplication::instance();
+      QThread *diskThread =
+          QThread::create([safeDiskTable, application]() {
+            const QList<LocalDiskInfo> disks = ListLocalDisks();
+            if (!application) {
+              return;
             }
+            QMetaObject::invokeMethod(
+                application,
+                [safeDiskTable, disks]() {
+                  if (!safeDiskTable) {
+                    return;
+                  }
+                  safeDiskTable->setRowCount(static_cast<int>(disks.size()));
+                  for (int i = 0; i < disks.size(); ++i) {
+                    const LocalDiskInfo &disk = disks.at(i);
+                    safeDiskTable->setItem(i, 0,
+                                           new QTableWidgetItem(disk.path));
+                    safeDiskTable->setItem(
+                        i, 1, new QTableWidgetItem(disk.fileSystem));
+                    safeDiskTable->setItem(
+                        i, 2,
+                        new QTableWidgetItem(GetNiceSize(
+                            static_cast<quint64>(disk.used))));
+                    safeDiskTable->setItem(
+                        i, 3,
+                        new QTableWidgetItem(GetNiceSize(
+                            static_cast<quint64>(disk.total))));
+                  }
+                },
+                Qt::QueuedConnection);
           });
-      QTimer::singleShot(10000, diskProc, [diskProc]() {
-        if (diskProc->state() != QProcess::NotRunning)
-          diskProc->kill();
-      });
-      diskProc->start();
+      QObject::connect(diskThread, &QThread::finished, diskThread,
+                       &QObject::deleteLater);
+      diskThread->start();
     }
 
     auto *close = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);

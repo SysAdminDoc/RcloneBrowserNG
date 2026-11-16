@@ -157,6 +157,26 @@ private slots:
     const MountHealthProbeResult result = ProbeMountPoint(directory.path());
     QVERIFY2(result.healthy, qPrintable(result.detail));
   }
+
+  // Remote Health's Local Disks table read rclone core/disks, which returns
+  // names only, so it never showed a row.
+  void localDisksListTheSystemDrive() {
+    const QList<LocalDiskInfo> disks = ListLocalDisks();
+    QVERIFY2(!disks.isEmpty(), "no local disk listed");
+    for (const LocalDiskInfo &disk : disks) {
+      QVERIFY(!disk.path.isEmpty());
+      QVERIFY(disk.total > 0);
+      QVERIFY(disk.used >= 0);
+      QVERIFY(disk.used <= disk.total);
+    }
+    const QString tempRoot =
+        QDir::toNativeSeparators(QStorageInfo(QDir::tempPath()).rootPath());
+    bool found = false;
+    for (const LocalDiskInfo &disk : disks) {
+      found = found || disk.path == tempRoot;
+    }
+    QVERIFY2(found, qPrintable("the temp folder's drive is missing: " + tempRoot));
+  }
 };
 
 QTEST_MAIN(MountBackendTest)
