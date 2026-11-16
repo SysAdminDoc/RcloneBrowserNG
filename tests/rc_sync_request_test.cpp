@@ -3,6 +3,7 @@
 #include "rc_sync_request.h"
 
 using RcSyncRequest::Build;
+using RcSyncRequest::ConfigGlobalsReason;
 using RcSyncRequest::IndexOptions;
 using RcSyncRequest::OptionIndex;
 using RcSyncRequest::Request;
@@ -614,6 +615,52 @@ private slots:
     QVERIFY2(request.usable, qPrintable(request.reason));
     QVERIFY(!request.payload.contains("_config"));
     QVERIFY(!request.payload.contains("_filter"));
+  }
+
+  void sendsAConfigThatSetsAGlobalOptionToItsOwnRclone() {
+    const auto dumpOf = [](const QString &name, const QString &key,
+                           const QString &value) {
+      QJsonObject section;
+      section.insert("type", "alias");
+      section.insert(key, value);
+      QJsonObject dump;
+      dump.insert("plain", QJsonObject{{"type", "local"}});
+      dump.insert(name, section);
+      return dump;
+    };
+
+    // A key of its own, as rclone config writes it.
+    const QString key = ConfigGlobalsReason(
+        dumpOf("bk", "global.backup_dir", "bk:bak"), QStringList());
+    QVERIFY2(key.contains("bk remote"), qPrintable(key));
+    // Inside a value, where an alias's remote opens with the option.
+    const QString value = ConfigGlobalsReason(
+        dumpOf("al", "remote", ":local,global.max_delete=1:/d"),
+        QStringList());
+    QVERIFY2(value.contains("al remote"), qPrintable(value));
+    // override. applies over rc, so it stays on sync/*.
+    QVERIFY(ConfigGlobalsReason(dumpOf("ov", "override.max_delete", "1"),
+                                QStringList())
+                .isEmpty());
+    QVERIFY(ConfigGlobalsReason(dumpOf("ok", "remote", "/d,global"),
+                                QStringList())
+                .isEmpty());
+
+    const QStringList sectionVariable{
+        "PATH=C:/x", "RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR=bk:bak"};
+    const QString named = ConfigGlobalsReason(QJsonObject(), sectionVariable);
+    QVERIFY2(named.contains("RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR"),
+             qPrintable(named));
+    const QStringList lowerCase{"rclone_config_bk_global.dry_run=false"};
+    QVERIFY(!ConfigGlobalsReason(QJsonObject(), lowerCase).isEmpty());
+    const QStringList pathVariable{
+        "RCLONE_BACKUP_DIR=:local,global.max_delete=1:/b"};
+    QVERIFY(!ConfigGlobalsReason(QJsonObject(), pathVariable).isEmpty());
+
+    // Variables rclone never reads, and a section's ordinary key.
+    const QStringList unrelated{"RCLONE_CONFIG_BK_TYPE=alias",
+                                "OTHER=:local,global.max_delete=1:/b"};
+    QVERIFY(ConfigGlobalsReason(QJsonObject(), unrelated).isEmpty());
   }
 };
 

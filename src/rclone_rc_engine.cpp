@@ -460,7 +460,37 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
           startCommand(args, reason, contextGuard, callback);
           return;
         }
-        startSync(args, request, contextGuard, callback);
+        // A global. option in rclone.conf or the daemon's environment
+        // applies to the CLI and not to sync/*, so read the config the daemon
+        // has before committing. Only this PC's environment is known; a
+        // remote daemon's own variables can't be read over rc.
+        const QStringList environment =
+            isRemote() ? QStringList()
+                       : QProcessEnvironment::systemEnvironment().toStringList();
+        QObject *owner = contextGuard ? contextGuard.data()
+                                      : static_cast<QObject *>(this);
+        postAsync(
+            "config/dump", QJsonObject(), owner,
+            [this, args, request, contextGuard, environment,
+             callback = std::move(callback)](const QJsonObject &dump,
+                                             const QString &error) {
+              if (!error.isEmpty()) {
+                // A core/command run would fail the same way, so the
+                // environment alone decides.
+                Diagnostics::appendLog(
+                    "rc-engine", QString("config/dump failed: %1").arg(error));
+              }
+              const QString reason =
+                  RcSyncRequest::ConfigGlobalsReason(dump, environment);
+              if (!reason.isEmpty()) {
+                Diagnostics::appendLog(
+                    "rc-engine",
+                    QString("core/command route: %1").arg(reason));
+                startCommand(args, reason, contextGuard, callback);
+                return;
+              }
+              startSync(args, request, contextGuard, callback);
+            });
       });
 }
 

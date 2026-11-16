@@ -425,4 +425,60 @@ Request Build(const QStringList &args, const QString &group,
   return request;
 }
 
+QString ConfigGlobalsReason(const QJsonObject &dump,
+                            const QStringList &environment) {
+  // addConfigToContext (fs/newfs.go) reads global.<option> through
+  // config.Get, which takes the remote's section and its RCLONE_CONFIG_
+  // variables, and skips it when IsRCRequest. Measured on v1.76.0 with
+  // [bk] type = alias and global.backup_dir = bk:bak: the CLI moved every
+  // file into bak, and sync/sync deleted them. A value counts as well, since
+  // an alias's remote = :local,global.backup_dir=...: opens with that option.
+  // Any section counts, because a run can open one through another remote's
+  // options or a plain path ([local]). Matching is wider than rclone's, which
+  // only costs a job its live stats.
+  const QLatin1String inValue(",global.");
+  QStringList sections;
+  for (auto it = dump.constBegin(); it != dump.constEnd(); ++it) {
+    const QJsonObject section = it.value().toObject();
+    for (auto key = section.constBegin(); key != section.constEnd(); ++key) {
+      if (key.key().startsWith(QLatin1String("global."), Qt::CaseInsensitive) ||
+          key.value().toString().contains(inValue, Qt::CaseInsensitive)) {
+        sections << it.key();
+        break;
+      }
+    }
+  }
+  if (!sections.isEmpty()) {
+    return QString("the %1 %2 in rclone.conf %3 a global. option, which "
+                   "rclone ignores for a job started over rc")
+        .arg(sections.join(QStringLiteral(", ")),
+             sections.size() == 1 ? QStringLiteral("remote")
+                                  : QStringLiteral("remotes"),
+             sections.size() == 1 ? QStringLiteral("sets")
+                                  : QStringLiteral("set"));
+  }
+  // A section's own variable (ConfigToEnv in fs/config.go gives
+  // RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR), or a path in any RCLONE_ variable,
+  // RCLONE_BACKUP_DIR among them. Windows reads names in any case.
+  for (const QString &entry : environment) {
+    const qsizetype equals = entry.indexOf(QLatin1Char('='), 1);
+    const QString name = equals > 0 ? entry.left(equals) : entry;
+    const QString upper = name.toUpper();
+    if (!upper.startsWith(QLatin1String("RCLONE_"))) {
+      continue;
+    }
+    const bool sectionKey = upper.startsWith(QLatin1String("RCLONE_CONFIG_")) &&
+                            upper.contains(QLatin1String("_GLOBAL."));
+    const bool pathValue =
+        equals > 0 && entry.mid(equals + 1).contains(inValue,
+                                                     Qt::CaseInsensitive);
+    if (sectionKey || pathValue) {
+      return QString("%1 sets a global. option, which rclone ignores for a "
+                     "job started over rc")
+          .arg(name);
+    }
+  }
+  return QString();
+}
+
 } // namespace RcSyncRequest

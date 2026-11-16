@@ -300,6 +300,76 @@ private slots:
                                                << "sub/keep2.txt");
   }
 
+  // The same option set by rclone.conf, as a key of the remote's own, inside
+  // the remote's value, or by the remote's environment variable. None of it
+  // shows in the arguments, and sync/sync ignores all of it.
+  void aConfigThatSetsAGlobalOptionRunsOnCoreCommand_data() {
+    QTest::addColumn<QString>("how");
+    QTest::newRow("a key") << QStringLiteral("key");
+    QTest::newRow("a value") << QStringLiteral("value");
+    QTest::newRow("a variable") << QStringLiteral("variable");
+  }
+
+  void aConfigThatSetsAGlobalOptionRunsOnCoreCommand() {
+    QFETCH(QString, how);
+    const QString tag = "conf-" + how;
+    const QString root = mDir.path();
+    const QString source = QDir(root).filePath(tag + "-src");
+    QVERIFY(QDir().mkpath(source));
+    const QString dest = makeTree(tag + "-dst");
+    const QString backup = QDir(root).filePath(tag + "-bak");
+
+    QByteArray section = "[bk]\ntype = alias\n";
+    QByteArray variable;
+    if (how == "key") {
+      section += "remote = " + root.toUtf8() + "\nglobal.backup_dir = bk:" +
+                 (tag + "-bak").toUtf8() + "\n";
+    } else if (how == "value") {
+      section += "remote = :local,global.backup_dir=':local:" +
+                 backup.toUtf8() + "':" + root.toUtf8() + "\n";
+    } else {
+      section += "remote = " + root.toUtf8() + "\n";
+      variable = "RCLONE_CONFIG_BK_GLOBAL.BACKUP_DIR";
+    }
+    const QString configPath = QDir(root).filePath(tag + ".conf");
+    QFile config(configPath);
+    QVERIFY(config.open(QIODevice::WriteOnly | QIODevice::Text));
+    config.write(section);
+    config.close();
+
+    // The other tests read the fixture's config and a clean environment.
+    struct Restore {
+      QString fixture;
+      QByteArray name;
+      ~Restore() {
+        SetRcloneConf(fixture);
+        if (!name.isEmpty()) {
+          qunsetenv(name.constData());
+        }
+      }
+    } restore{mConfigPath, variable};
+    SetRcloneConf(configPath);
+    if (!variable.isEmpty()) {
+      QVERIFY(qputenv(variable.constData(), "bk:" + (tag + "-bak").toUtf8()));
+    }
+
+    RcloneRcEngine engine;
+    QStringList args;
+    args << "sync" << "--verbose" << source << ("bk:" + tag + "-dst");
+
+    bool started = false;
+    const QString group = runAndWait(engine, args, &started);
+    QVERIFY2(started, "the transfer never started");
+    QVERIFY2(group.startsWith("job/"), qPrintable("group was " + group));
+
+    QVERIFY2(filesUnder(dest).isEmpty(),
+             qPrintable("left in the destination: " +
+                        filesUnder(dest).join(", ")));
+    QCOMPARE(filesUnder(backup), QStringList() << "drop.tmp" << "keep.txt"
+                                               << "sub/drop2.tmp"
+                                               << "sub/keep2.txt");
+  }
+
   // core/bwlimit is the only live tuning rclone actually offers. Measured on
   // v1.75.0: setting main.Transfers to 8 mid-job left the running job at one
   // file in flight for eight seconds while a job started afterwards used all

@@ -86,4 +86,13 @@ struct Request {
 Request Build(const QStringList &args, const QString &group,
               const OptionIndex &index);
 
+// Why a request Build allows still has to run as a separate rclone, given
+// the daemon's config/dump answer and the NAME=value environment the daemon
+// runs with, or empty when it can go to sync/*. A remote's section (a key or
+// a value), an RCLONE_CONFIG_<REMOTE>_GLOBAL.<OPTION> variable or a path in
+// an RCLONE_ variable can set a global. option, which rclone applies on the
+// command line and skips for a job started over rc.
+QString ConfigGlobalsReason(const QJsonObject &dump,
+                            const QStringList &environment);
+
 } // namespace RcSyncRequest
