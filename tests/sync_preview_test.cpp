@@ -658,10 +658,19 @@ private slots:
     QTest::newRow("a quoted global.suffix")
         << QStringList{"sync", "src", "remote,global.suffix='.o:ld',x=1:dst"}
         << none << true << false;
-    QTest::newRow("in a flag's =value")
+    // rclone takes --track-renames before it opens the backup folder.
+    QTest::newRow("in a flag's =value, too late for track_renames")
         << QStringList{"sync", "--backup-dir=remote,global.track_renames:bak",
                        "src", "dst"}
+        << none << true << false;
+    QTest::newRow("a backup folder's global.fix_case")
+        << QStringList{"sync", "--backup-dir", "remote,global.fix_case:bak",
+                       "src", "dst"}
         << none << true << true;
+    QTest::newRow("a global.backup_dir's value isn't opened with its holder")
+        << QStringList{"sync", "src",
+                       ":local,global.backup_dir='r,global.track_renames:b':d"}
+        << none << true << false;
     QTest::newRow("a local path with a comma")
         << QStringList{"sync", "src", "/data/a,global.fix_case:b"} << none
         << false << false;
@@ -721,7 +730,9 @@ private slots:
   // rclone sets a path's global. options when it opens the path: the
   // source, the destination, the backup folder, then each --compare-dest or
   // else each --copy-dest, and a remote nested in an option after the one
-  // holding it. The last one wins. A pattern and the value of any other
+  // holding it. The last one wins, though by the time rclone opens the
+  // backup and --compare-dest folders it reads only the caps, --fix-case and
+  // those lists (measured on v1.76.0). A pattern and the value of any other
   // flag are never opened.
   void readsGlobalsInTheOrderRcloneOpensPaths_data() {
     QTest::addColumn<QStringList>("arguments");
@@ -764,14 +775,79 @@ private slots:
                        ":alias,remote=':local,global.max_delete=2:d',"
                        "global.max_delete=1:"}
         << none << QStringList{"--max-delete=1", "--max-delete=2"};
-    QTest::newRow("bisync's backup folder for each side")
+    // Bisync's run reads a config copy made before it opens these.
+    QTest::newRow("bisync's backup folders count for nothing")
         << QStringList{"bisync", "--backup-dir2", "r,global.max_delete=2:b2",
                        "--backup-dir", "r,global.max_delete=0:b", "p1", "p2"}
-        << none << QStringList{"--max-delete=0", "--max-delete=2"};
+        << none << none;
     QTest::newRow("a backup folder from the environment")
         << QStringList{"sync", "s", "d"}
         << QStringList{"RCLONE_BACKUP_DIR=r,global.max_delete=7:eb"}
         << QStringList{"--max-delete=7"};
+    QTest::newRow("a path's global.backup_dir replaces --backup-dir")
+        << QStringList{"sync", "--backup-dir", "r,global.max_delete=1:b1", "s",
+                       ":local,global.backup_dir='r,global.max_delete=5:b2':d"}
+        << none
+        << QStringList{"--backup-dir=r,global.max_delete=5:b2",
+                       "--max-delete=5"};
+    QTest::newRow("a compare-dest folder, only the caps and --fix-case")
+        << QStringList{"sync", "--compare-dest",
+                       "r,global.backup_dir=x,global.track_renames,"
+                       "global.fix_case,global.max_delete=2:c",
+                       "s", "d"}
+        << none << QStringList{"--fix-case=true", "--max-delete=2"};
+    QTest::newRow("a backup folder, only the caps and --fix-case")
+        << QStringList{"sync", "--backup-dir",
+                       "r,global.track_renames,global.suffix=.x,"
+                       "global.max_delete_size=1M:b",
+                       "s", "d"}
+        << none << QStringList{"--max-delete-size=1M"};
+    QTest::newRow("a path's global.compare_dest replaces the list")
+        << QStringList{"sync", "--compare-dest", "r,global.max_delete=1:c1",
+                       "s",
+                       ":local,global.compare_dest='\"r,global.max_delete=4:c2"
+                       "\"':d"}
+        << none
+        << QStringList{"--compare-dest=\"r,global.max_delete=4:c2\"",
+                       "--max-delete=4"};
+    QTest::newRow("a backup folder's global.compare_dest replaces the list")
+        << QStringList{"sync", "--compare-dest", "r,global.max_delete=1:c1",
+                       "--backup-dir",
+                       "r,global.compare_dest='\"r,global.max_delete=3:c2\"':b",
+                       "s", "d"}
+        << none << QStringList{"--max-delete=3"};
+    QTest::newRow("global.compare_dest unquoted splits at its commas")
+        << QStringList{"sync", "s",
+                       ":local,global.compare_dest='r,global.max_delete=4:c':d"}
+        << none << QStringList{"--compare-dest=r,global.max_delete=4:c"};
+    QTest::newRow("RCLONE_COMPARE_DEST is a list")
+        << QStringList{"sync", "s", "d"}
+        << QStringList{"RCLONE_COMPARE_DEST=\"r,global.max_delete=6:c\""}
+        << QStringList{"--max-delete=6"};
+    QTest::newRow("RCLONE_COMPARE_DEST unquoted splits at its commas")
+        << QStringList{"sync", "s", "d"}
+        << QStringList{"RCLONE_COMPARE_DEST=r,global.max_delete=6:c"} << none;
+    QTest::newRow("--compare-dest adds to RCLONE_COMPARE_DEST")
+        << QStringList{"sync", "--compare-dest", "r,global.max_delete=1:c2", "s",
+                       "d"}
+        << QStringList{"RCLONE_COMPARE_DEST=\"r,global.max_delete=6:c\""}
+        << QStringList{"--max-delete=6", "--max-delete=1"};
+    QTest::newRow("RCLONE_COPY_DEST is a list")
+        << QStringList{"sync", "s", "d"}
+        << QStringList{"RCLONE_COPY_DEST=x,\"r,global.max_delete=8:c\""}
+        << QStringList{"--max-delete=8"};
+    QTest::newRow("every upstream of a union")
+        << QStringList{"sync", "s",
+                       ":union,upstreams=':local:a :local,global.max_delete=1:b':"}
+        << none << QStringList{"--max-delete=1"};
+    QTest::newRow("a quoted union upstream")
+        << QStringList{"sync", "s",
+                       ":union,upstreams='\"r,global.max_delete=2:b\" :local:a':"}
+        << none << QStringList{"--max-delete=2"};
+    QTest::newRow("a combine upstream after its dir=")
+        << QStringList{"sync", "s",
+                       ":combine,upstreams='d=:local,global.max_delete=1:b':d"}
+        << none << QStringList{"--max-delete=1"};
   }
 
   void readsGlobalsInTheOrderRcloneOpensPaths() {

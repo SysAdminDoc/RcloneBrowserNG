@@ -23,10 +23,10 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Complexity: M
 
 - [ ] P2 — Read `global.` options from a remote's config section
-  Why: rclone v1.76.0 applies a `global.<option>` from a remote's section in rclone.conf when it opens that remote, the same as one in a connection string (fs/newfs.go:98-145). EffectiveArguments reads the connection string's only, so a section carrying `global.fix_case` or `global.backup_dir` reaches the run without the summary knowing. A section's `global.max_delete` also stops the deletion check's own dry run partway, since the dry run renames that option only where a path spells it out. The summary then quotes rclone's error instead of listing every file. The review of c305041 measured that with the cap inside an alias's value (`remote = :local,global.max_delete=1:D`): the dry run exits 7 after listing 1 of 5 deletes.
+  Why: rclone v1.76.0 applies a `global.<option>` from a remote's section in rclone.conf when it opens that remote, the same as one in a connection string (fs/newfs.go:98-145). EffectiveArguments reads the connection string's only, so a section carrying `global.fix_case` or `global.backup_dir` reaches the run without the summary knowing. A section's `global.max_delete` also stops the deletion check's own dry run partway, since the dry run renames that option only where a path spells it out. The summary then quotes rclone's error instead of listing every file. The review of c305041 measured that with the cap inside an alias's value (`remote = :local,global.max_delete=1:D`): the dry run exits 7 after listing 1 of 5 deletes. A path held in an `RCLONE_` variable does the same to the dry run, though the summary now reads its cap. `RCLONE_COMPARE_DEST` set to `":local,global.max_delete=1:C"` stopped a `--dry-run` sync after 1 of 5 deletes (v1.76.0, 2026-11-16), and DryRunEnvironment only drops `RCLONE_MAX_DELETE` and `RCLONE_MAX_DELETE_SIZE`.
   Evidence: `src/sync_preview.cpp` EffectiveArguments and ConnectionOptions; `src/job_options.cpp` DryRunArguments; read in fs/newfs.go, not measured for the config section.
   Touches: `src/sync_preview.{h,cpp}`, `src/transfer_dialog.cpp`, `tests/sync_preview_test.cpp`
-  Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and a section's `global.max_delete` or `global.max_delete_size` doesn't stop the check's dry run, with real-rclone rows in sync_preview_test for both.
+  Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and a section's `global.max_delete` or `global.max_delete_size` doesn't stop the check's dry run, nor does one in a path an `RCLONE_` variable holds, with real-rclone rows in sync_preview_test for both.
   Complexity: M
 
 - [ ] P2 — Keep a dry run dry when rclone.conf or the environment sets `global.dry_run`
@@ -219,20 +219,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Evidence: `src/sync_preview.cpp` Parse; not measured.
   Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
   Acceptance: measured first with a bisync dry run over a file changed on both sides; the summary says how many files it renames, from a captured log as a fixture row.
-  Complexity: S
-
-- [ ] P3 — Read a `global.max_delete` from a bisync's backup folder
-  Why: bisync turns the count cap off for its own deletes, and the summary skips the count warning for a bisync. A backup folder path set with `--backup-dir1` or `--backup-dir2` can carry `global.max_delete`, which rclone applies when it opens that folder, so the cap can come back.
-  Evidence: `src/sync_preview.cpp` CapWarnings bisync branch; read in cmd/bisync, not measured.
-  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
-  Acceptance: measured first on v1.76.0 with `--backup-dir1 ':local,global.max_delete=0:bak'`; if the real bisync stops, the summary warns about it, as a data row.
-  Complexity: S
-
-- [ ] P3 — Read `global.` options from every upstream of a union or combine
-  Why: a union's `upstreams` and a combine's `upstreams` hold a space-separated list of remotes, and rclone opens each one, so any of them can set `global.max_delete` or `global.backup_dir` for the run. EffectiveArguments reads a nested value as one path, so it reads the first upstream's options and none after it. The summary then misses a cap or a backup folder the run gets. The check's own dry run renames those options in every upstream (JobOptions::DryRunArguments goes by the text), so it still lists every file.
-  Evidence: `src/sync_preview.cpp` AppendGlobals reads each option value through ConnectionOptions once; read in backend/union and backend/combine (fs.SpaceSepList), not measured.
-  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
-  Acceptance: measured first on v1.76.0 with `:union,upstreams=':local:A :local,global.max_delete=1:B':` as the destination; the summary reads each upstream's options (the `dir=` prefix of a combine's entries left off), as data rows for union and combine.
   Complexity: S
 
 - [ ] P3 — Check pane moves and delete batches for `global.` options in rclone.conf

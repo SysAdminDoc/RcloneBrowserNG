@@ -47,8 +47,12 @@ RunFlags FlagsIn(const QStringList &arguments);
 // RCLONE_<FLAG> in rclone's environment is that flag's default, so it goes
 // first and the command line wins over it. A global.<option> in a
 // connection string (":local,global.fix_case:dir") is set when rclone opens
-// that remote, after the command line, so it goes last. A remote's config
-// section can carry global. options as well, which this doesn't read.
+// that remote, after the command line, so it goes last. rclone sets up the
+// run before it opens a backup or --compare-dest folder, so that folder's
+// options count only for the caps and --fix-case (and a backup folder's
+// for the --compare-dest and --copy-dest lists), and a bisync's backup
+// folders count for nothing. A remote's config section can carry global.
+// options as well, which this doesn't read.
 QStringList EffectiveArguments(const QStringList &arguments,
                                const QProcessEnvironment &environment);
 

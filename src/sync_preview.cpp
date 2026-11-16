@@ -79,7 +79,53 @@ const ReadOption kReadOptions[] = {
     {"files-from", nullptr, true},
     {"files-from-raw", nullptr, true},
     {"files-from0", nullptr, true},
+    {"compare-dest", "compare_dest", true},
+    {"copy-dest", "copy_dest", true},
 };
+
+// The fields of a list rclone reads with Go's encoding/csv: a SpaceSepList
+// like a union's upstreams (fs/config_list.go), or a stringArray flag's
+// environment variable, split on commas (fs/config/flags). A field can be
+// quoted, with a doubled quote for one. Empty when Go would refuse it.
+QStringList ListFields(const QString &text, QChar separator) {
+  QStringList fields;
+  qsizetype i = 0;
+  while (i < text.size()) {
+    QString field;
+    if (text.at(i) == QLatin1Char('"')) {
+      for (i++;; i++) {
+        if (i >= text.size()) {
+          return QStringList(); // no closing quote
+        }
+        if (text.at(i) == QLatin1Char('"')) {
+          if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('"')) {
+            i++;
+          } else {
+            break;
+          }
+        }
+        field += text.at(i);
+      }
+      i++; // the closing quote
+      if (i < text.size() && text.at(i) != separator) {
+        return QStringList();
+      }
+    } else {
+      for (; i < text.size() && text.at(i) != separator; i++) {
+        if (text.at(i) == QLatin1Char('"')) {
+          return QStringList(); // a bare quote
+        }
+        field += text.at(i);
+      }
+    }
+    fields << field;
+    if (i < text.size() && i + 1 == text.size()) {
+      fields << QString(); // a separator at the end leaves an empty field
+    }
+    i++; // the separator
+  }
+  return fields;
+}
 
 bool IsConfigParam(QChar c) {
   const char16_t u = c.unicode();
@@ -209,7 +255,32 @@ void AppendGlobals(const QString &path, QStringList &globals, int depth) {
     return;
   }
   for (const QPair<QString, QString> &option : options) {
-    AppendGlobals(option.second, globals, depth + 1);
+    // A global. or override. value is a setting, so a path in one (a
+    // global.backup_dir, say) isn't opened with the remote that holds it.
+    if (option.first.startsWith(QLatin1String("global.")) ||
+        option.first.startsWith(QLatin1String("override."))) {
+      continue;
+    }
+    // A union's or a combine's upstreams (and a union's older remotes) is a
+    // list, and rclone opens every entry. A combine's entries are
+    // dir=remote (backend/combine), while a union's start with the remote.
+    if (option.first != QLatin1String("upstreams") &&
+        option.first != QLatin1String("remotes")) {
+      AppendGlobals(option.second, globals, depth + 1);
+      continue;
+    }
+    for (QString upstream : ListFields(option.second, QLatin1Char(' '))) {
+      const qsizetype equals = upstream.indexOf(QLatin1Char('='));
+      qsizetype stop = 0;
+      while (stop < upstream.size() && upstream.at(stop) != QLatin1Char(':') &&
+             upstream.at(stop) != QLatin1Char(',')) {
+        stop++;
+      }
+      if (equals > 0 && equals < stop) {
+        upstream = upstream.mid(equals + 1);
+      }
+      AppendGlobals(upstream, globals, depth + 1);
+    }
   }
 }
 
@@ -301,11 +372,8 @@ QStringList EffectiveArguments(const QStringList &arguments,
   }
 
   // rclone sets a path's global. options when it opens the path, so one
-  // from a later path wins. It opens the source and the destination, then
-  // the backup folder, then each --compare-dest or else each --copy-dest
-  // (cmd.NewFsSrcDst, then newSyncCopyMove in fs/sync/sync.go, v1.76.0).
-  // Bisync opens Path1's backup folder before Path2's, where --backup-dir1
-  // and --backup-dir2 stand in for --backup-dir. Only those flags name a
+  // from a later path wins. It opens the source and the destination first
+  // (cmd.NewFsSrcDst), and the rest come below. Only these flags name a
   // path, and a pattern is never opened, whatever it looks like.
   static const QStringList kPatternFlags{QStringLiteral("--exclude"),
                                          QStringLiteral("--include"),
@@ -342,28 +410,72 @@ QStringList EffectiveArguments(const QStringList &arguments,
     } else if (i + 1 < all.size()) {
       value = all.at(++i); // even one that starts with -
     }
+    // Both are lists. An environment variable's value is a CSV list, and
+    // each one on the command line adds to it.
+    const QStringList values =
+        i < defaults.size() ? ListFields(value, QLatin1Char(','))
+                            : QStringList{value};
     if (flag == CompareDest) {
-      compareDests << value;
+      compareDests << values;
     } else if (flag == CopyDest) {
-      copyDests << value;
+      copyDests << values;
     } else {
       backupDirs[flag] = value;
     }
   }
-  QStringList opened = positional;
-  if (arguments.value(0) == QLatin1String("bisync")) {
-    opened << (backupDirs[BackupDir1].isEmpty() ? backupDirs[BackupDir]
-                                                : backupDirs[BackupDir1])
-           << (backupDirs[BackupDir2].isEmpty() ? backupDirs[BackupDir]
-                                                : backupDirs[BackupDir2]);
-  } else {
-    opened << backupDirs[BackupDir];
-  }
-  opened << (compareDests.isEmpty() ? copyDests : compareDests);
 
   QStringList globals;
-  for (const QString &path : opened) {
+  for (const QString &path : positional) {
     AppendGlobals(path, globals, 0);
+  }
+  if (arguments.value(0) == QLatin1String("bisync")) {
+    // Bisync runs on a copy of the config made once both paths are open
+    // (fs.AddConfig in cmd/bisync/operations.go), and a backup folder it
+    // opens later sets its options on the process's own config, which the
+    // run doesn't read. Measured on v1.76.0: --backup-dir2 with
+    // global.max_delete_size=1b moved every file and stopped nothing.
+    return defaults + arguments + globals;
+  }
+  // A path's global.backup_dir, global.compare_dest or global.copy_dest
+  // replaces the flag's value, a list for the last two, and then rclone
+  // never opens what the flag names.
+  QString backup = backupDirs[BackupDir];
+  const auto replacePaths = [&backup, &compareDests,
+                             &copyDests](const QStringList &set) {
+    for (const QString &global : set) {
+      const QString name = global.section(QLatin1Char('='), 0, 0);
+      const QString value = global.section(QLatin1Char('='), 1);
+      if (name == QLatin1String("--backup-dir")) {
+        backup = value;
+      } else if (name == QLatin1String("--compare-dest")) {
+        compareDests = ListFields(value, QLatin1Char(','));
+      } else if (name == QLatin1String("--copy-dest")) {
+        copyDests = ListFields(value, QLatin1Char(','));
+      }
+    }
+  };
+  replacePaths(globals);
+  // newSyncCopyMove (fs/sync/sync.go) takes --track-renames and settles the
+  // backup folder before it opens that folder, then reads the --compare-dest
+  // list, or else the --copy-dest one, and opens each entry. So what those
+  // folders set counts only where rclone reads it later, which is those two
+  // lists (from the backup folder), the caps and --fix-case. Measured on
+  // v1.76.0: a backup folder's global.track_renames left the rename
+  // untracked, and its global.fix_case fixed the case.
+  QStringList later;
+  AppendGlobals(backup, later, 0);
+  replacePaths(later);
+  for (const QString &path :
+       compareDests.isEmpty() ? copyDests : compareDests) {
+    AppendGlobals(path, later, 0);
+  }
+  for (const QString &global : later) {
+    const QString name = global.section(QLatin1Char('='), 0, 0);
+    if (name == QLatin1String("--max-delete") ||
+        name == QLatin1String("--max-delete-size") ||
+        name == QLatin1String("--fix-case")) {
+      globals << global;
+    }
   }
   return defaults + arguments + globals;
 }
