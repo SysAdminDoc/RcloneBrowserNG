@@ -332,8 +332,7 @@ void RcJobWidget::poll() {
   }
   mPollInFlight = true;
 
-  mEngine->coreStats(
-      mGroup, this,
+  readGroup(
       [this](const QJsonObject &stats, const QString &statsError) {
         if (statsError.isEmpty()) {
           applyStats(stats);
@@ -373,8 +372,7 @@ void RcJobWidget::poll() {
                 // --max-delete stop is never missed and the transfer count
                 // is final. Polling stays held off until finish().
                 mPollInFlight = true;
-                mEngine->coreStats(
-                    mGroup, this,
+                readGroup(
                     [this, success, jobError,
                      exitCode](const QJsonObject &finalStats,
                                const QString &finalError) {
@@ -403,6 +401,41 @@ void RcJobWidget::poll() {
               }
             });
       });
+}
+
+void RcJobWidget::readGroup(
+    const std::function<void(const QJsonObject &, const QString &)> &done) {
+  mEngine->coreStats(
+      mGroup, this,
+      [this, done](const QJsonObject &stats, const QString &statsError) {
+        if (!mTrackDeletes || !statsError.isEmpty()) {
+          done(stats, statsError);
+          return;
+        }
+        // Read after the stats, so by the time the job has ended this lists
+        // at least the deletes they count.
+        mEngine->transferred(
+            mGroup, this,
+            [this, done, stats, statsError](const QJsonObject &listed,
+                                            const QString &listError) {
+              if (listError.isEmpty()) {
+                RcJobResult::AddDeletes(listed, &mGroupDeletes);
+              }
+              done(stats, statsError);
+            });
+      });
+}
+
+qint64 RcJobWidget::deletedBytesSoFar() const {
+  if (!mTrackDeletes || mCarriedDeletedBytes < 0 ||
+      mGroupDeletes.size() != mThisAttempt.deletes) {
+    return -1;
+  }
+  qint64 bytes = mCarriedDeletedBytes;
+  for (const qint64 size : mGroupDeletes) {
+    bytes += size;
+  }
+  return bytes;
 }
 
 void RcJobWidget::applyStats(const QJsonObject &stats) {
@@ -459,6 +492,8 @@ void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
   mAttempts = qMax(1, job.attempts);
   mRetrySleepMs = qMax<qint64>(0, job.retrySleepMs);
   mDaemonMain = job.daemonMain;
+  mTrackDeletes = mAttempts > 1 && !mRetryEndpoint.isEmpty() &&
+                  mRetryEndpoint != QLatin1String("sync/bisync");
   if (!job.routeNote.isEmpty()) {
     ui.output->appendPlainText(
         QString("Live progress isn't shown for this run because %1. It runs "
@@ -486,9 +521,12 @@ bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
   bool fatal = haveStats && stats.value("fatalError").toBool();
   bool retryable = haveStats && stats.value("retryError").toBool();
   if (retryable && mRetryFlagCarried) {
-    // The flag was already up when this attempt started. A sync returns a
-    // plain error ahead of a no-retry one, so a no-retry error back means
-    // this attempt had nothing a retry could fix.
+    // The flag was already up when this attempt started, and rc can't say
+    // what this one added. A sync returns a plain error ahead of a no-retry
+    // one, so a no-retry error back means it had no plain one to return.
+    // rclone also counts errors it never returns (a failed hash or modtime
+    // update), which the CLI would retry and this can't see, which is why
+    // an attempt only shares a group when the caps leave no other way.
     retryable = !RcJobResult::IsNoRetryError(jobError);
   }
   QString lastError =
@@ -586,8 +624,9 @@ void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
                            mRetryFlagCarried)) {
     // A --max-transfer stop with --cutoff-mode soft or cautious counts no
     // fatal error. A group's retry flag from an earlier attempt says nothing
-    // here: the job returned the stop, a no-retry error, so it had no plain
-    // one to return.
+    // here, and the job returned the stop, a no-retry error, so it had no
+    // plain one to return (see retryAfterFailure for the ones it counts
+    // without returning).
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
   }
@@ -606,75 +645,96 @@ void RcJobWidget::startNextAttempt() {
     if (mFinished || !mRetryPending) {
       return;
     }
-    // A group of its own for the next attempt where the caps allow it (see
-    // mCarried).
-    const RcJobResult::NextAttempt next = RcJobResult::PlanNextAttempt(
-        mRetryPayload, mAttemptPayload, mAttempt + 1,
-        static_cast<qint64>(mCarried.bytes + mThisAttempt.bytes),
-        mCarried.deletes + mThisAttempt.deletes, mDaemonMain);
-    const QJsonObject payload = next.payload;
-    const bool sameGroup = next.sameGroup;
-    const QString group = payload.value(QStringLiteral("_group")).toString();
-    // The engine is the context, so a job started after this card went
-    // away is stopped rather than left running with nothing watching it.
-    const QPointer<RcJobWidget> self(this);
-    RcloneRcEngine *engine = mEngine;
-    engine->resubmit(
-        mRetryEndpoint, payload, engine,
-        [self, engine, group, payload, sameGroup](int jobId,
-                                                  const QString &error) {
-          if (!self || self->mFinished) {
-            if (jobId >= 0) {
-              engine->stopJob(jobId, engine, nullptr);
-            }
+    // The caps the next attempt gets from the daemon are the ones it has
+    // now, which another client can have changed since it connected. One
+    // it won't say leaves them unknown.
+    mEngine->daemonSettings(
+        this, [this](const QJsonObject &values, const QString &error) {
+          mDaemonMain = error.isEmpty() ? values.value("main").toObject()
+                                        : QJsonObject();
+          if (mFinished || !mRetryPending) {
             return;
           }
-          self->mRetryPending = false;
-          if (jobId < 0) {
-            self->mPollInFlight = false;
-            self->finish(false, error);
-            return;
-          }
-          self->mAttempt++;
-          self->mJobId = jobId;
-          self->mGroup =
-              group.isEmpty() ? QString("job/%1").arg(jobId) : group;
-          self->mAttemptPayload = payload;
-          if (sameGroup) {
-            // The group goes on counting, its elapsed time included, so
-            // only its errors need a base.
-            self->mErrorBase = self->mGroupErrors;
-            self->mRetryFlagCarried =
-                self->mRetryFlagCarried || self->mGroupRetryFlag;
-          } else {
-            Totals &carried = self->mCarried;
-            const Totals &done = self->mThisAttempt;
-            carried.bytes += done.bytes;
-            carried.totalBytes += done.totalBytes;
-            carried.transfers += done.transfers;
-            carried.checks += done.checks;
-            // The CLI's elapsed time runs on through the wait.
-            carried.elapsed +=
-                done.elapsed + self->mBetweenAttempts.elapsed() / 1000.0;
-            carried.deletes += done.deletes;
-            self->mThisAttempt = Totals();
-            self->mErrorBase = 0;
-            self->mGroupErrors = 0;
-            self->mGroupRetryFlag = false;
-            self->mRetryFlagCarried = false;
-          }
-          self->mJobEnded = false;
-          self->mFinalStats = false;
-          self->mPollInFlight = false;
-          self->ui.output->appendPlainText(
-              QString("Attempt %1/%2 started as rclone rc job %3.")
-                  .arg(self->mAttempt)
-                  .arg(self->mAttempts)
-                  .arg(jobId));
-          UiPolish::SetStatus(self->ui.showDetails, "running", "Running");
-          self->poll();
+          submitNextAttempt();
         });
   });
+}
+
+void RcJobWidget::submitNextAttempt() {
+  // A group of its own for the next attempt where the caps allow it (see
+  // mCarried).
+  const qint64 deletedBytes = deletedBytesSoFar();
+  const RcJobResult::NextAttempt next = RcJobResult::PlanNextAttempt(
+      mRetryPayload, mAttemptPayload, mAttempt + 1,
+      static_cast<qint64>(mCarried.bytes + mThisAttempt.bytes),
+      mCarried.deletes + mThisAttempt.deletes, mDaemonMain, deletedBytes);
+  const QJsonObject payload = next.payload;
+  const bool sameGroup = next.sameGroup;
+  const QString group = payload.value(QStringLiteral("_group")).toString();
+  // The engine is the context, so a job started after this card went
+  // away is stopped rather than left running with nothing watching it.
+  const QPointer<RcJobWidget> self(this);
+  RcloneRcEngine *engine = mEngine;
+  engine->resubmit(
+      mRetryEndpoint, payload, engine,
+      [self, engine, group, payload, sameGroup,
+       deletedBytes](int jobId, const QString &error) {
+        if (!self || self->mFinished) {
+          if (jobId >= 0) {
+            engine->stopJob(jobId, engine, nullptr);
+          }
+          return;
+        }
+        self->mRetryPending = false;
+        if (jobId < 0) {
+          self->mPollInFlight = false;
+          self->finish(false, error);
+          return;
+        }
+        self->mAttempt++;
+        self->mJobId = jobId;
+        self->mGroup =
+            group.isEmpty() ? QString("job/%1").arg(jobId) : group;
+        self->mAttemptPayload = payload;
+        if (sameGroup) {
+          // The group goes on counting, its elapsed time included, so
+          // only its errors need a base.
+          self->mErrorBase = self->mGroupErrors;
+          self->mRetryFlagCarried =
+              self->mRetryFlagCarried || self->mGroupRetryFlag;
+        } else {
+          Totals &carried = self->mCarried;
+          const Totals &done = self->mThisAttempt;
+          carried.bytes += done.bytes;
+          carried.totalBytes += done.totalBytes;
+          carried.transfers += done.transfers;
+          carried.checks += done.checks;
+          // The CLI's elapsed time runs on through the wait. cmd.Run also
+          // sleeps after a last attempt that failed, with nothing to wait
+          // for, which the card doesn't, so its time comes out one wait
+          // shorter there.
+          carried.elapsed +=
+              done.elapsed + self->mBetweenAttempts.elapsed() / 1000.0;
+          carried.deletes += done.deletes;
+          self->mCarriedDeletedBytes = deletedBytes;
+          self->mGroupDeletes.clear();
+          self->mThisAttempt = Totals();
+          self->mErrorBase = 0;
+          self->mGroupErrors = 0;
+          self->mGroupRetryFlag = false;
+          self->mRetryFlagCarried = false;
+        }
+        self->mJobEnded = false;
+        self->mFinalStats = false;
+        self->mPollInFlight = false;
+        self->ui.output->appendPlainText(
+            QString("Attempt %1/%2 started as rclone rc job %3.")
+                .arg(self->mAttempt)
+                .arg(self->mAttempts)
+                .arg(jobId));
+        UiPolish::SetStatus(self->ui.showDetails, "running", "Running");
+        self->poll();
+      });
 }
 
 void RcJobWidget::finish(bool success, const QString &error, int exitCode) {

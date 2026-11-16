@@ -736,6 +736,20 @@ void RcloneRcEngine::coreStats(const QString &group, QObject *context,
   postAsync("core/stats", payload, context, callback);
 }
 
+void RcloneRcEngine::transferred(const QString &group, QObject *context,
+                                 const RcCallback &callback) {
+  QJsonObject payload;
+  if (!group.isEmpty()) {
+    payload.insert("group", group);
+  }
+  postAsync("core/transferred", payload, context, callback);
+}
+
+void RcloneRcEngine::daemonSettings(QObject *context,
+                                    const RcCallback &callback) {
+  postAsync("options/get", QJsonObject(), context, callback);
+}
+
 void RcloneRcEngine::bandwidthLimit(const QString &rate, QObject *context,
                                     const RcCallback &callback) {
   QJsonObject payload;

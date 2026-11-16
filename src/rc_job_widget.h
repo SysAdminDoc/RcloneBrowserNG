@@ -91,9 +91,11 @@ private:
   //
   // rclone checks --max-delete, --max-delete-size and --max-transfer
   // against the group's own counts, where the CLI's carry across attempts.
-  // A new group gets those caps lowered by what the earlier ones used. When
-  // that can't be worked out (core/stats has no deleted-bytes count for
-  // --max-delete-size), the next attempt stays in the current group, and
+  // A new group gets those caps lowered by what the earlier ones used, the
+  // caps read from the daemon again before each attempt. When that can't
+  // be worked out (a --max-delete-size run whose deleted bytes
+  // core/transferred no longer lists in full, a daemon that doesn't say
+  // what its caps are), the next attempt stays in the current group, and
   // mErrorBase is that group's error count when the attempt started. The
   // group's retry flag can then be an earlier attempt's (mRetryFlagCarried),
   // and the attempt is judged by the error its job returned.
@@ -123,6 +125,16 @@ private:
   };
   Totals mCarried;
   Totals mThisAttempt;
+  // The files the current group deleted and their sizes, from
+  // core/transferred (RcJobResult::AddDeletes), which a --max-delete-size
+  // run needs for a group of its own. rclone lists only about the last 100
+  // files a group finished, so the card reads it on every poll, and the
+  // sizes only count once there are as many as the group's deletes.
+  // mCarriedDeletedBytes is the earlier groups' share, -1 once one of them
+  // couldn't be told.
+  QHash<QString, qint64> mGroupDeletes;
+  qint64 mCarriedDeletedBytes = 0;
+  bool mTrackDeletes = false;
   // From the stats read that ended an attempt to the next attempt's job,
   // which no group's elapsedTime covers: the --retries-sleep, mostly.
   QElapsedTimer mBetweenAttempts;
@@ -142,6 +154,12 @@ private:
   void setAdaptive(bool on);
   void showAdaptiveState();
   void applyStats(const QJsonObject &stats);
+  // Reads the group's core/stats, and its deletes when the run tracks them,
+  // then calls done with the stats answer.
+  void readGroup(
+      const std::function<void(const QJsonObject &, const QString &)> &done);
+  // What every group so far deleted in bytes, -1 when that can't be told.
+  qint64 deletedBytesSoFar() const;
   // Remembers the first --max-delete stop found in text.
   void noteDeleteCap(const QString &text);
   // Called with the stats read after a failed attempt. True when another
@@ -149,6 +167,8 @@ private:
   bool retryAfterFailure(const QJsonObject &stats, bool haveStats,
                          const QString &jobError);
   void startNextAttempt();
+  // Posts the next attempt once the daemon's caps are read again.
+  void submitNextAttempt();
   // The line cmd.Run prints when a limit stop (exit 8 or 10) ends the run.
   void noteLimitStop(const QJsonObject &stats, bool haveStats, int exitCode);
   // exitCode: the child rclone's, read from a core/command log; -1 takes 0

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -72,9 +73,10 @@ Uncounted ClassifyUncounted(const QString &error);
 
 // Whether a sync/* job's error is one rclone itself marks as not worth a
 // retry (fserrors.NoRetryError). A sync returns its fatal error first, then
-// its last plain one, and a no-retry error only when it had nothing else,
-// so this error means the attempt had nothing a retry could fix. A
-// backend's own no-retry errors aren't known here.
+// its last plain one, and a no-retry error only when it had nothing else.
+// That doesn't make the attempt's errors all no-retry ones: rclone also
+// counts errors it never hands back, a failed hash or modtime update among
+// them. A backend's own no-retry errors aren't known here.
 bool IsNoRetryError(const QString &error);
 
 // The sync/* call for attempt `attempt` of a run the job card retries.
@@ -82,12 +84,14 @@ bool IsNoRetryError(const QString &error);
 // the stats group's own counts, and the CLI's one group carries them across
 // attempts. A new group starts at zero, so it gets those caps lowered by
 // what the earlier attempts used: bytesSoFar and deletesSoFar, read from
-// core/stats. A cap the payload's _config leaves out is the daemon's own
-// setting, from daemonMain (options/get's "main", empty when the daemon
-// didn't answer it). A cap that can't be lowered exactly keeps the attempt
-// in the current group instead (sameGroup), with current's caps: core/stats
-// has no deleted-bytes count for --max-delete-size, and a daemon that never
-// said what its caps are may have any.
+// core/stats, and deletedBytesSoFar, the size of those deletes, which only
+// core/transferred lists (-1 when it couldn't be told). A cap the payload's
+// _config leaves out is the daemon's own setting, from daemonMain
+// (options/get's "main", empty when the daemon didn't answer it). A cap
+// that can't be lowered exactly keeps the attempt in the current group
+// instead (sameGroup), with current's caps: a --max-delete-size run whose
+// deleted bytes aren't known, or a daemon that never said what its caps
+// are, which may have any.
 struct NextAttempt {
   QJsonObject payload;
   bool sameGroup = false;
@@ -95,6 +99,14 @@ struct NextAttempt {
 NextAttempt PlanNextAttempt(const QJsonObject &original,
                             const QJsonObject &current, int attempt,
                             qint64 bytesSoFar, qint64 deletesSoFar,
-                            const QJsonObject &daemonMain);
+                            const QJsonObject &daemonMain,
+                            qint64 deletedBytesSoFar = -1);
+
+// The size of each file a core/transferred answer lists as deleted, keyed
+// by name and times so a later answer that lists it again doesn't count it
+// twice. DeleteFile refuses a file at the --max-delete or --max-delete-size
+// threshold before it counts it, so those entries are left out.
+void AddDeletes(const QJsonObject &transferred,
+                QHash<QString, qint64> *deletes);
 
 } // namespace RcJobResult

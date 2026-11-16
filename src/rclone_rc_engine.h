@@ -59,9 +59,10 @@ public:
     // Why a transfer went to core/command, where the card has no live
     // progress to show. Empty when it took sync/*.
     QString routeNote;
-    // The daemon's own settings (options/get's "main"), which a sync/* call
-    // takes for anything its _config leaves out, the caps included. Empty
-    // when the daemon didn't answer options/get.
+    // The daemon's own settings (options/get's "main") when it connected,
+    // which a sync/* call takes for anything its _config leaves out, the
+    // caps included. Empty when the daemon didn't answer options/get. The
+    // job card asks again before each retry (daemonSettings).
     QJsonObject daemonMain;
   };
 
@@ -86,6 +87,13 @@ public:
   void jobStatus(int jobId, QObject *context, const RcCallback &callback);
   void coreStats(const QString &group, QObject *context,
                  const RcCallback &callback);
+  // core/transferred for one group: about the last 100 files it finished,
+  // deletes included, each with its size.
+  void transferred(const QString &group, QObject *context,
+                   const RcCallback &callback);
+  // options/get, whose "main" holds the daemon's caps as they are now.
+  // Another client can change them while a run is going (options/set).
+  void daemonSettings(QObject *context, const RcCallback &callback);
 
   // Reads the daemon's bandwidth limit, or sets it when rate is not empty.
   // This is daemon-wide rather than per job: every transfer running on this

@@ -5,6 +5,7 @@
 #include "rclone_exit_code.h"
 #include "rclone_number.h"
 
+#include <QJsonArray>
 #include <QJsonValue>
 #include <QRegularExpression>
 
@@ -187,7 +188,11 @@ Uncounted ClassifyUncounted(const QString &error) {
                      "same"),
       QStringLiteral("can't use --backup-dir on a remote which doesn't "
                      "support server-side move or copy"),
-      // newLess (fs/sync/pipe.go), which newPipe wraps as fatal.
+      // newLess (fs/sync/pipe.go), which newPipe wraps as fatal. The pattern
+      // ones are for --order-by pattern,<globs>.
+      QStringLiteral("pattern requires at least one glob"),
+      QStringLiteral("empty pattern glob"),
+      QStringLiteral("bad pattern glob "),
       QStringLiteral("unknown --order-by comparison "),
       QStringLiteral("unknown --order-by sort direction "),
       QStringLiteral("bad mixed fraction --order-by "),
@@ -344,19 +349,22 @@ qint64 SizeCap(const QJsonObject &config, const QString &key,
 NextAttempt PlanNextAttempt(const QJsonObject &original,
                             const QJsonObject &current, int attempt,
                             qint64 bytesSoFar, qint64 deletesSoFar,
-                            const QJsonObject &daemonMain) {
+                            const QJsonObject &daemonMain,
+                            qint64 deletedBytesSoFar) {
   static const QString kGroup = QStringLiteral("_group");
   static const QString kConfig = QStringLiteral("_config");
   static const QString kMaxDelete = QStringLiteral("MaxDelete");
+  static const QString kMaxDeleteSize = QStringLiteral("MaxDeleteSize");
   static const QString kMaxTransfer = QStringLiteral("MaxTransfer");
   const QJsonObject config = original.value(kConfig).toObject();
   const qint64 deleteCount = CountCap(config, kMaxDelete, daemonMain);
-  const qint64 deleteBytes =
-      SizeCap(config, QStringLiteral("MaxDeleteSize"), daemonMain);
+  const qint64 deleteBytes = SizeCap(config, kMaxDeleteSize, daemonMain);
   const qint64 transferBytes = SizeCap(config, kMaxTransfer, daemonMain);
   // With nothing deleted or moved so far there's nothing to carry.
+  const bool deleteBytesCarry =
+      deleteBytes == -1 || (deleteBytes >= 0 && deletedBytesSoFar >= 0);
   const bool deletesCarry =
-      deletesSoFar <= 0 || (deleteCount != kUnknownCap && deleteBytes == -1);
+      deletesSoFar <= 0 || (deleteCount != kUnknownCap && deleteBytesCarry);
   const bool bytesCarry = bytesSoFar <= 0 || transferBytes != kUnknownCap;
 
   NextAttempt next;
@@ -376,6 +384,13 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
   if (deleteCount >= 0 && deletesSoFar > 0) {
     lowered.insert(kMaxDelete, qMax<qint64>(0, deleteCount - deletesSoFar));
   }
+  if (deleteBytes >= 0 && deletesSoFar > 0 && deletedBytesSoFar > 0) {
+    // rclone refuses a delete once the group's deleted bytes plus the
+    // file's size would pass the cap, so this is the same test.
+    lowered.insert(kMaxDeleteSize,
+                   QString("%1b").arg(qMax<qint64>(
+                       0, deleteBytes - deletedBytesSoFar)));
+  }
   if (transferBytes >= 0 && bytesSoFar > 0) {
     // A b suffix is bytes, where a bare number would be KiB.
     lowered.insert(kMaxTransfer,
@@ -386,6 +401,24 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
     next.payload.insert(kConfig, lowered);
   }
   return next;
+}
+
+void AddDeletes(const QJsonObject &transferred,
+                QHash<QString, qint64> *deletes) {
+  const QJsonArray entries = transferred.value("transferred").toArray();
+  for (const QJsonValue &value : entries) {
+    const QJsonObject entry = value.toObject();
+    if (entry.value("what").toString() != QLatin1String("deleting") ||
+        RcloneExitCode::IsDeleteCapError(entry.value("error").toString())) {
+      continue;
+    }
+    // Two deletes in one go can share their times, never their name too.
+    const QString key = entry.value("name").toString() + QChar('\n') +
+                        entry.value("started_at").toString() + QChar('\n') +
+                        entry.value("completed_at").toString();
+    // DeleteFile counts a size it can't tell as 0.
+    deletes->insert(key, qMax<qint64>(0, entry.value("size").toInteger(0)));
+  }
 }
 
 } // namespace RcJobResult
