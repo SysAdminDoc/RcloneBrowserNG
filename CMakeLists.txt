@@ -131,7 +131,7 @@ if(BUILD_TESTING)
     tests/filter_pattern_test.cpp
     src/filter_pattern.cpp
   )
-  target_include_directories(filter_pattern_test PRIVATE src)
+  target_include_directories(filter_pattern_test PRIVATE src tests)
   target_link_libraries(filter_pattern_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME filter_pattern_test COMMAND filter_pattern_test)
 

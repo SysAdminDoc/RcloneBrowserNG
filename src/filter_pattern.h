@@ -10,6 +10,10 @@
 namespace FilterPattern {
 
 struct Description {
+  // False for a blank line, and for a pattern rclone takes but the
+  // explainer can't model: a {{regexp}} section, \Q...\E, \b and the other
+  // assertions, \p{Greek} and other long Unicode names, or a match that
+  // needs a control character. Those get no line rather than a guess.
   bool valid = false;
   // False when rclone will refuse the glob outright. Measured against
   // v1.75.0: `--exclude "a{b"` exits 1 with "mismatched '{' and '}'" and
@@ -33,7 +37,8 @@ struct Description {
   // whenever no such example can be stated truthfully.
   QString missesExample;
   // The first "[!...]" or "[^...]" class as written. Since rclone 1.76.0
-  // both are negated and neither matches "/", which is worth saying.
+  // both are negated and neither matches "/", which is worth saying. Left
+  // empty when Go's regexp closes that class at a different "]".
   QString negatedClass;
 };
 

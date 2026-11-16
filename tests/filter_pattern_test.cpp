@@ -1,9 +1,182 @@
 #include "filter_pattern.h"
+#include "test_rclone.h"
 
+#include <QDir>
+#include <QFile>
+#include <QProcess>
+#include <QTemporaryDir>
 #include <QTest>
 
 using FilterPattern::Describe;
 using FilterPattern::DescribeAll;
+
+namespace {
+
+using Example = QPair<QString, QString>;
+
+QString Eacute() { return QString(QChar(0xE9)); }
+
+// Measured against rclone v1.76.0 on 2026-11-15 with `rclone lsf --exclude
+// <pattern>` over an empty directory, then checked file by file in
+// classesAndEscapesAreReadTheWayGoReadsThem. rclone passes a class and any
+// backslash to Go's regexp package as written, so these follow Go's regexp
+// syntax rather than a shell glob's.
+QList<Example> GoSyntaxExamples() {
+  return {
+      {"[!!-9;-Z^-z~].txt", Eacute() + ".txt"},
+      {"[!*-z].txt", "!.txt"},
+      {"[*].txt", "*.txt"},
+      {"[?].txt", "?.txt"},
+      {"[![:alpha:]].txt", "0.txt"},
+      {"[!!-Z^-}].txt", "~.txt"},
+      // Go reads [a[b] as the class and c] as two more characters.
+      {"[a[b]c]", "ac]"},
+      // Not a POSIX class outside another class, just the letters.
+      {"[:alpha:]", "a"},
+      {"\\d.txt", "0.txt"},
+      {"\\x41.txt", "A.txt"},
+      {"\\pL.txt", "x.txt"},
+      {"\\PL.txt", "0.txt"},
+      {"a\\_b", "a_b"},
+      {"[\\d].txt", "0.txt"},
+      {"[[:^alpha:]].txt", "0.txt"},
+      {"[\\x{41}]", "A"},
+      {"[\\p{L}]", "x"},
+      {"[\\p{^L}]", "0"},
+      // A ] right after [ is a member, so this class runs on through the
+      // [^/] the ? became.
+      {"[]?", "^"},
+  };
+}
+
+// rclone exits 1 with "bad glob pattern" or the glob error for each of
+// these, and nothing transfers.
+QList<Example> RefusedPatterns() {
+  return {
+      {"{{a,b},c}.txt", "mismatched '{{' and '}}'"},
+      {"[]", "missing closing ]"},
+      {"[]a]", "mismatched ']'"},
+      {"[[:bogus:]]", "invalid character class range [:bogus:]"},
+      {"[[:alpha:]", "mismatched '[' and ']'"},
+      {"[a\\]", "missing closing ]"},
+      {"\\x.txt", "invalid escape sequence \\x\\."},
+      {"\\1.txt", "invalid escape sequence \\1"},
+      {"\\C", "invalid escape sequence \\C"},
+      {"\\" + Eacute() + ".txt", "invalid escape sequence \\" + Eacute()},
+      {"\\p{Bogus}.txt", "invalid character class range \\p("},
+      {"\\pX", "invalid character class range \\pX"},
+      {"\\p^", "invalid character class range \\p\\"},
+      {"\\p\\{L}", "mismatched '{' and '}'"},
+      {"***", "too many stars"},
+      {"a***b", "too many stars"},
+      {"[!\\]].txt", "mismatched ']'"},
+      {"[!z-a].txt", "invalid character class range z-a"},
+      {"[!\\x].txt", "invalid escape sequence \\x]\\"},
+      {"[a-\\]]", "mismatched ']'"},
+      {"[\\x{110000}]", "invalid escape sequence \\x{110000"},
+      {"[\\x{}]", "invalid escape sequence \\x{}"},
+      {"[\\p^L]", "invalid character class range \\p^"},
+      {"[\\p{}]", "invalid character class range \\p{}"},
+  };
+}
+
+// rclone takes these, and the explainer leaves them alone rather than
+// guess: a {{regexp}} section, \Q...\E, an assertion, a trailing backslash
+// that turns rclone's closing $ into a literal, a match on a control
+// character (\12 is a newline), Unicode marks, and a long Unicode name. Go
+// carries a table of script names the explainer doesn't, so it can't tell
+// [\p{Greek}] from [\p{Bogus}], which rclone refuses.
+QStringList UndescribedPatterns() {
+  return {"{{.*}}.txt",   "a{\\{{b}}c", "\\Qa*\\E", "\\b",
+          "a\\",          "\\12.txt",   "\\pM",     "\\pC",
+          "[\\p{Greek}]", "[\\p{Bogus}]"};
+}
+
+// Every pattern the tests in this file describe, for the run against rclone.
+QStringList DescribedPatterns() {
+  QStringList patterns{"/file.tmp",
+                       "*.tmp",
+                       "build/**",
+                       "/build/**",
+                       "/**",
+                       "/**.tmp",
+                       "logs/",
+                       "/*/x",
+                       "/a*/**",
+                       "/?.txt",
+                       "*.{tmp,bak}",
+                       "file[0-9].txt",
+                       "log?.txt",
+                       "[abc].txt",
+                       "[!a].txt",
+                       "[^a].txt",
+                       "[!xa-c].txt",
+                       "[!a-z0-9_X].txt",
+                       "[!!-Z_a-z][ab].txt",
+                       "[!!-Z^-z]?.txt",
+                       "sub[^x]a.txt",
+                       "*.[!t]mp",
+                       "{a,{b,c}}",
+                       "a\\{b",
+                       "[!a[b]c]"};
+  for (const Example &example : GoSyntaxExamples()) {
+    patterns << example.first;
+  }
+  return patterns;
+}
+
+// Windows can't hold every example the explainer gives, [?].txt's for one.
+bool Creatable(const QString &path) {
+  for (const QChar c : path) {
+    if (c.unicode() < 0x20 || QStringLiteral("<>:\"|?*\\").contains(c)) {
+      return false;
+    }
+  }
+  for (const QString &part : path.split(QChar('/'))) {
+    if (part.isEmpty() || part.endsWith(QChar('.')) ||
+        part.endsWith(QChar(' '))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool Create(const QString &root, const QString &path) {
+  const qsizetype slash = path.lastIndexOf(QChar('/'));
+  if (slash > 0 && !QDir(root).mkpath(path.left(slash))) {
+    return false;
+  }
+  QFile file(root + QChar('/') + path);
+  return file.open(QIODevice::WriteOnly);
+}
+
+struct Listing {
+  bool ran = false;
+  int exitCode = -1;
+  QStringList files;
+};
+
+Listing ListWithExclude(const QString &rclone, const QString &config,
+                        const QString &pattern, const QString &directory) {
+  QProcess process;
+  process.start(rclone, {"lsf", "-R", "--files-only", "--config", config,
+                         "--exclude", pattern, directory});
+  Listing listing;
+  if (!process.waitForFinished(60000)) {
+    process.kill();
+    process.waitForFinished();
+    return listing;
+  }
+  listing.ran = process.exitStatus() == QProcess::NormalExit;
+  listing.exitCode = process.exitCode();
+  for (const QString &line : QString::fromUtf8(process.readAllStandardOutput())
+                                 .split(QChar('\n'), Qt::SkipEmptyParts)) {
+    listing.files << line.trimmed();
+  }
+  return listing;
+}
+
+} // namespace
 
 // Every claim below was measured against rclone v1.75.0 on 2026-09-05, by
 // running `rclone copy src dst --exclude <pattern>` over a tree holding
@@ -159,8 +332,124 @@ private slots:
   // is not a path and not something the pattern matches.
   void nestedAlternationTakesTheFirstTopLevelBranch() {
     QCOMPARE(Describe("{a,{b,c}}").matchesExample, QStringLiteral("a"));
-    QCOMPARE(Describe("{{a,b},c}.txt").matchesExample,
-             QStringLiteral("a.txt"));
+  }
+
+  // "{{" opens a raw regexp section in rclone, so "{{a,b},c}.txt" is a
+  // section that never closes. rclone v1.76.0 refuses it.
+  void aDoubleBraceStartsARegexpSection() {
+    const auto unclosed = Describe("{{a,b},c}.txt");
+    QVERIFY(!unclosed.wellFormed);
+    QCOMPARE(unclosed.problem, QStringLiteral("mismatched '{{' and '}}'"));
+    QVERIFY(!Describe("{{.*}}.txt").valid);
+  }
+
+  void classesAndEscapesAreReadTheWayGoReadsThem() {
+    for (const Example &example : GoSyntaxExamples()) {
+      const auto description = Describe(example.first);
+      QVERIFY2(description.valid && description.wellFormed,
+               qPrintable(example.first + " " + description.problem));
+      QVERIFY2(description.matchesExample == example.second,
+               qPrintable(example.first + " gave " +
+                          description.matchesExample));
+    }
+  }
+
+  void patternsRcloneRefusesAreReportedWithItsReason() {
+    for (const Example &example : RefusedPatterns()) {
+      const auto description = Describe(example.first);
+      QVERIFY2(description.valid, qPrintable(example.first));
+      QVERIFY2(!description.wellFormed, qPrintable(example.first));
+      QVERIFY2(description.problem == example.second,
+               qPrintable(example.first + " gave " + description.problem));
+      QVERIFY2(description.matchesExample.isEmpty(), qPrintable(example.first));
+    }
+  }
+
+  void patternsTheExplainerCantModelGetNoLine() {
+    for (const QString &pattern : UndescribedPatterns()) {
+      const auto description = Describe(pattern);
+      QVERIFY2(!description.valid, qPrintable(pattern));
+      QVERIFY2(description.wellFormed, qPrintable(pattern));
+      QVERIFY2(DescribeAll(pattern).isEmpty(), qPrintable(pattern));
+    }
+  }
+
+  // A negated class is only named when Go closes it at the same "]" as the
+  // glob does. Go ends "[!a[b]c]" at the first "]", leaving "c]" as plain
+  // characters.
+  void aNegatedClassIsNamedOnlyWhereGoClosesIt() {
+    QCOMPARE(Describe("[![:alpha:]].txt").negatedClass,
+             QStringLiteral("[![:alpha:]]"));
+    const auto nested = Describe("[!a[b]c]");
+    QVERIFY(nested.valid);
+    QVERIFY2(nested.negatedClass.isEmpty(), qPrintable(nested.negatedClass));
+    QCOMPARE(nested.matchesExample, QStringLiteral("xc]"));
+  }
+
+  // The claims above, checked against the rclone that runs the transfer:
+  // what the explainer calls fatal is refused, what it explains is taken,
+  // the example it gives is excluded and the "but not" example is kept.
+  void agreesWithTheInstalledRclone() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("no rclone; set RCLONE_BROWSER_TEST_RCLONE");
+    }
+    QTemporaryDir scratch;
+    QVERIFY(scratch.isValid());
+    const QString config = scratch.filePath("rclone.conf");
+    QVERIFY(QFile(config).open(QIODevice::WriteOnly));
+    const QString empty = scratch.filePath("empty");
+    QVERIFY(QDir().mkpath(empty));
+
+    for (const Example &example : RefusedPatterns()) {
+      const Listing listing =
+          ListWithExclude(rclone, config, example.first, empty);
+      QVERIFY2(listing.ran && listing.exitCode != 0,
+               qPrintable(example.first + " was taken by rclone"));
+    }
+    for (const QString &pattern : UndescribedPatterns()) {
+      const Listing listing = ListWithExclude(rclone, config, pattern, empty);
+      QVERIFY2(listing.ran, qPrintable(pattern));
+      // Only [\p{Bogus}] is refused, and the explainer makes no claim
+      // either way about these.
+      QVERIFY2((listing.exitCode == 0) == (pattern != "[\\p{Bogus}]"),
+               qPrintable(pattern + " exit " +
+                          QString::number(listing.exitCode)));
+    }
+
+    int tree = 0;
+    for (const QString &pattern : DescribedPatterns()) {
+      const auto description = Describe(pattern);
+      QVERIFY2(description.valid && description.wellFormed,
+               qPrintable(pattern));
+      const Listing taken = ListWithExclude(rclone, config, pattern, empty);
+      QVERIFY2(taken.ran && taken.exitCode == 0,
+               qPrintable(pattern + " was refused by rclone"));
+
+      const QString matches = description.matchesExample;
+      const QString misses = description.missesExample;
+      if (!Creatable(matches) || (!misses.isEmpty() && !Creatable(misses))) {
+        continue;
+      }
+      const QString root = scratch.filePath(QString::number(++tree));
+      QVERIFY(QDir().mkpath(root));
+      QVERIFY2(Create(root, matches), qPrintable(matches));
+      QVERIFY(Create(root, "keep/kept"));
+      if (!misses.isEmpty()) {
+        QVERIFY2(Create(root, misses), qPrintable(misses));
+      }
+      const Listing listing = ListWithExclude(rclone, config, pattern, root);
+      QVERIFY2(listing.ran && listing.exitCode == 0, qPrintable(pattern));
+      // Proves the listing ran over the tree. "/**" excludes all of it.
+      QVERIFY2(listing.files.contains("keep/kept") == (pattern != "/**"),
+               qPrintable(pattern));
+      QVERIFY2(!listing.files.contains(matches),
+               qPrintable(pattern + " kept " + matches));
+      if (!misses.isEmpty()) {
+        QVERIFY2(listing.files.contains(misses),
+                 qPrintable(pattern + " excluded " + misses));
+      }
+    }
   }
 
   // rclone treats an unbalanced glob as fatal: exit 1, nothing copied. Saying
