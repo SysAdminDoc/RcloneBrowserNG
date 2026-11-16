@@ -519,6 +519,14 @@ void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
     startCommandRoute(args, reason, context, callback);
     return;
   }
+  // The daemon ran the pair with its --compare-dest and dropped the task's
+  // --copy-dest. The CLI inherits the same setting and refuses the pair.
+  const QString conflict = RcSyncRequest::DaemonConflictReason(
+      request.payload.value(QLatin1String("_config")).toObject(), mDaemonMain);
+  if (!conflict.isEmpty()) {
+    startCommandRoute(args, conflict, context, callback);
+    return;
+  }
 
   const QPointer<QObject> contextGuard(context);
   resolveSourceIsDirectory(

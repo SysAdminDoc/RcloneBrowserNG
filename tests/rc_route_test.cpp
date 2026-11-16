@@ -604,6 +604,34 @@ private slots:
     QCOMPARE(filesUnder(dest), before);
   }
 
+  // A daemon started with RCLONE_COMPARE_DEST keeps it in every job, so with
+  // the task's --copy-dest sync/* ran the compare-dest and dropped the other.
+  // The CLI refuses the pair before it copies anything.
+  void aCopyDestWithTheDaemonsCompareDestIsRefused() {
+    const QString root = mDir.path();
+    const QString tag = QStringLiteral("env-pair");
+    const QString source = makeTree(tag + "-src");
+    const QString compare = QDir(root).filePath(tag + "-cmp");
+    const QString copyFrom = QDir(root).filePath(tag + "-cpy");
+    const QString dest = QDir(root).filePath(tag + "-dst");
+    QVERIFY(QDir().mkpath(compare));
+    QVERIFY(QDir().mkpath(copyFrom));
+    QVERIFY(QDir().mkpath(dest));
+    struct Restore {
+      ~Restore() { qunsetenv("RCLONE_COMPARE_DEST"); }
+    } restore;
+    QVERIFY(qputenv("RCLONE_COMPARE_DEST", compare.toUtf8()));
+
+    RcloneRcEngine engine;
+    const QStringList args{"copy", "--copy-dest", copyFrom, source, dest};
+    bool started = false;
+    RcloneRcEngine::StartedJob job;
+    runAndWait(engine, args, &started, &job);
+    QVERIFY2(job.routeNote.contains("--compare-dest with --copy-dest"),
+             qPrintable("route: " + job.routeNote + " / " + job.error));
+    QCOMPARE(filesUnder(dest), QStringList());
+  }
+
   // A download of several selected items puts its filter rules ahead of the
   // command, and the fixture's own --config reaches core/command as a pair.
   // Right after args[0] that pair split the first --filter from its rule, and

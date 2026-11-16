@@ -117,4 +117,12 @@ QStringList ConfigDumpArguments(const QStringList &args);
 // lines too. False when there is none.
 bool ParseConfigDump(const QByteArray &output, QJsonObject *dump);
 
+// Why a job whose _config is config can't run on a daemon whose own
+// settings are daemonMain (options/get's "main"), or empty. A job keeps
+// every setting its _config leaves out at the daemon's value, so the
+// daemon's --compare-dest or --copy-dest (an RCLONE_ variable it started
+// with, say) and the task's other one make the pair the CLI refuses.
+QString DaemonConflictReason(const QJsonObject &config,
+                             const QJsonObject &daemonMain);
+
 } // namespace RcSyncRequest

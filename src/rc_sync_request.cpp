@@ -687,4 +687,22 @@ bool ParseConfigDump(const QByteArray &output, QJsonObject *dump) {
   return true;
 }
 
+QString DaemonConflictReason(const QJsonObject &config,
+                             const QJsonObject &daemonMain) {
+  // rc.AddConfig (fs/rc/context.go, v1.76.0) copies the daemon's config and
+  // parses _config over it, so a key _config leaves out keeps the daemon's
+  // value. options/get gives an unset list as null.
+  const auto used = [&](const QString &key) {
+    const QJsonValue value =
+        config.contains(key) ? config.value(key) : daemonMain.value(key);
+    return !value.toArray().isEmpty();
+  };
+  if (used(QStringLiteral("CompareDest")) && used(QStringLiteral("CopyDest"))) {
+    return QStringLiteral(
+        "rclone refuses --compare-dest with --copy-dest, and the daemon "
+        "already has one of them set");
+  }
+  return QString();
+}
+
 } // namespace RcSyncRequest

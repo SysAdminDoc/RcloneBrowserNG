@@ -5,6 +5,7 @@
 using RcSyncRequest::Build;
 using RcSyncRequest::ConfigGlobalsReason;
 using RcSyncRequest::ConfigDumpArguments;
+using RcSyncRequest::DaemonConflictReason;
 using RcSyncRequest::DryRunGlobalReason;
 using RcSyncRequest::ParseConfigDump;
 using RcSyncRequest::IndexOptions;
@@ -954,6 +955,50 @@ private slots:
     QJsonObject dump;
     QCOMPARE(ParseConfigDump(output, &dump), parsed);
     QCOMPARE(dump.keys(), sections);
+  }
+
+  // options/get's "main" on a daemon started with RCLONE_COMPARE_DEST set
+  // has CompareDest as a list, and an unset one as null.
+  void aPairWithTheDaemonsOwnDestGoesToTheCli_data() {
+    QTest::addColumn<QByteArray>("config");
+    QTest::addColumn<QByteArray>("daemon");
+    QTest::addColumn<bool>("conflict");
+    QTest::newRow("task copy-dest, daemon compare-dest")
+        << QByteArray(R"({"CopyDest":["D:/cpy"]})")
+        << QByteArray(R"({"CompareDest":["D:/cmp"],"CopyDest":null})")
+        << true;
+    QTest::newRow("task compare-dest, daemon copy-dest")
+        << QByteArray(R"({"CompareDest":["D:/cmp"]})")
+        << QByteArray(R"({"CompareDest":null,"CopyDest":["D:/cpy"]})")
+        << true;
+    QTest::newRow("task compare-dest replaces the daemon's")
+        << QByteArray(R"({"CompareDest":["D:/cmp"]})")
+        << QByteArray(R"({"CompareDest":["D:/old"],"CopyDest":null})")
+        << false;
+    QTest::newRow("task copy-dest, daemon has neither")
+        << QByteArray(R"({"CopyDest":["D:/cpy"]})")
+        << QByteArray(R"({"CompareDest":null,"CopyDest":null})") << false;
+    QTest::newRow("daemon compare-dest, task has neither")
+        << QByteArray(R"({"Transfers":2})")
+        << QByteArray(R"({"CompareDest":["D:/cmp"],"CopyDest":[]})")
+        << false;
+    QTest::newRow("daemon options unknown")
+        << QByteArray(R"({"CopyDest":["D:/cpy"]})") << QByteArray("{}")
+        << false;
+  }
+
+  void aPairWithTheDaemonsOwnDestGoesToTheCli() {
+    QFETCH(QByteArray, config);
+    QFETCH(QByteArray, daemon);
+    QFETCH(bool, conflict);
+    const QString reason = DaemonConflictReason(
+        QJsonDocument::fromJson(config).object(),
+        QJsonDocument::fromJson(daemon).object());
+    QCOMPARE(!reason.isEmpty(), conflict);
+    if (conflict) {
+      QVERIFY2(reason.contains("--compare-dest with --copy-dest"),
+               qPrintable(reason));
+    }
   }
 };
 
