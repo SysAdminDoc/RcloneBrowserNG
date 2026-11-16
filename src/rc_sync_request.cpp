@@ -196,6 +196,15 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
       return options;
     }
 
+    // A _config Dump is accepted and nothing is dumped, even with LogLevel
+    // DEBUG beside it (measured on v1.76.0), and the daemon's own output
+    // isn't read after it starts. A separate rclone dumps.
+    if (token == "--dump") {
+      options.reason =
+          QStringLiteral("--dump does nothing for a job the daemon runs");
+      return options;
+    }
+
     // The retry loop belongs to the CLI (cmd.Run), not to the sync calls,
     // so _config Retries does nothing for a copy, move or sync over rc. The
     // job card runs the loop instead, and these two say how. Only bisync
@@ -318,10 +327,29 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
     options.config.insert("DeleteMode", chosen);
   }
 
-  // The CLI raises these to 1 when they're 0 or less (fs.ConfigInfo's
-  // Reload, fs/config.go on v1.76.0), and a _config sent over rc skips that
-  // step. On the daemon --low-level-retries 0 panics it, --checkers 0 hangs
-  // the run and --transfers 0 reports success with nothing copied.
+  // fs.ConfigInfo's Reload (fs/config.go on v1.76.0) refuses these two
+  // before the CLI runs anything, and a _config sent over rc skips it. The
+  // daemon used the --compare-dest and ignored the --copy-dest, and failed
+  // every file over a long --partial-suffix where the CLI stops at once.
+  // Sent to a separate rclone, the run ends with rclone's own error.
+  if (!options.config.value("CompareDest").toArray().isEmpty() &&
+      !options.config.value("CopyDest").toArray().isEmpty()) {
+    options.reason =
+        QStringLiteral("rclone refuses --compare-dest with --copy-dest");
+    return options;
+  }
+  // Go's len counts bytes.
+  if (options.config.value("PartialSuffix").toString().toUtf8().size() > 16) {
+    options.reason =
+        QStringLiteral("rclone refuses a --partial-suffix over 16 bytes");
+    return options;
+  }
+
+  // Reload also raises these to 1 when they're 0 or less, which a _config
+  // skips too. On the daemon --low-level-retries 0 or -1 crashes it,
+  // --checkers 0 hangs the run, --checkers -1 and --transfers -1 panic the
+  // job, and --transfers 0 copies nothing (a source with a folder fails
+  // setting the folder's time).
   for (const char *key : {"LowLevelRetries", "Transfers", "Checkers"}) {
     const QString name = QString::fromLatin1(key);
     if (options.config.contains(name) &&
@@ -417,7 +445,8 @@ Request Build(const QStringList &args, const QString &group,
   request.payload = payload;
   // The CLI's bisync runs through cmd.Run with Retry false, so it never
   // runs the whole bisync again whatever --retries says (cmd/bisync/cmd.go,
-  // v1.76.0). Its own copy retry gets --retries through _config above.
+  // v1.76.0). Its --resilient copy retry would read --retries from _config
+  // above, but --resilient itself sends the run to core/command today.
   request.retries =
       request.endpoint == QLatin1String("sync/bisync") ? 1 : options.retries;
   request.retriesSleepMs = options.retriesSleepMs;

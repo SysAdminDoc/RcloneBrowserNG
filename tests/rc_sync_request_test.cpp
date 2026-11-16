@@ -28,6 +28,10 @@ const char kOptionsInfo[] = R"JSON({
     {"Name": "retries_sleep", "FieldName": "RetriesInterval", "Type": "Duration", "NoPrefix": true},
     {"Name": "contimeout", "FieldName": "ConnectTimeout", "Type": "Duration", "NoPrefix": true},
     {"Name": "backup_dir", "FieldName": "BackupDir", "Type": "string", "NoPrefix": true},
+    {"Name": "compare_dest", "FieldName": "CompareDest", "Type": "stringArray", "NoPrefix": true},
+    {"Name": "copy_dest", "FieldName": "CopyDest", "Type": "stringArray", "NoPrefix": true},
+    {"Name": "partial_suffix", "FieldName": "PartialSuffix", "Type": "string", "NoPrefix": true},
+    {"Name": "dump", "FieldName": "Dump", "Type": "DumpFlags", "NoPrefix": true},
     {"Name": "name_transform", "FieldName": "NameTransform", "Type": "stringArray", "NoPrefix": true},
     {"Name": "update", "FieldName": "UpdateOlder", "Type": "bool", "NoPrefix": true},
     {"Name": "stats_file_name_length", "FieldName": "StatsFileNameLength", "Type": "int", "NoPrefix": true},
@@ -597,6 +601,77 @@ private slots:
       QVERIFY2(got.isDouble(), qPrintable(command + ": no number"));
       QCOMPARE(got.toInt(), sent);
     }
+  }
+
+  // Reload refuses --compare-dest with --copy-dest and a --partial-suffix
+  // over 16 bytes before the CLI runs anything (fs/config.go, v1.76.0). A
+  // daemon job skips Reload: it ran the pair and ignored --copy-dest, and
+  // failed every file over the suffix. A _config Dump dumped nothing. Each
+  // goes to core/command, where the CLI behaves as it does on its own.
+  void sendsWhatReloadRefusesToItsOwnRclone_data() {
+    QTest::addColumn<QStringList>("flags");
+    QTest::addColumn<QString>("refusal");
+    const QString e = QString(QChar(0xE9));
+    QTest::newRow("compare then copy")
+        << QStringList{"--compare-dest", "remote:cmp", "--copy-dest",
+                       "remote:cpy"}
+        << QStringLiteral("--copy-dest");
+    QTest::newRow("copy then compare, equals form")
+        << QStringList{"--copy-dest=remote:cpy", "--compare-dest=remote:cmp"}
+        << QStringLiteral("--copy-dest");
+    QTest::newRow("two compare-dests")
+        << QStringList{"--compare-dest", "remote:a", "--compare-dest",
+                       "remote:b"}
+        << QString();
+    QTest::newRow("copy-dest alone")
+        << QStringList{"--copy-dest", "remote:cpy"} << QString();
+    QTest::newRow("17-byte suffix")
+        << QStringList{"--partial-suffix", ".0123456789abcdef"}
+        << QStringLiteral("--partial-suffix");
+    QTest::newRow("16-byte suffix")
+        << QStringList{"--partial-suffix=.0123456789abcde"} << QString();
+    QTest::newRow("8 two-byte characters")
+        << QStringList{"--partial-suffix", e.repeated(8)} << QString();
+    QTest::newRow("9 characters, 17 bytes")
+        << QStringList{"--partial-suffix", e.repeated(8) + "x"}
+        << QStringLiteral("--partial-suffix");
+    QTest::newRow("dump") << QStringList{"--dump", "headers"}
+                          << QStringLiteral("--dump");
+    QTest::newRow("dump, equals form")
+        << QStringList{"--dump=bodies,requests"} << QStringLiteral("--dump");
+  }
+
+  void sendsWhatReloadRefusesToItsOwnRclone() {
+    QFETCH(QStringList, flags);
+    QFETCH(QString, refusal);
+    for (const QString &command : {"copy", "sync", "bisync"}) {
+      QStringList args = flags;
+      args.prepend(command);
+      args << "remote:src" << "remote:dst";
+      const Request request = Build(args, "g", realIndex());
+      if (refusal.isEmpty()) {
+        QVERIFY2(request.usable, qPrintable(command + ": " + request.reason));
+      } else {
+        QVERIFY2(!request.usable, qPrintable(command + ": was mapped"));
+        QVERIFY2(request.reason.contains(refusal),
+                 qPrintable(command + ": " + request.reason));
+      }
+    }
+  }
+
+  void keepsEveryCompareDestTheTaskGives() {
+    const QStringList args{"copy",           "--compare-dest", "remote:a",
+                           "--compare-dest", "remote:b",       "remote:src",
+                           "remote:dst"};
+    const Request request = Build(args, "g", realIndex());
+    QVERIFY2(request.usable, qPrintable(request.reason));
+    const QJsonArray dests = request.payload.value("_config")
+                                 .toObject()
+                                 .value("CompareDest")
+                                 .toArray();
+    QCOMPARE(dests.size(), 2);
+    QCOMPARE(dests.at(0).toString(), QStringLiteral("remote:a"));
+    QCOMPARE(dests.at(1).toString(), QStringLiteral("remote:b"));
   }
 
   // An option the task didn't give stays off the request, so the daemon's
