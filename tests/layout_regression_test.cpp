@@ -19,6 +19,7 @@
 #include <QSignalSpy>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSizeGrip>
 #include <QSpinBox>
@@ -284,6 +285,27 @@ private slots:
     TransferDialog dialog(false, false, "remote", QDir(), true);
     QCOMPARE(dialog.findChild<QComboBox *>("cbPreset")->currentIndex(), 0);
     QCOMPARE(dialog.findChild<QSpinBox *>("spinTransfers")->value(), 7);
+  }
+
+  // An accepted dialog saves its fields as the next one's defaults, but the
+  // fields built in code have no name. An empty one called remove(""),
+  // which QSettings reads as "everything in this group", so accepting the
+  // dialog wiped the defaults saved just before it, and the rest warned
+  // about an empty key.
+  void acceptedTransferDialogKeepsItsDefaults() {
+    QTest::failOnWarning(QRegularExpression("Empty key"));
+    {
+      TransferDialog dialog(false, false, "remote", QDir(), true);
+      dialog.findChild<QSpinBox *>("spinTransfers")->setValue(9);
+      dialog.findChild<QCheckBox *>("checkSkipNewer")->setChecked(true);
+      dialog.setResult(QDialog::Accepted);
+    }
+    QSettings settings;
+    settings.beginGroup("Transfer");
+    QCOMPARE(settings.value("spinTransfers").toInt(), 9);
+    QCOMPARE(settings.value("checkSkipNewer").toBool(), true);
+    QVERIFY(!settings.contains(QString()));
+    settings.endGroup();
   }
 
   // A named-widget checklist goes stale the moment someone adds a control.

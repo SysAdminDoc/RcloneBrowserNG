@@ -322,35 +322,46 @@ void ReadSettings(QSettings *settings, QObject *widget) {
 
 void WriteSettings(QSettings *settings, QObject *widget) {
   QString name = widget->objectName();
+  // A field built in code has no name to save it under, and remove("")
+  // clears the whole group, so it's skipped the way ReadSettings skips it.
+  const bool named = !name.isEmpty();
   if (auto *obj = qobject_cast<QCheckBox *>(widget)) {
-    settings->setValue(name, obj->isChecked());
+    if (named) {
+      settings->setValue(name, obj->isChecked());
+    }
     return;
   }
   if (auto *obj = qobject_cast<QComboBox *>(widget)) {
-    settings->setValue(name, obj->currentIndex());
+    if (named) {
+      settings->setValue(name, obj->currentIndex());
+    }
     return;
   }
   if (auto *obj = qobject_cast<QSpinBox *>(widget)) {
-    settings->setValue(name, obj->value());
+    if (named) {
+      settings->setValue(name, obj->value());
+    }
     return;
   }
   if (auto *obj = qobject_cast<QLineEdit *>(widget)) {
-    if (obj->text().isEmpty()) {
+    if (named && obj->text().isEmpty()) {
       settings->remove(name);
-    } else {
+    } else if (named) {
       settings->setValue(name, obj->text());
     }
     return;
   }
   if (auto *obj = qobject_cast<QRadioButton *>(widget)) {
-    settings->setValue(name, obj->isChecked());
+    if (named) {
+      settings->setValue(name, obj->isChecked());
+    }
     return;
   }
   if (auto *obj = qobject_cast<QPlainTextEdit *>(widget)) {
     QString text = obj->toPlainText().trimmed();
-    if (text.isEmpty()) {
+    if (named && text.isEmpty()) {
       settings->remove(name);
-    } else {
+    } else if (named) {
       QStringList lines = text.split('\n');
       settings->beginWriteArray(name, static_cast<int>(lines.size()));
       for (int i = 0; i < lines.count(); i++) {
