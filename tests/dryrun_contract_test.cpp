@@ -472,6 +472,84 @@ private slots:
     }
   }
 
+  // rclone reads an option only from a connection string, which ends at a
+  // colon (fs/fspath.Parse refuses one that doesn't). A folder name or a
+  // pattern with no colon after it keeps its text, or the dry run looks at a
+  // folder that doesn't exist and lists no deletes. Every remote in a union's
+  // list of upstreams still has its options renamed.
+  void previewsRenameOnlyWhatRcloneReadsAsAnOption() {
+    const QStringList saved{
+        "sync",
+        "--include",
+        "x,global.dry_run=1",
+        "D:/t/dst,global.dry_run=1",
+        "remote:dst,global.dry_run=1/sub",
+        "--backup-dir=D:/t/b,global.max_delete=1",
+        ":union,upstreams=':local:A :local,global.dry_run=false:B':",
+        ":union,upstreams=':local:A :local,global.max_delete=1:B':"};
+    const QStringList expected{
+        "sync",
+        "--dry-run",
+        "--include",
+        "x,global.dry_run=1",
+        "D:/t/dst,global.dry_run=1",
+        "remote:dst,global.dry_run=1/sub",
+        "--backup-dir=D:/t/b,global.max_delete=1",
+        ":union,upstreams=':local:A :local,ignored.global.dry_run=false:B':",
+        ":union,upstreams=':local:A :local,ignored.global.max_delete=1:B':"};
+    QCOMPARE(JobOptions::DryRunArguments(saved), expected);
+
+    auto sync = makeTask(JobOptions::Sync, true);
+    sync->dest = "D:/t/dst,global.dry_run=1";
+    QCOMPARE(sync->getOptions().last(), sync->dest);
+    delete sync;
+  }
+
+  // The same through the installed rclone: the delete of the one file rclone
+  // would remove is listed, and nothing changes.
+  void previewsOfLookAlikeNamesListTheirDeletesInRealRclone() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH and RCLONE_BROWSER_TEST_RCLONE is unset");
+    }
+    struct Case {
+      QString dstName;
+      QString dstFile;
+      QStringList extra;
+    };
+    const QList<Case> cases{
+        {"dst,global.dry_run=1", "extra.txt", {}},
+        {"dst", "x,global.dry_run=1", {"--include", "x,global.dry_run=1"}},
+    };
+    for (const Case &c : cases) {
+      QTemporaryDir dir;
+      QVERIFY(dir.isValid());
+      const QString src = dir.filePath("src");
+      const QString dst = dir.filePath(c.dstName);
+      QVERIFY(QDir().mkpath(src) && QDir().mkpath(dst));
+      for (const QString &path : {src + "/keep.txt", dst + "/" + c.dstFile,
+                                  dir.filePath("rclone.conf")}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(path.endsWith(".conf") ? "" : "x");
+      }
+      const QStringList args = JobOptions::DryRunArguments(
+          QStringList{"sync"} << c.extra << src << dst);
+      QProcess process;
+      process.setWorkingDirectory(dir.path());
+      process.start(rclone, QStringList{"--config", dir.filePath("rclone.conf")}
+                                << args);
+      QVERIFY(process.waitForFinished(60000));
+      const QString log = QString::fromUtf8(process.readAllStandardError());
+      QVERIFY2(process.exitStatus() == QProcess::NormalExit &&
+                   process.exitCode() == 0,
+               qPrintable(args.join(' ') + "\n" + log));
+      QVERIFY2(log.count("Skipped delete as --dry-run is set") == 1,
+               qPrintable(args.join(' ') + "\n" + log));
+      QCOMPARE(QDir(dst).entryList(QDir::Files), QStringList{c.dstFile});
+    }
+  }
+
   // pflag gives --exclude, --include and --filter the next argument whatever
   // it looks like (measured on v1.76.0: `rclone sync --exclude -n` is a real
   // run that deletes, and `--filter "- run=*"` skips run=1.txt). A preview

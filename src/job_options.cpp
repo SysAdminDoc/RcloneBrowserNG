@@ -24,7 +24,12 @@ bool IsGoFalse(QStringView value) {
 // rclone's fspath.Parse ends a key only at = , or :, config.Get matches the
 // key exactly, and a key rclone doesn't know is ignored (measured on
 // v1.76.0), so the renamed option does nothing. An option always follows a
-// comma.
+// comma, and a colon always comes after it, since Parse refuses a config
+// string that ends before its path. Text with no colon after it is part of a
+// folder name or a pattern ("D:/x/dst,global.dry_run=1"), and renaming it
+// would point the dry run at another folder. Every remote inside a value is
+// covered too, a union's list of upstreams included, which a parse of one
+// path at a time would miss.
 void IgnoreGlobalOption(QString &arg, const QString &key) {
   const QString needle = QStringLiteral(",global.") + key;
   for (qsizetype at = arg.indexOf(needle); at >= 0;
@@ -32,7 +37,8 @@ void IgnoreGlobalOption(QString &arg, const QString &key) {
     const qsizetype end = at + needle.size();
     if (end < arg.size() &&
         (arg.at(end) == QLatin1Char('=') || arg.at(end) == QLatin1Char(',') ||
-         arg.at(end) == QLatin1Char(':'))) {
+         arg.at(end) == QLatin1Char(':')) &&
+        arg.indexOf(QLatin1Char(':'), end) >= 0) {
       arg.insert(at + 1, QStringLiteral("ignored."));
     }
   }
@@ -161,8 +167,8 @@ QStringList JobOptions::KeepDryRunOn(QStringList args) {
       args[i] = arg.left(equals);
       continue;
     }
-    // Every argument, for the same reason: a pattern or another option's
-    // value only changes what a dry run lists.
+    // Every argument, for the same reason. A pattern that looks like a
+    // connection string up to its colon only changes what a dry run lists.
     IgnoreGlobalOption(arg, kDryRunKey);
     args[i] = arg;
   }

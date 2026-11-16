@@ -39,10 +39,10 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Complexity: M
 
 - [ ] P2 — Keep a dry run dry when rclone.conf or the environment sets `global.dry_run`
-  Why: a dry run renames `global.dry_run` in its arguments (JobOptions::KeepDryRunOn), but rclone also reads it from the opened remote's config section and from `RCLONE_CONFIG_<REMOTE>_GLOBAL.DRY_RUN`. Measured on v1.76.0 (2026-11-16): `sync --dry-run src dd:` deleted for real with `global.dry_run = false` in `[dd]`, through an alias pointing at that section too, and with `RCLONE_CONFIG_DD_GLOBAL.DRY_RUN=false` set. A CLI preview, the task list's and history's Dry Run and the dialog's Dry Run button all go through rclone's own config. rc jobs (sync/*) skip `global.` options (IsRCRequest), core/command children don't.
+  Why: a dry run renames `global.dry_run` in its arguments (JobOptions::KeepDryRunOn), but rclone also reads it from the opened remote's config section and from `RCLONE_CONFIG_<REMOTE>_GLOBAL.DRY_RUN`. Measured on v1.76.0 (2026-11-16): `sync --dry-run src dd:` deleted for real with `global.dry_run = false` in `[dd]`, through an alias pointing at that section too, and with `RCLONE_CONFIG_DD_GLOBAL.DRY_RUN=false` set. A CLI preview, the task list's and history's Dry Run and the dialog's Dry Run button all go through rclone's own config. rc jobs (sync/*) skip `global.` options (IsRCRequest), core/command children don't. Three more forms went real in the same measurements. A plain local path reads a `[local]` section (no `type` needed) and `RCLONE_CONFIG_LOCAL_GLOBAL.DRY_RUN`. A `--config` in a task's extra options or the default options replaces the app's own, since the last one wins. An environment variable that holds a path, like `RCLONE_BACKUP_DIR` or `RCLONE_ALIAS_REMOTE` set to `:local,global.dry_run=false:D`, carries the option past the rename, which only reads arguments.
   Evidence: `src/job_options.cpp` KeepDryRunOn; each case reproduced with a throwaway rclone.conf and a local destination of three files; addConfigToContext in fs/newfs.go reads config.Get, which takes the section and env.
   Touches: `src/job_options.{h,cpp}`, `src/sync_preview.{h,cpp}`, `src/main_window.cpp`, `tests/dryrun_contract_test.cpp`
-  Acceptance: before any dry run, the app reads the sections of every remote its paths name (nested ones too, through `config dump` on the run's own config) and its environment, and refuses the dry run with a message naming the remote when one turns `global.dry_run` off (or passes `--config` with the section's key renamed, if that's measured to work); real-rclone rows cover the section, the alias and the env forms.
+  Acceptance: before any dry run, the app reads the sections of every remote its paths name (nested ones too, and `local` for a plain path, through `config dump` on the run's own config, which is the last `--config` in its arguments) and its environment, path-valued `RCLONE_` variables included, and refuses the dry run with a message naming the remote when one turns `global.dry_run` off (or passes `--config` with the section's key renamed, if that's measured to work); real-rclone rows cover the section, the alias, `[local]`, an extra-options `--config` and the env forms.
   Complexity: M
 
 - [ ] P2 — Word a Dropbox or Koofr `--suffix` replace as a delete
@@ -235,6 +235,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Evidence: `src/sync_preview.cpp` CapWarnings bisync branch; read in cmd/bisync, not measured.
   Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
   Acceptance: measured first on v1.76.0 with `--backup-dir1 ':local,global.max_delete=0:bak'`; if the real bisync stops, the summary warns about it, as a data row.
+  Complexity: S
+
+- [ ] P3 — Read `global.` options from every upstream of a union or combine
+  Why: a union's `upstreams` and a combine's `upstreams` hold a space-separated list of remotes, and rclone opens each one, so any of them can set `global.max_delete` or `global.backup_dir` for the run. EffectiveArguments reads a nested value as one path, so it reads the first upstream's options and none after it. The summary then misses a cap or a backup folder the run gets. The check's own dry run renames those options in every upstream (JobOptions::DryRunArguments goes by the text), so it still lists every file.
+  Evidence: `src/sync_preview.cpp` AppendGlobals reads each option value through ConnectionOptions once; read in backend/union and backend/combine (fs.SpaceSepList), not measured.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first on v1.76.0 with `:union,upstreams=':local:A :local,global.max_delete=1:B':` as the destination; the summary reads each upstream's options (the `dir=` prefix of a combine's entries left off), as data rows for union and combine.
   Complexity: S
 
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
