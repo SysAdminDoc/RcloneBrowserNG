@@ -680,6 +680,23 @@ if(BUILD_TESTING)
   set_tests_properties(accessibility_smoke_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+  # Renders every screen offscreen to PNGs for design review and the README
+  # screenshots. A tool, so it has no add_test.
+  add_executable(ui_gallery
+    tests/ui_gallery.cpp
+    ${ACCESSIBILITY_SMOKE_SOURCES}
+  )
+  # AUTORCC so the remote icons in resources.qrc show up in the captures
+  set_target_properties(ui_gallery PROPERTIES AUTOUIC ON AUTORCC ON)
+  target_include_directories(ui_gallery PRIVATE src tests)
+  target_compile_definitions(ui_gallery PRIVATE RCLONE_BROWSER_VERSION="${RCLONE_BROWSER_VERSION}")
+  target_link_libraries(ui_gallery Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+  if(WIN32)
+    target_link_libraries(ui_gallery version advapi32 iphlpapi wbemuuid ole32 oleaut32)
+  elseif(APPLE)
+    target_link_libraries(ui_gallery ${ACCESSIBILITY_COCOA_LIBRARY})
+  endif()
+
   add_executable(layout_regression_test
     tests/layout_regression_test.cpp
     ${ACCESSIBILITY_SMOKE_SOURCES}
