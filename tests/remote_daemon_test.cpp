@@ -1,4 +1,5 @@
 #include "fake_rc_server.h"
+#include "rc_sync_request.h"
 #include "rclone_rc_engine.h"
 #include "remote_daemon.h"
 #include "test_rclone.h"
@@ -811,6 +812,71 @@ private slots:
 
     runEngineJob(engine, {"copy", "rbtestnas:src", "rbtestnas:dst-native"});
     QVERIFY(served("dst-native/sub/two.txt"));
+  }
+
+  // bisync --resilient retries a failed copy itself, as many times as
+  // --retries says (cmd/bisync/queue.go, v1.76.0). options/info lists no
+  // bisync flag, so a task with --resilient runs on core/command, where the
+  // CLI reads --retries itself. A sync/bisync call gets the task's
+  // --retries through _config, so the daemon's own 3 doesn't stand in.
+  void aBisyncsCopyRetryTakesTheTasksRetries() {
+    if (mDaemon == nullptr) {
+      QSKIP("no daemon");
+    }
+#if !defined(Q_OS_WIN32)
+    QSKIP("the locked file is made with a Windows share mode");
+#else
+    QString error;
+    const QJsonObject info = call("options/info", QJsonObject(), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    const RcSyncRequest::OptionIndex index = RcSyncRequest::IndexOptions(info);
+
+    const QStringList resilientArgs{"bisync", "--resilient", "rbtestnas:bi1",
+                                    "rbtestnas:bi2"};
+    const RcSyncRequest::Request resilient =
+        RcSyncRequest::Build(resilientArgs, "g", index);
+    QVERIFY(!resilient.usable);
+    QVERIFY2(resilient.reason.contains("--resilient"),
+             qPrintable(resilient.reason));
+
+    writeFile("bi1/a.txt");
+    QVERIFY(QDir().mkpath(QDir(mServed).filePath("bi2")));
+    const QString workdir = QDir(mDir.path()).filePath("bisync-work");
+    QVERIFY(QDir().mkpath(workdir));
+    const QStringList args{"bisync", "--retries", "2", "rbtestnas:bi1",
+                           "rbtestnas:bi2"};
+    const RcSyncRequest::Request request =
+        RcSyncRequest::Build(args, "g", index);
+    QVERIFY2(request.usable, qPrintable(request.reason));
+    QJsonObject payload = request.payload;
+    payload.remove("_async");
+    payload.insert("workdir", workdir);
+    QJsonObject resync = payload;
+    resync.insert("resync", true);
+    call(request.endpoint, resync, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+
+    writeFile("bi1/locked.txt");
+    const QString lockedPath = QDir(mServed).filePath("bi1/locked.txt");
+    HANDLE locked = CreateFileW(reinterpret_cast<LPCWSTR>(lockedPath.utf16()),
+                                GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0,
+                                nullptr);
+    QVERIFY(locked != INVALID_HANDLE_VALUE);
+    mDaemon->readAll();
+    payload.insert("resilient", true);
+    call(request.endpoint, payload, &error);
+    QString log;
+    const bool sawTheLastRetry = QTest::qWaitFor(
+        [&]() {
+          log += QString::fromUtf8(mDaemon->readAll());
+          return log.contains("Retry 2/2");
+        },
+        10000);
+    CloseHandle(locked);
+    QVERIFY2(!error.isEmpty(), "the locked file let the bisync through");
+    QVERIFY2(sawTheLastRetry && !log.contains("Retry 1/3"),
+             qPrintable(log.right(2000)));
+#endif
   }
 
   // rclone serving https with a self-signed certificate, the way a NAS would

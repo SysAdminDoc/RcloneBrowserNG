@@ -57,6 +57,9 @@ struct Options {
   // rclone's defaults.
   int retries = 3;
   qint64 retriesSleepMs = 0;
+  // The same two as _config would carry them, only those given. Build puts
+  // them into a bisync's _config, where --resilient's copy retry reads them.
+  QJsonObject retryConfig;
 };
 
 Options MapOptions(const QStringList &tokens, const OptionIndex &index);

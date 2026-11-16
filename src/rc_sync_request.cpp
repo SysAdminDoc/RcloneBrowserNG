@@ -197,8 +197,9 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
     }
 
     // The retry loop belongs to the CLI (cmd.Run), not to the sync calls,
-    // so _config Retries does nothing over rc. The job card runs the loop
-    // instead, and these two say how.
+    // so _config Retries does nothing for a copy, move or sync over rc. The
+    // job card runs the loop instead, and these two say how. Only bisync
+    // reads them from _config (see Build).
     if (token == "--retries" || token == "--retries-sleep") {
       QString value;
       if (hasInlineValue) {
@@ -229,6 +230,13 @@ Options MapOptions(const QStringList &tokens, const OptionIndex &index) {
         }
         // time.Sleep returns at once for a negative duration.
         options.retriesSleepMs = nanoseconds <= 0 ? 0 : nanoseconds / 1000000;
+      }
+      const auto retrySpec = index.constFind(token);
+      if (retrySpec != index.constEnd()) {
+        options.retryConfig.insert(retrySpec.value().key,
+                                   token == "--retries"
+                                       ? QJsonValue(options.retries)
+                                       : QJsonValue(value));
       }
       continue;
     }
@@ -338,7 +346,18 @@ Request Build(const QStringList &args, const QString &group,
     request.reason = options.reason;
     return request;
   }
-  const QJsonObject &config = options.config;
+  QJsonObject config = options.config;
+  if (request.endpoint == QLatin1String("sync/bisync")) {
+    // bisync --resilient retries its own copies with ci.Retries and
+    // ci.RetriesInterval (cmd/bisync/queue.go, v1.76.0). Without them a
+    // sync/bisync call takes the daemon's, measured 3 tries where the task
+    // asked for 2. No bisync flag maps onto rc today (options/info lists
+    // none), so --resilient itself still sends the run to core/command.
+    for (auto it = options.retryConfig.constBegin();
+         it != options.retryConfig.constEnd(); ++it) {
+      config.insert(it.key(), it.value());
+    }
+  }
   const QJsonObject &filter = options.filter;
   const QStringList &positional = options.positional;
 
@@ -370,7 +389,8 @@ Request Build(const QStringList &args, const QString &group,
 
   request.payload = payload;
   // The CLI's bisync runs through cmd.Run with Retry false, so it never
-  // tries again whatever --retries says (cmd/bisync/cmd.go, v1.76.0).
+  // runs the whole bisync again whatever --retries says (cmd/bisync/cmd.go,
+  // v1.76.0). Its own copy retry gets --retries through _config above.
   request.retries =
       request.endpoint == QLatin1String("sync/bisync") ? 1 : options.retries;
   request.retriesSleepMs = options.retriesSleepMs;

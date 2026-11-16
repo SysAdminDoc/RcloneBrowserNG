@@ -453,13 +453,47 @@ private slots:
     QCOMPARE(request.retriesSleepMs, Q_INT64_C(1500));
     QVERIFY(!request.payload.contains("_config"));
 
-    // rclone bisync never retries, so --retries gets it one attempt.
+    // rclone bisync never runs again as a whole, so --retries gets it one
+    // attempt. Its --resilient copy retry reads both from _config, so they
+    // go there too, and only when the task gave them.
     const Request bisync =
-        Build({"bisync", "--retries", "5", "remote:one", "remote:two"}, "g",
-              realIndex());
+        Build({"bisync", "--retries", "5", "--retries-sleep=1.5s",
+               "remote:one", "remote:two"},
+              "g", realIndex());
     QVERIFY2(bisync.usable, qPrintable(bisync.reason));
     QCOMPARE(bisync.endpoint, QStringLiteral("sync/bisync"));
     QCOMPARE(bisync.retries, 1);
+    const QJsonObject bisyncConfig =
+        bisync.payload.value("_config").toObject();
+    QCOMPARE(bisyncConfig.value("Retries").toInt(), 5);
+    QCOMPARE(bisyncConfig.value("RetriesInterval").toString(),
+             QStringLiteral("1.5s"));
+    const Request plainBisync =
+        Build({"bisync", "remote:one", "remote:two"}, "g", realIndex());
+    QVERIFY(!plainBisync.payload.contains("_config"));
+    const auto bisyncRetries = [](const QStringList &args) {
+      return Build(args, "g", realIndex())
+          .payload.value("_config")
+          .toObject()
+          .value("Retries")
+          .toInt();
+    };
+    // --retries 0 is one try on the CLI, so the bisync gets 1 too.
+    const QStringList zero{"bisync", "--retries=0", "remote:one",
+                           "remote:two"};
+    QCOMPARE(bisyncRetries(zero), 1);
+    // The last one given wins, as on the CLI.
+    const QStringList twice{"bisync",     "--retries",  "5", "--retries",
+                            "2",          "remote:one", "remote:two"};
+    QCOMPARE(bisyncRetries(twice), 2);
+    // Copy, move and sync keep them out of _config.
+    for (const char *command : {"copy", "move"}) {
+      const Request other = Build({command, "--retries", "5", "remote:src",
+                                   "remote:dst"},
+                                  "g", realIndex());
+      QVERIFY2(other.usable, qPrintable(other.reason));
+      QVERIFY2(!other.payload.contains("_config"), command);
+    }
 
     // options/get on v1.76.0: --retries 0 and -1 both come out as 1, and
     // 010 is 8. A negative sleep is no sleep.

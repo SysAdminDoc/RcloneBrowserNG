@@ -8,13 +8,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P2
 
-- [ ] P2 — Let a bisync's own `--retries` reach the daemon
-  Why: bisync `--resilient` runs its inner retryFastCopy with `ci.Retries` and `ci.RetriesInterval` (cmd/bisync/queue.go, v1.76.0), but the app strips `--retries` and `--retries-sleep` from `_config` for every sync/* call, bisync included, because the job card runs the retries itself. The card never retries bisync, so on the daemon route a task's `--retries 5` reaches neither the card nor bisync.
-  Evidence: `src/rc_sync_request.cpp` takes `--retries` and `--retries-sleep` out of the options for every endpoint; `src/rc_job_widget.cpp` retryAfterFailure returns early for sync/bisync. Not measured yet (bisync's default workdir would be written outside a scratch dir, so a measurement needs `--workdir`).
-  Touches: `src/rc_sync_request.cpp`, `tests/rc_sync_request_test.cpp`, `tests/rc_job_widget_test.cpp`
-  Acceptance: measured first with `rclone bisync --resilient --retries 2 --workdir <scratch>` and a source file locked on try 1, CLI against the daemon route; a sync/bisync request keeps Retries and RetriesInterval in `_config` while sync/copy, sync/move and sync/sync still drop them; a real-daemon test sees bisync's inner retry happen.
-  Complexity: S
-
 - [ ] P2 — Retry a soft `--max-transfer` stop when the try also had a retryable error
   Why: cmd.Run (cmd/cmd.go:271, v1.76.0) retries any try whose group has a retry error, so a soft or cautious `--max-transfer` stop that came with, say, a locked file is tried again on the CLI. The card treats every limit stop as the end of the run, so in a try with a group of its own it stops where the CLI goes on.
   Evidence: `src/rc_job_widget.cpp` noteLimitStop prints no "Can't retry" line when the group's retryError is up, yet the run ends there all the same; the B2 review (P2) found it by reading, not by running.
