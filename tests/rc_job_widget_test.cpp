@@ -241,6 +241,9 @@ private slots:
                  "Fatal error received - not attempting retries"),
              qPrintable(run.output));
     QVERIFY2(!run.output.contains("Attempt"), qPrintable(run.output));
+    // The CLI exits 7 on a fatal error (resolveExitCode in cmd/cmd.go).
+    QCOMPARE(run.entry.exitCode, 7);
+    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(7).name);
   }
 
   // newPipe wraps a bad --order-by in a fatal error before the sync starts
@@ -264,12 +267,14 @@ private slots:
     const QString source = makeDir("order-by-src-" + name);
     const QString dest = makeDir("order-by-dst-" + name);
     writeFile(source + "/a.txt", "a");
-    runCard({"copy", "--order-by", orderBy, source, dest}, "rclonebrowser-");
+    const QStringList args{"copy", "--order-by", orderBy, source, dest};
+    const JobHistoryEntry entry = runCard(args, "rclonebrowser-");
     QVERIFY(!mSuccess);
     QVERIFY2(mOutput.contains(error), qPrintable(mOutput));
     QVERIFY2(mOutput.contains("Fatal error received - not attempting retries"),
              qPrintable(mOutput));
     QVERIFY2(!mOutput.contains("Attempt"), qPrintable(mOutput));
+    QCOMPARE(entry.exitCode, 7);
   }
 
   // bisync runs cmd.Run with Retry off (cmd/bisync/cmd.go), which tries once
@@ -325,7 +330,8 @@ private slots:
     QVERIFY(lock != INVALID_HANDLE_VALUE);
     const QStringList args{"copy", "--immutable", "--retries-sleep", "1s",
                            source, dest};
-    runCard(args, "rclonebrowser-", [&](RcJobWidget &card) {
+    const JobHistoryEntry entry = runCard(args, "rclonebrowser-",
+                                          [&](RcJobWidget &card) {
       QPlainTextEdit *output = card.findChild<QPlainTextEdit *>("output");
       QVERIFY(output);
       QVERIFY2(QTest::qWaitFor(
@@ -348,6 +354,8 @@ private slots:
     QVERIFY2(mOutput.contains(
                  "Can't retry any of the errors - not attempting retries"),
              qPrintable(mOutput));
+    // The CLI exits 6 here, on the no-retry error it stopped for.
+    QCOMPARE(entry.exitCode, 6);
 #else
     QSKIP("locks a file the Windows way");
 #endif
@@ -569,19 +577,26 @@ private slots:
   // its cap lowered by their sizes: 3 and 4 bytes here, with a check and a
   // delete the cap refused left out. With one of them gone from the list,
   // as once rclone has pruned it, the run stays in its group. A cap the
-  // daemon has from its own settings is lowered the same way.
+  // daemon has from its own settings is lowered the same way. A --backup-dir
+  // delete that replaces an older backup lists its name twice, with the same
+  // size and times, and the two count as two deletes.
   void aDeleteSizeCapIsLoweredByWhatWasDeleted_data() {
     QTest::addColumn<bool>("allListed");
     QTest::addColumn<bool>("daemonsOwn");
+    QTest::addColumn<bool>("sameName");
     QTest::addColumn<QString>("lowered");
-    QTest::newRow("all listed") << true << false << QString("10485753b");
-    QTest::newRow("one pruned") << false << false << QString();
-    QTest::newRow("daemon's own") << true << true << QString("1017b");
+    QTest::newRow("all listed")
+        << true << false << false << QString("10485753b");
+    QTest::newRow("one pruned") << false << false << false << QString();
+    QTest::newRow("daemon's own") << true << true << false << QString("1017b");
+    QTest::newRow("same name twice")
+        << false << false << true << QString("10485752b");
   }
 
   void aDeleteSizeCapIsLoweredByWhatWasDeleted() {
     QFETCH(bool, allListed);
     QFETCH(bool, daemonsOwn);
+    QFETCH(bool, sameName);
     QFETCH(QString, lowered);
     const auto entry = [](const QString &name, const QString &what, int size,
                           const QString &error) {
@@ -600,6 +615,9 @@ private slots:
         entry("d.txt", "deleting", 50, "--max-delete-size threshold reached")};
     if (allListed) {
       listed.prepend(entry("a.txt", "deleting", 3, QString()));
+    }
+    if (sameName) {
+      listed.prepend(entry("b.txt", "deleting", 4, QString()));
     }
     int current = 1;
     int lists = 0;
@@ -703,7 +721,7 @@ private slots:
                             {"lastError", "boom"},
                             {"deletes", 1}});
         },
-        {}, QJsonObject(), capsOff(), "sync/copy", 3, &later);
+        {}, QJsonObject(), capsOff(), "sync/copy", 3, {later});
     QVERIFY2(run.finished, qPrintable(run.output));
     QVERIFY2(run.success, qPrintable(run.output));
     QCOMPARE(run.resubmits, 1);
@@ -723,6 +741,111 @@ private slots:
     }
     QVERIFY2(run.output.contains("Attempt 2/3 succeeded"),
              qPrintable(run.output));
+  }
+
+  // Attempt 1 deletes a file core/transferred never lists, which no size
+  // cap needed at the time, so attempt 2 got a group of its own. The daemon
+  // has --max-delete-size 25 by attempt 3, and no group holds what attempt
+  // 1 deleted, so attempt 3 may delete nothing with a size rather than
+  // count from 0 and pass the cap.
+  void aSizeCapAfterUncountedDeletesLeavesNoRoom() {
+    const QJsonObject capped{
+        {"MaxDelete", -1}, {"MaxDeleteSize", 25}, {"MaxTransfer", -1}};
+    const FakeRun run = runFakeCard(
+        [](const QString &path, const QJsonObject &body,
+           const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            const bool last = body.value("jobid").toInt() == 3;
+            reply(QJsonObject{{"finished", true},
+                              {"success", last},
+                              {"error", last ? QString() : QString("boom")},
+                              {"output", QJsonObject()}});
+            return;
+          }
+          if (path == "core/transferred") {
+            reply(QJsonObject{{"transferred", QJsonArray()}});
+            return;
+          }
+          const QString group = body.value("group").toString();
+          if (group == "rclonebrowser-1-attempt-3") {
+            reply(QJsonObject{{"errors", 0}});
+            return;
+          }
+          reply(QJsonObject{{"errors", 1},
+                            {"retryError", true},
+                            {"lastError", "boom"},
+                            {"deletes", group == "rclonebrowser-1" ? 1 : 0}});
+        },
+        {}, QJsonObject(), capsOff(), "sync/copy", 3, {capsOff(), capped});
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QVERIFY2(run.success, qPrintable(run.output));
+    QCOMPARE(run.resubmits, 2);
+    QCOMPARE(run.settingsReads, 2);
+    const QJsonObject second = run.resubmittedAll.value(0);
+    QCOMPARE(second.value("_group").toString(),
+             QString("rclonebrowser-1-attempt-2"));
+    QVERIFY(!second.contains("_config"));
+    const QJsonObject third = run.resubmittedAll.value(1);
+    QCOMPARE(third.value("_group").toString(),
+             QString("rclonebrowser-1-attempt-3"));
+    QCOMPARE(
+        third.value("_config").toObject().value("MaxDeleteSize").toString(),
+        QString("0b"));
+    QVERIFY2(run.output.contains("Attempt 3/3 succeeded"),
+             qPrintable(run.output));
+  }
+
+  // cmd.Run's elapsed time is each attempt's own time plus the
+  // --retries-sleep before each retry. A group's elapsedTime keeps growing
+  // after its job ends, so the card adds up job/status' duration instead.
+  // After a last attempt that failed, the CLI sleeps once more before it
+  // exits, so it shows 6s for the last row.
+  void theElapsedTimeIsWhatCmdRunCounts_data() {
+    QTest::addColumn<QList<double>>("durations");
+    QTest::addColumn<bool>("lastSucceeds");
+    QTest::addColumn<qint64>("sleepMs");
+    QTest::addColumn<QString>("elapsed");
+    QTest::newRow("no sleep")
+        << QList<double>{2.5, 1.6} << true << qint64(0) << QString("4s");
+    QTest::newRow("a sleep")
+        << QList<double>{2.5, 1.6} << true << qint64(1000) << QString("5s");
+    QTest::newRow("every attempt fails")
+        << QList<double>{1.2, 1.2, 1.2} << false << qint64(1000)
+        << QString("5s");
+  }
+
+  void theElapsedTimeIsWhatCmdRunCounts() {
+    QFETCH(QList<double>, durations);
+    QFETCH(bool, lastSucceeds);
+    QFETCH(qint64, sleepMs);
+    QFETCH(QString, elapsed);
+    const FakeRun run = runFakeCard(
+        [&](const QString &path, const QJsonObject &body,
+            const FakeRcServer::Reply &reply) {
+          if (path == "job/status") {
+            const qsizetype job = body.value("jobid").toInt();
+            const bool ok = lastSucceeds && job == durations.size();
+            reply(QJsonObject{{"finished", true},
+                              {"success", ok},
+                              {"error", ok ? QString() : QString("boom")},
+                              {"duration", durations.value(job - 1)},
+                              {"output", QJsonObject()}});
+            return;
+          }
+          if (path == "core/transferred") {
+            reply(QJsonObject{{"transferred", QJsonArray()}});
+            return;
+          }
+          reply(QJsonObject{{"errors", 1},
+                            {"retryError", true},
+                            {"lastError", "boom"},
+                            {"elapsedTime", 30.0}});
+        },
+        {}, QJsonObject(), capsOff(), "sync/copy", 3, {}, sleepMs);
+    QVERIFY2(run.finished, qPrintable(run.output));
+    QCOMPARE(run.success, lastSucceeds);
+    QCOMPARE(qsizetype(run.resubmits), durations.size() - 1);
+    QCOMPARE(run.elapsed, elapsed);
   }
 
   void planningTheNextAttempt() {
@@ -853,6 +976,45 @@ private slots:
                            QJsonObject{{"MaxTransfer", "1G"}});
     QVERIFY(next.sameGroup);
 
+    // An earlier group's deletes were never all listed, which kept no run
+    // in place while no size cap was set. A size cap set since, by the job
+    // or the daemon, then has no room left for a delete with a size.
+    next = PlanNextAttempt(sized, current, 3, 100, 1, off, -1, true);
+    QVERIFY(!next.sameGroup);
+    QCOMPARE(next.payload.value("_group").toString(), QString("g-attempt-3"));
+    QCOMPARE(next.payload.value("_config").toObject().value("MaxDeleteSize")
+                 .toString(),
+             QString("0b"));
+    next = PlanNextAttempt(payload({}), current, 3, 0, 1,
+                           QJsonObject{{"MaxDeleteSize", 1024}}, -1, true);
+    QVERIFY(!next.sameGroup);
+    QCOMPARE(next.payload.value("_config").toObject().value("MaxDeleteSize")
+                 .toString(),
+             QString("0b"));
+    // With no size cap, or nothing deleted, there's nothing to hold back.
+    next = PlanNextAttempt(payload({}), current, 3, 100, 1, off, -1, true);
+    QVERIFY(!next.sameGroup);
+    QVERIFY(!next.payload.contains("_config"));
+    next = PlanNextAttempt(sized, current, 3, 100, 0, off, -1, true);
+    QVERIFY(!next.sameGroup);
+    QCOMPARE(next.payload.value("_config").toObject().value("MaxDeleteSize")
+                 .toString(),
+             QString("1k"));
+    // A run another cap keeps in its group gets the same 0 bytes there.
+    next = PlanNextAttempt(
+        payload({{"MaxTransfer", "1MB"}, {"MaxDeleteSize", "1k"}}), current,
+        3, 1, 1, off, -1, true);
+    QVERIFY(next.sameGroup);
+    QCOMPARE(next.payload.value("_group").toString(), QString("g-attempt-2"));
+    QCOMPARE(next.payload.value("_config").toObject().value("MaxDeleteSize")
+                 .toString(),
+             QString("0b"));
+    // A daemon that never said keeps the run where it is, as above.
+    next = PlanNextAttempt(payload({}), current, 3, 0, 1, QJsonObject(), -1,
+                           true);
+    QVERIFY(next.sameGroup);
+    QCOMPARE(next.payload, current);
+
     // With no group to stay in, the caps that can be lowered are.
     const QJsonObject loose{{"srcFs", "a:"},
                             {"_config", QJsonObject{{"MaxDelete", 3},
@@ -869,7 +1031,9 @@ private slots:
   // deletes a cap refused don't count. A delete that failed does, as rclone
   // counts it before it tries, and one with no size counts 0. Two deletes
   // can share their times, and a file a later answer lists again counts
-  // once.
+  // once. A --backup-dir delete that replaces an older backup lists its name
+  // twice with the same size and times (the file, then the old backup), and
+  // counts twice, even once a later answer lists only one of the two.
   void countingWhatWasDeleted() {
     const auto entry = [](const QString &name, const QString &what,
                           qint64 size, const QString &error = QString()) {
@@ -880,14 +1044,9 @@ private slots:
                          {"started_at", "2026-11-16T10:00:00Z"},
                          {"completed_at", "2026-11-16T10:00:01Z"}};
     };
-    const auto sum = [](const QHash<QString, qint64> &deletes) {
-      qint64 total = 0;
-      for (const qint64 size : deletes) {
-        total += size;
-      }
-      return total;
-    };
-    QHash<QString, qint64> deletes;
+    using RcJobResult::DeleteCount;
+    using RcJobResult::DeletedBytes;
+    RcJobResult::ListedDeletes deletes;
     RcJobResult::AddDeletes(
         QJsonObject{
             {"transferred",
@@ -903,16 +1062,29 @@ private slots:
                  entry("x1.txt", "deleting", 2),
                  entry("x2.txt", "deleting", 2)}}},
         &deletes);
-    QCOMPARE(deletes.size(), 5);
-    QCOMPARE(sum(deletes), qint64(11));
+    QCOMPARE(DeleteCount(deletes), qint64(5));
+    QCOMPARE(DeletedBytes(deletes), qint64(11));
     RcJobResult::AddDeletes(
         QJsonObject{{"transferred", QJsonArray{entry("a.txt", "deleting", 3),
                                                entry("h.txt", "deleting", 5)}}},
         &deletes);
-    QCOMPARE(deletes.size(), 6);
-    QCOMPARE(sum(deletes), qint64(16));
+    QCOMPARE(DeleteCount(deletes), qint64(6));
+    QCOMPARE(DeletedBytes(deletes), qint64(16));
     RcJobResult::AddDeletes(QJsonObject(), &deletes);
-    QCOMPARE(deletes.size(), 6);
+    QCOMPARE(DeleteCount(deletes), qint64(6));
+    RcJobResult::AddDeletes(
+        QJsonObject{
+            {"transferred", QJsonArray{entry("dup.txt", "deleting", 6),
+                                       entry("dup.txt", "deleting", 6)}}},
+        &deletes);
+    QCOMPARE(DeleteCount(deletes), qint64(8));
+    QCOMPARE(DeletedBytes(deletes), qint64(28));
+    RcJobResult::AddDeletes(
+        QJsonObject{
+            {"transferred", QJsonArray{entry("dup.txt", "deleting", 6)}}},
+        &deletes);
+    QCOMPARE(DeleteCount(deletes), qint64(8));
+    QCOMPARE(DeletedBytes(deletes), qint64(28));
   }
 
   // The CLI's attempts share one --max-delete count. Attempt 1 deletes two
@@ -1001,9 +1173,10 @@ private slots:
     }
     HANDLE lock = lockFile(source + "/same.txt");
     QVERIFY(lock != INVALID_HANDLE_VALUE);
-    runCard({"sync", "--delete-before", "--immutable", "--max-delete-size",
-             "1G", "--retries-sleep", "1s", source, dest},
-            "rclonebrowser-");
+    const QStringList args{"sync", "--delete-before", "--immutable",
+                           "--max-delete-size", "1G", "--retries-sleep", "1s",
+                           source, dest};
+    const JobHistoryEntry entry = runCard(args, "rclonebrowser-");
     CloseHandle(lock);
     QVERIFY(!mSuccess);
     QVERIFY(!QFile::exists(dest + "/extra.txt"));
@@ -1012,6 +1185,9 @@ private slots:
     QVERIFY2(mOutput.contains("immutable file modified"), qPrintable(mOutput));
     QVERIFY2(mOutput.contains("Attempt 3/3 failed"), qPrintable(mOutput));
     QVERIFY2(!mOutput.contains("not attempting retries"), qPrintable(mOutput));
+    // The last attempt returned the mismatch, a no-retry error, and the CLI
+    // exits 6 on it.
+    QCOMPARE(entry.exitCode, 6);
 #else
     QSKIP("locks a file the Windows way");
 #endif
@@ -1054,7 +1230,9 @@ private slots:
                  "Can't retry any of the errors - not attempting retries"),
              qPrintable(run.output));
     QVERIFY2(!run.output.contains("Cancelled"), qPrintable(run.output));
-    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(1).name);
+    // The CLI exits 6 after "Can't retry any of the errors".
+    QCOMPARE(run.entry.exitCode, 6);
+    QCOMPARE(run.entry.statusLabel, RcloneExitCode::Describe(6).name);
   }
 
   // Cancel clicked after the job ended, while its last stats are still on
@@ -1176,6 +1354,8 @@ private slots:
     QVERIFY2(mOutput.contains("Attempt 1/1 failed with "), qPrintable(mOutput));
     QVERIFY2(!mOutput.contains("Attempt 2/"), qPrintable(mOutput));
     QVERIFY(entry.errors > 0);
+    // A locked file is a plain error, which the CLI exits 1 on.
+    QCOMPARE(entry.exitCode, 1);
 #else
     QSKIP("locks a file the Windows way");
 #endif
@@ -1272,6 +1452,8 @@ private:
     // The last job posted again, and every one in order.
     QJsonObject resubmitted;
     QList<QJsonObject> resubmittedAll;
+    // The card's elapsed time when it finished.
+    QString elapsed;
   };
 
   // Puts a card on a fake daemon, as attempt 1 of 3 of a sync/copy job, and
@@ -1280,18 +1462,18 @@ private:
   // A repost of the job counts as a resubmit and starts job 2, then job 3.
   // config, when given, is the job's _config, and daemonMain is what the
   // daemon said its own settings are when it connected. options/get gives
-  // daemonLater as "main" when the card asks again before a retry, and
-  // daemonMain when that's null.
+  // daemonLater's entries as "main" when the card asks again before each
+  // retry, the last one from then on, and daemonMain when it's empty.
+  // retrySleepMs is the run's --retries-sleep.
   FakeRun runFakeCard(
       const FakeRcServer::Handler &answers,
       const std::function<void(RcJobWidget &)> &whileRunning = {},
       const QJsonObject &config = QJsonObject(),
       const QJsonObject &daemonMain = capsOff(),
       const QString &endpoint = QStringLiteral("sync/copy"),
-      int attempts = 3, const QJsonObject *daemonLater = nullptr) {
+      int attempts = 3, const QList<QJsonObject> &daemonLater = {},
+      qint64 retrySleepMs = 0) {
     FakeRun run;
-    const QJsonObject settings{
-        {"main", daemonLater ? *daemonLater : daemonMain}};
     FakeRcServer daemon([&](const QString &path, const QJsonObject &body,
                             const FakeRcServer::Reply &reply) {
       if (path == "job/status") {
@@ -1306,8 +1488,12 @@ private:
       } else if (path == "core/stats" || path == "core/transferred") {
         answers(path, body, reply);
       } else if (path == "options/get") {
-        run.settingsReads++;
-        reply(settings);
+        const qsizetype read = run.settingsReads++;
+        reply(QJsonObject{
+            {"main", daemonLater.isEmpty()
+                         ? daemonMain
+                         : daemonLater.value(
+                               qMin(read, daemonLater.size() - 1))}});
       } else if (path == endpoint) {
         run.resubmits++;
         run.resubmitted = body;
@@ -1342,6 +1528,7 @@ private:
       job.payload.insert("_config", config);
     }
     job.attempts = attempts;
+    job.retrySleepMs = retrySleepMs;
     job.daemonMain = daemonMain;
     const QStringList args{"copy", "nas:a", "nas:b"};
     RcJobWidget card(&engine, job.jobId, job.group, "test run", args,
@@ -1355,6 +1542,9 @@ private:
     run.finished = !finished.isEmpty() || finished.wait(30000);
     if (QPlainTextEdit *output = card.findChild<QPlainTextEdit *>("output")) {
       run.output = output->toPlainText();
+    }
+    if (QLineEdit *elapsed = card.findChild<QLineEdit *>("elapsed")) {
+      run.elapsed = elapsed->text();
     }
     run.success = card.wasSuccessful();
     run.entry = card.historyEntry();

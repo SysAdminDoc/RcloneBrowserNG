@@ -350,7 +350,8 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
                             const QJsonObject &current, int attempt,
                             qint64 bytesSoFar, qint64 deletesSoFar,
                             const QJsonObject &daemonMain,
-                            qint64 deletedBytesSoFar) {
+                            qint64 deletedBytesSoFar,
+                            bool deletedBytesLost) {
   static const QString kGroup = QStringLiteral("_group");
   static const QString kConfig = QStringLiteral("_config");
   static const QString kMaxDelete = QStringLiteral("MaxDelete");
@@ -360,9 +361,15 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
   const qint64 deleteCount = CountCap(config, kMaxDelete, daemonMain);
   const qint64 deleteBytes = SizeCap(config, kMaxDeleteSize, daemonMain);
   const qint64 transferBytes = SizeCap(config, kMaxTransfer, daemonMain);
+  // A size cap that came after the deleted bytes were lost leaves nothing
+  // to delete that has a size. A cap the daemon won't say still keeps the
+  // run where it is, as below.
+  const bool noSizeLeft =
+      deletedBytesLost && deletesSoFar > 0 && deleteBytes >= 0;
   // With nothing deleted or moved so far there's nothing to carry.
   const bool deleteBytesCarry =
-      deleteBytes == -1 || (deleteBytes >= 0 && deletedBytesSoFar >= 0);
+      deleteBytes == -1 || noSizeLeft ||
+      (deleteBytes >= 0 && deletedBytesSoFar >= 0);
   const bool deletesCarry =
       deletesSoFar <= 0 || (deleteCount != kUnknownCap && deleteBytesCarry);
   const bool bytesCarry = bytesSoFar <= 0 || transferBytes != kUnknownCap;
@@ -371,6 +378,11 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
   if ((!deletesCarry || !bytesCarry) && current.contains(kGroup)) {
     next.payload = current;
     next.sameGroup = true;
+    if (noSizeLeft) {
+      QJsonObject stays = current.value(kConfig).toObject();
+      stays.insert(kMaxDeleteSize, QStringLiteral("0b"));
+      next.payload.insert(kConfig, stays);
+    }
     return next;
   }
   // A payload with no _group puts each job in a job/<id> group of its own.
@@ -384,7 +396,9 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
   if (deleteCount >= 0 && deletesSoFar > 0) {
     lowered.insert(kMaxDelete, qMax<qint64>(0, deleteCount - deletesSoFar));
   }
-  if (deleteBytes >= 0 && deletesSoFar > 0 && deletedBytesSoFar > 0) {
+  if (noSizeLeft) {
+    lowered.insert(kMaxDeleteSize, QStringLiteral("0b"));
+  } else if (deleteBytes >= 0 && deletesSoFar > 0 && deletedBytesSoFar > 0) {
     // rclone refuses a delete once the group's deleted bytes plus the
     // file's size would pass the cap, so this is the same test.
     lowered.insert(kMaxDeleteSize,
@@ -403,8 +417,8 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
   return next;
 }
 
-void AddDeletes(const QJsonObject &transferred,
-                QHash<QString, qint64> *deletes) {
+void AddDeletes(const QJsonObject &transferred, ListedDeletes *deletes) {
+  ListedDeletes listed;
   const QJsonArray entries = transferred.value("transferred").toArray();
   for (const QJsonValue &value : entries) {
     const QJsonObject entry = value.toObject();
@@ -412,13 +426,37 @@ void AddDeletes(const QJsonObject &transferred,
         RcloneExitCode::IsDeleteCapError(entry.value("error").toString())) {
       continue;
     }
-    // Two deletes in one go can share their times, never their name too.
+    // DeleteFile counts a size it can't tell as 0.
+    const qint64 size = qMax<qint64>(0, entry.value("size").toInteger(0));
     const QString key = entry.value("name").toString() + QChar('\n') +
+                        QString::number(size) + QChar('\n') +
                         entry.value("started_at").toString() + QChar('\n') +
                         entry.value("completed_at").toString();
-    // DeleteFile counts a size it can't tell as 0.
-    deletes->insert(key, qMax<qint64>(0, entry.value("size").toInteger(0)));
+    ListedDelete &one = listed[key];
+    one.size = size;
+    one.count++;
   }
+  for (auto it = listed.cbegin(); it != listed.cend(); ++it) {
+    ListedDelete &kept = (*deletes)[it.key()];
+    kept.size = it.value().size;
+    kept.count = qMax(kept.count, it.value().count);
+  }
+}
+
+qint64 DeleteCount(const ListedDeletes &deletes) {
+  qint64 count = 0;
+  for (const ListedDelete &one : deletes) {
+    count += one.count;
+  }
+  return count;
+}
+
+qint64 DeletedBytes(const ListedDeletes &deletes) {
+  qint64 bytes = 0;
+  for (const ListedDelete &one : deletes) {
+    bytes += one.size * one.count;
+  }
+  return bytes;
 }
 
 } // namespace RcJobResult

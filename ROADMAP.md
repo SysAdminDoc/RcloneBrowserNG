@@ -22,6 +22,20 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: measured first with `rclone copy --max-transfer 1 --cutoff-mode soft` plus a locked source file, CLI and daemon route side by side; the card prints the same attempt lines and exit code the CLI does; a real-daemon test covers the locked-file case and a fake one the plain stop.
   Complexity: S
 
+- [ ] P2 — Wait out a backend's retry-after time before the next try
+  Why: cmd.Run (cmd/cmd.go:275-281, v1.76.0) sleeps until the stats' RetryAfter time when a backend sent one (a rate limit's Retry-After, for one) before it logs "Attempt n/m failed" and sleeps `--retries-sleep`. The card waits only `--retries-sleep`, so against a rate-limited remote it tries again sooner than the CLI and can fail the same way again.
+  Evidence: `src/rc_job_widget.cpp` startNextAttempt waits mRetrySleepMs and nothing else. Whether core/stats reports a group's retry-after time hasn't been checked (fs/accounting/stats.go RemoteStats).
+  Touches: `src/rc_job_widget.cpp`, `tests/rc_job_widget_test.cpp`
+  Acceptance: v1.76.0's core/stats fields checked in the source; if it reports the time, the card waits until it, logs the CLI's "Received retry after error - sleeping until" line and counts the wait in its elapsed time, with a fake-daemon test; if it doesn't, the entry moves to Roadmap_Blocked.md with that reason.
+  Complexity: S
+
+- [ ] P2 — Record exit 3, 4 and 5 on the daemon route the way the CLI does
+  Why: resolveExitCode (cmd/cmd.go, v1.76.0) gives 3 for a directory not found, 4 for a file not found and 5 for an error marked as worth retrying, ahead of 6 and 7. The card takes 6 and 7 from cmd.Run's own lines now, but every other failed sync/* run records 1, so history and notifications can call a missing folder a plain failure where the process route names it.
+  Evidence: `src/rc_job_widget.cpp` finish() keeps 1 unless mStopExit is set, and rc hands back the job's error as text only. A copy with a locked source file exits 1 on the CLI (measured 2026-11-16), so that case stays 1.
+  Touches: `src/rc_job_widget.cpp`, `src/rc_job_result.{h,cpp}`, `tests/rc_job_widget_test.cpp`
+  Acceptance: the CLI's exit code measured first for a missing source directory and for each other case found in the source; the card records the same code for each, as rows in rc_job_widget_test against real rclone.
+  Complexity: S
+
 - [ ] P2 — Preview a Copy or Move that carries a delete cap
   Why: the deletion preview runs only for Sync or `--delete-excluded`, yet rclone v1.76.0 counts a Move's moved files against `--max-delete` when one replaces a destination file or crosses remotes, and a Copy with `--backup-dir` counts replaced files' backup moves. A Copy or Move whose extra options carry `--max-delete` can stop partway with no warning. The dialog's cap control is Sync-only and its tooltip says "Only Sync deletes at the destination", which reads as "Copy and Move can't hit a cap".
   Evidence: `src/transfer_dialog.cpp` acceptWithDeletionPreview gate; measured move_overwrite (local `rclone move` replacing dst/a.txt fails at `--max-delete 0`) and mem_move_excluded (local to memory, 2 files, fails at 0 and 1).

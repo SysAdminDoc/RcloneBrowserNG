@@ -2,6 +2,7 @@
 
 #include "pch.h"
 #include "job_history.h"
+#include "rc_job_result.h"
 #include "rclone_rc_engine.h"
 #include "ui_job_widget.h"
 
@@ -120,7 +121,6 @@ private:
     double totalBytes = 0;
     int transfers = 0;
     int checks = 0;
-    double elapsed = 0;
     qint64 deletes = 0;
   };
   Totals mCarried;
@@ -128,16 +128,24 @@ private:
   // The files the current group deleted and their sizes, from
   // core/transferred (RcJobResult::AddDeletes), which a --max-delete-size
   // run needs for a group of its own. rclone lists only about the last 100
-  // files a group finished, so the card reads it on every poll, and the
-  // sizes only count once there are as many as the group's deletes.
+  // files a group finished or checked, so the card reads it on every poll,
+  // and the sizes only count once there are as many as the group's deletes.
   // mCarriedDeletedBytes is the earlier groups' share, -1 once one of them
   // couldn't be told.
-  QHash<QString, qint64> mGroupDeletes;
+  RcJobResult::ListedDeletes mGroupDeletes;
   qint64 mCarriedDeletedBytes = 0;
   bool mTrackDeletes = false;
-  // From the stats read that ended an attempt to the next attempt's job,
-  // which no group's elapsedTime covers: the --retries-sleep, mostly.
-  QElapsedTimer mBetweenAttempts;
+  // The time cmd.Run would count for the attempts that ended: each job's
+  // own duration, which a group's elapsedTime overshoots by however late
+  // the poll saw the end, and the --retries-sleep before each retry.
+  // mAttemptClock runs from the current attempt's start, for the time shown
+  // while it runs.
+  double mElapsedDone = 0;
+  QElapsedTimer mAttemptClock;
+  // The exit code the CLI gives a run that ended on one of cmd.Run's own
+  // lines: 7 after a fatal error, 6 when no error could be retried. -1
+  // leaves the code to the job's result.
+  int mStopExit = -1;
   QTimer mPollTimer;
   QLineEdit *mBandwidth = nullptr;
   QPushButton *mBandwidthApply = nullptr;
@@ -154,6 +162,7 @@ private:
   void setAdaptive(bool on);
   void showAdaptiveState();
   void applyStats(const QJsonObject &stats);
+  void showElapsed();
   // Reads the group's core/stats, and its deletes when the run tracks them,
   // then calls done with the stats answer.
   void readGroup(

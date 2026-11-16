@@ -91,7 +91,11 @@ bool IsNoRetryError(const QString &error);
 // that can't be lowered exactly keeps the attempt in the current group
 // instead (sameGroup), with current's caps: a --max-delete-size run whose
 // deleted bytes aren't known, or a daemon that never said what its caps
-// are, which may have any.
+// are, which may have any. deletedBytesLost says an earlier group's deletes
+// were never all listed and the run left that group anyway, which it does
+// while no size cap is set. No group holds their size then, so a size cap
+// set since gets 0 bytes left: the next attempt refuses every delete with a
+// size rather than pass a cap it can't count.
 struct NextAttempt {
   QJsonObject payload;
   bool sameGroup = false;
@@ -100,13 +104,27 @@ NextAttempt PlanNextAttempt(const QJsonObject &original,
                             const QJsonObject &current, int attempt,
                             qint64 bytesSoFar, qint64 deletesSoFar,
                             const QJsonObject &daemonMain,
-                            qint64 deletedBytesSoFar = -1);
+                            qint64 deletedBytesSoFar = -1,
+                            bool deletedBytesLost = false);
 
-// The size of each file a core/transferred answer lists as deleted, keyed
-// by name and times so a later answer that lists it again doesn't count it
-// twice. DeleteFile refuses a file at the --max-delete or --max-delete-size
-// threshold before it counts it, so those entries are left out.
-void AddDeletes(const QJsonObject &transferred,
-                QHash<QString, qint64> *deletes);
+// A delete core/transferred listed, with how many entries one answer gave
+// it. A --backup-dir delete that replaces an older backup of the same name
+// lists two "deleting" entries for that name (the file, then the old backup
+// that DeleteFile removes), often with the same times and size.
+struct ListedDelete {
+  qint64 size = 0;
+  int count = 0;
+};
+using ListedDeletes = QHash<QString, ListedDelete>;
+
+// Adds the deletes a core/transferred answer lists, keyed by name, size and
+// times. A later answer lists what's still kept again, so a key counts as
+// often as the one answer that listed it most. DeleteFile refuses a file at
+// the --max-delete or --max-delete-size threshold before it counts it, so
+// those entries are left out.
+void AddDeletes(const QJsonObject &transferred, ListedDeletes *deletes);
+// How many deletes, and how many bytes, deletes holds.
+qint64 DeleteCount(const ListedDeletes &deletes);
+qint64 DeletedBytes(const ListedDeletes &deletes);
 
 } // namespace RcJobResult
