@@ -3636,9 +3636,16 @@ void MainWindow::runJobOptions(JobOptions *jo, bool dryrun, bool confirmSync) {
         QString("\"%1\" didn't start because rclone won't accept its "
                 "bandwidth limit. %2 Edit the task to fix it.")
             .arg(jo->description, bandwidthProblem);
-    AppLog::Write(AppLog::Level::Error, "job", message);
     setStatusMessage(message);
-    QMessageBox::warning(this, "Task didn't start", message);
+    // A run you started gets a box. A watched folder starts its task on
+    // every change, with the window often in the tray, and would stack
+    // one box per change, so it goes to the background error list.
+    if (confirmSync) {
+      AppLog::Write(AppLog::Level::Error, "job", message);
+      QMessageBox::warning(this, "Task didn't start", message);
+    } else {
+      appendBackgroundError(jo->description, message);
+    }
     return;
   }
 

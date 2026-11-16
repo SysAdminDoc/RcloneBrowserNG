@@ -7,12 +7,23 @@ namespace BwlimitTimetable {
 namespace {
 
 // rclone's parseWeekday: a three-letter or full English day name, any case.
+// Go's strings.ToLower uses the simple one-to-one mapping, so the Turkish
+// capital dotted I (U+0130) is a plain i there and "FRİ" is Friday. Qt has
+// no simple mapping for it: QString::toLower makes it i plus a combining
+// dot and QChar::toLower leaves it alone. It's the only letter whose
+// lowercase is longer than one character.
 bool IsWeekday(const QString &text) {
   static const QStringList kDays{"mon",    "monday",   "tue",     "tuesday",
                                  "wed",    "wednesday", "thu",    "thursday",
                                  "fri",    "friday",   "sat",     "saturday",
                                  "sun",    "sunday"};
-  return kDays.contains(text.toLower());
+  QList<uint> lowered = text.toUcs4();
+  for (uint &c : lowered) {
+    c = c == 0x130 ? uint('i') : QChar::toLower(c);
+  }
+  return kDays.contains(
+      QString::fromUcs4(reinterpret_cast<const char32_t *>(lowered.constData()),
+                        lowered.size()));
 }
 
 bool IsAsciiDigit(QChar c) {
@@ -22,7 +33,15 @@ bool IsAsciiDigit(QChar c) {
 // One side of a rate, read by rclone's SizeSuffix.
 QString SizeProblem(const QString &size) {
   using RcloneNumber::SizeError;
-  switch (RcloneNumber::ParseSize(size, nullptr)) {
+  qint64 bytes = 0;
+  SizeError error = RcloneNumber::ParseSize(size, &bytes);
+  if (error == SizeError::None) {
+    // rclone writes the limit out and reads it again before it runs, and
+    // from about 7.9995E the text rounds to 8.000Ei, which it refuses.
+    error = RcloneNumber::ParseSize(RcloneNumber::FormatSizeRoundTrip(bytes),
+                                    nullptr);
+  }
+  switch (error) {
   case SizeError::None:
     return QString();
   case SizeError::Empty:
@@ -38,10 +57,12 @@ QString SizeProblem(const QString &size) {
                           "like 512k or 10M, or off.")
         .arg(size);
   case SizeError::Negative:
-    return QStringLiteral("A rate can't be negative.");
+    return QStringLiteral("\"%1\" is negative. Use a size like 512k or 10M, "
+                          "or off.")
+        .arg(size);
   case SizeError::TooBig:
-    return QStringLiteral("\"%1\" is more than rclone can hold. Keep it under "
-                          "8E.")
+    return QStringLiteral("\"%1\" is more than rclone can hold. Keep it at "
+                          "7.999E or less.")
         .arg(size);
   }
   return QString();
@@ -108,7 +129,14 @@ QString RateProblem(const QString &rate) {
   // upload:download. rclone splits on the colon and reads each side.
   const QStringList sides = rate.split(QLatin1Char(':'));
   if (sides.size() > 2) {
-    return QStringLiteral("Use one rate, or upload:download like 10M:1M.");
+    return QStringLiteral("\"%1\" has more than one colon. Use one rate, or "
+                          "upload:download like 10M:1M.")
+        .arg(rate);
+  }
+  if (sides.size() == 2 && (sides.at(0).isEmpty() || sides.at(1).isEmpty())) {
+    return QStringLiteral("\"%1\" is missing a rate beside the colon. Use "
+                          "upload:download like 10M:1M.")
+        .arg(rate);
   }
   for (const QString &side : sides) {
     const QString problem = SizeProblem(side);

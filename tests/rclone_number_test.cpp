@@ -335,6 +335,38 @@ private slots:
             SizeError::TooBig);
   }
 
+  // fs/sizesuffix.go String with Go's %.3f, worked out by hand.
+  // agreesWithTheInstalledRclone checks the same code against rclone.
+  void formatsSizesAsRcloneDoes() {
+    const auto bytesOf = [](const QString &text) {
+      qint64 bytes = 0;
+      return RcloneNumber::ParseSize(text, &bytes) ==
+                     RcloneNumber::SizeError::None
+                 ? bytes
+                 : std::numeric_limits<qint64>::min();
+    };
+    QCOMPARE(RcloneNumber::FormatSize(-1), u"off"_s);
+    QCOMPARE(RcloneNumber::FormatSize(0), u"0"_s);
+    QCOMPARE(RcloneNumber::FormatSize(1023), u"1023"_s);
+    QCOMPARE(RcloneNumber::FormatSize(1024), u"1Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(1100), u"1.074Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(1099), u"1.073Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(1536), u"1.500Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(3000), u"2.930Ki"_s);
+    // Exact ties go to even, as Go's %.3f does.
+    QCOMPARE(RcloneNumber::FormatSize(1088), u"1.062Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"2.0625M"_s)), u"2.062Mi"_s);
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"1.0005k"_s)), u"1Ki"_s);
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"7.999E"_s)), u"7.999Ei"_s);
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"7.9994E"_s)), u"7.999Ei"_s);
+    // These two rclone then refuses to read back.
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"7.9995E"_s)), u"8.000Ei"_s);
+    QCOMPARE(RcloneNumber::FormatSize(std::numeric_limits<qint64>::max()),
+             u"8Ei"_s);
+    QCOMPARE(RcloneNumber::FormatSize(bytesOf(u"1023.9999P"_s)),
+             u"1024.000Pi"_s);
+  }
+
   void parsesDurationsAsGoDoes() {
     for (const Case &c : kDurations) {
       qint64 value = 12345;
@@ -452,6 +484,46 @@ private slots:
     };
     check(kCounts, u"max-delete"_s, u"MaxDelete"_s);
     check(kSizes, u"max-delete-size"_s, u"MaxDeleteSize"_s);
+
+    // rclone writes a --bwlimit out and reads it back before it runs, and
+    // options/get shows the text of what it read back, with a B added to a
+    // bare count. A value whose text it can't read back is refused. Ties
+    // tell Go's round-to-even from rounding up: 1088 bytes would end as
+    // 1.063Ki the other way.
+    for (const QString &text :
+         {u"0"_s, u"off"_s, u"1023b"_s, u"1088b"_s, u"1100b"_s, u"1536b"_s,
+          u"3000b"_s, u"2.5k"_s, u"1.0005k"_s, u"2.0625M"_s, u"7.999E"_s,
+          u"7.9994E"_s, u"7.9995E"_s, u"7.9999E"_s, u"1023.9999P"_s,
+          u"9223372036854774784b"_s}) {
+      QProcess process;
+      process.start(rclone, {u"--bwlimit=%1"_s.arg(text), u"rc"_s,
+                             u"--loopback"_s, u"options/get"_s});
+      QVERIFY(process.waitForFinished(30000));
+      const bool rcloneTookIt = process.exitStatus() == QProcess::NormalExit &&
+                                process.exitCode() == 0;
+      qint64 bytes = 0;
+      QVERIFY(RcloneNumber::ParseSize(text, &bytes) ==
+              RcloneNumber::SizeError::None);
+      qint64 back = 0;
+      const bool readsBack =
+          RcloneNumber::ParseSize(RcloneNumber::FormatSizeRoundTrip(bytes),
+                                  &back) == RcloneNumber::SizeError::None;
+      QVERIFY2(rcloneTookIt == readsBack,
+               qPrintable(u"bwlimit "_s + text +
+                          (rcloneTookIt ? u" accepted by rclone"_s
+                                        : u" refused by rclone"_s)));
+      if (rcloneTookIt) {
+        const QString ours = RcloneNumber::FormatSizeRoundTrip(back);
+        const QString shown = QJsonDocument::fromJson(
+                                  process.readAllStandardOutput())
+                                  .object()
+                                  .value(u"main"_s)
+                                  .toObject()
+                                  .value(u"BwLimit"_s)
+                                  .toString();
+        QCOMPARE(shown, ours);
+      }
+    }
     check(kDurations, u"retries-sleep"_s, u"RetriesInterval"_s);
     for (const FloatCase &c : kFloats) {
       const std::optional<double> got = read(u"tpslimit"_s, c.text,

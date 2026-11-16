@@ -2,6 +2,7 @@
 #include "bwlimit_timetable.h"
 #include "rclone_number.h"
 #include "utils.h"
+#include <QDebug>
 #include <qexception.h>
 #include <qlogging.h>
 
@@ -262,9 +263,22 @@ QStringList JobOptions::getOptions() const {
     // refuses (0800), and rclone would stop every run at the start over
     // it. The status bar marks that one, and runs go without it.
     const QStringList global = GetGlobalBandwidthLimit();
-    if (global.size() == 2 &&
-        BwlimitTimetable::Problem(global.at(1)).isEmpty()) {
+    const QString problem =
+        global.size() == 2 ? BwlimitTimetable::Problem(global.at(1))
+                           : QString();
+    if (global.size() == 2 && problem.isEmpty()) {
       list << global;
+    } else if (!problem.isEmpty()) {
+      // Into the app log once per value, since the options are built for
+      // previews and command text too.
+      static QString warned;
+      if (warned != global.at(1)) {
+        warned = global.at(1);
+        qWarning().noquote()
+            << QString("Runs leave out the global bandwidth limit \"%1\", "
+                       "which rclone won't accept. %2")
+                   .arg(global.at(1), problem);
+      }
     }
   }
   if (!minSize.isEmpty()) {

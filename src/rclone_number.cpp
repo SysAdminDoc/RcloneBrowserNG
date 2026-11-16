@@ -504,6 +504,71 @@ SizeError ParseSize(const QString &text, qint64 *bytes) {
   return SizeError::None;
 }
 
+QString FormatSize(qint64 bytes) {
+  if (bytes < 0) {
+    return QStringLiteral("off");
+  }
+  if (bytes == 0) {
+    return QStringLiteral("0");
+  }
+  static const char *const kUnits[] = {"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"};
+  int unit = 0;
+  while (unit < 6 && bytes >= (qint64(1) << (10 * (unit + 1)))) {
+    unit++;
+  }
+  // float64(x) / float64(Kibi) and so on: the count rounds to a double
+  // first, so 2^63 - 1 bytes is a whole 8 EiB.
+  const double scaled =
+      static_cast<double>(bytes) / std::ldexp(1.0, 10 * unit);
+  if (std::floor(scaled) == scaled) {
+    return QString::number(scaled, 'f', 0) + QLatin1String(kUnits[unit]);
+  }
+  // fmt's %.3f rounds the exact binary value, and an exact tie to even.
+  // Three decimals of a double under 2^63 never need more than the 20
+  // digits written here to settle that.
+  const QString exact = QString::number(scaled, 'f', 20);
+  const qsizetype point = exact.indexOf(QLatin1Char('.'));
+  QString kept = exact.left(point + 4);
+  const QStringView rest = QStringView(exact).mid(point + 4);
+  bool up = rest.at(0) > QLatin1Char('5');
+  if (rest.at(0) == QLatin1Char('5')) {
+    bool beyond = false;
+    for (const QChar c : rest.mid(1)) {
+      beyond = beyond || c != QLatin1Char('0');
+    }
+    up = beyond || (kept.back().unicode() - u'0') % 2 == 1;
+  }
+  if (up) {
+    // Carry the 1 through the kept digits, past the point.
+    qsizetype at = kept.size() - 1;
+    while (at >= 0) {
+      if (kept.at(at) == QLatin1Char('.')) {
+        at--;
+        continue;
+      }
+      if (kept.at(at) == QLatin1Char('9')) {
+        kept[at] = QLatin1Char('0');
+        at--;
+        continue;
+      }
+      kept[at] = QChar(kept.at(at).unicode() + 1);
+      break;
+    }
+    if (at < 0) {
+      kept.prepend(QLatin1Char('1'));
+    }
+  }
+  return kept + QLatin1String(kUnits[unit]);
+}
+
+QString FormatSizeRoundTrip(qint64 bytes) {
+  QString text = FormatSize(bytes);
+  if (text != QLatin1String("0") && IsDigit(text.back().unicode())) {
+    text += QLatin1Char('B');
+  }
+  return text;
+}
+
 // Go's time.ParseDuration (src/time/format.go), byte for byte: the units
 // are matched as UTF-8, and the integer and fraction parts overflow
 // exactly where Go's do.

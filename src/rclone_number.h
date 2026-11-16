@@ -46,4 +46,17 @@ enum class SizeError {
 // up are refused. *bytes is set only when the result is SizeError::None.
 SizeError ParseSize(const QString &text, qint64 *bytes);
 
+// SizeSuffix.String: how rclone writes a size back out. -1 is "off", 0 is
+// "0", under 1 KiB is the bare count, and anything bigger is scaled to the
+// largest unit it reaches (Ki to Ei) with three decimals, or none when the
+// result is whole, rounding a tie to even like Go ("1.500Ki", "2.062Mi",
+// "1Ki").
+QString FormatSize(qint64 bytes);
+
+// SizeSuffix.stringRoundTrip: FormatSize with a B after a bare count, so it
+// reads back as bytes. rclone writes its options out this way and reads
+// them again before it runs, so a value whose text it then refuses, such
+// as 7.9995E written as "8.000Ei", stops it even though ParseSize took it.
+QString FormatSizeRoundTrip(qint64 bytes);
+
 } // namespace RcloneNumber

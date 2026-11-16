@@ -25,7 +25,10 @@ const QStringList kAccepted{
     // Semicolons separate entries too, and Go's ParseFloat takes _ and hex.
     "08:00,1M;12:00,off", "08:00,1M; 12:00,off", "08:00,1M;;12:00,2M",
     "08:00,1_000k",    "08:00,0x1p4k",       "08:00,7E",
-    "08:00,8191P",     "08:00,7.99Ei",
+    "08:00,8191P",     "08:00,7.99Ei",       "08:00,7.9994E",
+    // Go lowercases the Turkish capital dotted I to a plain i.
+    QString::fromUtf8("FR\xC4\xB0-08:00,1M"),
+    QString::fromUtf8("fR\xC4\xB0" "day-08:00,1M"),
 };
 
 const QStringList kRefused{
@@ -46,6 +49,10 @@ const QStringList kRefused{
     "08:00,10bi",      "08:00,1bib",         "08:00,8E",
     "08:00,8192P",     "08:00,100000000000000000000",
     "08:00,nank",      "08:00,infk",         "08:00,1e400k",
+    // rclone writes the limit out and reads it back, and from about
+    // 7.9995E the text rounds to 8.000Ei, which it refuses.
+    "08:00,7.9995E",   "7.9999E",            "1M:7.9999E",
+    "08:00,8191.5P",   "9223372036854774784b",
 };
 
 } // namespace
@@ -89,16 +96,30 @@ private slots:
                      "the dash off."));
     QCOMPARE(TimeProblem("Mon-08-00"),
              QString("Write the time as HH:MM, like 08:00."));
+    QVERIFY(TimeProblem(QString::fromUtf8("FR\xC4\xB0-08:00")).isEmpty());
 
+    // A single rate has no entry around it, so each message names the
+    // value it's about.
     QVERIFY(RateProblem("off").isEmpty());
     QVERIFY(RateProblem("10M:1M").isEmpty());
     QCOMPARE(RateProblem(""),
              QString("A rate is missing. Use a size like 512k or 10M, or off."));
-    QCOMPARE(RateProblem("-1"), QString("A rate can't be negative."));
+    QCOMPARE(RateProblem("-1"),
+             QString("\"-1\" is negative. Use a size like 512k or 10M, or "
+                     "off."));
     QVERIFY(!RateProblem("10MB").isEmpty());
-    QVERIFY(!RateProblem("1:2:3").isEmpty());
+    QCOMPARE(RateProblem("1:2:3"),
+             QString("\"1:2:3\" has more than one colon. Use one rate, or "
+                     "upload:download like 10M:1M."));
+    QCOMPARE(RateProblem("1k:"),
+             QString("\"1k:\" is missing a rate beside the colon. Use "
+                     "upload:download like 10M:1M."));
     QCOMPARE(RateProblem("8E"),
-             QString("\"8E\" is more than rclone can hold. Keep it under 8E."));
+             QString("\"8E\" is more than rclone can hold. Keep it at 7.999E "
+                     "or less."));
+    QCOMPARE(RateProblem("7.9999E"),
+             QString("\"7.9999E\" is more than rclone can hold. Keep it at "
+                     "7.999E or less."));
     QCOMPARE(RateProblem("10bi"),
              QString("\"10bi\" ends in a unit rclone doesn't know. Use k, M or "
                      "G, or off."));
