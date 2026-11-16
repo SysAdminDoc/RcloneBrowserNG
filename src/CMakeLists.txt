@@ -83,6 +83,7 @@ set(SOURCE
   remote_path.cpp
   app_log.cpp
   filter_pattern.cpp
+  bwlimit_timetable.cpp
   job_stats.cpp
   rc_sync_request.cpp
   lsjson_parser.cpp

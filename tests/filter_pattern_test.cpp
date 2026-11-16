@@ -109,6 +109,45 @@ private slots:
              QStringLiteral("logx.txt"));
   }
 
+  // Measured against rclone v1.76.0 on 2026-11-15 with `rclone lsf -R
+  // --exclude <pattern>` over a.txt, b.txt, x.txt, !.txt, ^.txt, sub/a.txt:
+  //   "[abc].txt"     excluded a.txt, b.txt and sub/a.txt
+  //   "[!a].txt"      excluded b.txt, x.txt, !.txt and ^.txt
+  //   "[^a].txt"      the same as [!a]
+  //   "sub[!x]a.txt"  excluded nothing, since the class never matches /
+  //   "[!].txt" / "[^].txt"  CRITICAL "empty character class", nothing ran
+  void negatedClassesGiveAnExampleOutsideTheSet() {
+    QCOMPARE(Describe("[abc].txt").matchesExample, QStringLiteral("a.txt"));
+    QCOMPARE(Describe("[!a].txt").matchesExample, QStringLiteral("x.txt"));
+    QCOMPARE(Describe("[^a].txt").matchesExample, QStringLiteral("x.txt"));
+    // x is in this set, and so is the a-c range.
+    QCOMPARE(Describe("[!xa-c].txt").matchesExample, QStringLiteral("z.txt"));
+    QCOMPARE(Describe("[!a-z0-9_X].txt").matchesExample,
+             QStringLiteral("!.txt"));
+    QVERIFY(Describe("[abc].txt").negatedClass.isEmpty());
+    QCOMPARE(Describe("sub[^x]a.txt").negatedClass, QStringLiteral("[^x]"));
+    QCOMPARE(Describe("[ab][!c].txt").negatedClass, QStringLiteral("[!c]"));
+  }
+
+  void theExplainerSaysANegatedClassNeverMatchesASlash() {
+    const QStringList lines = DescribeAll("*.[!t]mp\n[abc].txt\n");
+    QCOMPARE(lines.size(), 2);
+    QVERIFY2(lines[0].contains("matches name.xmp"), qPrintable(lines[0]));
+    QVERIFY2(lines[0].contains("[!t] matches one character"),
+             qPrintable(lines[0]));
+    QVERIFY2(lines[0].endsWith("never a /"), qPrintable(lines[0]));
+    QVERIFY2(!lines[1].contains("never a /"), qPrintable(lines[1]));
+  }
+
+  void anEmptyNegatedClassIsFatal() {
+    for (const QString &pattern : {"[!].txt", "[^].txt"}) {
+      const auto description = Describe(pattern);
+      QVERIFY2(!description.wellFormed, qPrintable(pattern));
+      QCOMPARE(description.problem, QStringLiteral("empty character class"));
+    }
+    QVERIFY(Describe("[!a].txt").wellFormed);
+  }
+
   // A regex that stops at the first closing brace turns this into "a}", which
   // is not a path and not something the pattern matches.
   void nestedAlternationTakesTheFirstTopLevelBranch() {

@@ -32,6 +32,9 @@ struct Description {
   // A concrete path it does not, which is the part people get wrong. Empty
   // whenever no such example can be stated truthfully.
   QString missesExample;
+  // The first "[!...]" or "[^...]" class as written. Since rclone 1.76.0
+  // both are negated and neither matches "/", which is worth saying.
+  QString negatedClass;
 };
 
 Description Describe(const QString &pattern);

@@ -1,4 +1,5 @@
 #include "transfer_dialog.h"
+#include "bwlimit_timetable.h"
 #include "sync_preview.h"
 #include "remote_list_parser.h"
 #include "filter_pattern.h"
@@ -54,8 +55,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     auto *layout = new QVBoxLayout(&dlg);
     layout->setSpacing(8);
     auto *hint = new QLabel(
-        "Define time-of-day bandwidth limits. Format: HH:MM,speed "
-        "(e.g. 08:00,512k). Use 'off' for unlimited.", &dlg);
+        "Each row sets the limit from that time on: HH:MM, or a day and a "
+        "time like Mon-08:00. The rate is a size like 512k or 10M, "
+        "upload:download like 10M:1M, or off for no limit.", &dlg);
     hint->setWordWrap(true);
     UiPolish::SetMuted(hint);
     layout->addWidget(hint);
@@ -66,17 +68,25 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     table->horizontalHeader()->setStretchLastSection(true);
     layout->addWidget(table, 1);
 
-    QString current = ui.textBandwidth->text().trimmed();
-    QStringList entries = current.split(' ', Qt::SkipEmptyParts);
-    for (const QString &entry : entries) {
-      int comma = entry.indexOf(',');
-      if (comma > 0) {
-        int row = table->rowCount();
-        table->insertRow(row);
-        table->setItem(row, 0,
-                       new QTableWidgetItem(entry.left(comma)));
-        table->setItem(row, 1,
-                       new QTableWidgetItem(entry.mid(comma + 1)));
+    const auto addRow = [table](const QString &time, const QString &rate) {
+      const int row = table->rowCount();
+      table->insertRow(row);
+      table->setItem(row, 0, new QTableWidgetItem(time));
+      table->setItem(row, 1, new QTableWidgetItem(rate));
+    };
+    static const QRegularExpression kSpace(QStringLiteral("\\s+"));
+    const QStringList entries =
+        ui.textBandwidth->text().split(kSpace, Qt::SkipEmptyParts);
+    if (entries.size() == 1 && !entries.first().contains(QLatin1Char(','))) {
+      // A plain rate holds all day, the same as one row at 00:00.
+      addRow(QStringLiteral("00:00"), entries.first());
+    } else {
+      // An entry rclone would refuse still gets a row, marked, so it can be
+      // fixed here instead of disappearing.
+      for (const QString &entry : entries) {
+        const qsizetype comma = entry.indexOf(QLatin1Char(','));
+        addRow(comma < 0 ? entry : entry.left(comma),
+               comma < 0 ? QString() : entry.mid(comma + 1));
       }
     }
 
@@ -89,40 +99,22 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     btnRow->addStretch();
     layout->addLayout(btnRow);
 
-    QObject::connect(addBtn, &QPushButton::clicked, &dlg, [table]() {
-      int row = table->rowCount();
-      table->insertRow(row);
-      table->setItem(row, 0, new QTableWidgetItem("00:00"));
-      table->setItem(row, 1, new QTableWidgetItem("off"));
-    });
-    QObject::connect(removeBtn, &QPushButton::clicked, &dlg, [table]() {
-      int row = table->currentRow();
-      if (row >= 0)
-        table->removeRow(row);
-    });
-
     auto *preview = new QLabel(&dlg);
+    preview->setObjectName("bandwidthPreview");
+    preview->setWordWrap(true);
     UiPolish::SetMuted(preview);
     layout->addWidget(preview);
-
-    auto updatePreview = [table, preview]() {
-      QStringList parts;
-      for (int i = 0; i < table->rowCount(); ++i) {
-        auto *t = table->item(i, 0);
-        auto *b = table->item(i, 1);
-        if (t && b && !t->text().isEmpty())
-          parts << t->text() + "," + b->text();
-      }
-      preview->setText("Preview: --bwlimit \"" + parts.join(' ') + "\"");
-    };
-    QObject::connect(table, &QTableWidget::cellChanged, &dlg,
-                     [updatePreview](int, int) { updatePreview(); });
-    updatePreview();
+    auto *problem = new QLabel(&dlg);
+    problem->setObjectName("bandwidthProblem");
+    problem->setWordWrap(true);
+    UiPolish::SetValidationMessage(problem, QString(), QString());
+    layout->addWidget(problem);
 
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     UiPolish::SetDialogButtonBox(buttons);
-    if (auto ok = buttons->button(QDialogButtonBox::Ok)) {
+    QPushButton *ok = buttons->button(QDialogButtonBox::Ok);
+    if (ok) {
       UiPolish::SetPrimaryButton(ok);
     }
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg,
@@ -131,15 +123,93 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                      &QDialog::reject);
     layout->addWidget(buttons);
 
-    if (dlg.exec() == QDialog::Accepted) {
+    // rclone 1.76.0 refuses a whole timetable over one bad entry, and only
+    // when the job starts. Each cell it would refuse is marked here, OK
+    // stays off until they're fixed, and the value is built from the rows
+    // that pass, so neither the preview nor the field gets a bad one.
+    const QColor bad = UiPolish::BestContrastingColor(
+        table->palette().color(QPalette::Base),
+        {QColor("#cc0000"), QColor("#ff5f5f"), QColor("#7a0000")});
+    const auto validate = [table, preview, problem, ok, bad]() {
+      const QSignalBlocker blocker(table);
       QStringList parts;
-      for (int i = 0; i < table->rowCount(); ++i) {
-        auto *t = table->item(i, 0);
-        auto *b = table->item(i, 1);
-        if (t && b && !t->text().isEmpty())
-          parts << t->text() + "," + b->text();
+      QString first;
+      int badRows = 0;
+      for (int row = 0; row < table->rowCount(); ++row) {
+        QTableWidgetItem *cells[2] = {table->item(row, 0),
+                                      table->item(row, 1)};
+        QString text[2];
+        for (int col = 0; col < 2; ++col) {
+          if (!cells[col]) {
+            cells[col] = new QTableWidgetItem();
+            table->setItem(row, col, cells[col]);
+          }
+          text[col] = cells[col]->text().trimmed();
+        }
+        // A row left empty is skipped, not refused.
+        QString problems[2];
+        if (!text[0].isEmpty() || !text[1].isEmpty()) {
+          problems[0] = BwlimitTimetable::TimeProblem(text[0]);
+          problems[1] = BwlimitTimetable::RateProblem(text[1]);
+        }
+        for (int col = 0; col < 2; ++col) {
+          cells[col]->setData(Qt::ForegroundRole,
+                              problems[col].isEmpty() ? QVariant()
+                                                      : QVariant(QBrush(bad)));
+          cells[col]->setToolTip(problems[col]);
+          cells[col]->setData(Qt::AccessibleDescriptionRole, problems[col]);
+        }
+        if (!problems[0].isEmpty() || !problems[1].isEmpty()) {
+          if (++badRows == 1) {
+            first = QStringLiteral("Row %1: %2")
+                        .arg(row + 1)
+                        .arg(problems[0].isEmpty() ? problems[1]
+                                                   : problems[0]);
+          }
+        } else if (!text[0].isEmpty()) {
+          parts << text[0] + QLatin1Char(',') + text[1];
+        }
       }
-      ui.textBandwidth->setText(parts.join(' '));
+      // One row at 00:00 is the same limit as a plain rate.
+      const QString value =
+          parts.size() == 1 && parts.first().startsWith(QLatin1String("00:00,"))
+              ? parts.first().mid(6)
+              : parts.join(QLatin1Char(' '));
+      preview->setText(value.isEmpty()
+                           ? QStringLiteral("Preview: no limit")
+                           : QStringLiteral("Preview: --bwlimit \"%1\"")
+                                 .arg(value));
+      UiPolish::SetValidationMessage(
+          problem, badRows > 0 ? QStringLiteral("error") : QString(),
+          badRows > 1 ? QStringLiteral("%1 %2 rows need fixing.")
+                            .arg(first)
+                            .arg(badRows)
+                      : first);
+      if (ok) {
+        ok->setEnabled(badRows == 0);
+      }
+      return value;
+    };
+    QObject::connect(table, &QTableWidget::cellChanged, &dlg,
+                     [validate](int, int) { validate(); });
+    QObject::connect(addBtn, &QPushButton::clicked, &dlg,
+                     [table, addRow, validate]() {
+                       addRow(QStringLiteral("00:00"), QStringLiteral("off"));
+                       table->setCurrentCell(table->rowCount() - 1, 0);
+                       validate();
+                     });
+    QObject::connect(removeBtn, &QPushButton::clicked, &dlg,
+                     [table, validate]() {
+                       const int row = table->currentRow();
+                       if (row >= 0) {
+                         table->removeRow(row);
+                       }
+                       validate();
+                     });
+    validate();
+
+    if (dlg.exec() == QDialog::Accepted) {
+      ui.textBandwidth->setText(validate());
     }
   });
 
@@ -507,6 +577,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                    &TransferDialog::clearValidation);
   QObject::connect(ui.textDescription, &QLineEdit::textChanged, this,
                    &TransferDialog::clearValidation);
+  QObject::connect(ui.textBandwidth, &QLineEdit::textChanged, this,
+                   &TransferDialog::clearValidation);
 
   QStyle *style = qApp->style();
   ui.buttonSourceFile->setIcon(style->standardIcon(QStyle::SP_FileIcon));
@@ -637,6 +709,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
       showValidation(ui.textDest, "Saved tasks need a destination path.");
       return;
     }
+    if (!checkBandwidth(true)) {
+      return;
+    }
     JobOptions *jobo = getJobOptions();
     ListOfJobOptions::getInstance()->Persist(jobo);
     // always close on save
@@ -670,6 +745,9 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
                          "Choose a source before previewing.");
           return;
         }
+      }
+      if (!checkBandwidth(true)) {
+        return;
       }
       mPreview->clear();
       mPreview->setVisible(true);
@@ -869,6 +947,8 @@ TransferDialog::TransferDialog(bool isDownload, bool isDrop,
     ui.textDest->setDisabled(true);
     ui.textSource->setDisabled(true);
     putJobOptions();
+    // A task saved before rclone 1.76.0 can hold a time it now refuses.
+    checkBandwidth(false);
   } else {
 
     // set source and destination using defaults
@@ -966,6 +1046,10 @@ bool TransferDialog::wouldDeleteAtDestination() const {
 }
 
 void TransferDialog::acceptWithDeletionPreview() {
+  // The deletion preview runs rclone with this value too.
+  if (!checkBandwidth(true)) {
+    return;
+  }
   // A dry run changes nothing, an edit is not a run, and a queued transfer
   // gets reviewed in the staging list before it goes anywhere.
   if (mDryRun || mIsEditMode || mEnqueued || mPreviewInFlight ||
@@ -1355,6 +1439,27 @@ void TransferDialog::clearValidation() {
   UiPolish::SetFieldState(ui.textSource, QString());
   UiPolish::SetFieldState(ui.textDest, QString());
   UiPolish::SetFieldState(ui.textDescription, QString());
+  UiPolish::SetFieldState(ui.textBandwidth, QString());
+}
+
+bool TransferDialog::checkBandwidth(bool focus) {
+  const QString problem =
+      BwlimitTimetable::Problem(ui.textBandwidth->text().trimmed());
+  if (problem.isEmpty()) {
+    return true;
+  }
+  const QString message =
+      QStringLiteral("rclone won't accept this bandwidth limit. %1")
+          .arg(problem);
+  if (focus) {
+    ui.tabWidget->setCurrentWidget(ui.tab3);
+    showValidation(ui.textBandwidth, message);
+  } else {
+    clearValidation();
+    UiPolish::SetFieldState(ui.textBandwidth, "error");
+    UiPolish::SetValidationMessage(mValidation, "error", message);
+  }
+  return false;
 }
 
 void TransferDialog::showValidation(QWidget *field, const QString &message) {
@@ -1448,7 +1553,7 @@ JobOptions *TransferDialog::getJobOptions() {
 
   mJobOptions->transfers = ui.spinTransfers->text();
   mJobOptions->checkers = ui.spinCheckers->text();
-  mJobOptions->bandwidth = ui.textBandwidth->text();
+  mJobOptions->bandwidth = ui.textBandwidth->text().trimmed();
   mJobOptions->minSize = ui.textMinSize->text();
   mJobOptions->minAge = ui.textMinAge->text();
   mJobOptions->maxAge = ui.textMaxAge->text();
@@ -1605,6 +1710,9 @@ void TransferDialog::done(int r) {
                        "Choose a local file or folder before running.");
         return;
       }
+    }
+    if (!checkBandwidth(true)) {
+      return;
     }
   }
   QDialog::done(r);

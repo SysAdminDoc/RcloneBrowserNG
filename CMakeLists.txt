@@ -135,6 +135,14 @@ if(BUILD_TESTING)
   target_link_libraries(filter_pattern_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME filter_pattern_test COMMAND filter_pattern_test)
 
+  add_executable(bwlimit_timetable_test
+    tests/bwlimit_timetable_test.cpp
+    src/bwlimit_timetable.cpp
+  )
+  target_include_directories(bwlimit_timetable_test PRIVATE src tests)
+  target_link_libraries(bwlimit_timetable_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME bwlimit_timetable_test COMMAND bwlimit_timetable_test)
+
   add_executable(rc_sync_request_test
     tests/rc_sync_request_test.cpp
     src/rc_sync_request.cpp
@@ -567,6 +575,7 @@ if(BUILD_TESTING)
     src/rc_certificate.cpp
     src/app_log.cpp
     src/filter_pattern.cpp
+    src/bwlimit_timetable.cpp
     src/job_stats.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp

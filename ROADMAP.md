@@ -65,13 +65,6 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: choosing a provider renders a form generated from its options, with the widget picked by `Type`, advanced options on a second tab, `Exclusive` options as a closed combo of `Examples`, `Sensitive` and `IsPassword` fields masked and excluded from the copy-command output, and options filtered by `MatchProvider` against the selected provider variant; simple backends (local, alias, crypt, S3, SFTP, WebDAV) are created entirely in-app; backends that need OAuth or extra steps fall into the `--continue` state loop and surface each question in the same form, still opening a browser for OAuth; the terminal handoff remains as the explicit fallback; a test drives the form against a recorded `config/providers` payload and asserts widget type, visibility and masking per option.
   Complexity: L
 
-- [ ] P2 — Follow rclone 1.76 glob classes and `--bwlimit` time rules
-  Why: rclone 1.76.0 made `[!...]` a negated class and `[^...]` exclude `/`, and it rejects timetable times without a colon or with signed digits, so the filter explainer now describes two pattern forms wrongly and a saved timetable can stop a job at start.
-  Evidence (Verified): rclone 1.76.0 changelog ("Reject `--bwlimit` times without a colon or with signed digits", plus the two glob entries); `src/filter_pattern.cpp:89-107` replaces a class with its first character; `src/transfer_dialog.cpp:42-90` takes free-text times and builds `--bwlimit "..."` without checking them.
-  Touches: `src/filter_pattern.cpp`, `tests/filter_pattern_test.cpp`, `src/transfer_dialog.cpp` (move the timetable check into a testable function), new `tests/bwlimit_timetable_test.cpp`, `CMakeLists.txt`
-  Acceptance: the explainer gives a correct example for `[abc]`, `[!abc]` and `[^abc]` and says `[^...]` never matches `/`; the timetable editor marks a time like `0800` or `+08:00` inline, and neither the preview nor the saved task ever contains one; tests cover both.
-  Complexity: S
-
 - [ ] P2 — Use fuse-t's FSKit backend only when its extension is enabled
   Why: on macOS 26 the app adds `-o backend=fskit` to every fuse-t mount where the user hasn't picked a backend, but fuse-t calls FSKit experimental and has the user enable the extension by hand.
   Evidence: `src/mount_backend.cpp:160-167` (Verified); fuse-t 1.1.0 release notes: "Run fuse-t.app from /Applications and follow instructions to manually enable the FSKit extension" (Verified); what a mount does with the extension off (Needs live validation, Open Question 4 in RESEARCH.md); detecting the extension through `pluginkit` (Assumption).

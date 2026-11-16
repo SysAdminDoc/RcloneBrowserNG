@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "bwlimit_timetable.h"
 #include "job_options.h"
 #include "job_widget.h"
 #include "mount_backend.h"
@@ -1833,20 +1834,46 @@ MainWindow::MainWindow(bool initializeRuntime)
   mBandwidthLimit = new QLineEdit(this);
   mBandwidthLimit->setMaximumWidth(90);
   mBandwidthLimit->setPlaceholderText("off");
-  mBandwidthLimit->setToolTip(
-      "Global bandwidth limit (e.g. 10M, 1G, or off). Applied to new "
-      "transfers when the per-job bandwidth field is empty.");
+  static const QString kLimitTip =
+      QStringLiteral("Global bandwidth limit (e.g. 10M, 1G, or off). Applied "
+                     "to new transfers when the per-job bandwidth field is "
+                     "empty.");
+  mBandwidthLimit->setToolTip(kLimitTip);
   mBandwidthLimit->setAccessibleName("Global bandwidth limit");
+  // rclone 1.76.0 refuses a malformed limit when each job starts, so one is
+  // marked here and never saved.
+  const auto checkLimit = [this]() {
+    const QString problem =
+        BwlimitTimetable::Problem(mBandwidthLimit->text().trimmed());
+    UiPolish::SetFieldState(mBandwidthLimit,
+                            problem.isEmpty() ? QString() : "error");
+    mBandwidthLimit->setToolTip(problem.isEmpty() ? kLimitTip : problem);
+    return problem;
+  };
   {
     auto settings = GetSettings();
     mBandwidthLimit->setText(
         settings->value("Settings/globalBandwidthLimit").toString());
   }
-  QObject::connect(mBandwidthLimit, &QLineEdit::editingFinished, this, [this]() {
-    auto settings = GetSettings();
-    settings->setValue("Settings/globalBandwidthLimit",
-                       mBandwidthLimit->text().trimmed());
+  // One saved before rclone 1.76.0 can hold a time it now refuses.
+  checkLimit();
+  QObject::connect(mBandwidthLimit, &QLineEdit::textChanged, this, [this]() {
+    UiPolish::SetFieldState(mBandwidthLimit, QString());
+    mBandwidthLimit->setToolTip(kLimitTip);
   });
+  QObject::connect(mBandwidthLimit, &QLineEdit::editingFinished, this,
+                   [this, checkLimit]() {
+                     const QString problem = checkLimit();
+                     if (!problem.isEmpty()) {
+                       setStatusMessage(
+                           QStringLiteral("Bandwidth limit not saved. %1")
+                               .arg(problem));
+                       return;
+                     }
+                     auto settings = GetSettings();
+                     settings->setValue("Settings/globalBandwidthLimit",
+                                        mBandwidthLimit->text().trimmed());
+                   });
   auto *snailBtn = new QToolButton(this);
   snailBtn->setCheckable(true);
   snailBtn->setText("Slow");

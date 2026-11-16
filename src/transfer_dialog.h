@@ -85,6 +85,9 @@ private:
   void putJobOptions();
   void clearValidation();
   void showValidation(QWidget *field, const QString &message);
+  // Marks the bandwidth field and says what rclone would refuse in it.
+  // focus also shows its tab and puts the cursor there.
+  bool checkBandwidth(bool focus);
 
   void done(int r) override;
 

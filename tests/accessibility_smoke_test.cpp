@@ -12,6 +12,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFileInfo>
 #include <QLabel>
@@ -22,8 +23,13 @@
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QStandardPaths>
+#include <QTabWidget>
+#include <QTableWidget>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
+
+#include <functional>
 
 class AccessibilitySmokeTest : public QObject {
   Q_OBJECT
@@ -195,6 +201,137 @@ private slots:
                    "Verify integrity after transfer", "Run transfer",
                    "Enqueue transfer for later", "Save transfer as task"});
     dialog.close();
+  }
+
+  // rclone 1.76.0 refuses a timetable time without a colon or with a sign,
+  // and only when the job starts. The editor marks one, keeps OK off until
+  // it's fixed and leaves it out of the preview and the field.
+  void bandwidthEditorMarksTimesRcloneRefuses() {
+    TransferDialog dialog(false, false, "remote", QDir(), true);
+    auto *field = dialog.findChild<QLineEdit *>("textBandwidth");
+    auto *edit = dialog.findChild<QToolButton *>("buttonBandwidthEdit");
+    QVERIFY(field != nullptr);
+    QVERIFY(edit != nullptr);
+
+    const auto openEditor = [&](const std::function<void(QDialog *)> &drive) {
+      QString problem = "the timetable editor never opened";
+      QTimer::singleShot(0, &dialog, [&]() {
+        for (QWidget *top : QApplication::topLevelWidgets()) {
+          auto *candidate = qobject_cast<QDialog *>(top);
+          if (candidate && candidate->isVisible() &&
+              candidate->windowTitle() == "Bandwidth Timetable") {
+            problem.clear();
+            drive(candidate);
+            // Still open when the drive didn't press OK.
+            if (candidate->isVisible()) {
+              candidate->reject();
+            }
+            return;
+          }
+        }
+      });
+      edit->click();
+      return problem;
+    };
+    const auto okOf = [](QDialog *editor) {
+      auto *buttons = editor->findChild<QDialogButtonBox *>();
+      return buttons ? buttons->button(QDialogButtonBox::Ok) : nullptr;
+    };
+
+    field->setText("0800,1M 09:00,2M +08:00,3M");
+    QStringList seen;
+    QString problem = openEditor([&](QDialog *editor) {
+      auto *table = editor->findChild<QTableWidget *>();
+      auto *preview = editor->findChild<QLabel *>("bandwidthPreview");
+      auto *message = editor->findChild<QLabel *>("bandwidthProblem");
+      QPushButton *ok = okOf(editor);
+      if (!table || !preview || !message || !ok || table->rowCount() != 3) {
+        seen << "the editor is missing a part or a row";
+        return;
+      }
+      seen << table->item(0, 0)->toolTip() << table->item(1, 0)->toolTip()
+           << table->item(2, 0)->toolTip()
+           << (ok->isEnabled() ? "OK on" : "OK off") << preview->text()
+           << message->text();
+      table->item(0, 0)->setText("08:00");
+      table->item(2, 0)->setText("Mon-10:00");
+      seen << (ok->isEnabled() ? "OK on" : "OK off") << preview->text()
+           << table->item(0, 0)->toolTip() << message->text();
+      ok->click();
+    });
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    const QString clock = "Write the time as HH:MM, like 08:00.";
+    QCOMPARE(seen,
+             (QStringList{clock, "", clock, "OK off",
+                          "Preview: --bwlimit \"09:00,2M\"",
+                          "Row 1: " + clock + " 2 rows need fixing.", "OK on",
+                          "Preview: --bwlimit \"08:00,1M 09:00,2M "
+                          "Mon-10:00,3M\"",
+                          "", ""}));
+    QCOMPARE(field->text(), QString("08:00,1M 09:00,2M Mon-10:00,3M"));
+
+    // A plain rate opens as one row at 00:00 and comes back unchanged.
+    field->setText("10M");
+    seen.clear();
+    problem = openEditor([&](QDialog *editor) {
+      auto *table = editor->findChild<QTableWidget *>();
+      if (!table || table->rowCount() != 1) {
+        seen << "expected one row";
+        return;
+      }
+      seen << table->item(0, 0)->text() << table->item(0, 1)->text();
+      okOf(editor)->click();
+    });
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QCOMPARE(seen, (QStringList{"00:00", "10M"}));
+    QCOMPARE(field->text(), QString("10M"));
+
+    // Typed straight into the field, it stops the run and shows the tab.
+    auto *source = dialog.findChild<QLineEdit *>("textSource");
+    auto *tabs = dialog.findChild<QTabWidget *>("tabWidget");
+    QVERIFY(source != nullptr);
+    QVERIFY(tabs != nullptr);
+    source->setText(QDir::tempPath());
+    tabs->setCurrentIndex(0);
+    field->setText("+08:00,1M");
+    QDialog &base = dialog;
+    base.done(QDialog::Accepted);
+    QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    QCOMPARE(field->property("fieldState").toString(), QString("error"));
+    QVERIFY(tabs->currentWidget()->isAncestorOf(field));
+    field->setText("08:00,1M");
+    QCOMPARE(field->property("fieldState").toString(), QString());
+    base.done(QDialog::Accepted);
+    QCOMPARE(dialog.result(), int(QDialog::Accepted));
+  }
+
+  // The status bar's Limit is passed to every new job as --bwlimit, so a
+  // value rclone would refuse is marked and never saved.
+  void statusBarLimitRefusesWhatRcloneRefuses() {
+    const auto cleanup = qScopeGuard(
+        [] { GetSettings()->remove("Settings/globalBandwidthLimit"); });
+    GetSettings()->setValue("Settings/globalBandwidthLimit", "0800,1M");
+
+    MainWindow window(false);
+    auto *limit = qobject_cast<QLineEdit *>(
+        findAccessible(&window, "Global bandwidth limit"));
+    QVERIFY(limit != nullptr);
+    // One saved by an older build is marked as soon as the window opens.
+    QCOMPARE(limit->property("fieldState").toString(), QString("error"));
+
+    limit->setText("08:00,512k 0900,off");
+    emit limit->editingFinished();
+    QCOMPARE(limit->property("fieldState").toString(), QString("error"));
+    QVERIFY(limit->toolTip().contains("HH:MM"));
+    QCOMPARE(GetSettings()->value("Settings/globalBandwidthLimit").toString(),
+             QString("0800,1M"));
+
+    limit->setText("08:00,512k 09:00,off");
+    emit limit->editingFinished();
+    QCOMPARE(limit->property("fieldState").toString(), QString());
+    QCOMPARE(GetSettings()->value("Settings/globalBandwidthLimit").toString(),
+             QString("08:00,512k 09:00,off"));
+    window.close();
   }
 
   void preferencesDialogControls() {
