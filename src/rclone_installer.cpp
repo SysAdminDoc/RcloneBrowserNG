@@ -200,6 +200,98 @@ bool CanWriteTo(const QString &dir) {
   return true;
 }
 
+QString ConfigPathFromOutput(const QByteArray &output) {
+  // "Configuration file is stored at:" or "Configuration file doesn't
+  // exist, but rclone will use this path:", then the path on its own line.
+  const QStringList lines =
+      QString::fromUtf8(output).split(QRegularExpression(QStringLiteral("[\r\n]+")),
+                                      Qt::SkipEmptyParts);
+  if (lines.size() < 2 ||
+      !lines.first().trimmed().startsWith(QStringLiteral("Configuration file"))) {
+    return QString();
+  }
+  const QString path =
+      QDir::cleanPath(QDir::fromNativeSeparators(lines.last().trimmed()));
+  return QFileInfo(path).isAbsolute() ? path : QString();
+}
+
+void AskConfigPath(const QString &rclone, QObject *context,
+                   const std::function<void(const QString &)> &done) {
+  auto *process = new QProcess(context);
+  auto answered = std::make_shared<bool>(false);
+  const auto answer = [process, done, answered](const QString &path) {
+    if (*answered) {
+      return;
+    }
+    *answered = true;
+    process->deleteLater();
+    if (done) {
+      done(path);
+    }
+  };
+  QObject::connect(process, &QProcess::finished, process,
+                   [process, answer](int code, QProcess::ExitStatus status) {
+                     answer(status == QProcess::NormalExit && code == 0
+                                ? ConfigPathFromOutput(
+                                      process->readAllStandardOutput())
+                                : QString());
+                   });
+  QObject::connect(process, &QProcess::errorOccurred, process,
+                   [answer](QProcess::ProcessError error) {
+                     if (error == QProcess::FailedToStart) {
+                       answer(QString());
+                     }
+                   });
+  // A stuck rclone ends here and answers with nothing.
+  QTimer::singleShot(std::chrono::seconds(30), process,
+                     [process]() { process->kill(); });
+  process->setStandardInputFile(QProcess::nullDevice());
+  process->start(rclone,
+                 {QStringLiteral("config"), QStringLiteral("file"),
+                  QStringLiteral("--ask-password=false")},
+                 QIODevice::ReadOnly);
+}
+
+bool EnsureConfigFile(const QString &path) {
+  if (path.isEmpty()) {
+    return false;
+  }
+  const QFileInfo info(path);
+  if (info.exists()) {
+    return info.isFile();
+  }
+  if (!QDir().mkpath(info.absolutePath())) {
+    return false;
+  }
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+    // Something else may have made it in the meantime.
+    return QFileInfo(path).isFile();
+  }
+  file.close();
+  return true;
+}
+
+QString ConfigPathToStore(const QString &reported, bool portable,
+                          const QString &appDir) {
+  if (reported.isEmpty()) {
+    return QString();
+  }
+  const QString clean = QDir::cleanPath(QDir::fromNativeSeparators(reported));
+  if (!portable) {
+    return QDir::toNativeSeparators(clean);
+  }
+  const QFileInfo info(clean);
+#if defined(Q_OS_WIN32)
+  const Qt::CaseSensitivity sameFolder = Qt::CaseInsensitive;
+#else
+  const Qt::CaseSensitivity sameFolder = Qt::CaseSensitive;
+#endif
+  const QString folder = QDir::cleanPath(info.absolutePath());
+  const QString app = QDir::cleanPath(QDir::fromNativeSeparators(appDir));
+  return folder.compare(app, sameFolder) == 0 ? info.fileName() : QString();
+}
+
 Extractor ExtractorFor(const QString &archive, const QString &member,
                        const QString &outDir) {
   const QStringList tarArguments = {

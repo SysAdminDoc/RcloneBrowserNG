@@ -61,6 +61,24 @@ QString FindDownloaded();
 // Whether a file can be created in dir right now (made if missing).
 bool CanWriteTo(const QString &dir);
 
+// The config path in what `rclone config file` prints, whether the file is
+// there yet or not. Empty when the answer holds no absolute path.
+QString ConfigPathFromOutput(const QByteArray &output);
+// Asks rclone where its config file is, passing no --config, so the answer
+// is rclone's own pick (RCLONE_CONFIG, a file beside rclone, or its default).
+// done runs once, with an empty path when rclone gave none.
+void AskConfigPath(const QString &rclone, QObject *context,
+                   const std::function<void(const QString &)> &done);
+// Makes an empty file at path when nothing is there, so a backup has
+// something to copy and the app sees rclone's first save. True when a file
+// is there afterwards.
+bool EnsureConfigFile(const QString &path);
+// The rclone.conf path to keep in settings. A portable copy keeps only a
+// file beside the app, by its bare name, so the folder can move. Empty
+// means leave the setting alone.
+QString ConfigPathToStore(const QString &reported, bool portable,
+                          const QString &appDir);
+
 // The system's own unzip for this platform: tar.exe from System32 on
 // Windows, /usr/bin/tar on macOS, unzip or bsdtar on Linux. An empty program
 // means this system has none.

@@ -2009,6 +2009,49 @@ void MainWindow::useRclone(const QString &path) {
   rcloneGetVersion();
 }
 
+// With no --config rclone picks its config file itself, and the app never
+// knew which: Preferences showed an empty field, Backup looked where Linux
+// keeps it, and edits to the file went unnoticed. So the app asks rclone and
+// keeps that path until someone picks a file in Preferences or Switch Config.
+// A path the app filled in is asked again on every start, since another
+// rclone or RCLONE_CONFIG can move it.
+void MainWindow::mapRcloneConfig() {
+  auto settings = GetSettings();
+  const QString current = settings->value("Settings/rcloneConf").toString();
+  if (!current.isEmpty() &&
+      current != settings->value("Settings/rcloneConfMapped").toString()) {
+    return;
+  }
+  RcloneInstaller::AskConfigPath(
+      GetRclone(), this, [this, current](const QString &reported) {
+        const QString stored = RcloneInstaller::ConfigPathToStore(
+            reported, IsPortableMode(), QCoreApplication::applicationDirPath());
+        if (stored.isEmpty()) {
+          return;
+        }
+        auto s = GetSettings();
+        // Preferences may have saved a file of its own while rclone answered.
+        if (s->value("Settings/rcloneConf").toString() != current) {
+          return;
+        }
+        if (!RcloneInstaller::EnsureConfigFile(reported)) {
+          qWarning().noquote() << "Couldn't create the rclone config file"
+                               << QDir::toNativeSeparators(reported);
+        }
+        s->setValue("Settings/rcloneConf", stored);
+        s->setValue("Settings/rcloneConfMapped", stored);
+        SetRcloneConf(stored);
+        if (stored != current) {
+          qInfo().noquote() << "rclone config:"
+                            << QDir::toNativeSeparators(reported);
+          if (!current.isEmpty()) {
+            // A different rclone keeps its remotes somewhere else.
+            rcloneListRemotes();
+          }
+        }
+      });
+}
+
 void MainWindow::offerRcloneDownload() {
   RcloneInstaller::OfferDownload(
       this, RcloneInstaller::Download::Source(), RcloneInstaller::InstallDir(),
@@ -2226,6 +2269,7 @@ void MainWindow::rcloneGetVersion() {
             }
           }
 
+          mapRcloneConfig();
           rcloneListRemotes();
         } else {
           QString error =

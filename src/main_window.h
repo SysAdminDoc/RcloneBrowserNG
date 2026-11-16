@@ -223,6 +223,7 @@ private:
                    const QString &error = QString());
   void checkRcloneUpdate(const QString &currentVersion);
   void useRclone(const QString &path);
+  void mapRcloneConfig();
   void checkBrowserUpdate();
   QNetworkAccessManager *mNetworkManager = nullptr;
 

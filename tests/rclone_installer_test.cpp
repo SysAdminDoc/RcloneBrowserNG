@@ -345,6 +345,122 @@ private slots:
     QVERIFY2(!platform.isEmpty(), "rclone builds for every machine this test runs on");
   }
 
+  void readsTheConfigPathRclonePrints() {
+    // What rclone v1.76.0's `config file` prints, for a file that's there
+    // and for one it hasn't made yet.
+#if defined(Q_OS_WIN32)
+    QCOMPARE(RcloneInstaller::ConfigPathFromOutput(
+                 "Configuration file is stored at:\r\n"
+                 "C:\\Users\\matt\\AppData\\Roaming\\rclone\\rclone.conf\r\n"),
+             QStringLiteral("C:/Users/matt/AppData/Roaming/rclone/rclone.conf"));
+    QCOMPARE(RcloneInstaller::ConfigPathFromOutput(
+                 "Configuration file doesn't exist, but rclone will use this "
+                 "path:\nC:\\Users\\matt\\AppData\\Roaming\\rclone\\rclone.conf\n"),
+             QStringLiteral("C:/Users/matt/AppData/Roaming/rclone/rclone.conf"));
+#else
+    QCOMPARE(RcloneInstaller::ConfigPathFromOutput(
+                 "Configuration file is stored at:\n"
+                 "/home/matt/.config/rclone/rclone.conf\n"),
+             QStringLiteral("/home/matt/.config/rclone/rclone.conf"));
+#endif
+    QVERIFY(RcloneInstaller::ConfigPathFromOutput(
+                "Configuration file is stored at:\nrclone.conf\n")
+                .isEmpty());
+    QVERIFY(RcloneInstaller::ConfigPathFromOutput("Configuration is in memory only")
+                .isEmpty());
+    QVERIFY(RcloneInstaller::ConfigPathFromOutput("<html>Sign in</html>").isEmpty());
+    QVERIFY(RcloneInstaller::ConfigPathFromOutput("").isEmpty());
+  }
+
+  void makesAnEmptyConfigWhereRcloneWillLook() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString fresh = dir.filePath("rclone/rclone.conf");
+    QVERIFY(RcloneInstaller::EnsureConfigFile(fresh));
+    QVERIFY(QFileInfo(fresh).isFile());
+    QCOMPARE(QFileInfo(fresh).size(), qint64(0));
+
+    const QString existing = dir.filePath("kept.conf");
+    const QByteArray remotes("[gdrive]\ntype = drive\n");
+    {
+      QFile file(existing);
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write(remotes);
+    }
+    QVERIFY(RcloneInstaller::EnsureConfigFile(existing));
+    QFile kept(existing);
+    QVERIFY(kept.open(QIODevice::ReadOnly));
+    QCOMPARE(kept.readAll(), remotes);
+
+    const QString folder = dir.filePath("folder.conf");
+    QVERIFY(QDir().mkpath(folder));
+    QVERIFY(!RcloneInstaller::EnsureConfigFile(folder));
+    QVERIFY(!RcloneInstaller::EnsureConfigFile(QString()));
+  }
+
+  void storesTheConfigSoAPortableCopyCanMove() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString appDir = dir.filePath("app");
+    const QString beside = appDir + "/rclone.conf";
+    const QString home = dir.filePath("home/rclone/rclone.conf");
+
+    QCOMPARE(RcloneInstaller::ConfigPathToStore(home, false, appDir),
+             QDir::toNativeSeparators(home));
+    QCOMPARE(RcloneInstaller::ConfigPathToStore(beside, false, appDir),
+             QDir::toNativeSeparators(beside));
+    QCOMPARE(RcloneInstaller::ConfigPathToStore(beside, true, appDir),
+             QStringLiteral("rclone.conf"));
+    QVERIFY(RcloneInstaller::ConfigPathToStore(home, true, appDir).isEmpty());
+#if defined(Q_OS_WIN32)
+    QCOMPARE(RcloneInstaller::ConfigPathToStore(beside, true, appDir.toUpper()),
+             QStringLiteral("rclone.conf"));
+#endif
+    QVERIFY(RcloneInstaller::ConfigPathToStore(QString(), false, appDir).isEmpty());
+  }
+
+  void asksTheRealRcloneWhereItsConfigIs() {
+    const QString rclone = qEnvironmentVariable(
+        "RB_RCLONE_EXE", QStandardPaths::findExecutable("rclone"));
+    if (rclone.isEmpty()) {
+      QSKIP("No rclone on PATH. Set RB_RCLONE_EXE to run this.");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath("cfg/rclone.conf");
+    const QByteArray before = qgetenv("RCLONE_CONFIG");
+    const bool hadBefore = qEnvironmentVariableIsSet("RCLONE_CONFIG");
+    qputenv("RCLONE_CONFIG", QDir::toNativeSeparators(path).toUtf8());
+    const auto restore = qScopeGuard([&]() {
+      if (hadBefore) {
+        qputenv("RCLONE_CONFIG", before);
+      } else {
+        qunsetenv("RCLONE_CONFIG");
+      }
+    });
+
+    QObject context;
+    QStringList answers;
+    const auto record = [&answers](const QString &reported) {
+      answers << reported;
+    };
+    // Once before the file exists and once after, since rclone words the
+    // two answers differently.
+    RcloneInstaller::AskConfigPath(rclone, &context, record);
+    QTRY_COMPARE_WITH_TIMEOUT(answers.size(), 1, 30000);
+    QCOMPARE(answers.at(0), path);
+    QVERIFY(RcloneInstaller::EnsureConfigFile(path));
+    RcloneInstaller::AskConfigPath(rclone, &context, record);
+    QTRY_COMPARE_WITH_TIMEOUT(answers.size(), 2, 30000);
+    QCOMPARE(answers.at(1), path);
+
+    // An rclone that isn't there still answers, with nothing.
+    RcloneInstaller::AskConfigPath(dir.filePath("missing/rclone.exe"), &context,
+                                   record);
+    QTRY_COMPARE_WITH_TIMEOUT(answers.size(), 3, 30000);
+    QVERIFY(answers.at(2).isEmpty());
+  }
+
   void downloadsChecksAndInstalls() {
     const QString platform = RcloneInstaller::PlatformTag();
     if (RcloneInstaller::ExtractorFor("a.zip", "m", "out").program.isEmpty()) {
