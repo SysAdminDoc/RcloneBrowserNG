@@ -798,8 +798,9 @@ private slots:
   // cmd.Run's elapsed time is each attempt's own time plus the
   // --retries-sleep before each retry. A group's elapsedTime keeps growing
   // after its job ends, so the card adds up job/status' duration instead.
-  // After a last attempt that failed, the CLI sleeps once more before it
-  // exits, so it shows 6s for the last row.
+  // After a last attempt that failed with errors a retry could fix, the CLI
+  // sleeps once more before it exits, so it shows 6s for the last row. It
+  // doesn't after a fatal error or a Can't retry.
   void theElapsedTimeIsWhatCmdRunCounts_data() {
     QTest::addColumn<QList<double>>("durations");
     QTest::addColumn<bool>("lastSucceeds");
