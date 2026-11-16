@@ -550,6 +550,58 @@ private slots:
     }
   }
 
+  // A download of several selected items saves its --filter rules ahead of
+  // the command. A history Dry Run put its --dry-run between the first
+  // --filter and its rule, and rclone refused the run as an unknown command.
+  // The command now goes first and the rules keep their order.
+  void historyDryRunsOfSelectedItemsKeepTheirRules() {
+    const QStringList saved{"--filter", "+ /a.txt", "--filter=+ /b/**",
+                            "--filter", "- *",      "sync",
+                            "--max-delete", "5",    "src:",
+                            "dst:"};
+    QCOMPARE(JobOptions::DryRunArguments(saved),
+             (QStringList{"sync", "--dry-run", "--filter", "+ /a.txt",
+                          "--filter=+ /b/**", "--filter", "- *", "src:",
+                          "dst:"}));
+    // Bisync is still told apart and keeps its cap.
+    QCOMPARE(JobOptions::DryRunArguments(QStringList{
+                 "--filter", "+ /a", "bisync", "--max-delete", "50", "a:", "b:"}),
+             (QStringList{"bisync", "--dry-run", "--filter", "+ /a",
+                          "--max-delete", "50", "a:", "b:"}));
+
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("rclone is not on PATH and RCLONE_BROWSER_TEST_RCLONE is unset");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString src = dir.filePath("src");
+    const QString dst = dir.filePath("dst");
+    QVERIFY(QDir().mkpath(src) && QDir().mkpath(dst));
+    for (const QString &path : {src + "/keep.txt", src + "/skip.txt",
+                                dir.filePath("rclone.conf")}) {
+      QFile file(path);
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write(path.endsWith(".conf") ? "" : "x");
+    }
+    const QStringList args = JobOptions::DryRunArguments(
+        QStringList{"--filter", "+ /keep.txt", "--filter", "- *", "copy", src,
+                    dst});
+    QProcess process;
+    process.setWorkingDirectory(dir.path());
+    process.start(rclone, QStringList{"--config", dir.filePath("rclone.conf")}
+                              << args);
+    QVERIFY(process.waitForFinished(60000));
+    const QString log = QString::fromUtf8(process.readAllStandardError());
+    QVERIFY2(process.exitStatus() == QProcess::NormalExit &&
+                 process.exitCode() == 0,
+             qPrintable(args.join(' ') + "\n" + log));
+    QVERIFY2(log.count("Skipped copy as --dry-run is set") == 1 &&
+                 log.contains("keep.txt") && !log.contains("skip.txt"),
+             qPrintable(args.join(' ') + "\n" + log));
+    QVERIFY(QDir(dst).entryList(QDir::Files).isEmpty());
+  }
+
   // pflag gives --exclude, --include and --filter the next argument whatever
   // it looks like (measured on v1.76.0: `rclone sync --exclude -n` is a real
   // run that deletes, and `--filter "- run=*"` skips run=1.txt). A preview

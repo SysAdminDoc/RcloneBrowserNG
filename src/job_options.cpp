@@ -101,6 +101,25 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   // those too. A pattern is never opened as a path, so it keeps its text.
   static const QStringList kGlobalCaps{QStringLiteral("max_delete"),
                                        QStringLiteral("max_delete_size")};
+  // A download of several selected items saves its --filter rules ahead of
+  // the command, where the --dry-run added below split the first rule from
+  // its flag and rclone refused the run. rclone reads a flag anywhere, so the
+  // command moves in front of them and the rules keep their order.
+  qsizetype command = 0;
+  while (command < args.size()) {
+    const QString &arg = args.at(command);
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    if (kPatternFlags.contains(arg)) {
+      command += 2;
+    } else if (equals > 0 && kPatternFlags.contains(arg.left(equals))) {
+      command += 1;
+    } else {
+      break;
+    }
+  }
+  if (command > 0 && command < args.size()) {
+    args.move(command, 0);
+  }
   args = KeepDryRunOn(args);
   const bool dropCaps = args.value(0) != QLatin1String("bisync");
   for (qsizetype i = 0; dropCaps && i < args.size();) {
