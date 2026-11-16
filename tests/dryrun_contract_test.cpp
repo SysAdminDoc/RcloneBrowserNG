@@ -144,6 +144,34 @@ private slots:
              QStringList() << "copy" << "-n" << "a:" << "b:");
   }
 
+  // pflag hands a short cluster's = value to its last letter, so -vn=false
+  // is -v plus -n=false and turns the dry run off (measured on v1.76.0:
+  // `rclone sync --dry-run -vn=false` deleted the extra file). The other
+  // letters in the cluster stay.
+  void previewsDropADryRunValueInsideAShortCluster() {
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "-vn=false", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "-v", "a:", "b:"}));
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "-Pvn=0", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "-Pv", "a:", "b:"}));
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "-n=false", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "a:", "b:"}));
+    // A long flag whose name ends in n isn't a short cluster.
+    QCOMPARE(JobOptions::DryRunArguments(
+                 QStringList{"sync", "--max-duration=1h", "a:", "b:"}),
+             (QStringList{"sync", "--dry-run", "--max-duration=1h", "a:", "b:"}));
+
+    auto sync = makeTask(JobOptions::Sync, false);
+    sync->extra = "-vn=false --fast-list";
+    const QStringList preview = sync->getPreviewOptions();
+    QCOMPARE(preview.count("--dry-run"), 1);
+    QVERIFY2(preview.contains("-v") && !preview.contains("-vn=false"),
+             qPrintable(preview.join(' ')));
+    delete sync;
+  }
+
   // Bisync's --max-delete is a percentage that aborts before anything
   // changes, and its dry run stops at --max-delete-size on the same file
   // the real run does (both measured on v1.76.0). Dropping either made the
@@ -192,6 +220,24 @@ private slots:
     QCOMPARE(caps.bytes, -1);
   }
 
+  // rclone reads --max-delete with Go's fmt.Sscanln: spaces around the
+  // number are fine, a leading 0 is octal and _ can split digits. Each value
+  // checked on v1.76.0 through options/get.
+  void readsTheCountTheWayRcloneDoes() {
+    const struct {
+      const char *text;
+      qint64 count;
+    } cases[] = {{" 5", 5},      {"010", 8},     {"0x10", 16},
+                 {"1_000", 1000}, {"08", -1},     {"-3", -1},
+                 {"5x", -1},     {"", -1}};
+    for (const auto &c : cases) {
+      const JobOptions::DeleteCaps caps =
+          JobOptions::DeleteCapsIn({"sync", "--max-delete", c.text, "a:"});
+      QVERIFY2(caps.count == c.count,
+               qPrintable(QStringLiteral("%1 gave %2").arg(c.text).arg(caps.count)));
+    }
+  }
+
   // rclone's SizeSuffix, values checked on v1.76.0 through options/get.
   void readsSizesTheWayRcloneDoes() {
     QCOMPARE(JobOptions::SizeSuffixBytes("3k"), 3072);
@@ -209,6 +255,16 @@ private slots:
     QCOMPARE(JobOptions::SizeSuffixBytes(" 5k"), -1);
     QCOMPARE(JobOptions::SizeSuffixBytes("-5k"), -1);
     QCOMPARE(JobOptions::SizeSuffixBytes(""), -1);
+    // Go's ParseFloat takes _ between digits and hex with a p exponent,
+    // and rclone refuses NaN, infinity and anything of 8 EiB or more.
+    QCOMPARE(JobOptions::SizeSuffixBytes("1_000"), Q_INT64_C(1024000));
+    QCOMPARE(JobOptions::SizeSuffixBytes("0x1p4"), Q_INT64_C(16384));
+    QCOMPARE(JobOptions::SizeSuffixBytes("0x10"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("1e16"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("Infk"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("NaNk"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("8Ei"), -1);
+    QCOMPARE(JobOptions::SizeSuffixBytes("1biB"), -1);
   }
 
   void dryRunDefaultsFalse() {

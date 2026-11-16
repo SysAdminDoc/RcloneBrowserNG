@@ -101,9 +101,10 @@ public:
   // and lists only some of what the sync would do.
   QStringList getPreviewOptions() const;
   // The same for arguments already built, such as a history row's: adds
-  // --dry-run after the command and drops every --dry-run=<value>, and
-  // every --max-delete and --max-delete-size unless the command is bisync
-  // (whose dry run stops at a cap exactly where the real run would).
+  // --dry-run after the command and drops every --dry-run=<value> and
+  // -n=<value> (also inside a cluster such as -vn=false), and every
+  // --max-delete and --max-delete-size unless the command is bisync (whose
+  // dry run stops at a cap exactly where the real run would).
   static QStringList DryRunArguments(QStringList args);
 
   // The delete caps built arguments carry, read the way rclone reads them:

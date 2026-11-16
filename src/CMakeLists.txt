@@ -111,6 +111,7 @@ set(SOURCE
   item_model.cpp
   utils.cpp
   job_options.cpp
+  rclone_number.cpp
   job_options_store.cpp
   identity_migration.cpp
   list_of_job_options.cpp
@@ -190,7 +191,8 @@ if(WIN32)
   # iphlpapi: network interface counters for adaptive bandwidth.
   target_link_libraries(RcloneBrowser version advapi32 iphlpapi wbemuuid ole32 oleaut32)
   add_executable(RcloneBrowserPassword rclone_password_helper.cpp utils.cpp
-    identity_migration.cpp job_options_store.cpp job_options.cpp)
+    identity_migration.cpp job_options_store.cpp job_options.cpp
+    rclone_number.cpp)
   target_link_libraries(RcloneBrowserPassword Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network advapi32)
 elseif(APPLE)
   find_library(COCOA_LIB Cocoa REQUIRED)

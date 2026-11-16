@@ -34,8 +34,12 @@ Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed) {
     const qint64 size = static_cast<qint64>(object.value("size").toDouble());
     const QString path = object.value("object").toString();
 
-    if (skipped == QLatin1String("delete")) {
+    const bool toBackup = skipped == QLatin1String("move into backup dir");
+    if (skipped == QLatin1String("delete") || toBackup) {
       summary.toDelete++;
+      if (toBackup) {
+        summary.toBackup++;
+      }
       if (size > 0) {
         summary.deleteBytes += size;
       }
@@ -67,8 +71,12 @@ QString Headline(const Summary &summary) {
                  .arg(summary.toUpdate)
                  .arg(summary.toUpdate == 1 ? "" : "s");
   }
-  if (summary.toDelete > 0) {
-    parts << QString("%1 to delete").arg(summary.toDelete);
+  const int deleted = summary.toDelete - summary.toBackup;
+  if (deleted > 0) {
+    parts << QString("%1 to delete").arg(deleted);
+  }
+  if (summary.toBackup > 0) {
+    parts << QString("%1 to move into the backup").arg(summary.toBackup);
   }
   if (parts.isEmpty()) {
     return QStringLiteral("Nothing to do: the destination already matches.");

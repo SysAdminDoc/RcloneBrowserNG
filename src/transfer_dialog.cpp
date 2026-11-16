@@ -1138,10 +1138,14 @@ void TransferDialog::acceptWithDeletionPreview() {
 }
 
 bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
+  // --backup-dir or --suffix moves every removed file aside instead.
+  const bool backup = summary.toBackup > 0;
   QDialog dialog(this);
-  dialog.setWindowTitle(QString("Sync will delete %1 file%2")
-                            .arg(summary.toDelete)
-                            .arg(summary.toDelete == 1 ? "" : "s"));
+  dialog.setWindowTitle(
+      QString(backup ? "Sync will move %1 file%2 into the backup"
+                     : "Sync will delete %1 file%2")
+          .arg(summary.toDelete)
+          .arg(summary.toDelete == 1 ? "" : "s"));
   UiPolish::SetWindowDefaults(&dialog, QSize(560, 380));
   auto *layout = new QVBoxLayout(&dialog);
   layout->setContentsMargins(12, 12, 12, 12);
@@ -1156,9 +1160,15 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   detail->setTextFormat(Qt::PlainText);
   detail->setWordWrap(true);
   detail->setText(
-      QString("These files exist at the destination and not at the source, "
-              "so Sync removes them. Recovering them depends on whether the "
-              "remote keeps a trash or versions. Freed: %1.")
+      (backup ? QString("These files exist at the destination and not at the "
+                        "source, so Sync takes them out of it and keeps them "
+                        "in the backup (--backup-dir or --suffix). rclone "
+                        "still counts each one as a delete for the delete "
+                        "cap. Size: %1.")
+              : QString("These files exist at the destination and not at the "
+                        "source, so Sync removes them. Recovering them "
+                        "depends on whether the remote keeps a trash or "
+                        "versions. Freed: %1."))
           .arg(GetNiceSize(static_cast<quint64>(summary.deleteBytes))));
   UiPolish::SetMuted(detail);
   layout->addWidget(detail);
@@ -1166,7 +1176,9 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   auto *list = new QPlainTextEdit(&dialog);
   list->setReadOnly(true);
   list->setPlainText(summary.deletions.join('\n'));
-  UiPolish::SetOutputView(list, "Files this sync will delete");
+  UiPolish::SetOutputView(list, backup
+                                    ? "Files this sync will move into the backup"
+                                    : "Files this sync will delete");
   layout->addWidget(list, 1);
 
   if (summary.moreDeletions > 0) {
@@ -1187,9 +1199,10 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
     UiPolish::SetValidationMessage(
         capped, "warning",
         QString("The delete cap is %1, so this sync stops with an error "
-                "after deleting %1 of them. Raise the cap if all of these "
+                "after %2 %1 of them. Raise the cap if all of these "
                 "should go.")
-            .arg(caps.count));
+            .arg(caps.count)
+            .arg(backup ? QStringLiteral("moving") : QStringLiteral("deleting")));
     layout->addWidget(capped);
   }
   if (caps.bytes >= 0 && summary.deleteBytes > caps.bytes) {
@@ -1198,9 +1211,10 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
     UiPolish::SetValidationMessage(
         sized, "warning",
         QString("--max-delete-size is %1, and these files come to %2, so "
-                "this sync stops with an error before deleting them all.")
+                "this sync stops with an error before %3 them all.")
             .arg(GetNiceSize(static_cast<quint64>(caps.bytes)),
-                 GetNiceSize(static_cast<quint64>(summary.deleteBytes))));
+                 GetNiceSize(static_cast<quint64>(summary.deleteBytes)),
+                 backup ? QStringLiteral("moving") : QStringLiteral("deleting")));
     layout->addWidget(sized);
   }
 
@@ -1211,7 +1225,9 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary) {
   UiPolish::SetDialogButtonBox(buttons);
   UiPolish::SetPrimaryButton(run);
   cancel->setToolTip("Go back to the transfer options without running.");
-  run->setToolTip("Run the sync, deleting the files listed above.");
+  run->setToolTip(backup ? "Run the sync, moving the files listed above "
+                           "into the backup."
+                         : "Run the sync, deleting the files listed above.");
   layout->addWidget(buttons);
   QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog,
                    &QDialog::accept);

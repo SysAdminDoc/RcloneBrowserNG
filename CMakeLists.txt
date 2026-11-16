@@ -138,10 +138,19 @@ if(BUILD_TESTING)
   add_executable(bwlimit_timetable_test
     tests/bwlimit_timetable_test.cpp
     src/bwlimit_timetable.cpp
+    src/rclone_number.cpp
   )
   target_include_directories(bwlimit_timetable_test PRIVATE src tests)
   target_link_libraries(bwlimit_timetable_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME bwlimit_timetable_test COMMAND bwlimit_timetable_test)
+
+  add_executable(rclone_number_test
+    tests/rclone_number_test.cpp
+    src/rclone_number.cpp
+  )
+  target_include_directories(rclone_number_test PRIVATE src tests)
+  target_link_libraries(rclone_number_test Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Test)
+  add_test(NAME rclone_number_test COMMAND rclone_number_test)
 
   add_executable(rc_sync_request_test
     tests/rc_sync_request_test.cpp
@@ -188,6 +197,7 @@ if(BUILD_TESTING)
     tests/job_options_store_test.cpp
     src/job_options_store.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/utils.cpp
   )
   target_include_directories(job_options_store_test PRIVATE src)
@@ -202,6 +212,7 @@ if(BUILD_TESTING)
     src/identity_migration.cpp
     src/job_options_store.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/utils.cpp
   )
   target_include_directories(identity_migration_test PRIVATE src)
@@ -430,6 +441,7 @@ if(BUILD_TESTING)
     src/staged_transfer.cpp
     src/job_options_store.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/utils.cpp
   )
   target_include_directories(staged_transfer_test PRIVATE src)
@@ -483,6 +495,7 @@ if(BUILD_TESTING)
     src/remote_list_parser.cpp
     src/job_options_store.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/rclone_rc_engine.cpp
     src/rc_sync_request.cpp
     src/rc_delete_batch.cpp
@@ -515,6 +528,7 @@ if(BUILD_TESTING)
   add_executable(dryrun_contract_test
     tests/dryrun_contract_test.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/job_options_store.cpp
     src/utils.cpp
   )
@@ -546,6 +560,7 @@ if(BUILD_TESTING)
     src/remote_list_parser.cpp
     src/job_options_store.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
   )
   # AUTOUIC is enabled directory-scoped in src/; this target compiles the
   # dialog out-of-tree, so it needs uic for preferences_dialog.ui itself.
@@ -604,6 +619,7 @@ if(BUILD_TESTING)
     src/item_model.cpp
     src/utils.cpp
     src/job_options.cpp
+    src/rclone_number.cpp
     src/job_options_store.cpp
     src/list_of_job_options.cpp
     src/schedule_manager.cpp

@@ -102,6 +102,32 @@ private slots:
     QCOMPARE(SyncPreview::Headline(Summary()),
              QStringLiteral("Nothing to do: the destination already matches."));
   }
+
+  // With --backup-dir a sync moves each extra file aside instead of
+  // deleting it, and rclone still counts that move against --max-delete
+  // and --max-delete-size (measured). A replaced file's old copy is logged
+  // as "move" (or "move to a.txt.bak" with --suffix), which isn't a delete.
+  void countsBackupMovesAsDeletions() {
+    const QByteArray output = R"JSON({"time":"2026-11-15T20:22:18.9037024-05:00","level":"notice","msg":"Skipped move into backup dir as --dry-run is set (size 8)","skipped":"move into backup dir","size":8,"object":"c.txt","objectType":"*local.Object","source":"operations/operations.go:2729"}
+{"time":"2026-11-15T20:22:18.9037024-05:00","level":"notice","msg":"Skipped move into backup dir as --dry-run is set (size 7)","skipped":"move into backup dir","size":7,"object":"b.txt","objectType":"*local.Object","source":"operations/operations.go:2729"}
+{"time":"2026-11-15T20:22:18.9037024-05:00","level":"notice","msg":"Skipped move as --dry-run is set (size 4)","skipped":"move","size":4,"object":"a.txt","objectType":"*local.Object","source":"operations/operations.go:2729"}
+{"time":"2026-11-15T20:22:18.9037024-05:00","level":"notice","msg":"Skipped copy as --dry-run is set (size 19)","skipped":"copy","size":19,"object":"a.txt","objectType":"*local.Object","source":"operations/operations.go:2729"}
+{"time":"2026-11-15T20:22:18.9037024-05:00","level":"notice","msg":"Skipped update modification time as --dry-run is set (size 5)","skipped":"update modification time","size":5,"object":"s.txt","objectType":"*local.Object","source":"operations/operations.go:2729"}
+)JSON";
+    const Summary summary = Parse(output);
+    QCOMPARE(summary.toDelete, 2);
+    QCOMPARE(summary.toBackup, 2);
+    QCOMPARE(summary.deleteBytes, static_cast<qint64>(15));
+    QCOMPARE(summary.toTransfer, 1);
+    QCOMPARE(summary.deletions, (QStringList{"c.txt", "b.txt"}));
+    QCOMPARE(SyncPreview::Headline(summary),
+             QStringLiteral("1 to transfer, 1 timestamp update, 2 to move into "
+                            "the backup."));
+
+    const Summary renamed = Parse(
+        R"({"level":"notice","skipped":"move to a.txt.bak","size":4,"object":"a.txt"})");
+    QCOMPARE(renamed.toDelete, 0);
+  }
 };
 
 QTEST_APPLESS_MAIN(SyncPreviewTest)

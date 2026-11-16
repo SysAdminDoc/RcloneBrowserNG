@@ -1,9 +1,9 @@
 #include "job_options.h"
+#include "rclone_number.h"
 #include "utils.h"
 #include <qexception.h>
 #include <qlogging.h>
 
-#include <limits>
 #include <utility>
 #ifdef _WIN32
 #pragma warning(disable : 4505)
@@ -61,14 +61,24 @@ QStringList JobOptions::DryRunArguments(QStringList args) {
   for (qsizetype i = 0; i < args.size();) {
     const QString &arg = args.at(i);
     const QString name = arg.section(QLatin1Char('='), 0, 0);
+    const qsizetype equals = arg.indexOf(QLatin1Char('='));
+    // A short flag cluster gives its = value to the letter just before it,
+    // so -vn=false sets -v and turns the dry run off.
+    const bool shortDryRunValue =
+        equals >= 2 && arg.startsWith(QLatin1Char('-')) &&
+        !arg.startsWith(QLatin1String("--")) &&
+        arg.at(equals - 1) == QLatin1Char('n');
     if (dropCaps && kCaps.contains(arg)) {
       args.remove(i, qMin<qsizetype>(2, args.size() - i));
-    } else if (arg.contains(QLatin1Char('=')) &&
-               ((dropCaps && kCaps.contains(name)) ||
-                name == QLatin1String("--dry-run") ||
-                name == QLatin1String("-n"))) {
+    } else if (equals > 0 && ((dropCaps && kCaps.contains(name)) ||
+                              name == QLatin1String("--dry-run"))) {
       // --dry-run=false would turn the flag added below back off.
       args.removeAt(i);
+    } else if (shortDryRunValue && equals == 2) {
+      args.removeAt(i); // -n=<value>
+    } else if (shortDryRunValue) {
+      args[i] = arg.left(equals - 1); // keep -v from -vn=<value>
+      i++;
     } else {
       i++;
     }
@@ -98,9 +108,11 @@ JobOptions::DeleteCaps JobOptions::DeleteCapsIn(const QStringList &args) {
       continue;
     }
     if (name == kCount) {
-      bool ok = false;
-      const qint64 count = value.toLongLong(&ok);
-      caps.count = ok && count >= 0 ? count : -1;
+      // rclone reads it with Go's fmt.Sscanln (" 5" is 5, 010 is 8), and a
+      // negative count means no cap (measured on v1.76.0).
+      qint64 count = -1;
+      caps.count = RcloneNumber::ScanInt(value, &count) && count >= 0 ? count
+                                                                      : -1;
     } else if (name == kBytes) {
       caps.bytes = SizeSuffixBytes(value);
     }
@@ -109,48 +121,12 @@ JobOptions::DeleteCaps JobOptions::DeleteCapsIn(const QStringList &args) {
 }
 
 qint64 JobOptions::SizeSuffixBytes(const QString &text) {
-  // fs/sizesuffix.go, checked on v1.76.0 through options/get: 3k is 3072,
-  // 10 is 10240, 2b is 2, 10Ki, 10KI and 10MiB work, and 10MB and " 5k"
-  // are refused.
-  if (text.isEmpty() ||
-      text.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0) {
-    return -1;
-  }
-  auto bitsFor = [](QChar symbol) {
-    const qsizetype at = QStringLiteral("kmgtpe").indexOf(symbol.toLower());
-    return at < 0 ? -1 : 10 * static_cast<int>(at + 1);
-  };
-  const qsizetype size = text.size();
-  const QChar last = text.back();
-  int bits = 10;
-  qsizetype suffix = 0;
-  if ((last >= QLatin1Char('0') && last <= QLatin1Char('9')) ||
-      last == QLatin1Char('.')) {
-    // A bare number is KiB.
-  } else if (last == QLatin1Char('b') || last == QLatin1Char('B')) {
-    if (size > 2 && text.at(size - 2) == QLatin1Char('i')) {
-      bits = bitsFor(text.at(size - 3));
-      suffix = 3;
-    } else {
-      bits = 0;
-      suffix = 1;
-    }
-  } else if (last == QLatin1Char('i') || last == QLatin1Char('I')) {
-    bits = size > 1 ? bitsFor(text.at(size - 2)) : -1;
-    suffix = 2;
-  } else {
-    bits = bitsFor(last);
-    suffix = 1;
-  }
-  const QString number = text.left(size - suffix);
-  bool ok = false;
-  const double value = number.toDouble(&ok);
-  if (bits < 0 || !ok || value < 0 || number.trimmed() != number) {
-    return -1;
-  }
-  const double bytes = value * static_cast<double>(Q_INT64_C(1) << bits);
-  return bytes >= 9.0e18 ? std::numeric_limits<qint64>::max()
-                         : static_cast<qint64>(bytes);
+  // fs/sizesuffix.go: 3k is 3072, 10 is 10240, 2b is 2, 10Ki, 10KI and
+  // 10MiB work, 1_000 is 1024000, and 10MB, " 5k", NaNk and 8Ei are refused.
+  qint64 bytes = -1;
+  return RcloneNumber::ParseSize(text, &bytes) == RcloneNumber::SizeError::None
+             ? bytes
+             : -1;
 }
 
 /*
