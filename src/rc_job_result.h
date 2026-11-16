@@ -50,13 +50,15 @@ Result Read(const QJsonObject &status, const QStringList &batchLabels);
 QString DeleteCapLine(const QString &text);
 
 // The exit code a child rclone that failed left, read from its combined
-// log: 7 for the delete cap, 8 for --max-transfer, 10 for --max-duration,
-// 9 when it only said there was nothing to transfer. Otherwise cmd.Run's
-// last line ("Failed to copy: <error>") names the error it exits on, which
-// gets ExitCodeForError, fatal when the log has the fatal retry line or
-// it's bisync's "bisync aborted" and no-retry when it has the can't retry
-// one. 1 for the rest. Errors before rclone's "Attempt N/M succeeded" were
-// retried away and don't count.
+// log. cmd.Run's last line ("Failed to copy: <error>") names the error it
+// exits on: 3 or 4 for its cause, 7 when the log has a delete cap stop, 8
+// or 10 when the error is the --max-transfer or --max-duration stop, else
+// ExitCodeForError, fatal when the log has the fatal retry line or it's
+// bisync's "bisync aborted" and no-retry when it has the can't retry one.
+// With no such line (a sync/* job's error) a limit stop anywhere in the
+// text is 8 or 10, and 9 is for a log that only said there was nothing to
+// transfer. 1 for the rest. Errors before rclone's "Attempt N/M succeeded"
+// were retried away and don't count.
 int ExitCodeFromLog(const QString &log);
 
 // A sync/* job run with --error-on-no-transfer that copied nothing reports
@@ -90,13 +92,23 @@ bool IsNoRetryError(const QString &error);
 // text only, so the cause is read from the end of it, where Go's "%s: %w"
 // wrapping leaves it. That makes `--backup-dir` on a server that refused
 // the connection a 5, as the CLI exits, though it's a fatal error that
-// isn't retried. A backend's own NoLowLevelRetryError mark, which makes
-// ShouldRetry say no, can't be seen.
+// isn't retried. A backend's own NoLowLevelRetryError mark makes
+// ShouldRetry say no, so an error IsNoLowLevelRetryError knows isn't a 5.
 int CauseExitCode(const QString &error);
 
+// Whether an error carries a backend's fserrors.NoLowLevelRetryError mark,
+// as far as its text tells (rclone v1.76.0): a local file that changed
+// while rclone read it, an sftp server whose host key doesn't match the
+// pinned one, and a webdav chunk upload whose retries ran out.
+// resolveExitCode gives those 6. The mark doesn't stop cmd.Run retrying
+// the whole run, as a no-retry error does. OneDrive's mark on an upload
+// session it lost can't be told from its text.
+bool IsNoLowLevelRetryError(const QString &error);
+
 // All of resolveExitCode for the error a run ended on: the cause's code,
-// then 6 for a no-retry error, then 7 for a fatal one, else 1. fatal and
-// noRetry are what the caller knows of the error beyond its text.
+// then 6 for a no-retry or no-low-level-retry error, then 7 for a fatal
+// one, else 1. fatal and noRetry are what the caller knows of the error
+// beyond its text.
 int ExitCodeForError(const QString &error, bool fatal, bool noRetry);
 
 // Milliseconds in a Go duration as time.Duration.String() writes it

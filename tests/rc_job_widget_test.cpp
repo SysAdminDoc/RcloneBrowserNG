@@ -441,6 +441,24 @@ private slots:
     QTest::newRow("tries out, plain")
         << QString("failed to open source object: Access is denied.") << false
         << true << 1;
+    // A local file that grew while it was copied: cmd.Run still retries the
+    // run, and the CLI exits 6 on the no-low-level-retry mark (measured on
+    // v1.76.0, the rc stats saying retryError).
+    QTest::newRow("tries out, source file changed")
+        << QString("can't copy - source file is being updated (size changed "
+                   "from 3145728 to 3149728)")
+        << false << true << 6;
+    // Measured on v1.76.0 against rclone serve sftp with a changed key: the
+    // CLI exits 6, and rc fails the sync/copy with this text.
+    QTest::newRow("fatal, sftp host key")
+        << QString("failed to make fs for --compare-dest [\"sf:cmp\"]: NewFs: "
+                   "couldn't connect SSH: ssh: handshake failed: sftp: host "
+                   "key mismatch for 127.0.0.1:47651: server offered "
+                   "ecdsa-sha2-nistp256 key with fingerprint SHA256:MJvx; "
+                   "pinned fingerprints for this algorithm: SHA256:IYwg -- if "
+                   "the server key has changed legitimately, clear host_keys "
+                   "and re-run with --sftp-pin-host-key")
+        << true << false << 6;
     QTest::newRow("fatal, refused")
         << QString("failed to make fs for --backup-dir \":ftp:bk\": NewFs: "
                    "failed to make FTP connection to \"127.0.0.1:1\": ") +
@@ -495,7 +513,8 @@ private slots:
   // other error bisync returns is read as resolveExitCode reads it. rc's
   // answer has the run's session only when bisync ran, and a path that
   // couldn't be opened, which has none, fails before cmd.Run on the CLI and
-  // exits 1 (measured on v1.76.0).
+  // exits 1. A path that's a file is refused there too, with exit 2
+  // (measured on v1.76.0).
   void bisyncExitsOnWhatItReturned_data() {
     QTest::addColumn<QString>("error");
     QTest::addColumn<bool>("ran");
@@ -509,6 +528,10 @@ private slots:
         << QString("read: connection reset by peer") << true << 5;
     QTest::newRow("returned, plain") << QString("boom") << true << 1;
     QTest::newRow("path refused") << refused << false << 1;
+    QTest::newRow("path is a file")
+        << QString("is a file not a directory") << false << 2;
+    QTest::newRow("returned, is a file")
+        << QString("is a file not a directory") << true << 1;
   }
 
   void bisyncExitsOnWhatItReturned() {

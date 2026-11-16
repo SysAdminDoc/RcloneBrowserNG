@@ -186,6 +186,20 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: the CLI and the card print the same attempt lines and exit code for (a) `sync --max-delete-size 1G` where try 2 hits only a backend no-retry error, and (b) `copy --max-transfer 1k --cutoff-mode soft` with a locked file in the same try; both are rows in rc_job_widget_test against real rclone or a fake daemon fed the measured stats. (c) A same-group run with no size left lets a 0-byte delete through, in a fake-daemon row that reaches PlanNextAttempt's same-group path.
   Complexity: M
 
+- [ ] P3 — Read a core/command child's exit code when the task logs to its own file
+  Why: a task whose extra options carry `--log-file` sends the child rclone's whole log to that file, so core/command hands back an empty result and the card falls back to exit 1. Measured on v1.76.0 (2026-11-16): `copy <missing> <dst> --retries 1 --use-json-log -v --log-file child.log` exits 3 on the command line, and core/command with the same arguments returned an empty result with its error flag set.
+  Evidence: `src/rc_job_result.cpp` ExitCodeFromLog reads output.result only; `src/job_options.cpp` appends the extra options as typed, and nothing in `src/` strips `--log-file`.
+  Touches: `src/rc_job_widget.cpp`, `src/rc_job_result.{h,cpp}`, `tests/rc_route_test.cpp`
+  Acceptance: on a local daemon the card reads the task's log file from the size it had before the run and records 3 for that copy, in a real-rcd row. On a remote daemon, whose files can't be read, the card says the code came from a run with no log.
+  Complexity: S
+
+- [ ] P3 — Measure a bisync that returns success after counting errors
+  Why: when a command returns nil after the stats counted an error, cmd.Run exits on the stats' last error (cmd/cmd.go:257 and 326 on v1.76.0). sync/bisync reports success in that case, so the card would record 0 where the command line exits non-zero. No bisync input known today does it.
+  Evidence: rclone v1.76.0 `cmd/cmd.go` Run; `src/rc_job_widget.cpp` retryAfterFailure's bisync branch reads only the job's own error.
+  Touches: `src/rc_job_widget.cpp`, `tests/rc_job_widget_test.cpp`
+  Acceptance: a bisync input that counts an error and still returns nil is found and measured on v1.76.0, and the card then reads the group's last error on a successful bisync and records the command line's code, in a real-rclone row. If no such input turns up in cmd/bisync, this item goes.
+  Complexity: S
+
 - [ ] P3 — Tell a prefix `--name-transform` backup move from a rename
   Why: `sync --name-transform file,prefix=x_ --backup-dir bak --track-renames` with an older dst/x_a.txt logs "x_a.txt move to x_x_a.txt" beside "a.txt copy", and the real run puts x_x_a.txt into bak (measured on v1.76.0 by the verifier of c8f916a). The summary calls it a rename ("Sync will rename 1 file") and warns at caps 0 and 1, which the real local run never hits. It over-warns only.
   Evidence: `src/sync_preview.cpp` LooksLikeBackupName tries splits at dots only, so a prefix inserted before the name isn't recognized, and Parse's non-Move branch counts it as renamed.

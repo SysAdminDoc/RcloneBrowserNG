@@ -157,7 +157,10 @@ QString DeleteCapLine(const QString &text) {
 }
 
 int ExitCodeFromLog(const QString &log) {
-  // resolveExitCode looks for a missing directory or file first.
+  // resolveExitCode reads only the error cmd.Run's last line names: a
+  // missing directory or file first, then a --max-transfer or
+  // --max-duration stop, then the rest. A --max-delete stop ends a sync on
+  // a fatal "failed to delete N files", whose text doesn't say why.
   const FinalError last = LastFailedLine(log);
   const int cause = last.found ? CauseExitCode(last.error) : -1;
   if (cause == 3 || cause == 4) {
@@ -166,13 +169,15 @@ int ExitCodeFromLog(const QString &log) {
   if (!DeleteCapLine(log).isEmpty()) {
     return 7;
   }
-  if (log.contains(QLatin1String(kTransferLimit))) {
-    return 8;
-  }
-  if (log.contains(QLatin1String(kDurationLimit))) {
-    return 10;
-  }
   if (last.found) {
+    // A limit stop's error is no-retry, so a sync returns a plain error
+    // ahead of it, and the run then exits on that one (measured on v1.76.0).
+    if (EndsWithCause(last.error, QLatin1String(kTransferLimit))) {
+      return 8;
+    }
+    if (EndsWithCause(last.error, QLatin1String(kDurationLimit))) {
+      return 10;
+    }
     // bisync's cmd.Run has Retry off, so it prints neither retry line, and
     // its command wraps "bisync aborted" in a fatal error
     // (cmd/bisync/cmd.go).
@@ -180,6 +185,13 @@ int ExitCodeFromLog(const QString &log) {
         last.error,
         HasLine(log, kFatalLine) || last.error == QLatin1String("bisync aborted"),
         HasLine(log, kCantRetryLine));
+  }
+  // A sync/* job's error, which is the only text there is.
+  if (log.contains(QLatin1String(kTransferLimit))) {
+    return 8;
+  }
+  if (log.contains(QLatin1String(kDurationLimit))) {
+    return 10;
   }
   bool problem = false;
   bool nothingToTransfer = false;
@@ -285,23 +297,15 @@ bool IsNoRetryError(const QString &error) {
          error == QLatin1String("context deadline exceeded");
 }
 
-int CauseExitCode(const QString &error) {
-  // fs.ErrorDirNotFound and fs.ErrorObjectNotFound, which resolveExitCode
-  // finds with errors.Is. Measured on v1.76.0 (2026-11-16): a copy, move
-  // or sync from a missing folder ends on "directory not found" and exits 3
-  // on the CLI, and the same sync/* call over rc fails with that text.
-  if (EndsWithCause(error, QStringLiteral("directory not found"))) {
-    return 3;
-  }
-  if (EndsWithCause(error, QStringLiteral("object not found"))) {
-    return 4;
-  }
-  // fserrors.ShouldRetry (fs/fserrors/error.go) walks the cause chain. It
-  // retries an error whose Timeout() or Temporary() says so, one whose root
-  // is io.EOF, io.ErrUnexpectedEOF or an errno retriable_errors*.go lists,
-  // and one whose root's text holds a phrase from retriableErrorStrings.
-  // The roots are Go's texts for those errors on Linux, macOS and Windows,
-  // where the message is the system's English one.
+namespace {
+
+// fserrors.ShouldRetry (fs/fserrors/error.go) walks the cause chain. It
+// retries an error whose Timeout() or Temporary() says so, one whose root
+// is io.EOF, io.ErrUnexpectedEOF or an errno retriable_errors*.go lists,
+// and one whose root's text holds a phrase from retriableErrorStrings.
+// The roots are Go's texts for those errors on Linux, macOS and Windows,
+// where the message is the system's English one.
+bool IsRetriableText(const QString &error) {
   static const QStringList kRoots{
       // io.EOF and io.ErrUnexpectedEOF.
       QStringLiteral("EOF"),
@@ -392,15 +396,62 @@ int CauseExitCode(const QString &error) {
   };
   for (const QString &root : kRoots) {
     if (EndsWithCause(error, root)) {
-      return 5;
+      return true;
     }
   }
   for (const QString &phrase : kPhrases) {
     if (error.contains(phrase)) {
-      return 5;
+      return true;
     }
   }
-  return -1;
+  return false;
+}
+
+} // namespace
+
+bool IsNoLowLevelRetryError(const QString &error) {
+  // rclone v1.76.0's own fserrors.NoLowLevelRetryError texts:
+  // backend/local/local.go for a file that changed while it was read, and
+  // backend/sftp/sftp.go's host key checks. The sftp mark survives the
+  // "failed to make fs for --compare-dest" wrapping, so that run exits 6
+  // (measured 2026-11-16).
+  static const QStringList kMarked{
+      QStringLiteral("can't copy - source file is being updated ("),
+      QStringLiteral("sftp: server presented an SSH certificate ("),
+      QStringLiteral("sftp: host key mismatch for "),
+      QStringLiteral(
+          " but no key is pinned for this algorithm in host_keys; "),
+      QStringLiteral("sftp: host_keys already contains "),
+  };
+  for (const QString &text : kMarked) {
+    if (error.contains(text)) {
+      return true;
+    }
+  }
+  // backend/webdav/chunking.go marks a chunk's error once its low-level
+  // retries run out, and only an error worth a retry gets that far.
+  const QString chunk = QStringLiteral("uploading chunk failed: ");
+  const qsizetype at = error.indexOf(chunk);
+  return at >= 0 && IsRetriableText(error.mid(at + chunk.size()));
+}
+
+int CauseExitCode(const QString &error) {
+  // fs.ErrorDirNotFound and fs.ErrorObjectNotFound, which resolveExitCode
+  // finds with errors.Is. Measured on v1.76.0 (2026-11-16): a copy, move
+  // or sync from a missing folder ends on "directory not found" and exits 3
+  // on the CLI, and the same sync/* call over rc fails with that text.
+  if (EndsWithCause(error, QStringLiteral("directory not found"))) {
+    return 3;
+  }
+  if (EndsWithCause(error, QStringLiteral("object not found"))) {
+    return 4;
+  }
+  // ShouldRetry says no to a NoLowLevelRetryError before it looks at the
+  // cause.
+  if (IsNoLowLevelRetryError(error)) {
+    return -1;
+  }
+  return IsRetriableText(error) ? 5 : -1;
 }
 
 int ExitCodeForError(const QString &error, bool fatal, bool noRetry) {
@@ -408,7 +459,7 @@ int ExitCodeForError(const QString &error, bool fatal, bool noRetry) {
   if (cause >= 0) {
     return cause;
   }
-  if (noRetry || IsNoRetryError(error)) {
+  if (noRetry || IsNoRetryError(error) || IsNoLowLevelRetryError(error)) {
     return 6;
   }
   return fatal ? 7 : 1;

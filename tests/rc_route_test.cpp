@@ -1010,6 +1010,34 @@ private slots:
         << Log({Line("notice", "Failed to bisync with 2 errors: last error "
                                "was: bisync aborted")})
         << 7;
+    // A soft --max-transfer stop's error is no-retry, so the copy returned
+    // the locked file's plain error ahead of it, and the CLI exited 1 on
+    // that (measured on v1.76.0).
+    QTest::newRow("limit stop, but a plain error last")
+        << Log({Line("error",
+                     "Failed to copy: read \\\\?\\C:\\lk\\a_locked.txt: The "
+                     "process cannot access the file because another process "
+                     "has locked a portion of the file.",
+                     "a_locked.txt"),
+                Line("error", "max transfer limit reached as set by "
+                              "--max-transfer",
+                     "b.txt"),
+                Line("notice", "Failed to copy with 2 errors: last error was: "
+                               "read \\\\?\\C:\\lk\\a_locked.txt: The process "
+                               "cannot access the file because another "
+                               "process has locked a portion of the file.")})
+        << 1;
+    QTest::newRow("duration stop, but a reset last")
+        << Log({Line("error", "max transfer duration reached as set by "
+                              "--max-duration"),
+                Line("notice", "Failed to copy with 2 errors: last error was: "
+                               "read: connection reset by peer")})
+        << 5;
+    QTest::newRow("source file changed")
+        << Log({Line("notice", "Failed to copy: can't copy - source file is "
+                               "being updated (size changed from 3145728 to "
+                               "3149728)")})
+        << 6;
     // A file's own line starts with its name, and the error it names isn't
     // the one the run ended on.
     QTest::newRow("a file's line")
@@ -1077,6 +1105,22 @@ private slots:
     QTest::newRow("immutable") << QString("immutable file modified") << -1;
     QTest::newRow("plain") << QString("boom") << -1;
     QTest::newRow("empty") << QString() << -1;
+    // A backend's no-low-level-retry mark: ShouldRetry says no to it before
+    // it looks at the cause. webdav marks a chunk only once its retries ran
+    // out on an error worth one.
+    QTest::newRow("webdav chunk, reset")
+        << QString("uploading chunk failed: Put \"https://dav.example/up/1\": "
+                   "read tcp 10.0.0.2:5->10.0.0.9:443: read: connection reset "
+                   "by peer")
+        << -1;
+    QTest::newRow("webdav chunk, missing folder")
+        << QString("uploading chunk failed: directory not found") << 3;
+    QTest::newRow("sftp host key, refused after")
+        << QString("couldn't connect SSH: ssh: handshake failed: sftp: server "
+                   "offered ssh-ed25519 key with fingerprint SHA256:x but no "
+                   "key is pinned for this algorithm in host_keys; re-run with "
+                   "--sftp-pin-host-key to accept on first use")
+        << -1;
   }
 
   void readsTheCauseOfAnError() {
@@ -1104,6 +1148,17 @@ private slots:
         << QString("immutable file modified") << false << false << 6;
     QTest::newRow("fatal") << QString("boom") << true << false << 7;
     QTest::newRow("plain") << QString("boom") << false << false << 1;
+    QTest::newRow("source file changed")
+        << QString("can't copy - source file is being updated (mod time "
+                   "changed from 2026-11-16 09:00:00 +0000 UTC to 2026-11-16 "
+                   "09:00:01 +0000 UTC)")
+        << false << false << 6;
+    QTest::newRow("webdav chunk out of retries, fatal")
+        << QString("uploading chunk failed: unexpected EOF") << true << false
+        << 6;
+    QTest::newRow("webdav chunk, plain")
+        << QString("uploading chunk failed: 403 Forbidden") << false << false
+        << 1;
   }
 
   void ordersTheExitCodesLikeTheCli() {
