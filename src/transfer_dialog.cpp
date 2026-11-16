@@ -1064,11 +1064,24 @@ void TransferDialog::acceptWithDeletionPreview() {
   // The summary reads the caps and flags from the options the check runs
   // with. Its Run button runs what the dialog holds then, so nothing that
   // changes them stays live while the check runs.
-  const QStringList planned = getJobOptions()->getOptions();
+  const bool remoteDaemon = RemoteDaemon::IsEnabled();
+  const SyncPreview::Command previewed =
+      ui.rbMove->isChecked()     ? SyncPreview::Command::Move
+      : ui.rbCopy->isChecked()   ? SyncPreview::Command::Copy
+      : ui.rbBisync->isChecked() ? SyncPreview::Command::Bisync
+                                 : SyncPreview::Command::Sync;
+  // rclone also reads options from its environment and from global.
+  // options in a path. A remote rclone's environment isn't known here.
+  const QStringList planned = SyncPreview::EffectiveArguments(
+      getJobOptions()->getOptions(),
+      remoteDaemon ? QProcessEnvironment()
+                   : QProcessEnvironment::systemEnvironment());
   QStringList command = getJobOptions()->getPreviewOptions();
   if (!command.contains("--use-json-log")) {
     command << "--use-json-log";
   }
+  command = command.mid(0, 1) + SyncPreview::DryRunExtras(previewed, planned) +
+            command.mid(1);
   const QStringList args = GetRcloneConf() + command;
 
   mPreviewInFlight = true;
@@ -1097,12 +1110,6 @@ void TransferDialog::acceptWithDeletionPreview() {
     locked->clear();
   };
 
-  const bool remoteDaemon = RemoteDaemon::IsEnabled();
-  const SyncPreview::Command previewed =
-      ui.rbMove->isChecked()     ? SyncPreview::Command::Move
-      : ui.rbCopy->isChecked()   ? SyncPreview::Command::Copy
-      : ui.rbBisync->isChecked() ? SyncPreview::Command::Bisync
-                                 : SyncPreview::Command::Sync;
   auto finish = [this, remoteDaemon, previewed, planned,
                  unlock](int code, const QByteArray &raw) {
     unlock();
@@ -1132,7 +1139,8 @@ void TransferDialog::acceptWithDeletionPreview() {
           return GetNiceSize(static_cast<quint64>(bytes));
         });
     // A check that ended on an error may not have reached every file. A
-    // bisync's dry run stops at its delete caps the way the real run does.
+    // bisync's dry run stops at --max-delete-size and its --max-delete
+    // percentage the way the real run does.
     if (code != 0 && !summary.error.isEmpty()) {
       warnings.prepend(QString("The check ended early with an error, so it "
                                "may not list everything. rclone said \"%1\".")
@@ -1161,6 +1169,12 @@ void TransferDialog::acceptWithDeletionPreview() {
   auto *proc = new QProcess(this);
   proc->setProcessChannelMode(QProcess::MergedChannels);
   UseRclonePassword(proc);
+  QProcessEnvironment environment = proc->processEnvironment();
+  if (environment.isEmpty()) {
+    environment = QProcessEnvironment::systemEnvironment();
+  }
+  proc->setProcessEnvironment(
+      SyncPreview::DryRunEnvironment(environment, previewed));
 
   QObject::connect(proc, &QProcess::errorOccurred, this,
                    [this, proc, unlock](QProcess::ProcessError error) {
@@ -1211,28 +1225,11 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
   auto *detail = new QLabel(&dialog);
   detail->setTextFormat(Qt::PlainText);
   detail->setWordWrap(true);
-  QString detailText;
-  if (!removes) {
-    detailText = SyncPreview::NoDeleteDetail(summary);
-  } else if (!moves) {
-    detailText = "These files exist at the destination and not at the "
-                 "source, so Sync removes them. Recovering them depends on "
-                 "whether the remote keeps a trash or versions. Freed: %1.";
-  } else if (!deletes) {
-    detailText = "These files exist at the destination and not at the "
-                 "source, so Sync takes them out of it and keeps them in the "
-                 "backup (--backup-dir or --suffix). rclone still counts "
-                 "each one as a delete for the delete cap. Size: %1.";
-  } else {
-    detailText = "These files exist at the destination and not at the "
-                 "source. Sync keeps some of them in the backup "
-                 "(--backup-dir or --suffix) and removes the rest, and "
-                 "rclone counts every one as a delete for the delete cap. "
-                 "Size: %1.";
-  }
-  detail->setText(removes ? detailText.arg(GetNiceSize(
-                                static_cast<quint64>(summary.deleteBytes)))
-                          : detailText);
+  detail->setText(
+      removes ? SyncPreview::RemovalDetail(
+                    summary, GetNiceSize(
+                                 static_cast<quint64>(summary.deleteBytes)))
+              : SyncPreview::NoDeleteDetail(summary));
   UiPolish::SetMuted(detail);
   layout->addWidget(detail);
 
@@ -1240,11 +1237,7 @@ bool TransferDialog::showDeletionSummary(const SyncPreview::Summary &summary,
     auto *list = new QPlainTextEdit(&dialog);
     list->setReadOnly(true);
     list->setPlainText(summary.deletions.join('\n'));
-    UiPolish::SetOutputView(
-        list, !moves     ? "Files this sync will delete"
-              : !deletes ? "Files this sync will move into the backup"
-                         : "Files this sync will delete or move into the "
-                           "backup");
+    UiPolish::SetOutputView(list, SyncPreview::RemovalListTitle(summary));
     layout->addWidget(list, 1);
   }
 

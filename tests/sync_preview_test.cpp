@@ -1,5 +1,7 @@
 #include "sync_preview.h"
+#include "test_rclone.h"
 
+#include <QTemporaryDir>
 #include <QTest>
 
 using SyncPreview::Parse;
@@ -490,6 +492,333 @@ private slots:
     QCOMPARE(SyncPreview::DeletionTitle(summary),
              QStringLiteral("Bisync will delete 3 files"));
     QCOMPARE(SyncPreview::CapWarnings(summary, 1, 1, Nice), QStringList());
+  }
+
+  // bisync p1 p2 --backup-dir bak --exclude *.log --delete-excluded with an
+  // older f.txt in bak (measured on v1.76.0). The dry run passes at
+  // --max-delete-size 20B to 29B, but before the real run moves f.txt's old
+  // copy into bak it deletes the older one there, 20 B more, and aborts,
+  // needing --resync. The summary once gave a bisync no warning at all.
+  void aBisyncWithABackupWarnsAboutTheSizeCap() {
+    const QStringList arguments{"bisync",     "--backup-dir", "bak",
+                                "--exclude",  "*.log",        "--delete-excluded",
+                                "p1",         "p2"};
+    const Summary summary =
+        Parse(Line("f.txt", "move", 11) + Line("f.txt", "copy", 19) +
+                  Line("x.log", "move into backup dir", 8) +
+                  Line("keep.txt", "move into backup dir", 4) +
+                  Line("g.txt", "move into backup dir", 3),
+              20, SyncPreview::Command::Bisync,
+              SyncPreview::FlagsIn(arguments));
+    QCOMPARE(summary.toBackup, 3);
+    QCOMPARE(summary.replacedIntoBackup, 1);
+    QCOMPARE(SyncPreview::DeletionTitle(summary),
+             QStringLiteral("Bisync will move 3 files into the backup"));
+    const qint64 passedDryRun[] = {20, 27, 28, 29};
+    for (const qint64 cap : passedDryRun) {
+      const QStringList warnings =
+          SyncPreview::CapWarnings(summary, -1, cap, Nice);
+      const QString expected =
+          QString("could stop at --max-delete-size (%1 B)").arg(cap);
+      QVERIFY2(warnings.size() == 1 && warnings[0].contains(expected),
+               qPrintable(warnings.join(" | ")));
+    }
+    // Its --max-delete is a percentage, and rclone turns the count cap off
+    // for the bisync's own deletes.
+    QCOMPARE(SyncPreview::CapWarnings(summary, 0, -1, Nice), QStringList());
+    QCOMPARE(SyncPreview::RemovalListTitle(summary),
+             QStringLiteral("Files this bisync will move into the backup"));
+    const QString detail = SyncPreview::RemovalDetail(summary, "15 B");
+    QVERIFY2(detail.startsWith("rclone's dry run lists these files, and this "
+                               "bisync moves them into the backup") &&
+                 !detail.contains("not at the source"),
+             qPrintable(detail));
+  }
+
+  // A sync's text says why it removes the files, and names
+  // --delete-excluded when that's on, since then a file the source has can
+  // go too.
+  void removalTextNamesTheRun() {
+    Summary deleted;
+    deleted.toDelete = 2;
+    QCOMPARE(SyncPreview::RemovalDetail(deleted, "9 B"),
+             QStringLiteral("These files exist at the destination and not "
+                            "at the source, so Sync removes them. "
+                            "Recovering them depends on whether the remote "
+                            "keeps a trash or versions. Freed: 9 B."));
+    QCOMPARE(SyncPreview::RemovalListTitle(deleted),
+             QStringLiteral("Files this sync will delete"));
+
+    deleted.flags.deleteExcluded = true;
+    QVERIFY2(SyncPreview::RemovalDetail(deleted, "9 B")
+                 .contains("or a filter leaves them out and "
+                           "--delete-excluded is on, so Sync removes them"),
+             qPrintable(SyncPreview::RemovalDetail(deleted, "9 B")));
+
+    Summary both;
+    both.command = SyncPreview::Command::Bisync;
+    both.toDelete = 3;
+    both.toBackup = 1;
+    QCOMPARE(SyncPreview::RemovalListTitle(both),
+             QStringLiteral("Files this bisync will delete or move into the "
+                            "backup"));
+    QVERIFY2(SyncPreview::RemovalDetail(both, "1 B")
+                 .startsWith("rclone's dry run lists these files, and this "
+                             "bisync keeps some of them in the backup"),
+             qPrintable(SyncPreview::RemovalDetail(both, "1 B")));
+  }
+
+  void readsBisyncBackupsAndDeleteExcluded_data() {
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<bool>("backup");
+    QTest::addColumn<bool>("deleteExcluded");
+
+    QTest::newRow("--backup-dir1 x")
+        << QStringList{"bisync", "--backup-dir1", "x"} << true << false;
+    QTest::newRow("--backup-dir2=x")
+        << QStringList{"bisync", "--backup-dir2=x"} << true << false;
+    QTest::newRow("--backup-dir1=") << QStringList{"bisync", "--backup-dir1="}
+                                    << false << false;
+    QTest::newRow("--delete-excluded")
+        << QStringList{"sync", "--delete-excluded"} << false << true;
+    QTest::newRow("--delete-excluded=false")
+        << QStringList{"sync", "--delete-excluded", "--delete-excluded=false"}
+        << false << false;
+  }
+
+  void readsBisyncBackupsAndDeleteExcluded() {
+    QFETCH(QStringList, arguments);
+    QFETCH(bool, backup);
+    QFETCH(bool, deleteExcluded);
+    const SyncPreview::RunFlags flags = SyncPreview::FlagsIn(arguments);
+    QCOMPARE(flags.backup, backup);
+    QCOMPARE(flags.deleteExcluded, deleteExcluded);
+  }
+
+  // rclone takes a flag's default from RCLONE_<FLAG>, and a global.<option>
+  // in a connection string overrides the command line (measured on
+  // v1.76.0). The summary only read the arguments.
+  void readsOptionsFromTheEnvironmentAndPaths_data() {
+    QTest::addColumn<QStringList>("arguments");
+    QTest::addColumn<QStringList>("environment");
+    QTest::addColumn<bool>("backup");
+    QTest::addColumn<bool>("renames");
+
+    const QStringList none;
+    QTest::newRow("RCLONE_FIX_CASE")
+        << QStringList{"sync", "src", "dst"}
+        << QStringList{"RCLONE_FIX_CASE=true"} << false << true;
+    QTest::newRow("the command line wins over RCLONE_FIX_CASE")
+        << QStringList{"sync", "--fix-case=false", "src", "dst"}
+        << QStringList{"RCLONE_FIX_CASE=true"} << false << false;
+    QTest::newRow("RCLONE_FIX_CASE=false")
+        << QStringList{"sync", "src", "dst"}
+        << QStringList{"RCLONE_FIX_CASE=false"} << false << false;
+    QTest::newRow("RCLONE_BACKUP_DIR")
+        << QStringList{"sync", "src", "dst"}
+        << QStringList{"RCLONE_BACKUP_DIR=bak"} << true << false;
+    QTest::newRow("RCLONE_SUFFIX empty")
+        << QStringList{"sync", "src", "dst"} << QStringList{"RCLONE_SUFFIX="}
+        << false << false;
+    QTest::newRow("RCLONE_TRACK_RENAMES")
+        << QStringList{"sync", "src", "dst"}
+        << QStringList{"RCLONE_TRACK_RENAMES=1"} << false << true;
+    QTest::newRow("global.fix_case=true")
+        << QStringList{"sync", "src", ":local,global.fix_case=true:dst"}
+        << none << false << true;
+    QTest::newRow("global.fix_case with no value")
+        << QStringList{"sync", "remote,global.fix_case:dst", "src"} << none
+        << false << true;
+    QTest::newRow("global. wins over the command line")
+        << QStringList{"sync", "--fix-case=false", "src",
+                       ":local,global.fix_case=true:dst"}
+        << none << false << true;
+    QTest::newRow("global.fix_case=false")
+        << QStringList{"sync", "--fix-case", "src",
+                       "remote,global.fix_case=false:dst"}
+        << none << false << false;
+    QTest::newRow("override. doesn't reach the sync")
+        << QStringList{"sync", "src", ":local,override.fix_case=true:dst"}
+        << none << false << false;
+    QTest::newRow("a quoted global.suffix")
+        << QStringList{"sync", "src", "remote,global.suffix='.o:ld',x=1:dst"}
+        << none << true << false;
+    QTest::newRow("in a flag's =value")
+        << QStringList{"sync", "--backup-dir=remote,global.track_renames:bak",
+                       "src", "dst"}
+        << none << true << true;
+    QTest::newRow("a local path with a comma")
+        << QStringList{"sync", "src", "/data/a,global.fix_case:b"} << none
+        << false << false;
+    QTest::newRow("a drive letter")
+        << QStringList{"sync", "src", "C:\\a,global.fix_case:b"} << none
+        << false << false;
+    QTest::newRow("a remote with no options")
+        << QStringList{"sync", "src", "remote:a,global.fix_case:b"} << none
+        << false << false;
+  }
+
+  void readsOptionsFromTheEnvironmentAndPaths() {
+    QFETCH(QStringList, arguments);
+    QFETCH(QStringList, environment);
+    QFETCH(bool, backup);
+    QFETCH(bool, renames);
+    QProcessEnvironment env;
+    for (const QString &variable : environment) {
+      env.insert(variable.section('=', 0, 0), variable.section('=', 1));
+    }
+    const SyncPreview::RunFlags flags =
+        SyncPreview::FlagsIn(SyncPreview::EffectiveArguments(arguments, env));
+    QCOMPARE(flags.backup, backup);
+    QCOMPARE(flags.renames, renames);
+  }
+
+  // The caps come the same way: the environment first, a path's global.
+  // option last.
+  void carriesTheCapsInTheirOrder() {
+    QProcessEnvironment env;
+    env.insert("RCLONE_MAX_DELETE", "5");
+    env.insert("RCLONE_MAX_DELETE_SIZE", "1M");
+    env.insert("RCLONE_FILES_FROM", "");
+    env.insert("RCLONE_UNRELATED", "x");
+    const QStringList arguments{"sync", "--max-delete", "3", "src",
+                                "remote,global.max_delete_size=2M:dst"};
+    const QStringList expected{"--max-delete=5",
+                               "--max-delete-size=1M",
+                               "sync",
+                               "--max-delete",
+                               "3",
+                               "src",
+                               "remote,global.max_delete_size=2M:dst",
+                               "--max-delete-size=2M"};
+    QCOMPARE(SyncPreview::EffectiveArguments(arguments, env), expected);
+
+    const QProcessEnvironment dryRun =
+        SyncPreview::DryRunEnvironment(env, SyncPreview::Command::Sync);
+    QVERIFY(!dryRun.contains("RCLONE_MAX_DELETE"));
+    QVERIFY(!dryRun.contains("RCLONE_MAX_DELETE_SIZE"));
+    QVERIFY(dryRun.contains("RCLONE_UNRELATED"));
+    // A bisync's dry run keeps its caps.
+    QVERIFY(SyncPreview::DryRunEnvironment(env, SyncPreview::Command::Bisync)
+                .contains("RCLONE_MAX_DELETE"));
+  }
+
+  // RCLONE_FIX_CASE=true with --backup-dir, an NFC name over the same name
+  // in NFD, and an older copy in the backup, on the memory backend
+  // (measured on v1.76.0). The real run stops at --max-delete 0, 1 and 2,
+  // and the summary, reading the move as a backup move, missed 2.
+  void aFixCaseFromTheEnvironmentCounts() {
+    QProcessEnvironment env;
+    env.insert("RCLONE_FIX_CASE", "true");
+    const QStringList arguments{"sync", "--backup-dir", "mem:bak", "src",
+                                "dst"};
+    const Summary summary = Parse(
+        Line("cafe\\u0301.txt", "move to caf\\u00e9.txt", 3) +
+            Line("caf\\u00e9.txt", "copy", 19),
+        20, SyncPreview::Command::Sync,
+        SyncPreview::FlagsIn(SyncPreview::EffectiveArguments(arguments, env)));
+    QCOMPARE(summary.renamed, 1);
+    QCOMPARE(summary.replacedIntoBackup, 1);
+    for (int cap = 0; cap <= 2; cap++) {
+      const QStringList warnings =
+          SyncPreview::CapWarnings(summary, cap, -1, Nice);
+      QVERIFY2(warnings.join(' ').contains(
+                   QString("could stop at the delete cap of %1").arg(cap)),
+               qPrintable(QString("cap %1: %2").arg(cap).arg(
+                   warnings.join(" | "))));
+    }
+  }
+
+  // rclone's march pairs names by NFC and Go's strings.ToLower, which turns
+  // I with a dot above into a plain i. --fix-case --ignore-case-sync
+  // --backup-dir with an older copy in the backup moved i.txt's old copy
+  // there (measured on v1.76.0), and the summary called it only a rename.
+  void pairsNamesTheWayRcloneDoes() {
+    const Summary summary =
+        Parse(Line("i.txt", "move to \\u0130.txt", 3) +
+                  Line("\\u0130.txt", "copy", 19),
+              20, SyncPreview::Command::Sync, Flags(true, true));
+    QCOMPARE(summary.renamed, 1);
+    QCOMPARE(summary.replacedIntoBackup, 1);
+    QCOMPARE(SyncPreview::DeletionTitle(summary),
+             QStringLiteral("Sync will rename 1 file and move old copies of "
+                            "1 file into the backup"));
+  }
+
+  // -M logs a folder whose metadata changes as "update directory
+  // metadata", which isn't a file's time, and nothing in it can count
+  // against a cap. The summary once called it a timestamp update.
+  void aFolderMetadataUpdateIsNotAFileUpdate() {
+    const Summary summary =
+        Parse(Line("folder", "update directory metadata", 0), 20,
+              SyncPreview::Command::Sync, Flags(true, false));
+    QCOMPARE(summary.toUpdate, 0);
+    QCOMPARE(SyncPreview::Headline(summary),
+             QStringLiteral("Nothing to do: the destination already "
+                            "matches."));
+    QCOMPARE(SyncPreview::CapWarnings(summary, 0, 0, Nice), QStringList());
+  }
+
+  void addsAFilterOnlyToAMove() {
+    const QStringList extras = SyncPreview::DryRunExtras(
+        SyncPreview::Command::Move, QStringList{"move", "src", "dst"});
+    QCOMPARE(extras.size(), 2);
+    QCOMPARE(extras[0], QStringLiteral("--filter"));
+    QVERIFY(extras[1].startsWith("- /"));
+    QCOMPARE(SyncPreview::DryRunExtras(SyncPreview::Command::Sync,
+                                       QStringList{"sync", "src", "dst"}),
+             QStringList());
+    // rclone refuses any other filter next to --files-from.
+    QCOMPARE(SyncPreview::DryRunExtras(
+                 SyncPreview::Command::Move,
+                 QStringList{"move", "--files-from", "list.txt", "src", "dst"}),
+             QStringList());
+    QCOMPARE(SyncPreview::DryRunExtras(
+                 SyncPreview::Command::Move,
+                 QStringList{"--files-from0=list.txt", "move", "src", "dst"}),
+             QStringList());
+  }
+
+  // A Move between two folders on one drive can move the whole folder at
+  // once, so its dry run listed only that, and the summary said "Nothing
+  // to do". With the destination folder already there, the real run moved
+  // each file instead, deleted the old a.txt to replace it, and stopped at
+  // --max-delete 0 (measured on v1.76.0).
+  void aMoveDryRunListsEachFile() {
+    const QString rclone = FindRcloneForTests();
+    if (rclone.isEmpty()) {
+      QSKIP("no rclone; set RCLONE_BROWSER_TEST_RCLONE");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QDir root(dir.path());
+    QVERIFY(root.mkpath("src"));
+    QVERIFY(root.mkpath("dst"));
+    // a.txt replaces an older, shorter copy, and b.txt is new.
+    const QStringList files{"rclone.conf", "src/a.txt", "src/b.txt",
+                            "dst/a.txt"};
+    const QStringList contents{"", "new a, longer", "new b", "old a"};
+    for (qsizetype i = 0; i < files.size(); i++) {
+      QFile file(root.filePath(files[i]));
+      QVERIFY(file.open(QIODevice::WriteOnly));
+      file.write(contents[i].toUtf8());
+    }
+    const QStringList run{"move", root.filePath("src"), root.filePath("dst")};
+    const QStringList args =
+        QStringList{"--config", root.filePath("rclone.conf"), "move"} +
+        SyncPreview::DryRunExtras(SyncPreview::Command::Move, run) +
+        QStringList{"--dry-run", "--use-json-log", root.filePath("src"),
+                    root.filePath("dst")};
+    QProcess proc;
+    proc.setProcessChannelMode(QProcess::MergedChannels);
+    proc.start(rclone, args);
+    QVERIFY(proc.waitForFinished(60000));
+    const QByteArray log = proc.readAll();
+    QVERIFY2(proc.exitCode() == 0, log.constData());
+    const Summary summary =
+        Parse(log, 20, SyncPreview::Command::Move, SyncPreview::FlagsIn(run));
+    QVERIFY2(summary.moved == 2, log.constData());
+    QVERIFY(!SyncPreview::CapWarnings(summary, 0, -1, Nice).isEmpty());
   }
 
   // The text for a run that deletes nothing names each kind of move in it.

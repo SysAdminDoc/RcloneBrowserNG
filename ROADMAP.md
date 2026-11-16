@@ -23,11 +23,25 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Complexity: M
 
 - [ ] P2 — Preview a Copy or Move that carries a delete cap
-  Why: the deletion preview runs only for Sync or `--delete-excluded`, yet rclone v1.76.0 counts a Move's moved files against `--max-delete` when one replaces a destination file or crosses remotes, and a Copy with `--backup-dir` counts replaced files' backup moves. A Copy or Move whose extra options carry `--max-delete` can stop partway with no warning. The dialog's cap control is Sync-only and its tooltip says "Only Sync deletes at the destination", which reads as "Copy and Move can't hit a cap".
+  Why: the deletion preview runs only for Sync or `--delete-excluded`, yet rclone v1.76.0 counts a Move's moved files against `--max-delete` when one replaces a destination file or crosses remotes, and a Copy with `--backup-dir` counts replaced files' backup moves. A Copy or Move whose extra options carry `--max-delete` can stop partway with no warning. So can a Copy or Move with `--backup-dir`, `--suffix` or `--fix-case` and a cap but `--delete-excluded` off, since nothing else starts the check (the verifier of c8f916a measured the Move case). The dialog's cap control is Sync-only and its tooltip says "Only Sync deletes at the destination", which reads as "Copy and Move can't hit a cap".
   Evidence: `src/transfer_dialog.cpp` acceptWithDeletionPreview gate; measured move_overwrite (local `rclone move` replacing dst/a.txt fails at `--max-delete 0`) and mem_move_excluded (local to memory, 2 files, fails at 0 and 1).
   Touches: `src/transfer_dialog.cpp`, `src/sync_preview.{h,cpp}`, `tests/accessibility_smoke_test.cpp`
   Acceptance: a Copy or Move whose options hold `--max-delete` or `--max-delete-size` gets the dry-run preview, and its summary opens at a cap the measured runs fail at; the tooltip no longer implies Copy and Move are never counted; a smoke test drives a Move over an existing file at cap 0.
   Complexity: M
+
+- [ ] P2 — Read `global.` options from a remote's config section, and keep a path's caps out of the check
+  Why: rclone v1.76.0 applies a `global.<option>` from a remote's section in rclone.conf when it opens that remote, the same as one in a connection string (fs/newfs.go:98-145). EffectiveArguments reads the connection string's only, so a section carrying `global.fix_case` or `global.backup_dir` reaches the run without the summary knowing. A `global.max_delete` in a path also stops the deletion check's own dry run partway, since it wins over the command line and the dry run can't drop it the way it drops `--max-delete`; the summary then quotes rclone's error instead of listing every file.
+  Evidence: `src/sync_preview.cpp` EffectiveArguments and ConnectionOptions; `src/transfer_dialog.cpp` acceptWithDeletionPreview; read in fs/newfs.go, not measured for the config section.
+  Touches: `src/sync_preview.{h,cpp}`, `src/transfer_dialog.cpp`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first with a section holding `global.fix_case = true` on v1.76.0; the summary reads the section's `global.` options (through `config/get` or `rclone config dump` on the run's own config, password included), and the check's dry run strips `global.max_delete` and `global.max_delete_size` from its paths, with real-rclone rows in sync_preview_test for both.
+  Complexity: M
+
+- [ ] P2 — Word a Dropbox or Koofr `--suffix` replace as a delete
+  Why: on a remote that can't set a file's time without deleting it (backend/dropbox and backend/koofr return ErrorCantSetModTimeWithoutDelete), equal() removes the old file when `--backup-dir` is empty (fs/operations/operations.go:338-348, v1.76.0) instead of renaming it to the `--suffix` name, and that remove isn't counted against the caps. The summary says the old copy moves into the backup and warns about a cap it can't reach.
+  Evidence: `src/sync_preview.cpp` NoDeleteDetail and CapWarnings treat every re-upload under a backup the same way; read in the source, not measured (no Dropbox or Koofr account).
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: measured first on a Dropbox or Koofr remote with `--suffix .old` and a file whose time differs; the summary says the old copy is removed, not backed up, and gives no cap warning for it, as a fixture row.
+  Complexity: S
 
 - [ ] P2 — Word `rclone move`'s source deletes as source deletes in the preview
   Why: under `rclone move`, a source file that already matches the destination is deleted from the source, and the dry run logs that as "delete". The summary words every "delete" as a destination delete ("Move will delete N files"), which is wrong about where the files go missing.
@@ -171,6 +185,20 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Touches: `src/rc_job_widget.cpp`, `src/rc_job_result.{h,cpp}`, `tests/rc_job_widget_test.cpp`
   Acceptance: the CLI and the card print the same attempt lines and exit code for (a) `sync --max-delete-size 1G` where try 2 hits only a backend no-retry error, and (b) `copy --max-transfer 1k --cutoff-mode soft` with a locked file in the same try; both are rows in rc_job_widget_test against real rclone or a fake daemon fed the measured stats. (c) A same-group run with no size left lets a 0-byte delete through, in a fake-daemon row that reaches PlanNextAttempt's same-group path.
   Complexity: M
+
+- [ ] P3 — Tell a prefix `--name-transform` backup move from a rename
+  Why: `sync --name-transform file,prefix=x_ --backup-dir bak --track-renames` with an older dst/x_a.txt logs "x_a.txt move to x_x_a.txt" beside "a.txt copy", and the real run puts x_x_a.txt into bak (measured on v1.76.0 by the verifier of c8f916a). The summary calls it a rename ("Sync will rename 1 file") and warns at caps 0 and 1, which the real local run never hits. It over-warns only.
+  Evidence: `src/sync_preview.cpp` LooksLikeBackupName tries splits at dots only, so a prefix inserted before the name isn't recognized, and Parse's non-Move branch counts it as renamed.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: the measured log gives "move old copies of 1 file into the backup" under `--track-renames`, the same as without it, as a fixture row; a real `--track-renames` rename still reads as one.
+  Complexity: S
+
+- [ ] P3 — Read flag values in FlagsIn the way pflag does
+  Why: FlagsIn skips the token after `--exclude`, `--include` or `--filter` even when that token is the value of an earlier string flag, and it doesn't skip the values of other string flags. With `--user-agent --exclude --fix-case`, rclone takes `--exclude` as the user agent and turns `--fix-case` on, while FlagsIn reads it off (measured on the CLI by the verifier of c8f916a). It needs a nonsense argument list, but it under-warns when it happens.
+  Evidence: `src/sync_preview.cpp` FlagsIn kPatternFlags skip.
+  Touches: `src/sync_preview.{h,cpp}`, `tests/sync_preview_test.cpp`
+  Acceptance: FlagsIn knows which rclone flags take a value (from `rclone help flags` on v1.76.0, or a list checked against it) and skips exactly those values; the measured case reads `--fix-case` on, as a data row.
+  Complexity: S
 
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
   Why: `remoteFingerprint()` spins a nested `QEventLoop` on the Open/Edit path. It is window-modal with a working Cancel and a 30-second timeout, so the window stays responsive and this is not a freeze, but a nested loop still re-enters the stack and is the last one left on a user-click path.

@@ -32,12 +32,42 @@ struct RunFlags {
   // rename. Without either, every move is an old copy going into the
   // backup, whatever --name-transform does to its name.
   bool renames = false;
+  // --delete-excluded, so a sync also removes what the filters leave out.
+  bool deleteExcluded = false;
 };
 
 // Reads RunFlags from the run's arguments, the way rclone's flag parser
 // does: the last value wins, --fix-case=false turns it off, and the value
-// after --exclude, --include or --filter is a pattern, not a flag.
+// after --exclude, --include or --filter is a pattern, not a flag. Bisync's
+// --backup-dir1 and --backup-dir2 are a backup too.
 RunFlags FlagsIn(const QStringList &arguments);
+
+// The run's arguments with the options rclone reads from elsewhere written
+// in as flags, for FlagsIn and JobOptions::DeleteCapsIn (rclone v1.76.0).
+// RCLONE_<FLAG> in rclone's environment is that flag's default, so it goes
+// first and the command line wins over it. A global.<option> in a
+// connection string (":local,global.fix_case:dir") is set when rclone opens
+// that remote, after the command line, so it goes last. A remote's config
+// section can carry global. options as well, which this doesn't read.
+QStringList EffectiveArguments(const QStringList &arguments,
+                               const QProcessEnvironment &environment);
+
+// What the deletion check adds to its dry run, after the command. With no
+// filter active, a Move the remote can do server side moves the whole
+// folder in one step, and its dry run lists only a "server-side directory
+// move". When the destination folder is already there, the real run falls
+// back to moving each file, and those moves count against the caps
+// (measured on v1.76.0). A filter rule that matches nothing makes the dry
+// run list each move. --files-from leaves no such step to take and refuses
+// any other filter, so it gets nothing.
+QStringList DryRunExtras(Command command,
+                         const QStringList &effectiveArguments);
+
+// The dry run's environment. Its arguments leave the caps out, except a
+// bisync's (JobOptions::DryRunArguments), and so does this, or an
+// RCLONE_MAX_DELETE would stop the check partway.
+QProcessEnvironment DryRunEnvironment(QProcessEnvironment environment,
+                                      Command command);
 
 struct Summary {
   Command command = Command::Sync;
@@ -94,11 +124,20 @@ QString DeletionTitle(const Summary &summary);
 // rclone can count against a delete cap.
 QString NoDeleteDetail(const Summary &summary);
 
+// The summary's explanation for a run that removes files, which ends with
+// their size.
+QString RemovalDetail(const Summary &summary, const QString &size);
+
+// The heading over the list of files the run removes.
+QString RemovalListTitle(const Summary &summary);
+
 // Why the real run would stop at a delete cap, one line each, for the
 // deletion summary. countCap and bytesCap are -1 when there's no cap;
-// niceSize formats a byte count. A bisync gets none: its dry run keeps
-// the caps and stops where the real run would, and its --max-delete is a
-// percentage.
+// niceSize formats a byte count. A bisync's dry run keeps its caps and
+// stops at --max-delete-size where the real run would, and its
+// --max-delete is a percentage that rclone checks before it changes
+// anything, so a bisync only gets the warning about the deletes a move into
+// the backup can add.
 QStringList CapWarnings(const Summary &summary, qint64 countCap,
                         qint64 bytesCap,
                         const std::function<QString(qint64)> &niceSize);

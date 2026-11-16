@@ -8,9 +8,23 @@ namespace {
 // and the copy that replaces it under the source's name. The two can differ
 // in case on a case-insensitive remote (Windows), in Unicode normalization,
 // or through --name-transform (measured on v1.76.0: A.txt copied over a.txt,
-// and a.txt copied as A.TXT with all,uppercase), so they're paired folded.
+// and a.txt copied as A.TXT with all,uppercase), so they're paired the way
+// rclone's march pairs names: NFC, then Go's strings.ToLower, which lowers
+// each character on its own (I with a dot above becomes a plain i). Unicode
+// case folding leaves that one alone, and so does QChar::toLower, which
+// skips a character whose full lowercase is longer than one character. In
+// Unicode only U+0130 has one.
 QString PairKey(const QString &path) {
-  return path.normalized(QString::NormalizationForm_C).toCaseFolded();
+  const QList<uint> points =
+      path.normalized(QString::NormalizationForm_C).toUcs4();
+  std::u32string lowered;
+  lowered.reserve(static_cast<size_t>(points.size()));
+  for (const uint point : points) {
+    lowered.push_back(point == 0x130
+                          ? U'i'
+                          : QChar::toLower(static_cast<char32_t>(point)));
+  }
+  return QString::fromStdU32String(lowered);
 }
 
 // With --suffix the old copy moves to its own name plus the suffix, or with
@@ -44,6 +58,135 @@ bool IsGoFalse(QStringView value) {
          value == u"false" || value == u"FALSE" || value == u"False";
 }
 
+// The options EffectiveArguments carries over, by flag, with the name a
+// connection string's global. option uses for it. Bisync's own flags and
+// the filter's aren't in rclone's main config, which is all global. sets.
+struct ReadOption {
+  const char *flag;
+  const char *global;
+  bool list; // a stringArray, whose environment value is a CSV list
+};
+const ReadOption kReadOptions[] = {
+    {"backup-dir", "backup_dir", false},
+    {"backup-dir1", nullptr, false},
+    {"backup-dir2", nullptr, false},
+    {"suffix", "suffix", false},
+    {"track-renames", "track_renames", false},
+    {"fix-case", "fix_case", false},
+    {"delete-excluded", nullptr, false},
+    {"max-delete", "max_delete", false},
+    {"max-delete-size", "max_delete_size", false},
+    {"files-from", nullptr, true},
+    {"files-from-raw", nullptr, true},
+    {"files-from0", nullptr, true},
+};
+
+bool IsConfigParam(QChar c) {
+  const char16_t u = c.unicode();
+  return (u >= u'a' && u <= u'z') || (u >= u'A' && u <= u'Z') ||
+         (u >= u'0' && u <= u'9') || u == u'_' || u == u'.';
+}
+
+// The key=value options in a connection string, read the way rclone's
+// fs/fspath.Parse reads them: "remote,a=1,b:path" or ":backend,a='x:y':path",
+// where a key with no value is "true" and a doubled quote inside quotes is
+// one quote. Empty for a local path, a plain "remote:path" and anything
+// rclone refuses.
+QList<QPair<QString, QString>> ConnectionOptions(const QString &path) {
+  using Options = QList<QPair<QString, QString>>;
+  Options options;
+  if (!path.contains(QLatin1Char(':'))) {
+    return options;
+  }
+  enum class State { Name, Param, Value, Quoted, AfterQuote };
+  State state = State::Name;
+  qsizetype prev = 0;
+  QString param;
+  QChar quote;
+  bool doubled = false;
+  for (qsizetype i = 0; i < path.size(); i++) {
+    const QChar c = path.at(i);
+    switch (state) {
+    case State::Name:
+      if (i == 0 && c == QLatin1Char(':')) {
+        break; // an on-the-fly backend
+      }
+      if (c == QLatin1Char('/') || c == QLatin1Char('\\') ||
+          c == QLatin1Char(':')) {
+        return Options(); // a local path, or a remote with no options
+      }
+      if (c == QLatin1Char(',')) {
+        if (i == 0 || (i == 1 && path.at(0) == QLatin1Char(':'))) {
+          return Options(); // no name
+        }
+        prev = i + 1;
+        state = State::Param;
+      }
+      break;
+    case State::Param:
+      if (c == QLatin1Char(':') || c == QLatin1Char(',') ||
+          c == QLatin1Char('=')) {
+        param = path.mid(prev, i - prev);
+        if (param.isEmpty()) {
+          return Options();
+        }
+        prev = i + 1;
+        if (c == QLatin1Char('=')) {
+          state = State::Value;
+        } else {
+          options.append({param, QStringLiteral("true")});
+          if (c == QLatin1Char(':')) {
+            return options;
+          }
+        }
+      } else if (!IsConfigParam(c)) {
+        return Options();
+      }
+      break;
+    case State::Value:
+      if ((c == QLatin1Char('\'') || c == QLatin1Char('"')) && i == prev) {
+        quote = c;
+        state = State::Quoted;
+        prev = i + 1;
+        doubled = false;
+      } else if (c == QLatin1Char(':') || c == QLatin1Char(',')) {
+        options.append({param, path.mid(prev, i - prev)});
+        prev = i + 1;
+        if (c == QLatin1Char(':')) {
+          return options;
+        }
+        state = State::Param;
+      }
+      break;
+    case State::Quoted:
+      if (c == quote) {
+        state = State::AfterQuote;
+      }
+      break;
+    case State::AfterQuote:
+      if (c == QLatin1Char(':') || c == QLatin1Char(',')) {
+        QString value = path.mid(prev, i - 1 - prev);
+        if (doubled) {
+          value.replace(QString(2, quote), QString(quote));
+        }
+        options.append({param, value});
+        prev = i + 1;
+        if (c == QLatin1Char(':')) {
+          return options;
+        }
+        state = State::Param;
+      } else if (c == quote) {
+        state = State::Quoted; // a doubled quote
+        doubled = true;
+      } else {
+        return Options();
+      }
+      break;
+    }
+  }
+  return Options(); // it ended before its path
+}
+
 } // namespace
 
 QString CommandName(Command command) {
@@ -64,10 +207,15 @@ RunFlags FlagsIn(const QStringList &arguments) {
   static const QStringList kPatternFlags{QStringLiteral("--exclude"),
                                          QStringLiteral("--include"),
                                          QStringLiteral("--filter")};
-  bool backupDir = false;
-  bool suffix = false;
-  bool trackRenames = false;
-  bool fixCase = false;
+  static const QStringList kStringFlags{
+      QStringLiteral("--backup-dir"), QStringLiteral("--backup-dir1"),
+      QStringLiteral("--backup-dir2"), QStringLiteral("--suffix")};
+  static const QStringList kBoolFlags{QStringLiteral("--track-renames"),
+                                      QStringLiteral("--fix-case"),
+                                      QStringLiteral("--delete-excluded")};
+  // The last value of each, by its place in the lists above.
+  bool strings[4] = {false, false, false, false};
+  bool bools[3] = {false, false, false};
   for (qsizetype i = 0; i < arguments.size(); i++) {
     const QString &arg = arguments.at(i);
     if (kPatternFlags.contains(arg)) {
@@ -76,8 +224,9 @@ RunFlags FlagsIn(const QStringList &arguments) {
     }
     const qsizetype equals = arg.indexOf(QLatin1Char('='));
     const QString name = equals > 0 ? arg.left(equals) : arg;
-    if (name == QLatin1String("--backup-dir") ||
-        name == QLatin1String("--suffix")) {
+    const qsizetype stringAt = kStringFlags.indexOf(name);
+    const qsizetype boolAt = kBoolFlags.indexOf(name);
+    if (stringAt >= 0) {
       // A string flag takes the next argument when it has no =value, even
       // one that starts with --.
       QString value;
@@ -86,26 +235,94 @@ RunFlags FlagsIn(const QStringList &arguments) {
       } else if (i + 1 < arguments.size()) {
         value = arguments.at(++i);
       }
-      if (name == QLatin1String("--backup-dir")) {
-        backupDir = !value.isEmpty();
-      } else {
-        suffix = !value.isEmpty();
-      }
-    } else if (name == QLatin1String("--track-renames") ||
-               name == QLatin1String("--fix-case")) {
-      const bool on =
+      strings[stringAt] = !value.isEmpty();
+    } else if (boolAt >= 0) {
+      bools[boolAt] =
           equals < 0 || !IsGoFalse(QStringView(arg).mid(equals + 1));
-      if (name == QLatin1String("--track-renames")) {
-        trackRenames = on;
-      } else {
-        fixCase = on;
-      }
     }
   }
   RunFlags flags;
-  flags.backup = backupDir || suffix;
-  flags.renames = trackRenames || fixCase;
+  flags.backup = strings[0] || strings[1] || strings[2] || strings[3];
+  flags.renames = bools[0] || bools[1];
+  flags.deleteExcluded = bools[2];
   return flags;
+}
+
+QStringList EffectiveArguments(const QStringList &arguments,
+                               const QProcessEnvironment &environment) {
+  QStringList defaults;
+  for (const ReadOption &option : kReadOptions) {
+    const QString flag = QString::fromLatin1(option.flag);
+    const QString key =
+        "RCLONE_" + flag.toUpper().replace(QLatin1Char('-'), QLatin1Char('_'));
+    if (!environment.contains(key)) {
+      continue;
+    }
+    const QString value = environment.value(key);
+    if (option.list && value.isEmpty()) {
+      continue; // an empty list
+    }
+    defaults << "--" + flag + "=" + value;
+  }
+
+  QStringList globals;
+  for (const QString &arg : arguments) {
+    // A path, or the value of a flag that names one (--backup-dir=remote,
+    // global.suffix=.old:bak).
+    QString path = arg;
+    if (arg.startsWith(QLatin1String("--"))) {
+      const qsizetype equals = arg.indexOf(QLatin1Char('='));
+      if (equals < 0) {
+        continue;
+      }
+      path = arg.mid(equals + 1);
+    } else if (arg.startsWith(QLatin1Char('-'))) {
+      continue;
+    }
+    const QList<QPair<QString, QString>> options = ConnectionOptions(path);
+    for (const QPair<QString, QString> &option : options) {
+      if (!option.first.startsWith(QLatin1String("global."))) {
+        continue;
+      }
+      const QString name = option.first.mid(7);
+      for (const ReadOption &known : kReadOptions) {
+        if (known.global != nullptr && name == QLatin1String(known.global)) {
+          globals << "--" + QString::fromLatin1(known.flag) + "=" +
+                         option.second;
+        }
+      }
+    }
+  }
+  return defaults + arguments + globals;
+}
+
+QStringList DryRunExtras(Command command,
+                         const QStringList &effectiveArguments) {
+  if (command != Command::Move) {
+    return {};
+  }
+  for (const QString &arg : effectiveArguments) {
+    const QString name = arg.section(QLatin1Char('='), 0, 0);
+    if (name == QLatin1String("--files-from") ||
+        name == QLatin1String("--files-from-raw") ||
+        name == QLatin1String("--files-from0")) {
+      return {};
+    }
+  }
+  // Rules from --filter come before the ones from --filter-from, and an
+  // --exclude next to an --include makes rclone log an error, so it's a
+  // --filter rule. No real file has this name.
+  return {QStringLiteral("--filter"),
+          QStringLiteral("- /.rclone-browser-ng-dry-run-matches-nothing")};
+}
+
+QProcessEnvironment DryRunEnvironment(QProcessEnvironment environment,
+                                      Command command) {
+  if (command != Command::Bisync) {
+    environment.remove(QStringLiteral("RCLONE_MAX_DELETE"));
+    environment.remove(QStringLiteral("RCLONE_MAX_DELETE_SIZE"));
+  }
+  return environment;
 }
 
 Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed,
@@ -179,7 +396,8 @@ Summary Parse(const QByteArray &jsonLog, int maxDeletionsListed,
       if (size > 0) {
         summary.transferBytes += size;
       }
-    } else if (skipped.startsWith(QLatin1String("update"))) {
+    } else if (skipped == QLatin1String("update modification time")) {
+      // Not "update directory metadata", which -M logs for a folder.
       summary.toUpdate++;
     }
   }
@@ -371,12 +589,67 @@ QString NoDeleteDetail(const Summary &summary) {
   return lines.join(' ');
 }
 
+QString RemovalDetail(const Summary &summary, const QString &size) {
+  const bool moves = summary.toBackup > 0;
+  const bool deletes = summary.toDelete > summary.toBackup;
+  // Only a sync is sure why: a bisync removes a file to match the other
+  // side, or for reasons of its own (with --delete-excluded it lists files
+  // that are on both sides).
+  QString why;
+  if (summary.command != Command::Sync) {
+    why = "rclone's dry run lists these files, and this " +
+          CommandName(summary.command).toLower() + " ";
+  } else if (summary.flags.deleteExcluded) {
+    why = "These files exist at the destination and not at the source, or "
+          "a filter leaves them out and --delete-excluded is on, so Sync ";
+  } else {
+    why = "These files exist at the destination and not at the source, so "
+          "Sync ";
+  }
+  if (!moves) {
+    return why +
+           "removes them. Recovering them depends on whether the remote "
+           "keeps a trash or versions. Freed: " +
+           size + ".";
+  }
+  if (!deletes) {
+    return why +
+           "moves them into the backup (--backup-dir or --suffix) instead "
+           "of deleting them. rclone still counts each one as a delete for "
+           "the delete cap. Size: " +
+           size + ".";
+  }
+  return why +
+         "keeps some of them in the backup (--backup-dir or --suffix) and "
+         "removes the rest, and rclone counts every one as a delete for the "
+         "delete cap. Size: " +
+         size + ".";
+}
+
+QString RemovalListTitle(const Summary &summary) {
+  const QString run = CommandName(summary.command).toLower();
+  if (summary.toBackup == 0) {
+    return "Files this " + run + " will delete";
+  }
+  if (summary.toDelete == summary.toBackup) {
+    return "Files this " + run + " will move into the backup";
+  }
+  return "Files this " + run + " will delete or move into the backup";
+}
+
 QStringList CapWarnings(const Summary &summary, qint64 countCap,
                         qint64 bytesCap,
                         const std::function<QString(qint64)> &niceSize) {
   QStringList warnings;
-  if (summary.command == Command::Bisync) {
-    return warnings; // its dry run kept the caps (see the header)
+  // A bisync's dry run kept both caps. rclone turns the count cap off for
+  // the bisync's own deletes, since bisync reads --max-delete as a
+  // percentage and checks it before changing anything. The dry run stops
+  // at --max-delete-size on the same file the real run does, but it can't
+  // see what moving a file into the backup deletes first (measured on
+  // v1.76.0: the real run then aborts and needs --resync).
+  const bool bisync = summary.command == Command::Bisync;
+  if (bisync) {
+    countCap = -1;
   }
   const QString run = CommandName(summary.command).toLower();
   const QString removing = Removing(summary);
@@ -428,7 +701,7 @@ QStringList CapWarnings(const Summary &summary, qint64 countCap,
     }
   }
   if (bytesCap >= 0) {
-    if (summary.deleteBytes > bytesCap) {
+    if (summary.deleteBytes > bytesCap && !bisync) {
       warnings << QString("--max-delete-size is %1, and these files come to "
                           "%2, so this %3 stops with an error before %4 "
                           "them all.")
