@@ -249,6 +249,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
   Acceptance: a retry reads config/dump again and runs on core/command when a section gained a `global.` option, with a real-rcd row that edits rclone.conf between tries. For a remote daemon, its settings offer a switch (off by default, with the reason beside it) that runs its transfers as separate rclone processes, unless a measured way to read the host's environment over rc turns up first.
   Complexity: M
 
+- [ ] P3 — Keep a look-alike folder name in a dry run behind an alias, a union or a `:`
+  Why: a dry run renames `global.dry_run` and the cap options wherever a path or pattern spells one. A folder that only looks like the option keeps its name when a path names it straight, with no `:` after the key, and gets renamed otherwise. Measured on v1.76.0 (2026-11-16): through `:alias,remote='<base>/dst,global.dry_run=1':` the real sync deleted 2 files and copied 1, while the dry run opened the renamed `dst,ignored.global.dry_run=1` path and listed no deletes. A `:union` upstream did the same, and so did a folder `dst,global.dry_run=1:x` (Windows stores that `:` as U+FF1A) and an `--include "x,global.dry_run=1:y"` pattern. The dry run under-reports there and never deletes.
+  Evidence: `src/job_options.cpp` KeepDryRunOn; each form reproduced with a throwaway rclone.conf and a two-file destination.
+  Touches: `src/job_options.{h,cpp}`, `tests/dryrun_contract_test.cpp`
+  Acceptance: the rename fires only where rclone reads the text as a connection string's option, measured per form, with real-rclone rows for the alias, the union, the folder with a `:` and the pattern with one.
+  Complexity: S
+
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
   Why: `remoteFingerprint()` spins a nested `QEventLoop` on the Open/Edit path. It is window-modal with a working Cancel and a 30-second timeout, so the window stays responsive and this is not a freeze, but a nested loop still re-enters the stack and is the last one left on a user-click path.
   Evidence: `src/remote_widget.cpp:211` (`QEventLoop loop; ... loop.exec()`), reached from `src/remote_widget.cpp:174`, `:297` and `:333`. Assessed and deliberately deferred on 2026-09-05 when the rest of the blocking work landed: the RC engine freeze it was grouped with is fixed, and converting this one changes three call sites into continuations for no user-visible gain. Everything else left in `src/` is destructor teardown (`folder_compare.cpp:271`, `rclone_rc_engine.cpp:19`) or the headless `--run-task` CLI (`main.cpp:324`).
