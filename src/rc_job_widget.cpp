@@ -425,6 +425,7 @@ void RcJobWidget::applyStats(const QJsonObject &stats) {
   ui.bandwidth->setText(GetNiceSize(static_cast<quint64>(speed)) + "/s");
   // The current attempt's errors, as cmd.Run counts them.
   mGroupErrors = stats.value("errors").toInt();
+  mGroupRetryFlag = stats.value("retryError").toBool();
   mErrors = qMax(0, mGroupErrors - mErrorBase);
   ui.errors->setText(QString::number(mErrors));
   ui.checks->setText(
@@ -457,6 +458,7 @@ void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
   mAttemptPayload = job.payload;
   mAttempts = qMax(1, job.attempts);
   mRetrySleepMs = qMax<qint64>(0, job.retrySleepMs);
+  mDaemonMain = job.daemonMain;
   if (!job.routeNote.isEmpty()) {
     ui.output->appendPlainText(
         QString("Live progress isn't shown for this run because %1. It runs "
@@ -469,17 +471,26 @@ void RcJobWidget::setStartedJob(const RcloneRcEngine::StartedJob &job) {
 bool RcJobWidget::retryAfterFailure(const QJsonObject &stats, bool haveStats,
                                     const QString &jobError) {
   // core/command's child rclone runs this loop itself, and a batch delete
-  // has nothing to post again.
-  if (mRetryEndpoint.isEmpty() || mUserCancelled || mStopping) {
+  // has nothing to post again. bisync runs cmd.Run with Retry off
+  // (cmd/bisync/cmd.go), which tries once and logs none of these lines.
+  if (mRetryEndpoint.isEmpty() ||
+      mRetryEndpoint == QLatin1String("sync/bisync") || mUserCancelled ||
+      mStopping) {
     return false;
   }
   // The current attempt's stats, as cmd.Run sees them. In a group an
-  // earlier attempt used too, the retry flag can be that attempt's, and the
-  // fatal flag can't be, since a fatal error ends the run.
+  // earlier attempt used too, the fatal flag can't be that attempt's, since
+  // a fatal error ends the run, but the retry flag can.
   int attemptErrors =
       haveStats ? qMax(0, stats.value("errors").toInt() - mErrorBase) : 0;
   bool fatal = haveStats && stats.value("fatalError").toBool();
   bool retryable = haveStats && stats.value("retryError").toBool();
+  if (retryable && mRetryFlagCarried) {
+    // The flag was already up when this attempt started. A sync returns a
+    // plain error ahead of a no-retry one, so a no-retry error back means
+    // this attempt had nothing a retry could fix.
+    retryable = !RcJobResult::IsNoRetryError(jobError);
+  }
   QString lastError =
       haveStats ? stats.value("lastError").toString() : QString();
   if (haveStats && attemptErrors == 0) {
@@ -559,8 +570,10 @@ void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
                                 int exitCode) {
   // A --max-transfer or --max-duration stop maps to a successful exit, but
   // cmd.Run still counted it as an error and says why it didn't retry, on
-  // any attempt. core/command's child prints these lines itself.
-  if (mRetryEndpoint.isEmpty()) {
+  // any attempt. core/command's child prints these lines itself, and
+  // bisync's cmd.Run, with Retry off, prints none.
+  if (mRetryEndpoint.isEmpty() ||
+      mRetryEndpoint == QLatin1String("sync/bisync")) {
     return;
   }
   // A sync returns its --max-duration stop as a fatal error it never
@@ -569,9 +582,12 @@ void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
   if (exitCode == 10 || (haveStats && stats.value("fatalError").toBool())) {
     ui.output->appendPlainText(
         QStringLiteral("Fatal error received - not attempting retries"));
-  } else if (haveStats && !stats.value("retryError").toBool()) {
+  } else if (haveStats && (!stats.value("retryError").toBool() ||
+                           mRetryFlagCarried)) {
     // A --max-transfer stop with --cutoff-mode soft or cautious counts no
-    // fatal error.
+    // fatal error. A group's retry flag from an earlier attempt says nothing
+    // here: the job returned the stop, a no-retry error, so it had no plain
+    // one to return.
     ui.output->appendPlainText(QStringLiteral(
         "Can't retry any of the errors - not attempting retries"));
   }
@@ -579,6 +595,7 @@ void RcJobWidget::noteLimitStop(const QJsonObject &stats, bool haveStats,
 
 void RcJobWidget::startNextAttempt() {
   mRetryPending = true;
+  mBetweenAttempts.start();
   // Holds off the poll timer until the next job is up.
   mPollInFlight = true;
   UiPolish::SetStatus(ui.showDetails, "warning", "Retrying");
@@ -594,7 +611,7 @@ void RcJobWidget::startNextAttempt() {
     const RcJobResult::NextAttempt next = RcJobResult::PlanNextAttempt(
         mRetryPayload, mAttemptPayload, mAttempt + 1,
         static_cast<qint64>(mCarried.bytes + mThisAttempt.bytes),
-        mCarried.deletes + mThisAttempt.deletes);
+        mCarried.deletes + mThisAttempt.deletes, mDaemonMain);
     const QJsonObject payload = next.payload;
     const bool sameGroup = next.sameGroup;
     const QString group = payload.value(QStringLiteral("_group")).toString();
@@ -624,8 +641,11 @@ void RcJobWidget::startNextAttempt() {
               group.isEmpty() ? QString("job/%1").arg(jobId) : group;
           self->mAttemptPayload = payload;
           if (sameGroup) {
-            // The group goes on counting, so only its errors need a base.
+            // The group goes on counting, its elapsed time included, so
+            // only its errors need a base.
             self->mErrorBase = self->mGroupErrors;
+            self->mRetryFlagCarried =
+                self->mRetryFlagCarried || self->mGroupRetryFlag;
           } else {
             Totals &carried = self->mCarried;
             const Totals &done = self->mThisAttempt;
@@ -633,11 +653,15 @@ void RcJobWidget::startNextAttempt() {
             carried.totalBytes += done.totalBytes;
             carried.transfers += done.transfers;
             carried.checks += done.checks;
-            carried.elapsed += done.elapsed;
+            // The CLI's elapsed time runs on through the wait.
+            carried.elapsed +=
+                done.elapsed + self->mBetweenAttempts.elapsed() / 1000.0;
             carried.deletes += done.deletes;
             self->mThisAttempt = Totals();
             self->mErrorBase = 0;
             self->mGroupErrors = 0;
+            self->mGroupRetryFlag = false;
+            self->mRetryFlagCarried = false;
           }
           self->mJobEnded = false;
           self->mFinalStats = false;

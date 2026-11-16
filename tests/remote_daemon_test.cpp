@@ -350,6 +350,68 @@ private slots:
     QVERIFY2(!command.contains("/before.conf"), qPrintable(command));
   }
 
+  // rclone keeps a stats group for as long as the daemon runs, so a second
+  // copy of the app on the same daemon, or the next session on one that
+  // outlived the first, must not take the names of the groups already
+  // there: it would read their errors and deletes as its own. Each job also
+  // carries what the daemon said its own settings are, for the caps a
+  // retry's _config leaves out, and a switch drops the old daemon's.
+  void eachEngineNamesGroupsOfItsOwn() {
+    const auto daemon = [](const QJsonObject &main) {
+      return [main](const QString &path, const QJsonObject &,
+                    const FakeRcServer::Reply &reply) {
+        if (path == "rc/list") {
+          reply(QJsonObject{
+              {"commands", QJsonArray{QJsonObject{{"Path", "sync/copy"}},
+                                      QJsonObject{{"Path", "core/command"}}}}});
+        } else if (path == "options/get") {
+          reply(QJsonObject{{"main", main}});
+        } else if (path == "sync/copy") {
+          reply(QJsonObject{{"jobid", 7}});
+        } else {
+          reply(startAnswer(path, "/nas.conf"));
+        }
+      };
+    };
+    FakeRcServer nas(daemon(QJsonObject{{"MaxDelete", 4}}));
+    FakeRcServer other(daemon(QJsonObject{{"MaxDelete", 9}}));
+    QVERIFY(nas.isListening());
+    QVERIFY(other.isListening());
+
+    const auto start = [this](RcloneRcEngine &engine) {
+      auto job = std::make_shared<RcloneRcEngine::StartedJob>();
+      auto started = std::make_shared<bool>(false);
+      engine.runCommand({"copy", "nas:", "backup:"}, this,
+                        [job, started](const RcloneRcEngine::StartedJob &result) {
+                          *job = result;
+                          *started = true;
+                        });
+      if (!QTest::qWaitFor([started]() { return *started; }, 10000)) {
+        qWarning("the transfer never started");
+      }
+      return *job;
+    };
+    RcloneRcEngine first;
+    RcloneRcEngine second;
+    first.useRemoteDaemon(nas.url(), "user", "pass");
+    second.useRemoteDaemon(nas.url(), "user", "pass");
+    const RcloneRcEngine::StartedJob a = start(first);
+    const RcloneRcEngine::StartedJob b = start(second);
+    QVERIFY2(a.jobId == 7, qPrintable(a.error));
+    QVERIFY2(b.jobId == 7, qPrintable(b.error));
+    QCOMPARE(a.endpoint, QString("sync/copy"));
+    QVERIFY2(a.group.startsWith("rclonebrowser-"), qPrintable(a.group));
+    QVERIFY2(a.group != b.group, qPrintable(a.group + " and " + b.group));
+    QCOMPARE(a.payload.value("_group").toString(), a.group);
+    QCOMPARE(a.daemonMain.value("MaxDelete").toInt(), 4);
+
+    first.useRemoteDaemon(other.url(), "user", "pass");
+    const RcloneRcEngine::StartedJob c = start(first);
+    QVERIFY2(c.jobId == 7, qPrintable(c.error));
+    QCOMPARE(c.daemonMain.value("MaxDelete").toInt(), 9);
+    QVERIFY2(c.group != a.group, qPrintable(c.group));
+  }
+
   void initTestCase() {
     QVERIFY(mDir.isValid());
     QSettings::setDefaultFormat(QSettings::IniFormat);

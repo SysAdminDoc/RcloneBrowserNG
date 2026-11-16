@@ -94,13 +94,19 @@ private:
   // A new group gets those caps lowered by what the earlier ones used. When
   // that can't be worked out (core/stats has no deleted-bytes count for
   // --max-delete-size), the next attempt stays in the current group, and
-  // mErrorBase is that group's error count when the attempt started.
+  // mErrorBase is that group's error count when the attempt started. The
+  // group's retry flag can then be an earlier attempt's (mRetryFlagCarried),
+  // and the attempt is judged by the error its job returned.
   QString mRetryEndpoint;
   QJsonObject mRetryPayload;
   // What the current attempt posted.
   QJsonObject mAttemptPayload;
+  // The daemon's settings, for the caps _config leaves out.
+  QJsonObject mDaemonMain;
   int mErrorBase = 0;
   int mGroupErrors = 0;
+  bool mGroupRetryFlag = false;
+  bool mRetryFlagCarried = false;
   int mAttempts = 1;
   int mAttempt = 1;
   qint64 mRetrySleepMs = 0;
@@ -117,6 +123,9 @@ private:
   };
   Totals mCarried;
   Totals mThisAttempt;
+  // From the stats read that ended an attempt to the next attempt's job,
+  // which no group's elapsedTime covers: the --retries-sleep, mostly.
+  QElapsedTimer mBetweenAttempts;
   QTimer mPollTimer;
   QLineEdit *mBandwidth = nullptr;
   QPushButton *mBandwidthApply = nullptr;

@@ -59,6 +59,10 @@ public:
     // Why a transfer went to core/command, where the card has no live
     // progress to show. Empty when it took sync/*.
     QString routeNote;
+    // The daemon's own settings (options/get's "main"), which a sync/* call
+    // takes for anything its _config leaves out, the caps included. Empty
+    // when the daemon didn't answer options/get.
+    QJsonObject daemonMain;
   };
 
   using JobCallback = std::function<void(const StartedJob &job)>;
@@ -117,11 +121,17 @@ private:
   // always did and is always correct.
   QSet<QString> mEndpoints;
   RcSyncRequest::OptionIndex mOptionIndex;
+  QJsonObject mDaemonMain;
+  // rclone keeps a stats group for as long as the daemon runs, and a daemon
+  // can outlive this engine or serve two copies of the app. A tag of this
+  // engine's own keeps its group names from meeting another's.
+  QString mGroupTag;
   int mGroupCounter = 0;
   // Bumped whenever the tables are cleared for a different daemon, so the
   // answers of one that's gone can't fill them.
   int mCapabilityGeneration = 0;
 
+  QString nextGroup();
   void startCommand(const QStringList &args, const QString &routeNote,
                     QObject *context, const JobCallback &callback);
   void startTransfer(const QStringList &args, QObject *context,

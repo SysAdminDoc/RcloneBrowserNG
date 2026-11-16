@@ -187,6 +187,11 @@ Uncounted ClassifyUncounted(const QString &error) {
                      "same"),
       QStringLiteral("can't use --backup-dir on a remote which doesn't "
                      "support server-side move or copy"),
+      // newLess (fs/sync/pipe.go), which newPipe wraps as fatal.
+      QStringLiteral("unknown --order-by comparison "),
+      QStringLiteral("unknown --order-by sort direction "),
+      QStringLiteral("bad mixed fraction --order-by "),
+      QStringLiteral("bad --order-by string "),
   };
   for (const QString &start : kRetry) {
     if (error.startsWith(start)) {
@@ -199,6 +204,13 @@ Uncounted ClassifyUncounted(const QString &error) {
     }
   }
   return Uncounted::Unknown;
+}
+
+bool IsNoRetryError(const QString &error) {
+  // rclone v1.76.0: fs.ErrorImmutableModified (fs/sync/sync.go and
+  // fs/operations), and the deadline processError marks as no-retry.
+  return error == QLatin1String("immutable file modified") ||
+         error == QLatin1String("context deadline exceeded");
 }
 
 Result Read(const QJsonObject &status, const QStringList &batchLabels) {
@@ -269,15 +281,39 @@ Result Read(const QJsonObject &status, const QStringList &batchLabels) {
 
 namespace {
 
-// What a cap in a sync/* call's _config comes to: -1 when it's off,
-// kUnknownCap when it can't be told. With no flag for it, rclone takes the
-// environment variable, and the daemon runs with this app's environment.
+// What a cap in a sync/* call comes to: -1 when it's off, kUnknownCap when
+// it can't be told.
 constexpr qint64 kUnknownCap = -2;
 
+// A cap _config leaves out is the daemon's own, which options/get gives as
+// a number (a SizeSuffix is its byte count). A daemon whose settings have
+// no such key is an rclone without that cap.
+qint64 DaemonCap(const QJsonObject &daemonMain, const QString &key) {
+  if (daemonMain.isEmpty()) {
+    return kUnknownCap;
+  }
+  if (!daemonMain.contains(key)) {
+    return -1;
+  }
+  const QJsonValue value = daemonMain.value(key);
+  if (!value.isDouble()) {
+    return kUnknownCap;
+  }
+  const double number = value.toDouble();
+  if (number < 0) {
+    return -1;
+  }
+  // Beyond 2^53 a double no longer holds every integer.
+  if (number > 9007199254740992.0) {
+    return kUnknownCap;
+  }
+  return static_cast<qint64>(number);
+}
+
 qint64 CountCap(const QJsonObject &config, const QString &key,
-                const char *variable) {
+                const QJsonObject &daemonMain) {
   if (!config.contains(key)) {
-    return qEnvironmentVariableIsSet(variable) ? kUnknownCap : -1;
+    return DaemonCap(daemonMain, key);
   }
   const QJsonValue value = config.value(key);
   if (!value.isDouble()) {
@@ -289,9 +325,9 @@ qint64 CountCap(const QJsonObject &config, const QString &key,
 
 // A SizeSuffix goes into _config as the CLI token (rc_sync_request.cpp).
 qint64 SizeCap(const QJsonObject &config, const QString &key,
-               const char *variable) {
+               const QJsonObject &daemonMain) {
   if (!config.contains(key)) {
-    return qEnvironmentVariableIsSet(variable) ? kUnknownCap : -1;
+    return DaemonCap(daemonMain, key);
   }
   const QJsonValue value = config.value(key);
   qint64 bytes = -1;
@@ -307,18 +343,17 @@ qint64 SizeCap(const QJsonObject &config, const QString &key,
 
 NextAttempt PlanNextAttempt(const QJsonObject &original,
                             const QJsonObject &current, int attempt,
-                            qint64 bytesSoFar, qint64 deletesSoFar) {
+                            qint64 bytesSoFar, qint64 deletesSoFar,
+                            const QJsonObject &daemonMain) {
   static const QString kGroup = QStringLiteral("_group");
   static const QString kConfig = QStringLiteral("_config");
   static const QString kMaxDelete = QStringLiteral("MaxDelete");
   static const QString kMaxTransfer = QStringLiteral("MaxTransfer");
   const QJsonObject config = original.value(kConfig).toObject();
-  const qint64 deleteCount =
-      CountCap(config, kMaxDelete, "RCLONE_MAX_DELETE");
-  const qint64 deleteBytes = SizeCap(config, QStringLiteral("MaxDeleteSize"),
-                                     "RCLONE_MAX_DELETE_SIZE");
-  const qint64 transferBytes =
-      SizeCap(config, kMaxTransfer, "RCLONE_MAX_TRANSFER");
+  const qint64 deleteCount = CountCap(config, kMaxDelete, daemonMain);
+  const qint64 deleteBytes =
+      SizeCap(config, QStringLiteral("MaxDeleteSize"), daemonMain);
+  const qint64 transferBytes = SizeCap(config, kMaxTransfer, daemonMain);
   // With nothing deleted or moved so far there's nothing to carry.
   const bool deletesCarry =
       deletesSoFar <= 0 || (deleteCount != kUnknownCap && deleteBytes == -1);

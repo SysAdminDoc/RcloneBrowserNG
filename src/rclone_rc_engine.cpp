@@ -32,7 +32,9 @@ QJsonArray coreCommandArguments(const QStringList &args,
 }
 } // namespace
 
-RcloneRcEngine::RcloneRcEngine(QObject *parent) : QObject(parent) {}
+RcloneRcEngine::RcloneRcEngine(QObject *parent)
+    : QObject(parent),
+      mGroupTag(QString::number(QRandomGenerator::system()->generate(), 16)) {}
 
 RcloneRcEngine::~RcloneRcEngine() {
   if (mProcess && mProcess->state() != QProcess::NotRunning) {
@@ -144,6 +146,7 @@ void RcloneRcEngine::useRemoteDaemon(const QString &url, const QString &user,
   // Whatever answers next is a different rclone with its own tables.
   mEndpoints.clear();
   mOptionIndex = RcSyncRequest::OptionIndex();
+  mDaemonMain = QJsonObject();
   mCapabilityGeneration++;
   mUrl.clear();
   if (mProcess) {
@@ -223,6 +226,7 @@ void RcloneRcEngine::spawnDaemon() {
   // again rather than inherited from the one that died.
   mEndpoints.clear();
   mOptionIndex = RcSyncRequest::OptionIndex();
+  mDaemonMain = QJsonObject();
   mCapabilityGeneration++;
 
   if (mProcess) {
@@ -346,6 +350,8 @@ void RcloneRcEngine::loadCapabilities() {
                                       if (getError.isEmpty()) {
                                         RcSyncRequest::AddDeleteModes(
                                             &mOptionIndex, values);
+                                        mDaemonMain =
+                                            values.value("main").toObject();
                                       }
                                       finishStart(true, QString());
                                     });
@@ -419,7 +425,7 @@ void RcloneRcEngine::runCommand(const QStringList &args, QObject *context,
 
 void RcloneRcEngine::startTransfer(const QStringList &args, QObject *context,
                                    JobCallback callback) {
-  const QString group = QString("rclonebrowser-%1").arg(++mGroupCounter);
+  const QString group = nextGroup();
   const RcSyncRequest::Request request =
       RcSyncRequest::Build(args, group, mOptionIndex);
 
@@ -547,10 +553,11 @@ void RcloneRcEngine::startSync(const QStringList &args,
   const QString endpoint = request.endpoint;
   // What's posted is the sync/* call, so that's what the card shows.
   const QStringList display = rcCallForDisplay(endpoint, request.payload);
+  const QJsonObject daemonMain = mDaemonMain;
 
   postAsync(endpoint, request.payload, context,
-            [callback, group, request, display](const QJsonObject &response,
-                                                const QString &error) {
+            [callback, group, request, display,
+             daemonMain](const QJsonObject &response, const QString &error) {
               if (!callback) {
                 return;
               }
@@ -561,6 +568,7 @@ void RcloneRcEngine::startSync(const QStringList &args,
               job.payload = request.payload;
               job.attempts = request.retries;
               job.retrySleepMs = request.retriesSleepMs;
+              job.daemonMain = daemonMain;
               if (!error.isEmpty()) {
                 job.error = error;
                 callback(job);
@@ -574,6 +582,10 @@ void RcloneRcEngine::startSync(const QStringList &args,
               job.jobId = response.value("jobid").toInt(-1);
               callback(job);
             });
+}
+
+QString RcloneRcEngine::nextGroup() {
+  return QString("rclonebrowser-%1-%2").arg(mGroupTag).arg(++mGroupCounter);
 }
 
 void RcloneRcEngine::startCommand(const QStringList &args,
@@ -642,7 +654,7 @@ void RcloneRcEngine::runDeleteBatch(const RcDeleteBatch::Plan &plan,
       return;
     }
 
-    const QString group = QString("rclonebrowser-%1").arg(++mGroupCounter);
+    const QString group = nextGroup();
     QJsonObject payload = request.payload;
     payload.insert("_group", group);
     payload.insert("_async", true);

@@ -151,6 +151,13 @@ Added 2026-09-04 and 2026-11-15 from the research passes. RESEARCH.md holds the 
 
 ### P3
 
+- [ ] P3 — Close the last two gaps between the card's retry loop and the CLI's
+  Why: a run that stays in one stats group (`--max-delete-size` after a delete, or a daemon that never answered options/get) keeps an earlier try's retry flag, since rc has no call that clears a group's errors and keeps its deletes. The card then judges the try by the error its job returned, and knows only rclone's own no-retry errors (`immutable file modified`, `context deadline exceeded`). A backend's own no-retry error in that mode gets one try more than the CLI gives it. Separately, a try that hits a soft `--max-transfer` stop along with a retryable error hasn't been measured against the CLI on the daemon route.
+  Evidence: `src/rc_job_widget.cpp` retryAfterFailure (`mRetryFlagCarried`) and noteLimitStop; `src/rc_job_result.cpp` IsNoRetryError; rclone v1.76.0 `fs/accounting/stats.go` ResetErrors runs only from cmd.Run, and core/stats-reset also clears deletesSize.
+  Touches: `src/rc_job_widget.cpp`, `src/rc_job_result.{h,cpp}`, `tests/rc_job_widget_test.cpp`
+  Acceptance: the CLI and the card print the same attempt lines and exit code for (a) `sync --max-delete-size 1G` where try 2 hits only a backend no-retry error, and (b) `copy --max-transfer 1k --cutoff-mode soft` with a locked file in the same try; both are rows in rc_job_widget_test against real rclone or a fake daemon fed the measured stats.
+  Complexity: M
+
 - [ ] P3 — Replace the Open/Edit nested event loop with a callback flow
   Why: `remoteFingerprint()` spins a nested `QEventLoop` on the Open/Edit path. It is window-modal with a working Cancel and a 30-second timeout, so the window stays responsive and this is not a freeze, but a nested loop still re-enters the stack and is the last one left on a user-click path.
   Evidence: `src/remote_widget.cpp:211` (`QEventLoop loop; ... loop.exec()`), reached from `src/remote_widget.cpp:174`, `:297` and `:333`. Assessed and deliberately deferred on 2026-09-05 when the rest of the blocking work landed: the RC engine freeze it was grouped with is fixed, and converting this one changes three call sites into continuations for no user-visible gain. Everything else left in `src/` is destructor teardown (`folder_compare.cpp:271`, `rclone_rc_engine.cpp:19`) or the headless `--run-task` CLI (`main.cpp:324`).
